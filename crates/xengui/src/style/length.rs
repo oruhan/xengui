@@ -30,7 +30,7 @@ impl Length {
         Self::Px(value)
     }
 
-    pub fn percent(value: f32) -> Self {
+    pub fn pct(value: f32) -> Self {
         Self::Percent(value)
     }
 
@@ -73,6 +73,34 @@ impl Length {
     pub fn sub_px(self, value: f32) -> Self {
         Self::px((self.value() - value).max(0.0))
     }
+}
+
+#[macro_export]
+macro_rules! px {
+    ($v:expr) => {
+        $crate::style::Length::Px($v as f32)
+    };
+}
+
+#[macro_export]
+macro_rules! pct {
+    ($v:expr) => {
+        $crate::style::Length::Percent($v as f32)
+    };
+}
+
+#[macro_export]
+macro_rules! vw {
+    ($v:expr) => {
+        $crate::style::Length::ViewportWidth($v as f32)
+    };
+}
+
+#[macro_export]
+macro_rules! vh {
+    ($v:expr) => {
+        $crate::style::Length::ViewportHeight($v as f32)
+    };
 }
 
 macro_rules! impl_length_from {

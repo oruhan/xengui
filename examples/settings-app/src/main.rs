@@ -97,7 +97,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                         .justify_content(JustifyContent::Center)
                                         .height(Length::Percent(100.0))
                                         .width(Length::px(44.0))
-                                        .label("─")
+                                        .label("a")
                                         .font_size(14)
                                         .background(Color::TRANSPARENT)
                                         .color(|theme: &Theme| theme.foreground)
@@ -120,7 +120,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                         .justify_content(JustifyContent::Center)
                                         .height(Length::Percent(100.0))
                                         .width(Length::px(44.0))
-                                        .label("a")
+                                        .label("-")
                                         .font_size(14)
                                         .background(Color::TRANSPARENT)
                                         .color(|theme: &Theme| theme.foreground)
@@ -143,7 +143,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                         .justify_content(JustifyContent::Center)
                                         .height(Length::Percent(100.0))
                                         .width(Length::px(44.0))
-                                        .label("✕")
+                                        .label("A")
                                         .font_size(14)
                                         .background(Color::TRANSPARENT)
                                         .color(|theme: &Theme| theme.foreground)
@@ -185,6 +185,52 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     Label::new()
                                         .label("label1")
                                         .color(|theme: &Theme| theme.foreground)
+                                )
+                                .child(
+                                    Button::new()
+                                        .align_items(AlignItems::Center)
+                                        .justify_content(JustifyContent::Center)
+                                        .height(px!(50))
+                                        .width(px!(44.0))
+                                        .label("A")
+                                        .font_size(14)
+                                        .background(Color::TRANSPARENT)
+                                        .color(|theme: &Theme| theme.foreground)
+                                        .transition_all(
+                                            Transition::new(Duration::from_millis(200)).easing(
+                                                Easing::EaseInOut
+                                            )
+                                        )
+                                        .hover_style(|s, _| {
+                                            s.background(Color::RED_600).color(Color::WHITE)
+                                        })
+                                        .pressed_style(|s, _| {
+                                            s.background(Color::RED_800).color(Color::WHITE)
+                                        })
+                                        .on_click(move |_| xenframe::close_window())
+                                )
+                                .child(
+                                    Button::new()
+                                        .align_items(AlignItems::Center)
+                                        .justify_content(JustifyContent::Center)
+                                        .height(Length::px(50.0))
+                                        .width(Length::px(44.0))
+                                        .label("Test")
+                                        .font_size(14)
+                                        .background(Color::TRANSPARENT)
+                                        .color(|theme: &Theme| theme.foreground)
+                                        .transition_all(
+                                            Transition::new(Duration::from_millis(200)).easing(
+                                                Easing::EaseInOut
+                                            )
+                                        )
+                                        .hover_style(|s, _| {
+                                            s.background(Color::RED_600).color(Color::WHITE)
+                                        })
+                                        .pressed_style(|s, _| {
+                                            s.background(Color::RED_800).color(Color::WHITE)
+                                        })
+                                        .on_click(move |_| xenframe::close_window())
                                 )
                                 .child(
                                     TextBox::new()

@@ -68,11 +68,6 @@ pub struct TextPipeline {
 }
 
 impl TextPipeline {
-    #[inline]
-    fn snap(px: f32) -> f32 {
-        px.round()
-    }
-
     pub fn new(
         device: &wgpu::Device,
         queue: &wgpu::Queue,
@@ -330,6 +325,13 @@ impl TextPipeline {
         std::mem::take(&mut self.pending_decorations)
     }
 
+    /// Shapes `text` and returns (width, height, baseline).
+    ///
+    /// `height` spans from the top of the first shaped line to the bottom
+    /// of the last one, and `baseline` is the distance from that same top
+    /// down to the first line's baseline - both read directly off cosmic-text's
+    /// own layout runs, which already position glyphs using the real font's
+    /// ascent/descent (scaled to `scale`), not an assumed ratio.
     #[allow(clippy::too_many_arguments)]
     fn measure_raw(
         &mut self,
@@ -340,7 +342,7 @@ impl TextPipeline {
         scale: f32,
         line_height: f32,
         max_width: Option<f32>
-    ) -> (f32, f32) {
+    ) -> (f32, f32, f32) {
         let attrs = Self::resolve_attrs(
             &self.user_font_map,
             &self.default_family_name,
@@ -357,15 +359,58 @@ impl TextPipeline {
         buffer.set_text(text, &attrs, Shaping::Advanced, None);
         buffer.shape_until_scroll(&mut self.font_system, false);
 
-        let width = buffer
-            .layout_runs()
-            .map(|run| run.line_w)
-            .fold(0.0_f32, f32::max);
+        let mut width = 0.0f32;
+        let mut top = f32::MAX;
+        let mut bottom = f32::MIN;
+        let mut baseline = 0.0f32;
+        let mut has_run = false;
 
-        // Total height grows with the number of wrapped lines instead of
-        // always reporting a single line's height.
-        let line_count = buffer.layout_runs().count().max(1) as f32;
-        let height = final_line_height * line_count;
+        for run in buffer.layout_runs() {
+            width = width.max(run.line_w);
+            let line_top = run.line_top;
+            let line_bottom = line_top + final_line_height;
+
+            if !has_run {
+                baseline = run.line_y - line_top;
+                has_run = true;
+            }
+
+            top = top.min(line_top);
+            bottom = bottom.max(line_bottom);
+        }
+
+        // Should not normally happen (even an empty string shapes to one
+        // blank line), but guards against a degenerate empty buffer.
+        if !has_run {
+            top = 0.0;
+            bottom = final_line_height;
+            baseline = 0.0;
+        }
+
+        (width, bottom - top, baseline)
+    }
+
+    /// Width/height only, for callers that don't need the baseline.
+    #[allow(clippy::too_many_arguments, dead_code)]
+    pub fn measure(
+        &mut self,
+        text: &str,
+        font: Option<&str>,
+        weight: FontWeight,
+        style: FontStyle,
+        scale: f32,
+        line_height: f32,
+        max_width: Option<f32>
+    ) -> (f32, f32) {
+        let (width, height, _baseline) = self.measure_raw(
+            text,
+            font,
+            weight,
+            style,
+            scale,
+            line_height,
+            max_width
+        );
 
         (width, height)
     }
@@ -376,11 +421,9 @@ impl TextPipeline {
             SystemTheme::Light => Color::BLACK,
         });
 
-        let scale = Self::snap(
-            command.style.font_size
-                .map(|s| s.to_physical(scale_factor))
-                .unwrap_or(DEFAULT_FONT_SIZE.to_physical(scale_factor))
-        );
+        let scale = command.style.font_size
+            .map(|s| s.to_physical(scale_factor))
+            .unwrap_or(DEFAULT_FONT_SIZE.to_physical(scale_factor));
 
         let weight = command.style.font_weight.unwrap_or_default();
         let style = command.style.font_style.unwrap_or_default();
@@ -403,7 +446,7 @@ impl TextPipeline {
             (color.a() * 255.0).round() as u8
         );
 
-        let snapped_position = (Self::snap(command.position.0), Self::snap(command.position.1));
+        let position = command.position;
 
         if letter_spacing.abs() < f32::EPSILON {
             self.queue_run(
@@ -414,7 +457,7 @@ impl TextPipeline {
                 scale,
                 line_height,
                 align,
-                snapped_position,
+                position,
                 glyphon_color,
                 decoration,
                 color,
@@ -427,7 +470,7 @@ impl TextPipeline {
         // Manual per-character layout only ever produces a single visual
         // line (no wrapping), so alignment here just shifts the run's
         // starting x instead of going through glyphon's line-based align.
-        let (raw_width, _) = self.measure_raw(
+        let (raw_width, _raw_height, raw_baseline) = self.measure_raw(
             &command.text,
             command.style.font.as_deref(),
             weight,
@@ -444,9 +487,9 @@ impl TextPipeline {
         let total_width = raw_width + extra_spacing;
 
         let start_x = match (align, command.max_width) {
-            (TextAlign::Center, Some(w)) => snapped_position.0 + ((w - total_width) * 0.5).max(0.0),
-            (TextAlign::End, Some(w)) => snapped_position.0 + (w - total_width).max(0.0),
-            _ => snapped_position.0,
+            (TextAlign::Center, Some(w)) => position.0 + ((w - total_width) * 0.5).max(0.0),
+            (TextAlign::End, Some(w)) => position.0 + (w - total_width).max(0.0),
+            _ => position.0,
         };
 
         let mut cursor_x = start_x;
@@ -462,7 +505,7 @@ impl TextPipeline {
                 scale,
                 line_height,
                 TextAlign::Start,
-                (Self::snap(cursor_x), snapped_position.1),
+                (cursor_x, position.1),
                 glyphon_color,
                 TextDecoration::NONE,
                 color,
@@ -470,7 +513,7 @@ impl TextPipeline {
                 command.clip_rect
             );
 
-            let (advance, _) = self.measure_raw(
+            let (advance, _, _) = self.measure_raw(
                 ch_str,
                 command.style.font.as_deref(),
                 weight,
@@ -490,7 +533,9 @@ impl TextPipeline {
                 .map(|w| w.value())
                 .unwrap_or((scale * 0.07).max(1.0));
             let deco_color = decoration.color().unwrap_or(color);
-            let baseline_y = snapped_position.1 + scale * 0.8;
+            // Real baseline for this run, measured the same way as everywhere
+            // else - not an assumed fraction of the font size.
+            let baseline_y = position.1 + raw_baseline;
 
             let mut push = |y: f32| {
                 self.pending_decorations.push(RectCommand {
@@ -505,7 +550,7 @@ impl TextPipeline {
             };
 
             if decoration.overline() {
-                push(snapped_position.1);
+                push(baseline_y - raw_baseline);
             }
             if decoration.strike() {
                 push(baseline_y - scale * 0.3 - thickness * 0.5);
@@ -514,39 +559,6 @@ impl TextPipeline {
                 push(baseline_y + scale * 0.08);
             }
         }
-    }
-
-    #[allow(clippy::too_many_arguments)]
-    pub fn measure(
-        &mut self,
-        text: &str,
-        font: Option<&str>,
-        font_size: f32,
-        weight: FontWeight,
-        style: FontStyle,
-        letter_spacing: f32,
-        line_height: f32,
-        max_width: Option<f32>
-    ) -> (f32, f32) {
-        let scale = Self::snap(font_size);
-
-        let (width, height) = self.measure_raw(
-            text,
-            font,
-            weight,
-            style,
-            scale,
-            line_height,
-            max_width
-        );
-
-        let extra = if text.is_empty() {
-            0.0
-        } else {
-            letter_spacing * ((text.chars().count() as f32) - 1.0)
-        };
-
-        (width + extra, height)
     }
 
     pub fn flush(
@@ -636,22 +648,26 @@ impl TextMeasurer for TextPipeline {
         line_height: f32,
         max_width: Option<f32>
     ) -> MeasureResult {
-        let (width, height) = TextPipeline::measure(
-            self,
+        let (width, height, baseline) = self.measure_raw(
             text,
             font,
-            font_size,
             weight,
             style,
-            letter_spacing,
+            font_size,
             line_height,
             max_width
         );
 
+        let extra = if text.is_empty() {
+            0.0
+        } else {
+            letter_spacing * ((text.chars().count() as f32) - 1.0)
+        };
+
         MeasureResult {
-            width,
+            width: width + extra,
             height,
-            baseline: Some(height * 0.8),
+            baseline: Some(baseline),
         }
     }
 
@@ -665,7 +681,6 @@ impl TextMeasurer for TextPipeline {
         letter_spacing: f32,
         line_height: f32
     ) -> Vec<f32> {
-        let scale = Self::snap(font_size);
         let chars: Vec<char> = text.chars().collect();
         let mut offsets = Vec::with_capacity(chars.len() + 1);
         offsets.push(0.0);
@@ -677,12 +692,12 @@ impl TextMeasurer for TextPipeline {
             let mut buf = [0u8; 4];
             let ch_str = ch.encode_utf8(&mut buf);
 
-            let (advance, _) = self.measure_raw(
+            let (advance, _, _) = self.measure_raw(
                 ch_str,
                 font,
                 font_weight,
                 font_style,
-                scale,
+                font_size,
                 line_height,
                 None
             );
@@ -698,6 +713,10 @@ impl TextMeasurer for TextPipeline {
         offsets
     }
 
+    // Ascent/descent/line-height are all read off the same shaped-line data
+    // `measure()` and `draw()` use, so a widget combining these (e.g. for
+    // custom baseline alignment) sees numbers consistent with what actually
+    // gets painted, instead of a fixed ratio of the font size.
     fn ascent(
         &mut self,
         font: Option<&str>,
@@ -705,9 +724,16 @@ impl TextMeasurer for TextPipeline {
         font_weight: FontWeight,
         font_style: FontStyle
     ) -> f32 {
-        let scale = Self::snap(font_size);
-        let (_, height) = self.measure_raw(" ", font, font_weight, font_style, scale, 0.0, None);
-        height * 0.8
+        let (_, _, baseline) = self.measure_raw(
+            " ",
+            font,
+            font_weight,
+            font_style,
+            font_size,
+            0.0,
+            None
+        );
+        baseline
     }
 
     fn descent(
@@ -717,9 +743,16 @@ impl TextMeasurer for TextPipeline {
         font_weight: FontWeight,
         font_style: FontStyle
     ) -> f32 {
-        let scale = Self::snap(font_size);
-        let (_, height) = self.measure_raw(" ", font, font_weight, font_style, scale, 0.0, None);
-        height * 0.2
+        let (_, height, baseline) = self.measure_raw(
+            " ",
+            font,
+            font_weight,
+            font_style,
+            font_size,
+            0.0,
+            None
+        );
+        height - baseline
     }
 
     fn line_height(
@@ -729,8 +762,15 @@ impl TextMeasurer for TextPipeline {
         font_weight: FontWeight,
         font_style: FontStyle
     ) -> f32 {
-        let scale = Self::snap(font_size);
-        let (_, height) = self.measure_raw(" ", font, font_weight, font_style, scale, 0.0, None);
+        let (_, height, _) = self.measure_raw(
+            " ",
+            font,
+            font_weight,
+            font_style,
+            font_size,
+            0.0,
+            None
+        );
         height
     }
 }

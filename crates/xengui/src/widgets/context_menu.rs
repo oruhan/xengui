@@ -40,6 +40,7 @@ use crate::{
     Widget,
     WidgetBase,
     WidgetId,
+    pct,
     properties::{ DEFAULT_FONT_SIZE, DEFAULT_LINE_HEIGHT_RATIO },
 };
 use smol_str::SmolStr;
@@ -519,9 +520,7 @@ impl ContextMenu {
 
             layout_box: LayoutBox::default(),
         };
-        menu.base.style.size = Some(
-            crate::Size::new(Length::percent(100.0), Length::percent(100.0))
-        );
+        menu.base.style.size = Some(crate::Size::new(pct!(100.0), pct!(100.0)));
         menu.recompute_style();
         menu
     }
