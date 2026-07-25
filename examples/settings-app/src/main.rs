@@ -59,30 +59,30 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .font("Noto_Sans")
                 .display(Display::Flex)
                 .flex_direction(FlexDirection::Column)
-                .width(Length::Percent(100.0))
-                .height(Length::Percent(100.0))
+                .width(pct!(100.0))
+                .height(pct!(100.0))
                 .background(|theme: &Theme| theme.background)
                 .child(
                     View::new()
                         .display(Display::Flex)
                         .flex_direction(FlexDirection::Row)
                         .align_items(AlignItems::Center)
-                        .width(Length::Percent(100.0))
-                        .height(Length::px(32.0))
-                        .min_height(Length::px(32.0))
+                        .width(pct!(100.0))
+                        .height(px!(32.0))
+                        .min_height(px!(32.0))
                         .background(|theme: &Theme| theme.surface)
                         .border(|theme: &Theme| { Border::bottom(1, theme.border) })
                         .padding(Edges::only(12, 0, 0, 0))
                         .child(
                             Label::new()
                                 .label("Settings")
-                                .font_size(Length::px(13.0))
+                                .font_size(px!(13.0))
                                 .color(|theme: &Theme| theme.foreground)
                         )
                         .child(
                             View::new()
                                 .flex_grow(1.0)
-                                .height(Length::Percent(100.0))
+                                .height(pct!(100.0))
                                 // Mark this view as a window drag region
                                 .window_drag_region(true)
                         )
@@ -90,13 +90,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             View::new()
                                 .display(Display::Flex)
                                 .flex_direction(FlexDirection::Row)
-                                .height(Length::Percent(100.0))
+                                .height(pct!(100.0))
                                 .child(
                                     Button::new()
                                         .align_items(AlignItems::Center)
                                         .justify_content(JustifyContent::Center)
-                                        .height(Length::Percent(100.0))
-                                        .width(Length::px(44.0))
+                                        .height(pct!(100.0))
+                                        .width(px!(44.0))
                                         .label("a")
                                         .font_size(14)
                                         .background(Color::TRANSPARENT)
@@ -118,8 +118,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     Button::new()
                                         .align_items(AlignItems::Center)
                                         .justify_content(JustifyContent::Center)
-                                        .height(Length::Percent(100.0))
-                                        .width(Length::px(44.0))
+                                        .height(pct!(100.0))
+                                        .width(px!(44.0))
                                         .label("-")
                                         .font_size(14)
                                         .background(Color::TRANSPARENT)
@@ -141,8 +141,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     Button::new()
                                         .align_items(AlignItems::Center)
                                         .justify_content(JustifyContent::Center)
-                                        .height(Length::Percent(100.0))
-                                        .width(Length::px(44.0))
+                                        .height(pct!(100.0))
+                                        .width(px!(44.0))
                                         .label("A")
                                         .font_size(14)
                                         .background(Color::TRANSPARENT)
@@ -171,7 +171,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         .child(
                             Label::new()
                                 .label("Settings")
-                                .font_size(Length::px(18.0))
+                                .font_size(px!(18.0))
                                 .color(|theme: &Theme| theme.foreground)
                                 .margin(Edges::only(0, 0, 0, 6))
                         )
@@ -207,14 +207,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                         .pressed_style(|s, _| {
                                             s.background(Color::RED_800).color(Color::WHITE)
                                         })
-                                        .on_click(move |_| xenframe::close_window())
                                 )
                                 .child(
                                     Button::new()
                                         .align_items(AlignItems::Center)
                                         .justify_content(JustifyContent::Center)
-                                        .height(Length::px(50.0))
-                                        .width(Length::px(44.0))
+                                        .height(px!(50.0))
+                                        .width(px!(44.0))
                                         .label("Test")
                                         .font_size(14)
                                         .background(Color::TRANSPARENT)
@@ -230,7 +229,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                         .pressed_style(|s, _| {
                                             s.background(Color::RED_800).color(Color::WHITE)
                                         })
-                                        .on_click(move |_| xenframe::close_window())
                                 )
                                 .child(
                                     TextBox::new()
@@ -239,7 +237,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                         .placeholder("Search in settings...")
                                         .font_size(14)
                                         .outline(StyleValue::None)
-                                        .min_width(Length::px(180.0))
+                                        .min_width(px!(180.0))
                                         .transition_all(
                                             Transition::new(Duration::from_millis(200)).easing(
                                                 Easing::EaseInOut
@@ -248,15 +246,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                         .padding(Edges::all(8))
                                         .background(|theme: &Theme| theme.surface)
                                         .border(|theme: &Theme|
-                                            Border::new(1, theme.border, Length::px(8.0))
+                                            Border::new(1, theme.border, px!(8.0))
                                         )
                                         .hover_style(|s, theme: &Theme|
-                                            s.border(
-                                                Border::new(1, theme.border_hover, Length::px(8.0))
-                                            )
+                                            s.border(Border::new(1, theme.border_hover, px!(8.0)))
                                         )
                                         .focus_style(|s, theme: &Theme|
-                                            s.border(Border::new(2, theme.primary, Length::px(8.0)))
+                                            s.border(Border::new(2, theme.primary, px!(8.0)))
                                         )
                                         .on_change(move |value, _ctx|
                                             set_text.set(value.to_string())
@@ -268,7 +264,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                         .font_size(14)
                                         .color(Color::NEUTRAL_500)
                                         .background(Color::NEUTRAL_100)
-                                        .border(Border::new(1, Color::NEUTRAL_200, Length::px(8.0)))
+                                        .border(Border::new(1, Color::NEUTRAL_200, px!(8.0)))
                                         .padding(Edges::only(9, 5, 9, 6))
                                         .transition_all(
                                             Transition::new(Duration::from_millis(200)).easing(
@@ -279,11 +275,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                             s
                                                 .background(Color::NEUTRAL_200)
                                                 .border(
-                                                    Border::new(
-                                                        1,
-                                                        Color::NEUTRAL_300,
-                                                        Length::px(8.0)
-                                                    )
+                                                    Border::new(1, Color::NEUTRAL_300, px!(8.0))
                                                 )
                                                 .color(Color::NEUTRAL_600)
                                         )
@@ -291,11 +283,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                             s
                                                 .background(Color::NEUTRAL_200)
                                                 .border(
-                                                    Border::new(
-                                                        1,
-                                                        Color::NEUTRAL_400,
-                                                        Length::px(8.0)
-                                                    )
+                                                    Border::new(1, Color::NEUTRAL_400, px!(8.0))
                                                 )
                                                 .color(Color::NEUTRAL_700)
                                         )
@@ -310,7 +298,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                         .label("button1")
                                         .font_size(14)
                                         .background(Color::BLUE_500)
-                                        .border(Border::new(1, Color::BLUE_500, Length::px(8.0)))
+                                        .border(Border::new(1, Color::BLUE_500, px!(8.0)))
                                         .padding(Edges::only(9, 5, 9, 6))
                                         .transition_all(
                                             Transition::new(Duration::from_millis(200)).easing(
@@ -320,18 +308,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                         .hover_style(|s, _theme: &Theme|
                                             s
                                                 .background(Color::BLUE_600)
-                                                .border(
-                                                    Border::new(1, Color::BLUE_600, Length::px(8.0))
-                                                )
+                                                .border(Border::new(1, Color::BLUE_600, px!(8.0)))
                                         )
                                         .pressed_style(|s, _theme: &Theme|
                                             s
                                                 .background(Color::BLUE_700)
                                                 .scale(0.98)
                                                 .content_scale(1.0)
-                                                .border(
-                                                    Border::new(1, Color::BLUE_700, Length::px(8.0))
-                                                )
+                                                .border(Border::new(1, Color::BLUE_700, px!(8.0)))
                                         )
                                 )
                                 .child(
@@ -340,9 +324,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                         .font_size(15)
                                         .background(Color::NEUTRAL_800)
                                         .padding(Edges::only(12, 8, 12, 8))
-                                        .border(
-                                            Border::new(1, Color::NEUTRAL_700, Length::px(10.0))
-                                        )
+                                        .border(Border::new(1, Color::NEUTRAL_700, px!(10.0)))
                                         .transition_all(
                                             Transition::new(Duration::from_millis(200)).easing(
                                                 Easing::EaseInOut
@@ -357,11 +339,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                             s
                                                 .background(Color::NEUTRAL_900)
                                                 .border(
-                                                    Border::new(
-                                                        1,
-                                                        Color::NEUTRAL_800,
-                                                        Length::px(10.0)
-                                                    )
+                                                    Border::new(1, Color::NEUTRAL_800, px!(10.0))
                                                 )
                                         )
                                         .pressed_style(|s, _theme: &Theme|
@@ -370,11 +348,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                                 .scale(0.98)
                                                 .content_scale(1.0)
                                                 .border(
-                                                    Border::new(
-                                                        1,
-                                                        Color::NEUTRAL_800,
-                                                        Length::px(10.0)
-                                                    )
+                                                    Border::new(1, Color::NEUTRAL_800, px!(10.0))
                                                 )
                                         )
                                 )
@@ -384,12 +358,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                         .font_size(15)
                                         .background(Color::BLUE_500)
                                         .padding(Edges::only(12, 8, 12, 8))
-                                        .border(Border::new(1, Color::BLUE_500, Length::px(8.0)))
+                                        .border(Border::new(1, Color::BLUE_500, px!(8.0)))
                                         .transition_all(Transition::new(Duration::from_millis(200)))
                                         .hover_style(|s, _theme: &Theme|
-                                            s.border(
-                                                Border::new(1, Color::BLUE_500, Length::px(20.0))
-                                            )
+                                            s.border(Border::new(1, Color::BLUE_500, px!(20.0)))
                                         )
                                 )
                                 .child(
@@ -399,17 +371,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                         .font_size(13)
                                         .color(Color::NEUTRAL_500)
                                         .background(Color::NEUTRAL_100)
-                                        .border(Border::new(1, Color::NEUTRAL_200, Length::px(8.0)))
+                                        .border(Border::new(1, Color::NEUTRAL_200, px!(8.0)))
                                         .padding(Edges::only(9, 5, 9, 6))
                                         .hover_style(|s, _theme: &Theme|
                                             s
                                                 .background(Color::NEUTRAL_200)
                                                 .border(
-                                                    Border::new(
-                                                        1,
-                                                        Color::NEUTRAL_300,
-                                                        Length::px(8.0)
-                                                    )
+                                                    Border::new(1, Color::NEUTRAL_300, px!(8.0))
                                                 )
                                                 .color(Color::NEUTRAL_600)
                                         )
@@ -417,11 +385,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                             s
                                                 .background(Color::NEUTRAL_200)
                                                 .border(
-                                                    Border::new(
-                                                        1,
-                                                        Color::NEUTRAL_400,
-                                                        Length::px(8.0)
-                                                    )
+                                                    Border::new(1, Color::NEUTRAL_400, px!(8.0))
                                                 )
                                                 .color(Color::NEUTRAL_700)
                                         )
