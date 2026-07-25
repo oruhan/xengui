@@ -13,6 +13,7 @@ pub mod length;
 pub mod position;
 pub mod properties;
 pub mod scrollbar;
+pub mod scrollbar_gutter;
 pub mod size;
 pub mod style_builder;
 pub mod typography;
@@ -42,6 +43,7 @@ pub use scrollbar::{
     DEFAULT_SCROLLBAR_HOVER_THICKNESS,
     DEFAULT_SCROLLBAR_THICKNESS,
 };
+pub use scrollbar_gutter::ScrollbarGutter;
 pub use properties::Style;
 pub use size::Size;
 pub use style_builder::*;

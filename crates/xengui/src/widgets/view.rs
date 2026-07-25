@@ -27,6 +27,7 @@ use crate::{
     Rect,
     RectCommand,
     ResolvedScrollbar,
+    ScrollbarGutter,
     Style,
     StyleBuilder,
     TriangleCommand,
@@ -45,6 +46,10 @@ const SCROLL_TRANSITION: Transition = Transition::new(std::time::Duration::from_
 const SCROLLBAR_THICKNESS_TRANSITION: Transition = Transition::new(
     std::time::Duration::from_millis(160)
 ).easing(Easing::EaseOut);
+
+/// Opacity applied to a `Scroll`-mode scrollbar axis that has nothing to
+/// scroll, so it stays visible but reads as disabled instead of vanishing.
+const SCROLLBAR_DISABLED_OPACITY: f32 = 0.35;
 
 #[derive(Clone, Copy)]
 struct ScrollDrag {
@@ -240,6 +245,34 @@ impl View {
         }
     }
 
+    // Reserves layout space for the scrollbar via extra padding so content
+    // doesn't shift when it appears/disappears, matching CSS's
+    // `scrollbar-gutter: stable`.
+    fn apply_scrollbar_gutter(&mut self) {
+        let gutter = self.base.computed_style.scrollbar_gutter.unwrap_or_default();
+        if gutter == ScrollbarGutter::Auto {
+            return;
+        }
+
+        let thickness = self.resolved_scrollbar().thickness;
+        let mut padding = self.base.computed_style.padding.unwrap_or_default();
+
+        if self.is_scrollable_y() {
+            padding.right = padding.right.add_px(thickness);
+            if gutter == ScrollbarGutter::StableBothEdges {
+                padding.left = padding.left.add_px(thickness);
+            }
+        }
+        if self.is_scrollable_x() {
+            padding.bottom = padding.bottom.add_px(thickness);
+            if gutter == ScrollbarGutter::StableBothEdges {
+                padding.top = padding.top.add_px(thickness);
+            }
+        }
+
+        self.base.computed_style.padding = Some(padding);
+    }
+
     // Pulls scroll_offset toward scroll_target through the shared
     // AnimationManager; a thumb drag snaps instantly instead of easing so
     // it tracks the cursor 1:1.
@@ -271,18 +304,20 @@ impl View {
     // Hit area for scrollbar hover detection; uses the hover thickness so
     // a thin, unhovered bar is still easy to reach with the pointer.
     fn point_in_scrollbar(&self, point: (f32, f32)) -> bool {
-        let (has_x, has_y) = self.scrollbar_visibility();
-        if !has_x && !has_y {
+        // A shown-but-inactive `Scroll` axis (no overflow) doesn't
+        // intercept the pointer, so it passes through to the content.
+        let (active_x, active_y) = self.scrollbar_active();
+        if !active_x && !active_y {
             return false;
         }
 
         let b = self.layout_box;
         let t = self.resolved_scrollbar_for_state(true, false).thickness;
 
-        if has_y && point_in_rect(point, (b.x + b.width - t, b.y, t, b.height)) {
+        if active_y && point_in_rect(point, (b.x + b.width - t, b.y, t, b.height)) {
             return true;
         }
-        if has_x && point_in_rect(point, (b.x, b.y + b.height - t, b.width, t)) {
+        if active_x && point_in_rect(point, (b.x, b.y + b.height - t, b.width, t)) {
             return true;
         }
         false
@@ -322,17 +357,27 @@ impl View {
         (offset.0.clamp(0.0, self.max_scroll_x()), offset.1.clamp(0.0, self.max_scroll_y()))
     }
 
-    // Whether each axis actually has a visible scrollbar right now (enabled
-    // for that axis and there is something to scroll to).
+    // Whether each axis's scrollbar should be painted at all. `Scroll`
+    // mode is always shown (even without overflow, as a disabled track);
+    // `Auto` only shows once there's real overflow to scroll.
     fn scrollbar_visibility(&self) -> (bool, bool) {
+        let shown = |overflow: Option<Overflow>, max_scroll: f32| {
+            match overflow {
+                Some(Overflow::Scroll) => true,
+                Some(Overflow::Auto) => max_scroll > 0.0,
+                _ => false,
+            }
+        };
         (
-            self.is_scrollable_x() &&
-                (self.base.computed_style.overflow_x == Some(Overflow::Scroll) ||
-                    self.max_scroll_x() > 0.0),
-            self.is_scrollable_y() &&
-                (self.base.computed_style.overflow_y == Some(Overflow::Scroll) ||
-                    self.max_scroll_y() > 0.0),
+            shown(self.base.computed_style.overflow_x, self.max_scroll_x()),
+            shown(self.base.computed_style.overflow_y, self.max_scroll_y()),
         )
+    }
+
+    // Whether each axis actually has overflow to scroll; a `Scroll`-mode
+    // scrollbar can be shown (see `scrollbar_visibility`) but inactive.
+    fn scrollbar_active(&self) -> (bool, bool) {
+        (self.max_scroll_x() > 0.0, self.max_scroll_y() > 0.0)
     }
 
     fn vertical_track_bounds(&self) -> Option<(f32, f32)> {
@@ -529,11 +574,13 @@ impl View {
             return false;
         }
 
+        let (active_x, active_y) = self.scrollbar_active();
+
         match state {
             ElementState::Pressed => {
                 let target = self.scroll_target.get();
 
-                if let Some((up, down)) = self.vertical_buttons() {
+                if active_y && let Some((up, down)) = self.vertical_buttons() {
                     if point_in_rect(position, up) {
                         if target.1 > 0.0 {
                             self.nudge(0.0, -self.scroll_step, ctx);
@@ -547,7 +594,7 @@ impl View {
                         return true;
                     }
                 }
-                if let Some((left, right)) = self.horizontal_buttons() {
+                if active_x && let Some((left, right)) = self.horizontal_buttons() {
                     if point_in_rect(position, left) {
                         if target.0 > 0.0 {
                             self.nudge(-self.scroll_step, 0.0, ctx);
@@ -561,7 +608,11 @@ impl View {
                         return true;
                     }
                 }
-                if let Some(thumb) = self.vertical_thumb_rect() && point_in_rect(position, thumb) {
+                if
+                    active_y &&
+                    let Some(thumb) = self.vertical_thumb_rect() &&
+                    point_in_rect(position, thumb)
+                {
                     self.scrollbar_drag.set(
                         Some(ScrollDrag {
                             vertical: true,
@@ -571,7 +622,11 @@ impl View {
                     );
                     return true;
                 }
-                if let Some(thumb) = self.horizontal_thumb_rect() && point_in_rect(position, thumb) {
+                if
+                    active_x &&
+                    let Some(thumb) = self.horizontal_thumb_rect() &&
+                    point_in_rect(position, thumb)
+                {
                     self.scrollbar_drag.set(
                         Some(ScrollDrag {
                             vertical: false,
@@ -584,7 +639,7 @@ impl View {
 
                 // Clicking an empty stretch of track jumps the thumb straight
                 // to that point instead of requiring a drag or repeated nudges.
-                if let Some((track_y, track_h)) = self.vertical_track_bounds() {
+                if active_y && let Some((track_y, track_h)) = self.vertical_track_bounds() {
                     let t = self.active_scrollbar().thickness;
                     let b = self.layout_box;
                     if point_in_rect(position, (b.x + b.width - t, track_y, t, track_h)) {
@@ -597,7 +652,7 @@ impl View {
                         return true;
                     }
                 }
-                if let Some((track_x, track_w)) = self.horizontal_track_bounds() {
+                if active_x && let Some((track_x, track_w)) = self.horizontal_track_bounds() {
                     let t = self.active_scrollbar().thickness;
                     let b = self.layout_box;
                     if point_in_rect(position, (track_x, b.y + b.height - t, track_w, t)) {
@@ -778,6 +833,7 @@ impl Widget for View {
         let sb = self.active_scrollbar();
         let b = self.layout_box;
         let t = sb.thickness;
+        let (active_x, active_y) = self.scrollbar_active();
 
         let thumb_border_width = (sb.thumb_border_width > 0.0).then(||
             Length::px(sb.thumb_border_width)
@@ -787,59 +843,98 @@ impl Widget for View {
         );
 
         if let Some((x, y, w, h)) = self.vertical_thumb_rect() {
+            let dim = if active_y { 1.0 } else { SCROLLBAR_DISABLED_OPACITY };
+
             if sb.track_color.a() > 0.0 || track_border_width.is_some() {
                 ctx.draw_rect(RectCommand {
                     position: (b.x + b.width - t, b.y),
                     size: (t, b.height),
-                    background: Some(Background::Color(sb.track_color)),
+                    background: Some(
+                        Background::Color(sb.track_color.with_alpha_f32(sb.track_color.a() * dim))
+                    ),
                     border_radius: None,
                     border_width: track_border_width,
-                    border_color: Some(sb.track_border_color),
+                    border_color: Some(
+                        sb.track_border_color.with_alpha_f32(sb.track_border_color.a() * dim)
+                    ),
                     clip_rect: None,
                 });
             }
             ctx.draw_rect(RectCommand {
                 position: (x, y),
                 size: (w, h),
-                background: Some(Background::Color(sb.thumb_color)),
+                background: Some(
+                    Background::Color(sb.thumb_color.with_alpha_f32(sb.thumb_color.a() * dim))
+                ),
                 border_radius: Some(Length::px(sb.thumb_radius)),
                 border_width: thumb_border_width,
-                border_color: Some(sb.thumb_border_color),
+                border_color: Some(
+                    sb.thumb_border_color.with_alpha_f32(sb.thumb_border_color.a() * dim)
+                ),
                 clip_rect: None,
             });
         }
 
         if let Some((x, y, w, h)) = self.horizontal_thumb_rect() {
+            let dim = if active_x { 1.0 } else { SCROLLBAR_DISABLED_OPACITY };
+
             if sb.track_color.a() > 0.0 || track_border_width.is_some() {
                 ctx.draw_rect(RectCommand {
                     position: (b.x, b.y + b.height - t),
                     size: (b.width, t),
-                    background: Some(Background::Color(sb.track_color)),
+                    background: Some(
+                        Background::Color(sb.track_color.with_alpha_f32(sb.track_color.a() * dim))
+                    ),
                     border_radius: None,
                     border_width: track_border_width,
-                    border_color: Some(sb.track_border_color),
+                    border_color: Some(
+                        sb.track_border_color.with_alpha_f32(sb.track_border_color.a() * dim)
+                    ),
                     clip_rect: None,
                 });
             }
             ctx.draw_rect(RectCommand {
                 position: (x, y),
                 size: (w, h),
-                background: Some(Background::Color(sb.thumb_color)),
+                background: Some(
+                    Background::Color(sb.thumb_color.with_alpha_f32(sb.thumb_color.a() * dim))
+                ),
                 border_radius: Some(Length::px(sb.thumb_radius)),
                 border_width: thumb_border_width,
-                border_color: Some(sb.thumb_border_color),
+                border_color: Some(
+                    sb.thumb_border_color.with_alpha_f32(sb.thumb_border_color.a() * dim)
+                ),
                 clip_rect: None,
             });
         }
 
         if let Some((up, down)) = self.vertical_buttons() {
             let target = self.scroll_target.get();
+            let axis_dim = if active_y { 1.0 } else { SCROLLBAR_DISABLED_OPACITY };
 
-            for (rect, dir, disabled) in [
+            for (rect, dir, edge_disabled) in [
                 (up, ArrowDirection::Up, target.1 <= 0.0),
                 (down, ArrowDirection::Down, target.1 >= self.max_scroll_y()),
             ] {
-                let dim = if disabled { 0.35 } else { 1.0 };
+                let dim = axis_dim * (if edge_disabled { 0.35 } else { 1.0 });
+                let (x, y, w, h) = rect;
+
+                if sb.button_color.a() > 0.0 {
+                    ctx.draw_rect(RectCommand {
+                        position: (x, y),
+                        size: (w, h),
+                        background: Some(
+                            Background::Color(
+                                sb.button_color.with_alpha_f32(sb.button_color.a() * dim)
+                            )
+                        ),
+                        border_radius: Some(Length::px(sb.thumb_radius)),
+                        border_width: None,
+                        border_color: None,
+                        clip_rect: None,
+                    });
+                }
+
                 let (p0, p1, p2) = arrow_triangle(rect, dir);
                 ctx.draw_triangle(TriangleCommand {
                     p0,
@@ -853,12 +948,31 @@ impl Widget for View {
 
         if let Some((left, right)) = self.horizontal_buttons() {
             let target = self.scroll_target.get();
+            let axis_dim = if active_x { 1.0 } else { SCROLLBAR_DISABLED_OPACITY };
 
-            for (rect, dir, disabled) in [
+            for (rect, dir, edge_disabled) in [
                 (left, ArrowDirection::Left, target.0 <= 0.0),
                 (right, ArrowDirection::Right, target.0 >= self.max_scroll_x()),
             ] {
-                let dim = if disabled { 0.35 } else { 1.0 };
+                let dim = axis_dim * (if edge_disabled { 0.35 } else { 1.0 });
+                let (x, y, w, h) = rect;
+
+                if sb.button_color.a() > 0.0 {
+                    ctx.draw_rect(RectCommand {
+                        position: (x, y),
+                        size: (w, h),
+                        background: Some(
+                            Background::Color(
+                                sb.button_color.with_alpha_f32(sb.button_color.a() * dim)
+                            )
+                        ),
+                        border_radius: Some(Length::px(sb.thumb_radius)),
+                        border_width: None,
+                        border_color: None,
+                        clip_rect: None,
+                    });
+                }
+
                 let (p0, p1, p2) = arrow_triangle(rect, dir);
                 ctx.draw_triangle(TriangleCommand {
                     p0,
@@ -971,6 +1085,7 @@ impl Widget for View {
             self.base.dirty = true;
         }
 
+        self.apply_scrollbar_gutter();
         self.animate_scroll(anim);
         self.animate_scrollbar_thickness(anim);
 

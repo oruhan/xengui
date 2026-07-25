@@ -3,6 +3,7 @@
 use crate::{
     BoxShadow,
     Overflow,
+    ScrollbarGutter,
     TransitionProperty,
     properties::StyleValue,
     style::{ FontStyle, FontWeight, IntoThemed, LetterSpacing },
@@ -494,6 +495,14 @@ pub trait StyleBuilder: Sized {
 
     fn grid_row(mut self, row: GridPlacement) -> Self {
         self.style_mut().grid_row = Some(row);
+
+        self.mark_dirty();
+
+        self
+    }
+
+    fn scrollbar_gutter(mut self, gutter: ScrollbarGutter) -> Self {
+        self.style_mut().scrollbar_gutter = Some(gutter);
 
         self.mark_dirty();
 

@@ -1,7 +1,7 @@
 use crate::Color;
 
 /// Scrollbar thickness while neither hovered nor pressed.
-pub const DEFAULT_SCROLLBAR_THICKNESS: f32 = 5.0;
+pub const DEFAULT_SCROLLBAR_THICKNESS: f32 = 10.0;
 /// Scrollbar thickness while hovered or pressed, unless overridden.
 pub const DEFAULT_SCROLLBAR_HOVER_THICKNESS: f32 = 10.0;
 

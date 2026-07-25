@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 use smol_str::SmolStr;
-use crate::{ BoxShadow, Cursor, TransitionProperty };
+use crate::{ BoxShadow, Cursor, ScrollbarGutter, TransitionProperty };
 use super::{
     Outline,
     AlignItems,
@@ -136,6 +136,7 @@ pub struct Style {
     pub scrollbar: Option<ScrollbarStyle>,
     pub scrollbar_hover: Option<ScrollbarStyle>,
     pub scrollbar_pressed: Option<ScrollbarStyle>,
+    pub scrollbar_gutter: Option<ScrollbarGutter>,
 
     /// Overrides `scale` for the content layer only; `None` means the
     /// content follows the same scale as the rest of the widget.
@@ -201,7 +202,7 @@ impl Style {
             left: patch.left.or(self.left),
             overflow_x: patch.overflow_x.or_else(|| self.overflow_x),
             overflow_y: patch.overflow_y.or_else(|| self.overflow_y),
-            
+
             z_index: patch.z_index.or(self.z_index),
 
             flex_direction: patch.flex_direction.or_else(|| self.flex_direction),
@@ -242,6 +243,7 @@ impl Style {
                 (Some(base), None) => Some(*base),
                 (None, None) => None,
             },
+            scrollbar_gutter: patch.scrollbar_gutter.or(self.scrollbar_gutter),
 
             scale: patch.scale.or(self.scale),
             content_scale: patch.content_scale.or(self.content_scale),

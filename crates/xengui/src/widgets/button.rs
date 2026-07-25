@@ -417,10 +417,23 @@ impl Widget for Button {
         }
 
         let content_scale = style.content_scale.unwrap_or(scale);
-        let content_box = crate::scaled_layout_box(
-            LayoutBox { x: text_x, y: text_y, width: text_w, height: text_h },
-            content_scale
-        );
+
+        // Scaled around the padded content box's own center (the same
+        // pivot `background_box` uses above) rather than the label's own
+        // sub-box center, so it can't drift relative to the button when
+        // padding or an icon makes its natural position off-center.
+        let pivot_x = content_x + combined_w * 0.5;
+        let pivot_y = content_y + combined_h * 0.5;
+        let text_center_x = text_x + text_w * 0.5;
+        let text_center_y = text_y + text_h * 0.5;
+        let scaled_text_w = text_w * content_scale;
+        let scaled_text_h = text_h * content_scale;
+        let content_box = LayoutBox {
+            x: pivot_x + (text_center_x - pivot_x) * content_scale - scaled_text_w * 0.5,
+            y: pivot_y + (text_center_y - pivot_y) * content_scale - scaled_text_h * 0.5,
+            width: scaled_text_w,
+            height: scaled_text_h,
+        };
 
         let mut text_style = style.clone();
         let base_font_size = text_style.font_size
@@ -432,7 +445,11 @@ impl Widget for Button {
             text: self.content.clone(),
             position: (content_box.x, content_box.y),
             style: text_style,
-            max_width: Some(draw_max_width * content_scale),
+            // A small epsilon absorbs floating-point rounding between this
+            // approximation and the label's real shaped width at the
+            // scaled font size, so it can't wrap onto a second line and
+            // break the single-line vertical centering above.
+            max_width: Some(draw_max_width * content_scale + 0.5),
             clip_rect: None,
         });
     }

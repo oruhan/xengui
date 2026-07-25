@@ -99,6 +99,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         .gap(0, 4)
                         .background(|theme: &Theme| theme.background)
                         .overflow_y(Overflow::Scroll)
+                        .scrollbar_gutter(ScrollbarGutter::Stable)
+                        .scrollbar_track_color(Color::NEUTRAL_800)
                         /* Navbar */
                         .child(
                             View::new()
