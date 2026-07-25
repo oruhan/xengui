@@ -127,7 +127,7 @@ impl Link {
         } else if self.base.interaction.pressed {
             self.base.pressed_style.as_ref().or(self.base.hover_style.as_ref())
         } else if self.base.interaction.focused && self.base.interaction.hovered {
-            self.base.focused_hover_style.as_ref().or(self.base.focus_style.as_ref())
+            self.base.focused_hover_style.as_ref().or(self.base.hover_style.as_ref())
         } else if self.base.interaction.hovered {
             self.base.hover_style.as_ref()
         } else if self.base.interaction.focused {

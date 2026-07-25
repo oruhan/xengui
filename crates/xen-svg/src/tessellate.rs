@@ -1,3 +1,5 @@
+use crate::{ CIRCLE_SEGMENTS, CORNER_SEGMENTS, TOLERANCE };
+
 // SPDX-License-Identifier: Apache-2.0
 use super::{
     FillRule as SvgFillRule,
@@ -25,18 +27,6 @@ use lyon::tessellation::{
     StrokeVertex,
     VertexBuffers,
 };
-
-/// Maximum distance (in the SVG's own user-space units) between a curve
-/// and its flattened approximation.
-const TOLERANCE: f32 = 0.05;
-
-/// Segment count used to approximate a full circle as a polygon before
-/// handing it to lyon - lyon's tessellators only consume straight/bezier
-/// path segments, not native arcs.
-const CIRCLE_SEGMENTS: u32 = 48;
-
-/// Segment count per rounded-rect corner, approximated the same way.
-const CORNER_SEGMENTS: u32 = 12;
 
 /// A single filled triangle in the SVG's own `viewBox` coordinate space,
 /// tagged with the paint it should be drawn with.

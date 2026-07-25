@@ -43,7 +43,7 @@ impl WidgetBase {
         } else if self.interaction.pressed {
             self.pressed_style.as_ref().or(self.hover_style.as_ref())
         } else if self.interaction.focused && self.interaction.hovered {
-            self.focused_hover_style.as_ref().or(self.focus_style.as_ref())
+            self.focused_hover_style.as_ref().or(self.hover_style.as_ref())
         } else if self.interaction.hovered {
             self.hover_style.as_ref()
         } else if self.interaction.focused {

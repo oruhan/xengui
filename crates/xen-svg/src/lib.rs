@@ -10,6 +10,7 @@ mod element;
 mod parser;
 mod tessellate;
 mod transform;
+mod constants;
 
 pub use color::{ Color, SvgColor };
 pub use document::SvgDocument;
@@ -17,3 +18,4 @@ pub use element::{ FillRule, LineCap, LineJoin, PathCommand, SvgAttributes, SvgE
 pub use parser::parse_svg;
 pub use tessellate::{ tessellate_document, SvgTriangle };
 pub use transform::{ parse_transform, Transform2D };
+pub use constants::*;

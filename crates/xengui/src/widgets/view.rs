@@ -30,8 +30,8 @@ use crate::{
     ResolvedScrollbar,
     SCROLL_TRANSITION,
     SCROLLBAR_ARROW_CAP_SEGMENTS,
+    SCROLLBAR_ARROW_CORNER_RADIUS,
     SCROLLBAR_ARROW_SIZE,
-    SCROLLBAR_ARROW_THICKNESS,
     SCROLLBAR_DISABLED_OPACITY,
     SCROLLBAR_THICKNESS_TRANSITION,
     SCROLLBAR_THUMB_PADDING,
@@ -68,9 +68,9 @@ fn point_in_rect(point: (f32, f32), rect: (f32, f32, f32, f32)) -> bool {
     px >= rx && px <= rx + rw && py >= ry && py <= ry + rh
 }
 
-// Builds a rounded-corner arrow (two thick line segments plus round caps
-// at the joints, same technique ContextMenu uses for its submenu chevron)
-// instead of a single flat filled triangle.
+// Builds a solid, filled arrow with rounded corners: three straight
+// corner points defining the arrow's silhouette, each corner rounded off
+// with a small tangent arc, then fan-triangulated from the centroid.
 fn rounded_arrow_triangles(rect: (f32, f32, f32, f32), direction: ArrowDirection) -> Vec<Triangle> {
     let (x, y, w, h) = rect;
     let cx = x + w * 0.5;
@@ -87,41 +87,96 @@ fn rounded_arrow_triangles(rect: (f32, f32, f32, f32), direction: ArrowDirection
             ((cx - s * 0.5, cy - s), (cx + s * 0.5, cy), (cx - s * 0.5, cy + s)),
     };
 
-    let mut tris = scrollbar_arrow_segment(a, tip);
-    tris.extend(scrollbar_arrow_segment(tip, b));
-    tris.extend(scrollbar_arrow_cap(a));
-    tris.extend(scrollbar_arrow_cap(tip));
-    tris.extend(scrollbar_arrow_cap(b));
-    tris
-}
-
-fn scrollbar_arrow_segment(a: Point, b: Point) -> Vec<Triangle> {
-    let (dx, dy) = (b.0 - a.0, b.1 - a.1);
-    let len = (dx * dx + dy * dy).sqrt().max(0.0001);
-    let (nx, ny) = (
-        (-dy / len) * SCROLLBAR_ARROW_THICKNESS * 0.5,
-        (dx / len) * SCROLLBAR_ARROW_THICKNESS * 0.5,
+    let polygon = rounded_triangle_polygon(
+        a,
+        tip,
+        b,
+        SCROLLBAR_ARROW_CORNER_RADIUS,
+        SCROLLBAR_ARROW_CAP_SEGMENTS
     );
-    let p0 = (a.0 + nx, a.1 + ny);
-    let p1 = (a.0 - nx, a.1 - ny);
-    let p2 = (b.0 + nx, b.1 + ny);
-    let p3 = (b.0 - nx, b.1 - ny);
-    vec![(p0, p1, p2), (p1, p3, p2)]
+    fan_triangulate(&polygon)
 }
 
-fn scrollbar_arrow_cap(center: Point) -> Vec<Triangle> {
-    let r = SCROLLBAR_ARROW_THICKNESS * 0.5;
-    (0..SCROLLBAR_ARROW_CAP_SEGMENTS)
-        .map(|i| {
-            let a0 = ((i as f32) / (SCROLLBAR_ARROW_CAP_SEGMENTS as f32)) * std::f32::consts::TAU;
-            let a1 =
-                (((i + 1) as f32) / (SCROLLBAR_ARROW_CAP_SEGMENTS as f32)) * std::f32::consts::TAU;
-            (
-                center,
-                (center.0 + a0.cos() * r, center.1 + a0.sin() * r),
-                (center.0 + a1.cos() * r, center.1 + a1.sin() * r),
-            )
-        })
+// Traces the outline of a triangle with each of its three corners rounded
+// off by a tangent arc of `radius`, ready to be fan-triangulated.
+fn rounded_triangle_polygon(
+    p0: Point,
+    p1: Point,
+    p2: Point,
+    radius: f32,
+    segments: usize
+) -> Vec<Point> {
+    let mut points = Vec::new();
+    push_rounded_corner(p2, p0, p1, radius, segments, &mut points);
+    push_rounded_corner(p0, p1, p2, radius, segments, &mut points);
+    push_rounded_corner(p1, p2, p0, radius, segments, &mut points);
+    points
+}
+
+// Appends the rounded-corner arc at `corner`, tangent to the edges
+// `prev -> corner` and `corner -> next`, clamped so the rounding never
+// eats more than half of either adjacent edge.
+fn push_rounded_corner(
+    prev: Point,
+    corner: Point,
+    next: Point,
+    radius: f32,
+    segments: usize,
+    out: &mut Vec<Point>
+) {
+    let to_prev = (prev.0 - corner.0, prev.1 - corner.1);
+    let to_next = (next.0 - corner.0, next.1 - corner.1);
+    let len_prev = (to_prev.0 * to_prev.0 + to_prev.1 * to_prev.1).sqrt().max(0.0001);
+    let len_next = (to_next.0 * to_next.0 + to_next.1 * to_next.1).sqrt().max(0.0001);
+    let dir_prev = (to_prev.0 / len_prev, to_prev.1 / len_prev);
+    let dir_next = (to_next.0 / len_next, to_next.1 / len_next);
+
+    let dot = (dir_prev.0 * dir_next.0 + dir_prev.1 * dir_next.1).clamp(-1.0, 1.0);
+    let half_angle = (dot.acos() * 0.5).max(0.001);
+    let tan_half = half_angle.tan().max(0.0001);
+    let sin_half = half_angle.sin().max(0.0001);
+
+    let max_t = (len_prev.min(len_next) * 0.5).max(0.01);
+    let t = (radius / tan_half).min(max_t);
+    let actual_radius = t * tan_half;
+    let center_dist = actual_radius / sin_half;
+
+    let bisector = (dir_prev.0 + dir_next.0, dir_prev.1 + dir_next.1);
+    let bisector_len = (bisector.0 * bisector.0 + bisector.1 * bisector.1).sqrt().max(0.0001);
+    let bisector = (bisector.0 / bisector_len, bisector.1 / bisector_len);
+
+    let center = (corner.0 + bisector.0 * center_dist, corner.1 + bisector.1 * center_dist);
+    let t1 = (corner.0 + dir_prev.0 * t, corner.1 + dir_prev.1 * t);
+    let t2 = (corner.0 + dir_next.0 * t, corner.1 + dir_next.1 * t);
+
+    let start_angle = (t1.1 - center.1).atan2(t1.0 - center.0);
+    let end_angle = (t2.1 - center.1).atan2(t2.0 - center.0);
+    let mut delta = end_angle - start_angle;
+    if delta > std::f32::consts::PI {
+        delta -= std::f32::consts::TAU;
+    } else if delta < -std::f32::consts::PI {
+        delta += std::f32::consts::TAU;
+    }
+
+    for i in 0..=segments {
+        let a = start_angle + delta * ((i as f32) / (segments as f32));
+        out.push((center.0 + a.cos() * actual_radius, center.1 + a.sin() * actual_radius));
+    }
+}
+
+// Fans a convex polygon into triangles from its centroid.
+fn fan_triangulate(points: &[Point]) -> Vec<Triangle> {
+    if points.len() < 3 {
+        return Vec::new();
+    }
+    let (sum_x, sum_y) = points.iter().fold((0.0, 0.0), |acc, p| (acc.0 + p.0, acc.1 + p.1));
+    let n = points.len() as f32;
+    let centroid = (sum_x / n, sum_y / n);
+
+    points
+        .windows(2)
+        .map(|w| (centroid, w[0], w[1]))
+        .chain(std::iter::once((centroid, points[points.len() - 1], points[0])))
         .collect()
 }
 
@@ -136,6 +191,7 @@ pub struct View {
 
     content_size: Cell<(f32, f32)>,
     scrollbar_drag: Cell<Option<ScrollDrag>>,
+    pending_track_drag: Cell<Option<bool>>,
     scroll_step: f32,
     scrollbar_hovered: Cell<bool>,
     scrollbar_thickness_anim: Cell<f32>,
@@ -150,11 +206,11 @@ impl View {
             anim_id: WidgetId::new_unique(),
             layout_box: LayoutBox::default(),
             children: Vec::new(),
-
             scroll_offset: Cell::new((0.0, 0.0)),
             scroll_target: Cell::new((0.0, 0.0)),
             content_size: Cell::new((0.0, 0.0)),
             scrollbar_drag: Cell::new(None),
+            pending_track_drag: Cell::new(None),
             scroll_step: 96.0,
             scrollbar_hovered: Cell::new(false),
             scrollbar_thickness_anim: Cell::new(0.0),
@@ -289,14 +345,15 @@ impl View {
 
         let thickness = self.resolved_scrollbar().thickness;
         let mut padding = self.base.computed_style.padding.unwrap_or_default();
+        let (shows_x, shows_y) = self.scrollbar_visibility();
 
-        if self.is_scrollable_y() {
+        if shows_y {
             padding.right = padding.right.add_px(thickness);
             if gutter == ScrollbarGutter::StableBothEdges {
                 padding.left = padding.left.add_px(thickness);
             }
         }
-        if self.is_scrollable_x() {
+        if shows_x {
             padding.bottom = padding.bottom.add_px(thickness);
             if gutter == ScrollbarGutter::StableBothEdges {
                 padding.top = padding.top.add_px(thickness);
@@ -678,6 +735,7 @@ impl View {
                     let t = self.active_scrollbar().thickness;
                     let b = self.layout_box;
                     if point_in_rect(position, (b.x + b.width - t, track_y, t, track_h)) {
+                        self.pending_track_drag.set(Some(true));
                         if let Some(target_y) = self.vertical_track_offset_for(position.1) {
                             let next = self.clamp_offset((target.0, target_y));
                             if next != target {
@@ -691,6 +749,7 @@ impl View {
                     let t = self.active_scrollbar().thickness;
                     let b = self.layout_box;
                     if point_in_rect(position, (track_x, b.y + b.height - t, track_w, t)) {
+                        self.pending_track_drag.set(Some(false));
                         if let Some(target_x) = self.horizontal_track_offset_for(position.0) {
                             let next = self.clamp_offset((target_x, target.1));
                             if next != target {
@@ -704,6 +763,7 @@ impl View {
                 false
             }
             ElementState::Released => {
+                self.pending_track_drag.set(None);
                 if self.scrollbar_drag.get().is_some() {
                     self.scrollbar_drag.set(None);
                     ctx.request_redraw();
@@ -994,6 +1054,16 @@ impl Widget for View {
         }
 
         if let InputEvent::MouseMoved { position } = event {
+            if
+                let Some(vertical) = self.pending_track_drag.take() &&
+                self.scrollbar_drag.get().is_none()
+            {
+                let current = self.scroll_offset.get();
+                let start_offset = if vertical { current.1 } else { current.0 };
+                let start_mouse = if vertical { position.1 } else { position.0 };
+                self.scrollbar_drag.set(Some(ScrollDrag { vertical, start_mouse, start_offset }));
+            }
+
             if self.scrollbar_drag.get().is_some() && self.handle_scrollbar_drag(*position, ctx) {
                 return EventStatus::Handled;
             }
