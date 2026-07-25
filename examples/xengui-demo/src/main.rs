@@ -108,14 +108,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 .flex_direction(Row)
                                 .align_items(AlignItems::Center)
                                 .justify_content(JustifyContent::SpaceBetween)
-                                .width(pct!(100.0))
+                                .width(pct!(100))
+                                .height(px!(64))
                                 .background(|theme: &Theme| theme.surface)
                                 .box_shadow(
-                                    BoxShadow::new(0.0, 4.0, 16.0, Color::NEUTRAL_900).spread(2.0)
+                                    BoxShadow::new(0.0, 4.0, 16.0, Color::NEUTRAL_900).spread(1.0)
                                 )
                                 .border(|theme: &Theme| Border::bottom(1, theme.border))
-                                .padding(Edges::symmetric(120, 16))
-                                .child(Label::new().font_size(18).label("XenGui"))
+                                .padding(Edges::symmetric(120, 0))
+                                .child(
+                                    xen_router
+                                        ::router_link("/")
+                                        .font_size(18)
+                                        .font_weight(FontWeight::Medium)
+                                        .label("XenGui")
+                                )
                                 .child(
                                     View::new()
                                         .display(Flex)
@@ -142,7 +149,29 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                         .display(Flex)
                                         .flex_direction(Row)
                                         .gap(4, 0)
-                                        .child(Button::new().label("Get started"))
+                                        .child(
+                                            Button::new()
+                                                .background(Color::BLUE_500)
+                                                .transition_all(
+                                                    Transition::new(
+                                                        Duration::from_millis(200)
+                                                    ).easing(Easing::EaseInOut)
+                                                )
+                                                .border(Border::new(1, Color::BLUE_400, 99))
+                                                .hover_style(|ctx: StylePatch, _theme: &Theme|
+                                                    ctx
+                                                        .background(Color::BLUE_600)
+                                                        .border(Border::new(1, Color::BLUE_500, 99))
+                                                )
+                                                .pressed_style(|ctx: StylePatch, _theme: &Theme|
+                                                    ctx
+                                                        .background(Color::BLUE_700)
+                                                        .border(Border::new(1, Color::BLUE_600, 99))
+                                                        .scale(0.97)
+                                                )
+                                                .padding(Edges::only(15, 9, 15, 9))
+                                                .label("Get started")
+                                        )
                                 )
                         )
                         /* Main */
@@ -200,7 +229,32 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                                                 Duration::from_millis(200)
                                                             ).easing(Easing::EaseInOut)
                                                         )
-                                                        .border(Border::new(1, Color::BLUE_500, 10))
+                                                        .border(Border::new(1, Color::BLUE_400, 10))
+                                                        .hover_style(
+                                                            |ctx: StylePatch, _theme: &Theme|
+                                                                ctx
+                                                                    .background(Color::BLUE_600)
+                                                                    .border(
+                                                                        Border::new(
+                                                                            1,
+                                                                            Color::BLUE_500,
+                                                                            10
+                                                                        )
+                                                                    )
+                                                        )
+                                                        .pressed_style(
+                                                            |ctx: StylePatch, _theme: &Theme|
+                                                                ctx
+                                                                    .background(Color::BLUE_700)
+                                                                    .border(
+                                                                        Border::new(
+                                                                            1,
+                                                                            Color::BLUE_600,
+                                                                            10
+                                                                        )
+                                                                    )
+                                                                    .scale(0.97)
+                                                        )
                                                         .padding(Edges::only(15, 9, 15, 9))
                                                         .label("Get started")
                                                 )
@@ -225,7 +279,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                                                     .background(
                                                                         Color::hex("#30363d")
                                                                     )
-                                                                    .scale(1.05)
+                                                                    .border(
+                                                                        Border::new(
+                                                                            1,
+                                                                            Color::hex("#4b5561"),
+                                                                            10
+                                                                        )
+                                                                    )
                                                         )
                                                         .pressed_style(
                                                             |ctx: StylePatch, _theme: &Theme|
@@ -233,7 +293,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                                                     .background(
                                                                         Color::hex("#1f2328")
                                                                     )
-                                                                    .scale(0.95)
+                                                                    .scale(0.97)
                                                         )
                                                         .padding(Edges::only(15, 9, 15, 9))
                                                         .label("GitHub")
