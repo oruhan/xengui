@@ -114,10 +114,9 @@ impl Interaction {
             }
 
             InputEvent::MouseExited => {
-                let was_pressed = self.pressed;
                 self.hovered = false;
                 self.pressed = false;
-                if self.hover_cursor.is_some() && !was_pressed {
+                if self.hover_cursor.is_some() {
                     ctx.set_cursor_icon(Cursor::Default);
                 }
                 if let Some(cb) = self.on_mouse_leave.as_mut() {

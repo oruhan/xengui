@@ -151,13 +151,21 @@ fn build_taffy_node(
             let (w, h) = (measure.width.round(), measure.height.round());
 
             if auto_w {
-                style.size.width = length(w);
+                // A contentless widget (e.g. an empty View) measures 0 here;
+                // leaving the dimension as taffy's own auto in that case lets
+                // flex-grow / align-items:stretch size it instead of pinning
+                // it to a collapsed 0px box.
+                if w > 0.0 {
+                    style.size.width = length(w);
+                }
                 if style.min_size.width == taffy::style::Dimension::auto() {
                     style.min_size.width = length(w);
                 }
             }
             if auto_h {
-                style.size.height = length(h);
+                if h > 0.0 {
+                    style.size.height = length(h);
+                }
                 if style.min_size.height == taffy::style::Dimension::auto() {
                     style.min_size.height = length(h);
                 }

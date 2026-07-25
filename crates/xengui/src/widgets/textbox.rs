@@ -845,7 +845,7 @@ impl WidgetContent for TextBox {
 
 crate::impl_interaction_builders!(base TextBox);
 crate::impl_common_style_builders!(base TextBox);
-crate::impl_themed_style_builders!(base TextBox; hover_style => hover_style, pressed_style => pressed_style, focus_style => focus_style, disabled_style => disabled_style);
+crate::impl_themed_style_builders!(base TextBox; hover_style => hover_style, pressed_style => pressed_style, focus_style => focus_style, disabled_style => disabled_style, focused_hover_style => focused_hover_style);
 
 impl Widget for TextBox {
     crate::impl_widget_boilerplate!();
@@ -1273,7 +1273,8 @@ impl Widget for TextBox {
             self.base.style == other.base.style &&
             self.base.hover_style == other.base.hover_style &&
             self.base.focus_style == other.base.focus_style &&
-            self.base.disabled_style == other.base.disabled_style
+            self.base.disabled_style == other.base.disabled_style &&
+            self.base.focused_hover_style == other.base.focused_hover_style
     }
 
     fn cascade_style(&mut self, parent: &Style, anim: &mut AnimationManager) {

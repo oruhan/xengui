@@ -469,8 +469,12 @@ impl Widget for Svg {
         }
 
         let b = self.layout_box;
-        let scale_x = b.width / vb_w;
-        let scale_y = b.height / vb_h;
+        // Scales uniformly and centers within the box (SVG's default
+        // preserveAspectRatio="xMidYMid meet"), keeping round caps/joins
+        // circular instead of skewed into ellipses.
+        let scale = (b.width / vb_w).min(b.height / vb_h);
+        let offset_x = b.x + (b.width - vb_w * scale) * 0.5;
+        let offset_y = b.y + (b.height - vb_h * scale) * 0.5;
 
         // `color` is the CSS-inherited text color; `currentColor` paints
         // resolve against it, so icons follow the parent's text color for
@@ -491,7 +495,7 @@ impl Widget for Svg {
             let color = color.with_alpha_f32(color.a() * triangle.opacity);
 
             let map = |p: (f32, f32)| -> (f32, f32) {
-                (b.x + (p.0 - vb_x) * scale_x, b.y + (p.1 - vb_y) * scale_y)
+                (offset_x + (p.0 - vb_x) * scale, offset_y + (p.1 - vb_y) * scale)
             };
 
             ctx.draw_triangle(TriangleCommand {

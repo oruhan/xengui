@@ -5,14 +5,15 @@ use smol_str::SmolStr;
 pub struct WidgetBase {
     pub key: Option<SmolStr>,
     pub dirty: bool,
+
     pub style: Style,
     pub inherited_style: Style,
     pub computed_style: Style,
-
     pub hover_style: Option<Style>,
     pub pressed_style: Option<Style>,
     pub disabled_style: Option<Style>,
     pub focus_style: Option<Style>,
+    pub focused_hover_style: Option<Style>,
 
     pub interaction: Interaction,
 }
@@ -22,6 +23,7 @@ impl WidgetBase {
         Self {
             key: None,
             dirty: true,
+
             style: Style::default(),
             inherited_style: Style::default(),
             computed_style: Style::default(),
@@ -29,6 +31,8 @@ impl WidgetBase {
             pressed_style: None,
             disabled_style: None,
             focus_style: None,
+            focused_hover_style: None,
+
             interaction,
         }
     }
@@ -38,6 +42,8 @@ impl WidgetBase {
             self.disabled_style.as_ref()
         } else if self.interaction.pressed {
             self.pressed_style.as_ref().or(self.hover_style.as_ref())
+        } else if self.interaction.focused && self.interaction.hovered {
+            self.focused_hover_style.as_ref().or(self.focus_style.as_ref())
         } else if self.interaction.hovered {
             self.hover_style.as_ref()
         } else if self.interaction.focused {

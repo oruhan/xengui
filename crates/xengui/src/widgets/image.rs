@@ -213,7 +213,7 @@ impl StyleBuilder for Image {
 
 crate::impl_interaction_builders!(base Image);
 crate::impl_common_style_builders!(base Image);
-crate::impl_themed_style_builders!(base Image; hover_style => hover_style, pressed_style => pressed_style, disabled_style => disabled_style, focus_style => focus_style);
+crate::impl_themed_style_builders!(base Image; hover_style => hover_style, pressed_style => pressed_style, disabled_style => disabled_style, focus_style => focus_style, focused_hover_style => focused_hover_style);
 
 impl Widget for Image {
     crate::impl_widget_boilerplate!();
@@ -298,7 +298,8 @@ impl Widget for Image {
             self.base.hover_style == other.base.hover_style &&
             self.base.pressed_style == other.base.pressed_style &&
             self.base.disabled_style == other.base.disabled_style &&
-            self.base.focus_style == other.base.focus_style
+            self.base.focus_style == other.base.focus_style &&
+            self.base.focused_hover_style == other.base.focused_hover_style
     }
 
     fn after_interaction_transfer(&mut self) {

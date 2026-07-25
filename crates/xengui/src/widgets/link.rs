@@ -126,6 +126,8 @@ impl Link {
             self.base.disabled_style.as_ref()
         } else if self.base.interaction.pressed {
             self.base.pressed_style.as_ref().or(self.base.hover_style.as_ref())
+        } else if self.base.interaction.focused && self.base.interaction.hovered {
+            self.base.focused_hover_style.as_ref().or(self.base.focus_style.as_ref())
         } else if self.base.interaction.hovered {
             self.base.hover_style.as_ref()
         } else if self.base.interaction.focused {
@@ -241,7 +243,7 @@ impl WidgetContent for Link {
 
 crate::impl_interaction_builders!(base Link);
 crate::impl_common_style_builders!(base Link);
-crate::impl_themed_style_builders!(base Link; hover_style => hover_style, pressed_style => pressed_style, disabled_style => disabled_style, focus_style => focus_style);
+crate::impl_themed_style_builders!(base Link; hover_style => hover_style, pressed_style => pressed_style, disabled_style => disabled_style, focus_style => focus_style, focused_hover_style => focused_hover_style);
 
 impl Widget for Link {
     crate::impl_widget_boilerplate!();
@@ -606,6 +608,7 @@ impl Widget for Link {
             self.base.pressed_style == other.base.pressed_style &&
             self.base.disabled_style == other.base.disabled_style &&
             self.base.focus_style == other.base.focus_style &&
+            self.base.focused_hover_style == other.base.focused_hover_style &&
             self.selectable == other.selectable &&
             self.href == other.href &&
             self.target_blank == other.target_blank

@@ -24,32 +24,28 @@ use crate::{
     MouseScrollDelta,
     Overflow,
     PaintContext,
+    Point,
     Rect,
     RectCommand,
     ResolvedScrollbar,
+    SCROLL_TRANSITION,
+    SCROLLBAR_ARROW_CAP_SEGMENTS,
+    SCROLLBAR_ARROW_SIZE,
+    SCROLLBAR_ARROW_THICKNESS,
+    SCROLLBAR_DISABLED_OPACITY,
+    SCROLLBAR_THICKNESS_TRANSITION,
+    SCROLLBAR_THUMB_PADDING,
     ScrollbarGutter,
     Style,
     StyleBuilder,
+    Triangle,
     TriangleCommand,
     Widget,
     WidgetBase,
     WidgetId,
 };
-use xen_animation::{ AnimValue, Easing, Transition };
+use xen_animation::{ AnimValue };
 use std::cell::Cell;
-
-// Eased transition applied to scroll position when animating toward a
-// wheel/nudge target; drag updates bypass this and snap instantly.
-const SCROLL_TRANSITION: Transition = Transition::new(std::time::Duration::from_millis(250)).easing(
-    Easing::EaseOut
-);
-const SCROLLBAR_THICKNESS_TRANSITION: Transition = Transition::new(
-    std::time::Duration::from_millis(160)
-).easing(Easing::EaseOut);
-
-/// Opacity applied to a `Scroll`-mode scrollbar axis that has nothing to
-/// scroll, so it stays visible but reads as disabled instead of vanishing.
-const SCROLLBAR_DISABLED_OPACITY: f32 = 0.35;
 
 #[derive(Clone, Copy)]
 struct ScrollDrag {
@@ -72,24 +68,61 @@ fn point_in_rect(point: (f32, f32), rect: (f32, f32, f32, f32)) -> bool {
     px >= rx && px <= rx + rw && py >= ry && py <= ry + rh
 }
 
-// Builds the three points of a small centered arrow triangle within `rect`,
-// pointing in `direction`.
-fn arrow_triangle(
-    rect: (f32, f32, f32, f32),
-    direction: ArrowDirection
-) -> ((f32, f32), (f32, f32), (f32, f32)) {
+// Builds a rounded-corner arrow (two thick line segments plus round caps
+// at the joints, same technique ContextMenu uses for its submenu chevron)
+// instead of a single flat filled triangle.
+fn rounded_arrow_triangles(rect: (f32, f32, f32, f32), direction: ArrowDirection) -> Vec<Triangle> {
     let (x, y, w, h) = rect;
     let cx = x + w * 0.5;
     let cy = y + h * 0.5;
-    let margin = w.min(h) * 0.15;
-    let half = (w.min(h) * 0.5 - margin).max(1.0);
+    let s = SCROLLBAR_ARROW_SIZE;
 
-    match direction {
-        ArrowDirection::Up => ((cx, cy - half), (cx - half, cy + half), (cx + half, cy + half)),
-        ArrowDirection::Down => ((cx, cy + half), (cx - half, cy - half), (cx + half, cy - half)),
-        ArrowDirection::Left => ((cx - half, cy), (cx + half, cy - half), (cx + half, cy + half)),
-        ArrowDirection::Right => ((cx + half, cy), (cx - half, cy - half), (cx - half, cy + half)),
-    }
+    let (a, tip, b) = match direction {
+        ArrowDirection::Up => ((cx - s, cy + s * 0.5), (cx, cy - s * 0.5), (cx + s, cy + s * 0.5)),
+        ArrowDirection::Down =>
+            ((cx - s, cy - s * 0.5), (cx, cy + s * 0.5), (cx + s, cy - s * 0.5)),
+        ArrowDirection::Left =>
+            ((cx + s * 0.5, cy - s), (cx - s * 0.5, cy), (cx + s * 0.5, cy + s)),
+        ArrowDirection::Right =>
+            ((cx - s * 0.5, cy - s), (cx + s * 0.5, cy), (cx - s * 0.5, cy + s)),
+    };
+
+    let mut tris = scrollbar_arrow_segment(a, tip);
+    tris.extend(scrollbar_arrow_segment(tip, b));
+    tris.extend(scrollbar_arrow_cap(a));
+    tris.extend(scrollbar_arrow_cap(tip));
+    tris.extend(scrollbar_arrow_cap(b));
+    tris
+}
+
+fn scrollbar_arrow_segment(a: Point, b: Point) -> Vec<Triangle> {
+    let (dx, dy) = (b.0 - a.0, b.1 - a.1);
+    let len = (dx * dx + dy * dy).sqrt().max(0.0001);
+    let (nx, ny) = (
+        (-dy / len) * SCROLLBAR_ARROW_THICKNESS * 0.5,
+        (dx / len) * SCROLLBAR_ARROW_THICKNESS * 0.5,
+    );
+    let p0 = (a.0 + nx, a.1 + ny);
+    let p1 = (a.0 - nx, a.1 - ny);
+    let p2 = (b.0 + nx, b.1 + ny);
+    let p3 = (b.0 - nx, b.1 - ny);
+    vec![(p0, p1, p2), (p1, p3, p2)]
+}
+
+fn scrollbar_arrow_cap(center: Point) -> Vec<Triangle> {
+    let r = SCROLLBAR_ARROW_THICKNESS * 0.5;
+    (0..SCROLLBAR_ARROW_CAP_SEGMENTS)
+        .map(|i| {
+            let a0 = ((i as f32) / (SCROLLBAR_ARROW_CAP_SEGMENTS as f32)) * std::f32::consts::TAU;
+            let a1 =
+                (((i + 1) as f32) / (SCROLLBAR_ARROW_CAP_SEGMENTS as f32)) * std::f32::consts::TAU;
+            (
+                center,
+                (center.0 + a0.cos() * r, center.1 + a0.sin() * r),
+                (center.0 + a1.cos() * r, center.1 + a1.sin() * r),
+            )
+        })
+        .collect()
 }
 
 pub struct View {
@@ -413,7 +446,8 @@ impl View {
         let progress = if max_offset > 0.0 { self.scroll_offset.get().1 / max_offset } else { 0.0 };
         let thumb_y = track_y + progress * (track_h - thumb_h);
 
-        Some((b.x + b.width - sb.thickness, thumb_y, sb.thickness, thumb_h))
+        let thumb_w = (sb.thickness - SCROLLBAR_THUMB_PADDING * 2.0).max(1.0);
+        Some((b.x + b.width - sb.thickness + SCROLLBAR_THUMB_PADDING, thumb_y, thumb_w, thumb_h))
     }
 
     fn horizontal_thumb_rect(&self) -> Option<(f32, f32, f32, f32)> {
@@ -427,7 +461,8 @@ impl View {
         let progress = if max_offset > 0.0 { self.scroll_offset.get().0 / max_offset } else { 0.0 };
         let thumb_x = track_x + progress * (track_w - thumb_w);
 
-        Some((thumb_x, b.y + b.height - sb.thickness, thumb_w, sb.thickness))
+        let thumb_h = (sb.thickness - SCROLLBAR_THUMB_PADDING * 2.0).max(1.0);
+        Some((thumb_x, b.y + b.height - sb.thickness + SCROLLBAR_THUMB_PADDING, thumb_w, thumb_h))
     }
 
     fn vertical_buttons(&self) -> Option<(Rect, Rect)> {
@@ -774,7 +809,7 @@ impl StyleBuilder for View {
 
 crate::impl_interaction_builders!(base View);
 crate::impl_common_style_builders!(base View);
-crate::impl_themed_style_builders!(base View; hover_style => hover_style, pressed_style => pressed_style, disabled_style => disabled_style, focus_style => focus_style);
+crate::impl_themed_style_builders!(base View; hover_style => hover_style, pressed_style => pressed_style, disabled_style => disabled_style, focus_style => focus_style, focused_hover_style => focused_hover_style);
 
 impl Widget for View {
     crate::impl_widget_boilerplate!();
@@ -917,32 +952,11 @@ impl Widget for View {
                 (down, ArrowDirection::Down, target.1 >= self.max_scroll_y()),
             ] {
                 let dim = axis_dim * (if edge_disabled { 0.35 } else { 1.0 });
-                let (x, y, w, h) = rect;
+                let color = sb.arrow_color.with_alpha_f32(sb.arrow_color.a() * dim);
 
-                if sb.button_color.a() > 0.0 {
-                    ctx.draw_rect(RectCommand {
-                        position: (x, y),
-                        size: (w, h),
-                        background: Some(
-                            Background::Color(
-                                sb.button_color.with_alpha_f32(sb.button_color.a() * dim)
-                            )
-                        ),
-                        border_radius: Some(Length::px(sb.thumb_radius)),
-                        border_width: None,
-                        border_color: None,
-                        clip_rect: None,
-                    });
+                for (p0, p1, p2) in rounded_arrow_triangles(rect, dir) {
+                    ctx.draw_triangle(TriangleCommand { p0, p1, p2, color, clip_rect: None });
                 }
-
-                let (p0, p1, p2) = arrow_triangle(rect, dir);
-                ctx.draw_triangle(TriangleCommand {
-                    p0,
-                    p1,
-                    p2,
-                    color: sb.arrow_color.with_alpha_f32(sb.arrow_color.a() * dim),
-                    clip_rect: None,
-                });
             }
         }
 
@@ -955,32 +969,11 @@ impl Widget for View {
                 (right, ArrowDirection::Right, target.0 >= self.max_scroll_x()),
             ] {
                 let dim = axis_dim * (if edge_disabled { 0.35 } else { 1.0 });
-                let (x, y, w, h) = rect;
+                let color = sb.arrow_color.with_alpha_f32(sb.arrow_color.a() * dim);
 
-                if sb.button_color.a() > 0.0 {
-                    ctx.draw_rect(RectCommand {
-                        position: (x, y),
-                        size: (w, h),
-                        background: Some(
-                            Background::Color(
-                                sb.button_color.with_alpha_f32(sb.button_color.a() * dim)
-                            )
-                        ),
-                        border_radius: Some(Length::px(sb.thumb_radius)),
-                        border_width: None,
-                        border_color: None,
-                        clip_rect: None,
-                    });
+                for (p0, p1, p2) in rounded_arrow_triangles(rect, dir) {
+                    ctx.draw_triangle(TriangleCommand { p0, p1, p2, color, clip_rect: None });
                 }
-
-                let (p0, p1, p2) = arrow_triangle(rect, dir);
-                ctx.draw_triangle(TriangleCommand {
-                    p0,
-                    p1,
-                    p2,
-                    color: sb.arrow_color.with_alpha_f32(sb.arrow_color.a() * dim),
-                    clip_rect: None,
-                });
             }
         }
     }
@@ -1074,7 +1067,8 @@ impl Widget for View {
             self.base.hover_style == other.base.hover_style &&
             self.base.pressed_style == other.base.pressed_style &&
             self.base.disabled_style == other.base.disabled_style &&
-            self.base.focus_style == other.base.focus_style
+            self.base.focus_style == other.base.focus_style &&
+            self.base.focused_hover_style == other.base.focused_hover_style
     }
 
     fn cascade_style(&mut self, parent: &Style, anim: &mut AnimationManager) {

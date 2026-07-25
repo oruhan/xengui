@@ -170,7 +170,7 @@ impl StyleBuilder for Label {
 }
 
 crate::impl_common_style_builders!(base Label);
-crate::impl_themed_style_builders!(base Label; hover_style => hover_style, pressed_style => pressed_style, disabled_style => disabled_style, focus_style => focus_style);
+crate::impl_themed_style_builders!(base Label; hover_style => hover_style, pressed_style => pressed_style, disabled_style => disabled_style, focus_style => focus_style, focused_hover_style => focused_hover_style);
 
 impl Widget for Label {
     crate::impl_widget_boilerplate!();
@@ -473,6 +473,7 @@ impl Widget for Label {
             self.base.pressed_style == other.base.pressed_style &&
             self.base.disabled_style == other.base.disabled_style &&
             self.base.focus_style == other.base.focus_style &&
+            self.base.focused_hover_style == other.base.focused_hover_style &&
             self.selectable == other.selectable
     }
 

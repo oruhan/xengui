@@ -199,7 +199,7 @@ impl WidgetContent for Button {
 
 crate::impl_interaction_builders!(base Button);
 crate::impl_common_style_builders!(base Button);
-crate::impl_themed_style_builders!(base Button; hover_style => hover_style, pressed_style => pressed_style, disabled_style => disabled_style, focus_style => focus_style);
+crate::impl_themed_style_builders!(base Button; hover_style => hover_style, pressed_style => pressed_style, disabled_style => disabled_style, focus_style => focus_style, focused_hover_style => focused_hover_style);
 
 impl Widget for Button {
     crate::impl_widget_boilerplate!();
@@ -384,8 +384,11 @@ impl Widget for Button {
         if has_icon && let Some(doc) = &self.icon_document {
             let (vb_x, vb_y, vb_w, vb_h) = doc.view_box;
             if !self.icon_triangles.is_empty() && vb_w > 0.0 && vb_h > 0.0 {
-                let scale_x = icon_w / vb_w;
-                let scale_y = icon_h / vb_h;
+                // Same xMidYMid-meet behavior as the Svg widget: uniform
+                // scale, centered within the reserved icon box.
+                let icon_scale = (icon_w / vb_w).min(icon_h / vb_h);
+                let icon_offset_x = icon_x + (icon_w - vb_w * icon_scale) * 0.5;
+                let icon_offset_y = icon_y + (icon_h - vb_h * icon_scale) * 0.5;
                 let inherited_color = self.icon_tint.unwrap_or(style.color.unwrap_or(Color::BLACK));
                 let inherited_svg_color = xen_svg::Color::rgba_f32(
                     inherited_color.r(),
@@ -402,7 +405,10 @@ impl Widget for Button {
                     let color = color.with_alpha_f32(color.a() * triangle.opacity);
 
                     let map = |p: (f32, f32)| -> (f32, f32) {
-                        (icon_x + (p.0 - vb_x) * scale_x, icon_y + (p.1 - vb_y) * scale_y)
+                        (
+                            icon_offset_x + (p.0 - vb_x) * icon_scale,
+                            icon_offset_y + (p.1 - vb_y) * icon_scale,
+                        )
                     };
 
                     ctx.draw_triangle(TriangleCommand {
@@ -496,6 +502,7 @@ impl Widget for Button {
             self.base.pressed_style == other.base.pressed_style &&
             self.base.disabled_style == other.base.disabled_style &&
             self.base.focus_style == other.base.focus_style &&
+            self.base.focused_hover_style == other.base.focused_hover_style &&
             icon_eq &&
             self.icon_position == other.icon_position &&
             self.icon_gap == other.icon_gap &&

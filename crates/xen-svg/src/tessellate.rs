@@ -70,6 +70,8 @@ fn tessellate_element(
     let transform = element.attrs().transform.then(parent_transform);
     let opacity = parent_opacity * element.attrs().opacity;
 
+    let scale = transform_scale(transform);
+
     match element {
         SvgElement::Group { children, .. } => {
             for child in children {
@@ -78,17 +80,17 @@ fn tessellate_element(
         }
         SvgElement::Path { commands, attrs } => {
             let path = build_path_from_commands(commands, transform);
-            emit_shape(&path, attrs, opacity, out);
+            emit_shape(&path, attrs, opacity, scale, out);
         }
         SvgElement::Rect { x, y, width, height, rx, attrs } => {
             let polygon = rect_polygon(*x, *y, *width, *height, *rx);
             let path = build_polygon_path(&polygon, true, transform);
-            emit_shape(&path, attrs, opacity, out);
+            emit_shape(&path, attrs, opacity, scale, out);
         }
         SvgElement::Circle { cx, cy, r, attrs } => {
             let polygon = circle_polygon(*cx, *cy, *r);
             let path = build_polygon_path(&polygon, true, transform);
-            emit_shape(&path, attrs, opacity, out);
+            emit_shape(&path, attrs, opacity, scale, out);
         }
         SvgElement::Line { x1, y1, x2, y2, attrs } => {
             let path = build_polygon_path(
@@ -99,9 +101,17 @@ fn tessellate_element(
                 false,
                 transform
             );
-            emit_stroke(&path, attrs, opacity, out);
+            emit_stroke(&path, attrs, opacity, scale, out);
         }
     }
+}
+
+// Approximate uniform scale of an affine transform, used to keep stroke
+// width consistent with geometry already baked in by a `transform="..."` attribute.
+fn transform_scale(t: Transform2D) -> f32 {
+    let sx = (t.a * t.a + t.b * t.b).sqrt();
+    let sy = (t.c * t.c + t.d * t.d).sqrt();
+    (sx + sy) * 0.5
 }
 
 // Maps a local-space point through the element's accumulated transform.
@@ -173,16 +183,28 @@ fn build_polygon_path(points: &[(f32, f32)], closed: bool, transform: Transform2
     builder.build()
 }
 
-fn emit_shape(path: &Path, attrs: &SvgAttributes, opacity: f32, out: &mut Vec<SvgTriangle>) {
+fn emit_shape(
+    path: &Path,
+    attrs: &SvgAttributes,
+    opacity: f32,
+    scale: f32,
+    out: &mut Vec<SvgTriangle>
+) {
     if !matches!(attrs.fill, SvgColor::None) {
         tessellate_fill(path, attrs, opacity, out);
     }
-    emit_stroke(path, attrs, opacity, out);
+    emit_stroke(path, attrs, opacity, scale, out);
 }
 
-fn emit_stroke(path: &Path, attrs: &SvgAttributes, opacity: f32, out: &mut Vec<SvgTriangle>) {
+fn emit_stroke(
+    path: &Path,
+    attrs: &SvgAttributes,
+    opacity: f32,
+    scale: f32,
+    out: &mut Vec<SvgTriangle>
+) {
     if !matches!(attrs.stroke, SvgColor::None) && attrs.stroke_width > 0.0 {
-        tessellate_stroke(path, attrs, opacity, out);
+        tessellate_stroke(path, attrs, opacity, scale, out);
     }
 }
 
@@ -208,11 +230,19 @@ fn tessellate_fill(path: &Path, attrs: &SvgAttributes, opacity: f32, out: &mut V
     push_triangles(&geometry, attrs.fill, opacity, out);
 }
 
-fn tessellate_stroke(path: &Path, attrs: &SvgAttributes, opacity: f32, out: &mut Vec<SvgTriangle>) {
+fn tessellate_stroke(
+    path: &Path,
+    attrs: &SvgAttributes,
+    opacity: f32,
+    scale: f32,
+    out: &mut Vec<SvgTriangle>
+) {
     let mut geometry: VertexBuffers<[f32; 2], u16> = VertexBuffers::new();
     let options = StrokeOptions::default()
         .with_tolerance(TOLERANCE)
-        .with_line_width(attrs.stroke_width)
+        // stroke_width lives in the element's own coordinate space, so it
+        // must scale together with the already-transformed path it strokes.
+        .with_line_width(attrs.stroke_width * scale)
         .with_line_join(map_line_join(attrs.line_join))
         .with_line_cap(map_line_cap(attrs.line_cap))
         .with_miter_limit(attrs.miter_limit);
