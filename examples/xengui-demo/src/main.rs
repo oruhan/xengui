@@ -111,7 +111,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 .align_items(AlignItems::Center)
                                 .justify_content(JustifyContent::SpaceBetween)
                                 .width(pct!(100))
-                                .height(px!(64))
+                                .height(px!(48))
                                 .background(|theme: &Theme| theme.surface)
                                 .box_shadow(
                                     BoxShadow::new(0.0, 4.0, 16.0, Color::NEUTRAL_900).spread(1.0)

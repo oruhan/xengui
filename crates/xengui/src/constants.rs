@@ -42,6 +42,6 @@ pub const SCROLLBAR_DISABLED_OPACITY: f32 = 0.35;
 /// cross-axis thickness, so it renders thinner than its track.
 pub const SCROLLBAR_THUMB_PADDING: f32 = 4.0;
 
-pub const SCROLLBAR_ARROW_SIZE: f32 = 4.0;
-pub const SCROLLBAR_ARROW_CAP_SEGMENTS: usize = 8;
-pub const SCROLLBAR_ARROW_CORNER_RADIUS: f32 = 1.1;
+pub const SCROLLBAR_ARROW_SIZE: f32 = 6.0;
+pub const SCROLLBAR_ARROW_CAP_SEGMENTS: usize = 24;
+pub const SCROLLBAR_ARROW_CORNER_RADIUS: f32 = 1.8;

@@ -137,7 +137,7 @@ fn push_rounded_corner(
     let sin_half = half_angle.sin().max(0.0001);
 
     let max_t = (len_prev.min(len_next) * 0.5).max(0.01);
-    let t = (radius / tan_half).min(max_t);
+    let t = (radius / tan_half).min(max_t * 0.9);
     let actual_radius = t * tan_half;
     let center_dist = actual_radius / sin_half;
 

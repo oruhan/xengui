@@ -122,10 +122,25 @@ pub fn style_to_taffy(style: &Style, scale_factor: f32) -> TaffyStyle {
 
     if let Some(size) = &style.size {
         if let Some(w) = size.width {
-            t.size.width = dim(w, scale_factor);
+            let px = dim(w, scale_factor);
+            t.size.width = px;
+            // Explicit width acts as a hard floor unless the user set their own min-width.
+            if style.min_size.and_then(|s| s.width).is_none() {
+                t.min_size.width = px;
+                if style.flex_shrink.is_none() {
+                    t.flex_shrink = 0.0;
+                }
+            }
         }
         if let Some(h) = size.height {
-            t.size.height = dim(h, scale_factor);
+            let px = dim(h, scale_factor);
+            t.size.height = px;
+            if style.min_size.and_then(|s| s.height).is_none() {
+                t.min_size.height = px;
+                if style.flex_shrink.is_none() {
+                    t.flex_shrink = 0.0;
+                }
+            }
         }
     }
     if let Some(size) = &style.min_size {
