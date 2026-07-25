@@ -2,6 +2,8 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 //use std::time::Duration;
 
+use std::time::Duration;
+
 #[cfg(not(target_arch = "wasm32"))]
 use xenframe::WindowPosition;
 use xengui::{ Display::Flex, FlexDirection::{ Column, Row }, widgets::Link, * };
@@ -100,17 +102,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         /* Navbar */
                         .child(
                             View::new()
-                                .position(Position::Absolute)
+                                .position(Position::Sticky)
+                                .margin(Edges::only(0, 0, 0, 0))
                                 .display(Flex)
                                 .flex_direction(Row)
                                 .align_items(AlignItems::Center)
                                 .justify_content(JustifyContent::SpaceBetween)
-                                .width(Length::Percent(100.0))
+                                .width(pct!(100.0))
                                 .background(|theme: &Theme| theme.surface)
                                 .box_shadow(
                                     BoxShadow::new(0.0, 4.0, 16.0, Color::NEUTRAL_900).spread(2.0)
                                 )
-                                .border(|theme: &Theme| Border::new(1, theme.border, 0))
+                                .border(|theme: &Theme| Border::bottom(1, theme.border))
                                 .padding(Edges::symmetric(120, 16))
                                 .child(Label::new().font_size(18).label("XenGui"))
                                 .child(
@@ -149,7 +152,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 .flex_direction(Column)
                                 .align_items(AlignItems::Start)
                                 .justify_content(JustifyContent::Center)
-                                .height(pct!(100.0))
+                                //.min_height(pct!(100.0))
                                 .padding(Edges::only(120, 160, 120, 0))
                                 .child(
                                     View::new()
@@ -164,7 +167,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                                 .font_size(60)
                                                 .font_weight(FontWeight::Medium)
                                                 .line_height(pct!(78.0))
-                                                .letter_spacing(Length::px(-2.25))
+                                                .letter_spacing(px!(-2.25))
                                                 .color(|theme: &Theme| theme.foreground)
                                                 .child(Label::new().label("The GUI framework"))
                                                 .child(Label::new().label("Rust deserves"))
@@ -175,8 +178,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                                         )
                                                         .font_size(16)
                                                         .font_weight(FontWeight::Regular)
-                                                        .line_height(Length::px(10.0))
-                                                        .letter_spacing(Length::px(-0.1))
+                                                        .line_height(px!(10.0))
+                                                        .letter_spacing(px!(-0.1))
                                                         .margin(Edges::only(0, 16, 0, 8))
                                                         .label(
                                                             "Build native desktop, web, mobile, and embedded applications from a single codebase."
@@ -187,19 +190,51 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                             View::new()
                                                 .display(Flex)
                                                 .flex_direction(Row)
-                                                .margin(Edges::only(0, 16, 0, 0))
-                                                .gap(8, 0)
+                                                .margin(Edges::only(0, 16, 0, 16))
+                                                .gap(4, 0)
                                                 .child(
                                                     Button::new()
                                                         .background(Color::BLUE_500)
+                                                        .transition_all(
+                                                            Transition::new(
+                                                                Duration::from_millis(200)
+                                                            ).easing(Easing::EaseInOut)
+                                                        )
                                                         .border(Border::new(1, Color::BLUE_500, 10))
                                                         .padding(Edges::only(15, 9, 15, 9))
                                                         .label("Get started")
                                                 )
                                                 .child(
                                                     Button::new()
-                                                        .background(Color::BLUE_500)
-                                                        .border(Border::new(1, Color::BLUE_500, 10))
+                                                        .background(Color::hex("#24292f"))
+                                                        .transition_all(
+                                                            Transition::new(
+                                                                Duration::from_millis(200)
+                                                            ).easing(Easing::EaseInOut)
+                                                        )
+                                                        .border(
+                                                            Border::new(
+                                                                1,
+                                                                Color::hex("#3d444d"),
+                                                                10
+                                                            )
+                                                        )
+                                                        .hover_style(
+                                                            |ctx: StylePatch, _theme: &Theme|
+                                                                ctx
+                                                                    .background(
+                                                                        Color::hex("#30363d")
+                                                                    )
+                                                                    .scale(1.05)
+                                                        )
+                                                        .pressed_style(
+                                                            |ctx: StylePatch, _theme: &Theme|
+                                                                ctx
+                                                                    .background(
+                                                                        Color::hex("#1f2328")
+                                                                    )
+                                                                    .scale(0.95)
+                                                        )
                                                         .padding(Edges::only(15, 9, 15, 9))
                                                         .label("GitHub")
                                                 )
@@ -209,8 +244,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     View::new()
                                         .background(|theme: &Theme| theme.surface)
                                         .border(|theme: &Theme| Border::new(1, theme.border, 12))
-                                        .width(pct!(100.0))
-                                        .height(Length::px(640.0))
+                                        .width(pct!(100))
+                                        .height(px!(640))
                                         .child(Label::new().label("App"))
                                 )
                         )
@@ -323,7 +358,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .font_size(13)
                 .menu_min_width(240.0)
                 .menu_background(|theme: &Theme| theme.surface)
-                .border(|theme: &Theme| Border::new(1, theme.border, Length::px(10.0)))
+                .border(|theme: &Theme| Border::new(1, theme.border, px!(10.0)))
                 .child(
                     View::new()
                         .font("Noto_Sans")
@@ -331,14 +366,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         .flex_direction(FlexDirection::Column)
                         .justify_content(JustifyContent::Start)
                         .align_items(AlignItems::Start)
-                        .width(Length::Percent(100.0))
-                        .height(Length::Percent(100.0))
+                        .width(pct!(100.0))
+                        .height(pct!(100.0))
                         .background(|theme: &Theme| theme.background)
                         .child(
                             View::new()
                                 .flex_direction(FlexDirection::Column)
-                                .width(Length::Percent(100.0))
-                                .height(Length::Percent(100.0))
+                                .width(pct!(100.0))
+                                .height(pct!(100.0))
                                 .align_items(AlignItems::Center)
                                 .justify_content(JustifyContent::Center)
                                 .child(
@@ -356,7 +391,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                         .placeholder("Enter your name...")
                                         .font_size(15)
                                         .outline(StyleValue::None)
-                                        .width(Length::px(150.0))
+                                        .width(px!(150.0))
                                         .padding(Edges::all(8))
                                         .transition_all(
                                             Transition::new(Duration::from_millis(200)).easing(
@@ -365,15 +400,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                         )
                                         .background(|theme: &Theme| theme.surface)
                                         .border(|theme: &Theme|
-                                            Border::new(1, theme.border, Length::px(8.0))
+                                            Border::new(1, theme.border, px!(8.0))
                                         )
                                         .hover_style(|s, theme|
                                             s.border(
-                                                Border::new(1, theme.border_hover, Length::px(8.0))
+                                                Border::new(1, theme.border_hover, px!(8.0))
                                             )
                                         )
                                         .focus_style(|s, theme|
-                                            s.border(Border::new(2, theme.primary, Length::px(8.0)))
+                                            s.border(Border::new(2, theme.primary, px!(8.0)))
                                         )
                                         .on_change(move |value, _ctx|
                                             set_text.set(value.to_string())
@@ -406,7 +441,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                                 .color(|theme: &Theme| theme.foreground)
                                                 .background(|theme: &Theme| theme.surface)
                                                 .border(|theme: &Theme|
-                                                    Border::new(1, theme.border, Length::px(8.0))
+                                                    Border::new(1, theme.border, px!(8.0))
                                                 )
                                                 .padding(Edges::only(8, 5, 8, 5))
                                                 .margin(Edges::only(0, 10, 0, 0))
@@ -427,7 +462,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                                             Border::new(
                                                                 1,
                                                                 theme.border,
-                                                                Length::px(8.0)
+                                                                px!(8.0)
                                                             )
                                                         )
                                                         .color(theme.foreground)
@@ -439,7 +474,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                                             Border::new(
                                                                 1,
                                                                 theme.pressed,
-                                                                Length::px(8.0)
+                                                                px!(8.0)
                                                             )
                                                         )
                                                         .color(theme.foreground)
@@ -452,7 +487,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                                 .color(|theme: &Theme| theme.foreground)
                                                 .background(|theme: &Theme| theme.surface)
                                                 .border(|theme: &Theme|
-                                                    Border::new(1, theme.border, Length::px(8.0))
+                                                    Border::new(1, theme.border, px!(8.0))
                                                 )
                                                 .padding(Edges::only(8, 5, 8, 5))
                                                 .margin(Edges::only(0, 10, 0, 0))
@@ -473,7 +508,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                                             Border::new(
                                                                 1,
                                                                 theme.border,
-                                                                Length::px(8.0)
+                                                                px!(8.0)
                                                             )
                                                         )
                                                         .color(theme.foreground)
@@ -485,7 +520,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                                             Border::new(
                                                                 1,
                                                                 theme.pressed,
-                                                                Length::px(8.0)
+                                                                px!(8.0)
                                                             )
                                                         )
                                                         .color(theme.foreground)

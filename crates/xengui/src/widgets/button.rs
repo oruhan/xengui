@@ -266,6 +266,42 @@ impl Widget for Button {
         MeasureResult::new(width, height)
     }
 
+    // Runs even when the button has a fixed (non-auto) size, since
+    // `measure` is skipped entirely in that case and paint()'s
+    // content-centering math needs an up-to-date content_size/icon size.
+    fn on_layout_pass(&self, ctx: &mut MeasureContext) {
+        let scale_factor = ctx.scale_factor;
+        let style = &self.base.computed_style;
+
+        let font_size = style.font_size
+            .map(|s| s.to_physical(scale_factor))
+            .unwrap_or(DEFAULT_FONT_SIZE.to_physical(scale_factor));
+
+        let letter_spacing = style.letter_spacing
+            .map(|ls| ls.value().to_physical(scale_factor))
+            .unwrap_or(0.0);
+
+        let line_height = style.line_height
+            .map(|lh| lh.value().to_physical(scale_factor))
+            .unwrap_or(0.0);
+
+        let result = ctx.text.measure(
+            &self.content,
+            style.font.as_deref(),
+            font_size,
+            style.font_weight.unwrap_or_default(),
+            style.font_style.unwrap_or_default(),
+            letter_spacing,
+            line_height,
+            None
+        );
+
+        self.content_size.set((result.width, result.height));
+
+        let (icon_w, icon_h) = self.icon_natural_size();
+        self.icon_render_size.set((icon_w * scale_factor, icon_h * scale_factor));
+    }
+
     fn paint(&self, ctx: &mut PaintContext) {
         let style = &self.base.computed_style;
         let sf = ctx.scale_factor;
@@ -396,7 +432,7 @@ impl Widget for Button {
             text: self.content.clone(),
             position: (content_box.x, content_box.y),
             style: text_style,
-            max_width: Some(draw_max_width),
+            max_width: Some(draw_max_width * content_scale),
             clip_rect: None,
         });
     }

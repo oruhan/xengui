@@ -84,8 +84,17 @@ pub fn style_to_taffy(style: &Style, scale_factor: f32) -> TaffyStyle {
     if let Some(v) = style.flex_grow {
         t.flex_grow = v;
     }
+    #[allow(unused_parens)]
     if let Some(v) = style.flex_shrink {
         t.flex_shrink = v;
+    } else if style.min_size.is_some_and(|s| (s.width.is_some() || s.height.is_some())) {
+        // Taffy's own default (flex-shrink:1, matching web CSS) still lets
+        // the flex algorithm compress a content-sized item back down to its
+        // min_size whenever available space is tight, making an explicit
+        // min_size behave like a max instead of a floor. Only widgets that
+        // opted into min_size get this override, so ordinary shrink-to-fit
+        // layouts elsewhere are untouched.
+        t.flex_shrink = 0.0;
     }
     if let Some(v) = style.flex_basis {
         t.flex_basis = dim(v, scale_factor);
