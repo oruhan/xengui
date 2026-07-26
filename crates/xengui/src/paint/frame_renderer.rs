@@ -378,7 +378,11 @@ fn paint_recursive(
     }
     for mut command in overlay {
         apply_clip(&mut command, clip_rect);
-        commands.push((z_index, command));
+        // Overlay content (e.g. a View's scrollbar) is UI chrome for
+        // interacting with this widget's own children, so it must stay
+        // reachable above them regardless of any child's own z_index -
+        // pushed into top_commands instead of the sortable z_index stream.
+        top_commands.push(command);
     }
 
     let mut top_local = Vec::new();
