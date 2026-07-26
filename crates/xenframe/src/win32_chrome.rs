@@ -38,8 +38,16 @@ use windows_sys::Win32::Graphics::Dwm::{
     DWMWCP_ROUND,
 };
 use windows_sys::Win32::UI::Controls::MARGINS;
+use windows_sys::Win32::Graphics::Dwm::DwmFlush;
+use windows_sys::Win32::Graphics::Dwm::DWMWA_TRANSITIONS_FORCEDISABLED;
 
 const SUBCLASS_ID: usize = 1;
+
+pub fn flush_dwm() {
+    unsafe {
+        DwmFlush();
+    }
+}
 
 unsafe extern "system" fn custom_chrome_subclass(
     hwnd: HWND,
@@ -158,6 +166,16 @@ pub fn install_for_window(window: &Arc<Window>) {
             DWMWA_USE_IMMERSIVE_DARK_MODE as u32,
             &dark as *const _ as *const _,
             std::mem::size_of_val(&dark) as u32
+        );
+
+        // Stops DWM from cross-fading a stretched copy of the previous
+        // frame over the window during interactive resize.
+        let disable_transitions: i32 = 1;
+        let _ = DwmSetWindowAttribute(
+            hwnd,
+            DWMWA_TRANSITIONS_FORCEDISABLED as u32,
+            &disable_transitions as *const _ as *const _,
+            std::mem::size_of_val(&disable_transitions) as u32
         );
 
         // Attach subclassing via comctl32 safely

@@ -717,6 +717,8 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
                         new_size.width,
                         new_size.height
                     );
+                    #[cfg(target_os = "windows")]
+                    crate::win32_chrome::flush_dwm();
                     if !self.is_visible && let Some(window) = &self.window {
                         window.set_visible(true);
                         self.is_visible = true;
