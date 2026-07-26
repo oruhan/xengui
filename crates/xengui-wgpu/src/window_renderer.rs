@@ -29,7 +29,7 @@ impl WgpuWindowRenderer {
     {
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
             backends: if cfg!(target_os = "windows") {
-                wgpu::Backends::DX12
+                wgpu::Backends::VULKAN
             } else if cfg!(target_os = "macos") {
                 wgpu::Backends::METAL
             } else if cfg!(target_os = "linux") {
@@ -142,14 +142,11 @@ impl WgpuWindowRenderer {
 
         let pipelines = WgpuPipelines::new(&device, &queue, surface_format, user_fonts)?;
 
-        let alpha_mode = surface_caps.alpha_modes
-            .iter()
-            .copied()
-            .find(|&a| {
-                a == wgpu::CompositeAlphaMode::PreMultiplied ||
-                    a == wgpu::CompositeAlphaMode::PostMultiplied
-            })
-            .unwrap_or(wgpu::CompositeAlphaMode::Auto);
+        let alpha_mode = if surface_caps.alpha_modes.contains(&wgpu::CompositeAlphaMode::Opaque) {
+            wgpu::CompositeAlphaMode::Opaque
+        } else {
+            surface_caps.alpha_modes[0]
+        };
 
         log::info!(
             "surface alpha_mode selected: {:?} (available: {:?})",

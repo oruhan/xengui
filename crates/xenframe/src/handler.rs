@@ -89,12 +89,6 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
 
         #[cfg(not(target_arch = "wasm32"))]
         {
-            let decorations = if cfg!(target_os = "windows") {
-                true
-            } else {
-                self.config.decorations
-            };
-
             attributes = attributes
                 .with_title(&self.config.title)
                 .with_inner_size(
@@ -104,25 +98,7 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
                     )
                 )
                 .with_resizable(self.config.resizable)
-                .with_decorations(decorations);
-
-            // DWM blur-behind forces this window through DWM's own
-            // redirection surface, which is exactly what gets stretched
-            // while a new-sized swapchain frame is still catching up during
-            // a live resize - directly fighting `with_no_redirection_bitmap`
-            // below. Windows already gets its native chrome, shadow, and
-            // rounded corners from DWM itself (see `decorations` above), so
-            // this is only needed for xengui's own drawn chrome elsewhere.
-            #[cfg(not(target_os = "windows"))]
-            {
-                attributes = attributes.with_transparent(true).with_blur(true);
-            }
-
-            #[cfg(target_os = "windows")]
-            {
-                use winit::platform::windows::WindowAttributesExtWindows;
-                attributes = attributes.with_no_redirection_bitmap(true);
-            }
+                .with_decorations(self.config.decorations);
         }
 
         #[cfg(target_arch = "wasm32")]
