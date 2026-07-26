@@ -91,9 +91,6 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
         {
             use crate::WindowPosition;
 
-            // Windows' custom chrome subclasses a real decorated window
-            // (see win32_chrome::install_for_window) instead of relying on
-            // a fully borderless one, so decorations always start true here.
             let decorations = if cfg!(target_os = "windows") {
                 true
             } else {
@@ -112,6 +109,17 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
                 .with_decorations(decorations)
                 .with_transparent(true)
                 .with_blur(true);
+
+            // Windows keeps a GDI redirection bitmap over every window by
+            // default; DWM stretches its stale contents during live resize
+            // while the real flip-model swapchain renders correctly
+            // underneath, producing the ghost/stretch artifact. This flag
+            // removes that bitmap so DWM composites the swapchain directly.
+            #[cfg(target_os = "windows")]
+            {
+                use winit::platform::windows::WindowAttributesExtWindows;
+                attributes = attributes.with_no_redirection_bitmap(true);
+            }
 
             if let WindowPosition::Fixed(x, y) = self.config.position {
                 use winit::dpi::PhysicalPosition;
@@ -700,6 +708,7 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
                 }
             }
             WindowEvent::Resized(new_size) => {
+                log::info!("WM_SIZE fired: {:?} at {:?}", new_size, web_time::Instant::now());
                 if let Some(renderer) = &mut self.renderer {
                     // Paint synchronously inside the resize notification itself.
                     // Win32 pumps WM_SIZE inside its own modal sizing loop and

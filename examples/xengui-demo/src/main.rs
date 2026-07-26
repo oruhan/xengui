@@ -56,8 +56,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     {
         let _ = env_logger::Builder
             ::new()
-            .filter_module("xengui", log::LevelFilter::Info)
-            .filter_level(log::LevelFilter::Warn)
+            .filter_module("xenframe", log::LevelFilter::Info)
+            .filter_module("xengui", log::LevelFilter::Debug)
+            .filter_module("xengui_wgpu", log::LevelFilter::Trace)
+            .filter_level(log::LevelFilter::Warn) // diğer tüm crate'ler için varsayılan
             .format_timestamp(None)
             .try_init();
     }

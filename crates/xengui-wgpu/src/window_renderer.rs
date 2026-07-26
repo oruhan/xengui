@@ -190,7 +190,7 @@ impl WgpuWindowRenderer {
             width: width.max(1),
             height: height.max(1),
             present_mode,
-            desired_maximum_frame_latency: 1,
+            desired_maximum_frame_latency: 2,
             alpha_mode,
             view_formats: vec![],
             color_space: wgpu::SurfaceColorSpace::Auto,

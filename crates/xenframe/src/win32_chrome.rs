@@ -39,7 +39,6 @@ use windows_sys::Win32::Graphics::Dwm::{
 };
 use windows_sys::Win32::UI::Controls::MARGINS;
 use windows_sys::Win32::Graphics::Dwm::DwmFlush;
-use windows_sys::Win32::Graphics::Dwm::DWMWA_TRANSITIONS_FORCEDISABLED;
 
 const SUBCLASS_ID: usize = 1;
 
@@ -61,16 +60,16 @@ unsafe extern "system" fn custom_chrome_subclass(
         WM_NCCALCSIZE if wparam != 0 => {
             let params = unsafe { &mut *(lparam as *mut NCCALCSIZE_PARAMS) };
 
-            // Adjust client margins when window is maximized to prevent overflow
             if (unsafe { IsZoomed(hwnd) }) != 0 {
                 let mut rect = RECT { left: 0, top: 0, right: 0, bottom: 0 };
                 unsafe {
                     GetWindowRect(hwnd, &mut rect);
                 }
                 params.rgrc[0] = rect;
+                return WVR_REDRAW as LRESULT;
             }
 
-            return WVR_REDRAW as LRESULT;
+            return unsafe { DefSubclassProc(hwnd, msg, wparam, lparam) };
         }
         WM_NCHITTEST => {
             // Call default proc first to let OS evaluate base hit areas
@@ -167,17 +166,6 @@ pub fn install_for_window(window: &Arc<Window>) {
             &dark as *const _ as *const _,
             std::mem::size_of_val(&dark) as u32
         );
-
-        // Stops DWM from cross-fading a stretched copy of the previous
-        // frame over the window during interactive resize.
-        let disable_transitions: i32 = 1;
-        let _ = DwmSetWindowAttribute(
-            hwnd,
-            DWMWA_TRANSITIONS_FORCEDISABLED as u32,
-            &disable_transitions as *const _ as *const _,
-            std::mem::size_of_val(&disable_transitions) as u32
-        );
-
         // Attach subclassing via comctl32 safely
         SetWindowSubclass(hwnd, Some(custom_chrome_subclass), SUBCLASS_ID, 0);
     }
