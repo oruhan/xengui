@@ -169,14 +169,14 @@ impl WgpuWindowRenderer {
         let present_mode = surface_caps.present_modes
             .iter()
             .copied()
-            .find(|m| *m == wgpu::PresentMode::Mailbox)
+            .find(|m| *m == wgpu::PresentMode::Fifo)
             .or_else(||
                 surface_caps.present_modes
                     .iter()
                     .copied()
-                    .find(|m| *m == wgpu::PresentMode::Immediate)
+                    .find(|m| *m == wgpu::PresentMode::Mailbox)
             )
-            .unwrap_or(wgpu::PresentMode::Fifo);
+            .unwrap_or(wgpu::PresentMode::Immediate);
 
         log::info!(
             "surface present_mode selected: {:?} (available: {:?})",
@@ -314,16 +314,8 @@ impl WgpuWindowRenderer {
             self.draw_chrome_border(&mut encoder, &view, width, color, scale_factor);
         }
 
-        let _submission_index = self.queue.submit(Some(encoder.finish()));
+        self.queue.submit(Some(encoder.finish()));
         self.queue.present(frame);
-
-        #[cfg(target_os = "windows")]
-        {
-            let _ = self.device.poll(wgpu::PollType::Wait {
-                submission_index: Some(_submission_index),
-                timeout: None,
-            });
-        }
     }
 
     fn draw_chrome_shadow(

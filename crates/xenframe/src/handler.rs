@@ -89,8 +89,6 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
 
         #[cfg(not(target_arch = "wasm32"))]
         {
-            use crate::WindowPosition;
-
             let decorations = if cfg!(target_os = "windows") {
                 true
             } else {
@@ -106,25 +104,24 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
                     )
                 )
                 .with_resizable(self.config.resizable)
-                .with_decorations(decorations)
-                .with_transparent(true)
-                .with_blur(true);
+                .with_decorations(decorations);
 
-            // Windows keeps a GDI redirection bitmap over every window by
-            // default; DWM stretches its stale contents during live resize
-            // while the real flip-model swapchain renders correctly
-            // underneath, producing the ghost/stretch artifact. This flag
-            // removes that bitmap so DWM composites the swapchain directly.
+            // DWM blur-behind forces this window through DWM's own
+            // redirection surface, which is exactly what gets stretched
+            // while a new-sized swapchain frame is still catching up during
+            // a live resize - directly fighting `with_no_redirection_bitmap`
+            // below. Windows already gets its native chrome, shadow, and
+            // rounded corners from DWM itself (see `decorations` above), so
+            // this is only needed for xengui's own drawn chrome elsewhere.
+            #[cfg(not(target_os = "windows"))]
+            {
+                attributes = attributes.with_transparent(true).with_blur(true);
+            }
+
             #[cfg(target_os = "windows")]
             {
                 use winit::platform::windows::WindowAttributesExtWindows;
                 attributes = attributes.with_no_redirection_bitmap(true);
-            }
-
-            if let WindowPosition::Fixed(x, y) = self.config.position {
-                use winit::dpi::PhysicalPosition;
-
-                attributes = attributes.with_position(PhysicalPosition::new(x, y));
             }
         }
 
@@ -708,7 +705,11 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
                 }
             }
             WindowEvent::Resized(new_size) => {
-                log::info!("WindowEvent::Resized {:?} at {:?}", new_size, std::time::Instant::now());
+                log::info!(
+                    "WindowEvent::Resized {:?} at {:?}",
+                    new_size,
+                    std::time::Instant::now()
+                );
                 if let Some(renderer) = &mut self.renderer {
                     // Paint synchronously inside the resize notification itself.
                     // Win32 pumps WM_SIZE inside its own modal sizing loop and
