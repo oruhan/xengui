@@ -716,17 +716,7 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
             }
             WindowEvent::Resized(new_size) => {
                 if let Some(renderer) = &mut self.renderer {
-                    let theme = crate::window::system_theme(self.config.theme);
-                    let scale_factor = self.window
-                        .as_ref()
-                        .map_or(1.0, |w| w.scale_factor() as f32);
-                    renderer.resize(
-                        &mut self.root,
-                        theme,
-                        scale_factor,
-                        new_size.width,
-                        new_size.height
-                    );
+                    renderer.reconfigure_surface(new_size.width, new_size.height);
                     if !self.is_visible && let Some(window) = &self.window {
                         window.set_visible(true);
                         self.is_visible = true;

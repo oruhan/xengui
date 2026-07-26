@@ -454,4 +454,23 @@ impl WgpuWindowRenderer {
         }
         self.render_frame(tree, theme, scale_factor);
     }
+
+    /// Reconfigures the swapchain to `width`/`height` without drawing a
+    /// frame. Lets a burst of resize events keep the surface's own size in
+    /// sync immediately while the actual (expensive) redraw is deferred to
+    /// a single coalesced `RedrawRequested`, so the GPU never has to submit
+    /// and present a frame per intermediate resize step.
+    pub fn reconfigure_surface(&mut self, width: u32, height: u32) {
+        if
+            width == 0 ||
+            height == 0 ||
+            (width == self.config.width && height == self.config.height)
+        {
+            return;
+        }
+        self.config.width = width;
+        self.config.height = height;
+        self.surface.configure(&self.device, &self.config);
+        self.frame.resize();
+    }
 }
