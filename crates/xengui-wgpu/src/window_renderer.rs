@@ -236,12 +236,22 @@ impl WgpuWindowRenderer {
         let mut frame = None;
         for attempt in 0..MAX_ACQUIRE_ATTEMPTS {
             match self.surface.get_current_texture() {
-                | wgpu::CurrentSurfaceTexture::Success(t)
-                | wgpu::CurrentSurfaceTexture::Suboptimal(t) => {
+                wgpu::CurrentSurfaceTexture::Success(t) => {
                     frame = Some(t);
                     break;
                 }
-                wgpu::CurrentSurfaceTexture::Outdated | wgpu::CurrentSurfaceTexture::Lost => {
+                // Suboptimal means the acquired image isn't guaranteed to
+                // match the surface's real current size anymore (the
+                // window kept changing since this swapchain was last
+                // configured) - accepting it would bake that stale size
+                // into every viewport/NDC calculation below, and the
+                // compositor then stretches the mismatch again on top,
+                // compounding into visible corruption. Reconfiguring
+                // instead makes the next acquire hand back a texture
+                // sized to the window we actually have right now.
+                | wgpu::CurrentSurfaceTexture::Suboptimal(_)
+                | wgpu::CurrentSurfaceTexture::Outdated
+                | wgpu::CurrentSurfaceTexture::Lost => {
                     self.surface.configure(&self.device, &self.config);
                 }
                 // Reconfiguring drops the backed-up (stale-sized) image queue
@@ -275,6 +285,13 @@ impl WgpuWindowRenderer {
             return;
         };
 
+        // The size actually backing this texture, not merely the size we
+        // last asked the surface to configure to - these can briefly
+        // diverge around a resize, and rendering with the wrong one is
+        // what stretches/misaligns the frame relative to the real window.
+        let frame_size = frame.texture.size();
+        let (frame_width, frame_height) = (frame_size.width, frame_size.height);
+
         let view = frame.texture.create_view(&Default::default());
         let mut encoder = self.device.create_command_encoder(&Default::default());
 
@@ -290,8 +307,8 @@ impl WgpuWindowRenderer {
                 &self.queue,
                 &mut encoder,
                 &view,
-                self.config.width,
-                self.config.height
+                frame_width,
+                frame_height
             );
             if chrome_shadow_drawn {
                 backend.preserve_existing_content();
@@ -301,8 +318,8 @@ impl WgpuWindowRenderer {
                 &mut backend,
                 theme,
                 scale_factor,
-                self.config.width,
-                self.config.height
+                frame_width,
+                frame_height
             );
         }
 
