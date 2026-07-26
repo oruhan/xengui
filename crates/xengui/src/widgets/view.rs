@@ -195,6 +195,10 @@ pub struct View {
     scroll_step: f32,
     scrollbar_hovered: Cell<bool>,
     scrollbar_thickness_anim: Cell<f32>,
+    // Original (pre-gutter) right/bottom padding, so the scrollbar renders
+    // flush against it instead of the raw box edge.
+    scrollbar_right_inset: Cell<f32>,
+    scrollbar_bottom_inset: Cell<f32>,
     context_menu: Option<ContextMenuHandle>,
 }
 
@@ -214,6 +218,8 @@ impl View {
             scroll_step: 96.0,
             scrollbar_hovered: Cell::new(false),
             scrollbar_thickness_anim: Cell::new(0.0),
+            scrollbar_right_inset: Cell::new(0.0),
+            scrollbar_bottom_inset: Cell::new(0.0),
             context_menu: None,
         };
 
@@ -340,12 +346,17 @@ impl View {
     fn apply_scrollbar_gutter(&mut self) {
         let gutter = self.base.computed_style.scrollbar_gutter.unwrap_or_default();
         if gutter == ScrollbarGutter::Auto {
+            self.scrollbar_right_inset.set(0.0);
+            self.scrollbar_bottom_inset.set(0.0);
             return;
         }
 
         let thickness = self.resolved_scrollbar().thickness;
         let mut padding = self.base.computed_style.padding.unwrap_or_default();
         let (shows_x, shows_y) = self.scrollbar_visibility();
+
+        self.scrollbar_right_inset.set(if shows_y { padding.right.value() } else { 0.0 });
+        self.scrollbar_bottom_inset.set(if shows_x { padding.bottom.value() } else { 0.0 });
 
         if shows_y {
             padding.right = padding.right.add_px(thickness);
@@ -403,11 +414,13 @@ impl View {
 
         let b = self.layout_box;
         let t = self.resolved_scrollbar_for_state(true, false).thickness;
+        let right_inset = self.scrollbar_right_inset.get();
+        let bottom_inset = self.scrollbar_bottom_inset.get();
 
-        if active_y && point_in_rect(point, (b.x + b.width - t, b.y, t, b.height)) {
+        if active_y && point_in_rect(point, (b.x + b.width - right_inset - t, b.y, t, b.height)) {
             return true;
         }
-        if active_x && point_in_rect(point, (b.x, b.y + b.height - t, b.width, t)) {
+        if active_x && point_in_rect(point, (b.x, b.y + b.height - bottom_inset - t, b.width, t)) {
             return true;
         }
         false
@@ -504,7 +517,13 @@ impl View {
         let thumb_y = track_y + progress * (track_h - thumb_h);
 
         let thumb_w = (sb.thickness - SCROLLBAR_THUMB_PADDING * 2.0).max(1.0);
-        Some((b.x + b.width - sb.thickness + SCROLLBAR_THUMB_PADDING, thumb_y, thumb_w, thumb_h))
+        let right_inset = self.scrollbar_right_inset.get();
+        Some((
+            b.x + b.width - right_inset - sb.thickness + SCROLLBAR_THUMB_PADDING,
+            thumb_y,
+            thumb_w,
+            thumb_h,
+        ))
     }
 
     fn horizontal_thumb_rect(&self) -> Option<(f32, f32, f32, f32)> {
@@ -519,7 +538,13 @@ impl View {
         let thumb_x = track_x + progress * (track_w - thumb_w);
 
         let thumb_h = (sb.thickness - SCROLLBAR_THUMB_PADDING * 2.0).max(1.0);
-        Some((thumb_x, b.y + b.height - sb.thickness + SCROLLBAR_THUMB_PADDING, thumb_w, thumb_h))
+        let bottom_inset = self.scrollbar_bottom_inset.get();
+        Some((
+            thumb_x,
+            b.y + b.height - bottom_inset - sb.thickness + SCROLLBAR_THUMB_PADDING,
+            thumb_w,
+            thumb_h,
+        ))
     }
 
     fn vertical_buttons(&self) -> Option<(Rect, Rect)> {
@@ -529,9 +554,13 @@ impl View {
         }
         let b = self.layout_box;
         let t = self.active_scrollbar().thickness;
+        let right_inset = self.scrollbar_right_inset.get();
         let (has_x, _) = self.scrollbar_visibility();
         let bottom = if has_x { b.y + b.height - t } else { b.y + b.height };
-        Some(((b.x + b.width - t, b.y, t, t), (b.x + b.width - t, bottom - t, t, t)))
+        Some((
+            (b.x + b.width - right_inset - t, b.y, t, t),
+            (b.x + b.width - right_inset - t, bottom - t, t, t),
+        ))
     }
 
     fn horizontal_buttons(&self) -> Option<(Rect, Rect)> {
@@ -541,9 +570,13 @@ impl View {
         }
         let b = self.layout_box;
         let t = self.active_scrollbar().thickness;
+        let bottom_inset = self.scrollbar_bottom_inset.get();
         let (_, has_y) = self.scrollbar_visibility();
         let right = if has_y { b.x + b.width - t } else { b.x + b.width };
-        Some(((b.x, b.y + b.height - t, t, t), (right - t, b.y + b.height - t, t, t)))
+        Some((
+            (b.x, b.y + b.height - bottom_inset - t, t, t),
+            (right - t, b.y + b.height - bottom_inset - t, t, t),
+        ))
     }
 
     fn start_scroll_animation(&mut self, target: (f32, f32), ctx: &mut EventCtx) {
@@ -734,7 +767,15 @@ impl View {
                 if active_y && let Some((track_y, track_h)) = self.vertical_track_bounds() {
                     let t = self.active_scrollbar().thickness;
                     let b = self.layout_box;
-                    if point_in_rect(position, (b.x + b.width - t, track_y, t, track_h)) {
+                    let right_inset = self.scrollbar_right_inset.get();
+                    if
+                        point_in_rect(position, (
+                            b.x + b.width - right_inset - t,
+                            track_y,
+                            t,
+                            track_h,
+                        ))
+                    {
                         self.pending_track_drag.set(Some(true));
                         if let Some(target_y) = self.vertical_track_offset_for(position.1) {
                             let next = self.clamp_offset((target.0, target_y));
@@ -748,7 +789,15 @@ impl View {
                 if active_x && let Some((track_x, track_w)) = self.horizontal_track_bounds() {
                     let t = self.active_scrollbar().thickness;
                     let b = self.layout_box;
-                    if point_in_rect(position, (track_x, b.y + b.height - t, track_w, t)) {
+                    let bottom_inset = self.scrollbar_bottom_inset.get();
+                    if
+                        point_in_rect(position, (
+                            track_x,
+                            b.y + b.height - bottom_inset - t,
+                            track_w,
+                            t,
+                        ))
+                    {
                         self.pending_track_drag.set(Some(false));
                         if let Some(target_x) = self.horizontal_track_offset_for(position.0) {
                             let next = self.clamp_offset((target_x, target.1));
@@ -942,7 +991,7 @@ impl Widget for View {
 
             if sb.track_color.a() > 0.0 || track_border_width.is_some() {
                 ctx.draw_rect(RectCommand {
-                    position: (b.x + b.width - t, b.y),
+                    position: (b.x + b.width - self.scrollbar_right_inset.get() - t, b.y),
                     size: (t, b.height),
                     background: Some(
                         Background::Color(sb.track_color.with_alpha_f32(sb.track_color.a() * dim))
@@ -975,7 +1024,7 @@ impl Widget for View {
 
             if sb.track_color.a() > 0.0 || track_border_width.is_some() {
                 ctx.draw_rect(RectCommand {
-                    position: (b.x, b.y + b.height - t),
+                    position: (b.x, b.y + b.height - self.scrollbar_bottom_inset.get() - t),
                     size: (b.width, t),
                     background: Some(
                         Background::Color(sb.track_color.with_alpha_f32(sb.track_color.a() * dim))
@@ -1169,6 +1218,8 @@ impl Widget for View {
             self.content_size.set(old.content_size.get());
             self.scrollbar_hovered.set(old.scrollbar_hovered.get());
             self.scrollbar_thickness_anim.set(old.scrollbar_thickness_anim.get());
+            self.scrollbar_right_inset.set(old.scrollbar_right_inset.get());
+            self.scrollbar_bottom_inset.set(old.scrollbar_bottom_inset.get());
             self.anim_id = old.anim_id;
         }
     }
