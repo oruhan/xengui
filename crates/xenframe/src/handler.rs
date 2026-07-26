@@ -708,7 +708,7 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
                 }
             }
             WindowEvent::Resized(new_size) => {
-                log::info!("WM_SIZE fired: {:?} at {:?}", new_size, web_time::Instant::now());
+                log::info!("WindowEvent::Resized {:?} at {:?}", new_size, std::time::Instant::now());
                 if let Some(renderer) = &mut self.renderer {
                     // Paint synchronously inside the resize notification itself.
                     // Win32 pumps WM_SIZE inside its own modal sizing loop and

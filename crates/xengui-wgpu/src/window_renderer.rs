@@ -225,6 +225,8 @@ impl WgpuWindowRenderer {
         theme: SystemTheme,
         scale_factor: f32
     ) {
+        log::info!("render_frame: {}x{} at {:?}", self.config.width, self.config.height, std::time::Instant::now());
+
         const MAX_ACQUIRE_ATTEMPTS: u32 = 8;
         let mut frame = None;
         for attempt in 0..MAX_ACQUIRE_ATTEMPTS {
@@ -499,6 +501,7 @@ impl WgpuWindowRenderer {
     /// a single coalesced `RedrawRequested`, so the GPU never has to submit
     /// and present a frame per intermediate resize step.
     pub fn reconfigure_surface(&mut self, width: u32, height: u32) {
+        log::info!("reconfigure_surface: {}x{} at {:?}", width, height, std::time::Instant::now());
         if
             width == 0 ||
             height == 0 ||
