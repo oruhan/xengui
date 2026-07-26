@@ -202,6 +202,26 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
                     return;
                 }
 
+                // A large jump (fullscreen enter/exit) means the real
+                // viewport already changed instantly; easing the canvas
+                // toward it over 220ms leaves the page's own background
+                // visible in the gap until the animation catches up, so
+                // snap directly instead of animating in that case.
+                const SNAP_THRESHOLD_PX: f64 = 150.0;
+                if
+                    (current.width - target_w).abs() > SNAP_THRESHOLD_PX ||
+                    (current.height - target_h).abs() > SNAP_THRESHOLD_PX
+                {
+                    anim_running.set(false);
+                    anim_target.set((target_w, target_h));
+                    let phys = winit::dpi::LogicalSize
+                        ::new(target_w, target_h)
+                        .to_physical::<u32>(window.scale_factor());
+                    let _ = window.request_inner_size(phys);
+                    window.request_redraw();
+                    return;
+                }
+
                 anim_target.set((target_w, target_h));
 
                 anim_manager
@@ -210,7 +230,7 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
                         (),
                         AnimValue([target_w as f32, target_h as f32, 0.0, 0.0]),
                         Some(
-                            Transition::new(std::time::Duration::from_millis(220)).easing(
+                            Transition::new(web_time::Duration::from_millis(220)).easing(
                                 Easing::EaseOut
                             )
                         )
@@ -422,12 +442,18 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
 
         set_redraw_handle(std::rc::Rc::new(crate::redraw::WinitRedraw(window.clone())));
 
-        // Target dependent Graphics Pipeline initialization wrapper
         #[cfg(not(target_arch = "wasm32"))]
         {
             let user_fonts = std::mem::take(&mut self.config.fonts);
             let size = window.inner_size();
-            match xengui_wgpu::WgpuWindowRenderer::new(window, size.width, size.height, user_fonts) {
+            match
+                xengui_wgpu::WgpuWindowRenderer::new(
+                    window.clone(),
+                    size.width,
+                    size.height,
+                    user_fonts
+                )
+            {
                 Ok(mut renderer) => {
                     renderer.set_chrome(xengui_wgpu::WindowChrome {
                         radius: self.config.window_radius,
@@ -436,6 +462,30 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
                     });
                     self.renderer = Some(renderer);
                     log::info!("application resumed, gpu context ready");
+
+                    #[cfg(target_os = "windows")]
+                    if !self.config.decorations {
+                        let window_for_tick = window.clone();
+                        let self_ptr: *mut Self = self;
+                        crate::win32_chrome::set_resize_tick_callback(move || {
+                            // SAFETY: the timer only fires while the window (and
+                            // therefore this App) is alive, since WM_EXITSIZEMOVE/
+                            // WM_DESTROY always stop it first.
+                            let app = unsafe { &mut *self_ptr };
+                            let size = window_for_tick.inner_size();
+                            if let Some(renderer) = &mut app.renderer {
+                                let theme = crate::window::system_theme(app.config.theme);
+                                let scale_factor = window_for_tick.scale_factor() as f32;
+                                renderer.resize(
+                                    &mut app.root,
+                                    theme,
+                                    scale_factor,
+                                    size.width,
+                                    size.height
+                                );
+                            }
+                        });
+                    }
                 }
                 Err(e) => {
                     log::info!("cannot start gpu pipeline: {}", e);
@@ -681,17 +731,15 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
                 }
             }
             WindowEvent::Resized(new_size) => {
-                log::info!(
-                    "WindowEvent::Resized {:?} at {:?}",
-                    new_size,
-                    std::time::Instant::now()
-                );
+                log::info!("WindowEvent::Resized {:?} at {:?}", new_size, web_time::Instant::now());
                 if let Some(renderer) = &mut self.renderer {
                     // Paint synchronously inside the resize notification itself.
                     // Win32 pumps WM_SIZE inside its own modal sizing loop and
                     // never reaches RedrawRequested/about_to_wait while the
                     // mouse button is held, so deferring the draw leaves the
                     // previous, wrong-sized frame on screen.
+                    #[cfg(target_os = "windows")]
+                    crate::win32_chrome::flush_dwm();
                     let theme = crate::window::system_theme(self.config.theme);
                     let scale_factor = self.window
                         .as_ref()

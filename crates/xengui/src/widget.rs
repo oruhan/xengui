@@ -428,7 +428,7 @@ pub trait Widget: Any {
 
     fn transfer_measured_state(&mut self, _old: &dyn Widget) {}
 
-    fn blink_interval(&self) -> Option<std::time::Duration> {
+    fn blink_interval(&self) -> Option<web_time::Duration> {
         None
     }
 

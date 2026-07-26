@@ -166,14 +166,14 @@ impl WgpuWindowRenderer {
         let present_mode = surface_caps.present_modes
             .iter()
             .copied()
-            .find(|m| *m == wgpu::PresentMode::Fifo)
+            .find(|m| *m == wgpu::PresentMode::Immediate)
             .or_else(||
                 surface_caps.present_modes
                     .iter()
                     .copied()
                     .find(|m| *m == wgpu::PresentMode::Mailbox)
             )
-            .unwrap_or(wgpu::PresentMode::Immediate);
+            .unwrap_or(wgpu::PresentMode::Fifo);
 
         log::info!(
             "surface present_mode selected: {:?} (available: {:?})",
@@ -226,7 +226,7 @@ impl WgpuWindowRenderer {
             "render_frame: {}x{} at {:?}",
             self.config.width,
             self.config.height,
-            std::time::Instant::now()
+            web_time::Instant::now()
         );
 
         const MAX_ACQUIRE_ATTEMPTS: u32 = 8;
@@ -522,7 +522,7 @@ impl WgpuWindowRenderer {
     /// a single coalesced `RedrawRequested`, so the GPU never has to submit
     /// and present a frame per intermediate resize step.
     pub fn reconfigure_surface(&mut self, width: u32, height: u32) {
-        log::info!("reconfigure_surface: {}x{} at {:?}", width, height, std::time::Instant::now());
+        log::info!("reconfigure_surface: {}x{} at {:?}", width, height, web_time::Instant::now());
         if
             width == 0 ||
             height == 0 ||

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-use std::time::Duration;
+use web_time::Duration;
 
 use xen_animation::{ Easing, Transition };
 
@@ -28,10 +28,10 @@ pub const DEFAULT_SCROLLBAR_HOVER_THICKNESS: f32 = 15.0;
 // Eased transition applied to scroll position when animating toward a
 // wheel/nudge target; drag updates bypass this and snap instantly.
 pub const SCROLL_TRANSITION: Transition = Transition::new(
-    std::time::Duration::from_millis(250)
+    web_time::Duration::from_millis(250)
 ).easing(Easing::EaseOut);
 pub const SCROLLBAR_THICKNESS_TRANSITION: Transition = Transition::new(
-    std::time::Duration::from_millis(160)
+    web_time::Duration::from_millis(160)
 ).easing(Easing::EaseOut);
 
 /// Opacity applied to a `Scroll`-mode scrollbar axis that has nothing to

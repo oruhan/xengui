@@ -46,7 +46,7 @@ use crate::{
 use smol_str::SmolStr;
 use std::cell::{ Cell, RefCell };
 use std::rc::Rc;
-use std::time::Duration;
+use web_time::Duration;
 
 type ClickCallback = Box<dyn FnMut(&mut EventCtx)>;
 

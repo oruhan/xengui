@@ -13,3 +13,6 @@ readme = "README.md"
 
 keywords = ["animation", "transition", "easing", "interpolation", "gui"]
 categories = ["gui", "graphics", "game-development"]
+
+[dependencies]
+web-time = { workspace = true }

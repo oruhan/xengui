@@ -26,7 +26,7 @@ Callers never own a timer themselves - they only report their current target val
 ## Example
 
 ```rust
-use std::time::Duration;
+use web_time::Duration;
 use xen_animation::{AnimationManager, AnimValue, Easing, Transition};
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]

@@ -12,6 +12,7 @@ xen-router = { workspace = true }
 xen-clipboard = { workspace = true }
 xengui-lucide = { workspace = true }
 log = { workspace = true }
+web-time = { workspace = true }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 env_logger = { workspace = true }

@@ -171,7 +171,7 @@ impl App {
 
         // Budget kept well under a 16.6ms frame so input handling and
         // painting on the same thread never starve.
-        const SLICE: std::time::Duration = std::time::Duration::from_millis(5);
+        const SLICE: web_time::Duration = web_time::Duration::from_millis(5);
         let deadline = Instant::now() + SLICE;
 
         match work.perform_work(&mut self.root, deadline) {

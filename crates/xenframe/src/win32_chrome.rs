@@ -7,28 +7,7 @@ use winit::window::Window;
 use windows_sys::Win32::Foundation::{ HWND, LPARAM, LRESULT, RECT, WPARAM };
 use windows_sys::Win32::UI::Shell::{ DefSubclassProc, RemoveWindowSubclass, SetWindowSubclass };
 use windows_sys::Win32::UI::WindowsAndMessaging::{
-    GetWindowRect,
-    HTBOTTOM,
-    HTBOTTOMLEFT,
-    HTBOTTOMRIGHT,
-    HTCLIENT,
-    HTLEFT,
-    HTRIGHT,
-    HTTOP,
-    HTTOPLEFT,
-    HTTOPRIGHT,
-    IsZoomed,
-    NCCALCSIZE_PARAMS,
-    SWP_FRAMECHANGED,
-    SWP_NOACTIVATE,
-    SWP_NOMOVE,
-    SWP_NOSIZE,
-    SWP_NOZORDER,
-    SetWindowPos,
-    WM_DESTROY,
-    WM_NCCALCSIZE,
-    WM_NCHITTEST,
-    WVR_REDRAW,
+    GetWindowRect, HTBOTTOM, HTBOTTOMLEFT, HTBOTTOMRIGHT, HTCLIENT, HTLEFT, HTRIGHT, HTTOP, HTTOPLEFT, HTTOPRIGHT, IsZoomed, KillTimer, NCCALCSIZE_PARAMS, SWP_FRAMECHANGED, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER, SetTimer, SetWindowPos, WM_DESTROY, WM_ENTERSIZEMOVE, WM_EXITSIZEMOVE, WM_NCCALCSIZE, WM_NCHITTEST, WM_TIMER, WVR_REDRAW,
 };
 use windows_sys::Win32::Graphics::Dwm::{
     DwmExtendFrameIntoClientArea,
@@ -41,6 +20,27 @@ use windows_sys::Win32::UI::Controls::MARGINS;
 use windows_sys::Win32::Graphics::Dwm::DwmFlush;
 
 const SUBCLASS_ID: usize = 1;
+const RESIZE_TIMER_ID: usize = 1;
+// ~120Hz cap: fast enough to feel responsive during a drag, without
+// flooding the GPU with more presents than a modal WM_SIZE loop needs.
+const RESIZE_TIMER_INTERVAL_MS: u32 = 8;
+
+thread_local! {
+    static RESIZE_TICK: std::cell::RefCell<Option<Box<dyn FnMut()>>> = const {
+        std::cell::RefCell::new(None)
+    };
+}
+
+/// Registers the closure called on every `WM_TIMER` tick while a modal
+/// resize/move loop is active. The caller (xenframe::App) should capture
+/// whatever it needs to re-measure the client area and repaint - Win32
+/// delivers `WM_SIZE` synchronously inside that loop, so without this
+/// timer nothing else in the app gets a chance to run until the drag ends.
+pub fn set_resize_tick_callback(f: impl FnMut() + 'static) {
+    RESIZE_TICK.with(|cell| {
+        *cell.borrow_mut() = Some(Box::new(f));
+    });
+}
 
 pub fn flush_dwm() {
     unsafe {
@@ -108,9 +108,28 @@ unsafe extern "system" fn custom_chrome_subclass(
                 return custom_hit as LRESULT;
             }
         }
+        WM_ENTERSIZEMOVE => {
+            unsafe {
+                SetTimer(hwnd, RESIZE_TIMER_ID, RESIZE_TIMER_INTERVAL_MS, None);
+            }
+        }
+        WM_TIMER if wparam == RESIZE_TIMER_ID => {
+            RESIZE_TICK.with(|cell| {
+                if let Some(tick) = cell.borrow_mut().as_mut() {
+                    tick();
+                }
+            });
+            return 0;
+        }
+        WM_EXITSIZEMOVE => {
+            unsafe {
+                KillTimer(hwnd, RESIZE_TIMER_ID);
+            }
+        }
         WM_DESTROY => {
             // Remove subclass hook when window is destroyed
             unsafe {
+                KillTimer(hwnd, RESIZE_TIMER_ID);
                 RemoveWindowSubclass(hwnd, Some(custom_chrome_subclass), SUBCLASS_ID);
             }
         }

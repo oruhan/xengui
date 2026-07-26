@@ -1321,8 +1321,8 @@ impl Widget for TextBox {
         self.base.dirty = true;
     }
 
-    fn blink_interval(&self) -> Option<std::time::Duration> {
-        self.base.interaction.focused.then_some(std::time::Duration::from_millis(530))
+    fn blink_interval(&self) -> Option<web_time::Duration> {
+        self.base.interaction.focused.then_some(web_time::Duration::from_millis(530))
     }
 
     fn anim_id(&self) -> WidgetId {

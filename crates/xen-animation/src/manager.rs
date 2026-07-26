@@ -2,7 +2,7 @@
 use super::{ AnimValue, Transition };
 use std::collections::HashMap;
 use std::hash::Hash;
-use std::time::Duration;
+use web_time::Duration;
 
 // A single in-flight transition: where it started from, where it's headed,
 // the timing function driving it, and how much time has elapsed since it began.

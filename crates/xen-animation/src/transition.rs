@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-use std::time::Duration;
+use web_time::Duration;
 use super::Easing;
 
 /// Describes how a single animated value should move from its current

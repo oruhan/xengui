@@ -111,7 +111,8 @@ impl FrameRenderer {
                 &mut top_commands,
                 &mut live_keys,
                 None,
-                scale_factor
+                scale_factor,
+                0
             );
         }
         self.render_cache.retain_keys(&live_keys);
@@ -308,7 +309,8 @@ fn paint_recursive(
     top_commands: &mut Vec<DrawCommand>,
     live_keys: &mut HashSet<String>,
     clip_rect: Option<(f32, f32, f32, f32)>,
-    scale_factor: f32
+    scale_factor: f32,
+    parent_z_index: i32
 ) {
     let layout_box = *widget.layout_box();
 
@@ -325,7 +327,10 @@ fn paint_recursive(
 
     live_keys.insert(path.to_string());
 
-    let z_index = widget.computed_style().z_index.unwrap_or(0);
+    // Inherits the nearest ancestor's z_index when this widget doesn't set
+    // its own, so a header's children stack above/below other siblings the
+    // same way the header itself does, instead of resetting to 0.
+    let z_index = widget.computed_style().z_index.unwrap_or(parent_z_index);
 
     let own_commands: Vec<DrawCommand> = match cache.try_reuse(path, layout_box, widget.is_dirty()) {
         Some(cached) => cached.to_vec(),
@@ -361,7 +366,8 @@ fn paint_recursive(
             top_commands,
             live_keys,
             child_clip,
-            scale_factor
+            scale_factor,
+            z_index
         );
     }
 

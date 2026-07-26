@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
-//use std::time::Duration;
+//use web_time::Duration;
 
-use std::time::Duration;
+use web_time::Duration;
 
 #[cfg(not(target_arch = "wasm32"))]
 use xenframe::WindowPosition;
@@ -107,7 +107,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         .child(
                             View::new()
                                 .position(Position::Sticky)
-                                .margin(Edges::only(0, 0, 0, 0))
+                                .top(0)
+                                .z_index(10)
                                 .display(Flex)
                                 .flex_direction(Row)
                                 .align_items(AlignItems::Center)
