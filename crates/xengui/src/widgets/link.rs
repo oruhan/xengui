@@ -317,14 +317,6 @@ impl Widget for Link {
     fn paint(&self, ctx: &mut PaintContext) {
         let style = &self.base.computed_style;
 
-        log::trace!(
-            "paint -> '{}' x={} y={} dirty={:?}",
-            self.content,
-            self.layout_box.x,
-            self.layout_box.y,
-            self.is_dirty()
-        );
-
         self.paint_box(ctx);
         self.paint_outline(ctx);
 

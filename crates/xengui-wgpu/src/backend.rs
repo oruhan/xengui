@@ -1,7 +1,22 @@
 // SPDX-License-Identifier: Apache-2.0
-use crate::pipelines::{ BoxShadowPipeline, ImagePipeline, RectPipeline, TextPipeline, TrianglePipeline, WindowMaskPipeline };
+use crate::pipelines::{
+    BoxShadowPipeline,
+    ImagePipeline,
+    RectPipeline,
+    TextPipeline,
+    TrianglePipeline,
+    WindowMaskPipeline,
+};
 use xengui::{
-    BoxShadowCommand, Color, ImageCommand, RectCommand, RenderBackend, SystemTheme, TextCommand, TextMeasurer, TriangleCommand,
+    BoxShadowCommand,
+    Color,
+    ImageCommand,
+    RectCommand,
+    RenderBackend,
+    SystemTheme,
+    TextCommand,
+    TextMeasurer,
+    TriangleCommand,
 };
 
 /// Owns the four wgpu render pipelines xengui needs, built once against a
@@ -82,8 +97,40 @@ pub struct WgpuFrame<'a> {
 }
 
 impl<'a> WgpuFrame<'a> {
-    // First shape draw of the frame clears with the app background;
-    // every later one just loads what's already on screen.
+    // Every frame always starts from the background color, regardless of
+    // what gets painted - otherwise a frame with zero rect/triangle/image
+    // commands leaves the swapchain's previous (differently-sized) content
+    // on screen.
+    fn clear_frame(&mut self) {
+        let bg = self.background;
+        let _ = self.encoder.begin_render_pass(
+            &(wgpu::RenderPassDescriptor {
+                label: Some("xengui clear pass"),
+                color_attachments: &[
+                    Some(wgpu::RenderPassColorAttachment {
+                        view: self.view,
+                        resolve_target: None,
+                        ops: wgpu::Operations {
+                            load: wgpu::LoadOp::Clear(wgpu::Color {
+                                r: bg.r() as f64,
+                                g: bg.g() as f64,
+                                b: bg.b() as f64,
+                                a: bg.a() as f64,
+                            }),
+                            store: wgpu::StoreOp::Store,
+                        },
+                        depth_slice: None,
+                    }),
+                ],
+                depth_stencil_attachment: None,
+                timestamp_writes: None,
+                occlusion_query_set: None,
+                multiview_mask: None,
+            })
+        );
+        self.shape_pass_open = true;
+    }
+
     fn shape_pass_load(&mut self) -> wgpu::LoadOp<wgpu::Color> {
         if self.shape_pass_open {
             return wgpu::LoadOp::Load;
@@ -113,6 +160,9 @@ impl<'a> RenderBackend for WgpuFrame<'a> {
 
     fn begin_frame(&mut self, background: Color, _width: u32, _height: u32) -> bool {
         self.background = background;
+        if !self.shape_pass_open {
+            self.clear_frame();
+        }
         true
     }
 

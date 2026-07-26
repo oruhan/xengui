@@ -228,14 +228,6 @@ impl Widget for Image {
     }
 
     fn paint(&self, ctx: &mut PaintContext) {
-        log::trace!(
-            "paint -> '{:?}' x={} y={} dirty={:?}",
-            self.get_key(),
-            self.layout_box.x,
-            self.layout_box.y,
-            self.is_dirty()
-        );
-
         self.paint_box(ctx);
         self.paint_outline(ctx);
 

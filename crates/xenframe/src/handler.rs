@@ -667,7 +667,6 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
         match event {
             WindowEvent::CloseRequested => _event_loop.exit(),
             WindowEvent::RedrawRequested => {
-                log::info!("RedrawRequested fired, is_visible={}", self.is_visible);
                 if hooks::take_dirty() {
                     if crate::app::take_reload_requested() {
                         self.reload();
@@ -716,13 +715,25 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
             }
             WindowEvent::Resized(new_size) => {
                 if let Some(renderer) = &mut self.renderer {
-                    renderer.reconfigure_surface(new_size.width, new_size.height);
+                    // Paint synchronously inside the resize notification itself.
+                    // Win32 pumps WM_SIZE inside its own modal sizing loop and
+                    // never reaches RedrawRequested/about_to_wait while the
+                    // mouse button is held, so deferring the draw leaves the
+                    // previous, wrong-sized frame on screen.
+                    let theme = crate::window::system_theme(self.config.theme);
+                    let scale_factor = self.window
+                        .as_ref()
+                        .map_or(1.0, |w| w.scale_factor() as f32);
+                    renderer.resize(
+                        &mut self.root,
+                        theme,
+                        scale_factor,
+                        new_size.width,
+                        new_size.height
+                    );
                     if !self.is_visible && let Some(window) = &self.window {
                         window.set_visible(true);
                         self.is_visible = true;
-                    }
-                    if let Some(window) = &self.window {
-                        window.request_redraw();
                     }
                 }
             }

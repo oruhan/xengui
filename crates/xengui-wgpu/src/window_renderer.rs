@@ -51,8 +51,6 @@ impl WgpuWindowRenderer {
             ::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions::default()))
             .expect("Cannot find a compatible adapter");
 
-        log::trace!("adapter limits: {:?}", adapter.limits());
-
         let (device, queue) = pollster
             ::block_on(
                 adapter.request_device(
@@ -203,33 +201,43 @@ impl WgpuWindowRenderer {
         theme: SystemTheme,
         scale_factor: f32
     ) {
-        let frame = match self.surface.get_current_texture() {
-            wgpu::CurrentSurfaceTexture::Success(t) => t,
-            wgpu::CurrentSurfaceTexture::Suboptimal(t) => t,
-            wgpu::CurrentSurfaceTexture::Outdated | wgpu::CurrentSurfaceTexture::Lost => {
-                log::warn!("Surface lost/outdated, reconfiguring.");
-                self.surface.configure(&self.device, &self.config);
-                return;
+        // Outdated/Lost/Timeout right after a resize are expected while the
+        // swapchain catches up to the new size - reconfiguring and retrying
+        // immediately (instead of skipping the frame) is what guarantees a
+        // real, correctly sized frame replaces the stale one on screen.
+        const MAX_ACQUIRE_ATTEMPTS: u32 = 4;
+        let mut frame = None;
+        for _ in 0..MAX_ACQUIRE_ATTEMPTS {
+            match self.surface.get_current_texture() {
+                | wgpu::CurrentSurfaceTexture::Success(t)
+                | wgpu::CurrentSurfaceTexture::Suboptimal(t) => {
+                    frame = Some(t);
+                    break;
+                }
+                wgpu::CurrentSurfaceTexture::Outdated | wgpu::CurrentSurfaceTexture::Lost => {
+                    self.surface.configure(&self.device, &self.config);
+                }
+                wgpu::CurrentSurfaceTexture::Timeout => {}
+                wgpu::CurrentSurfaceTexture::Occluded => {
+                    log::trace!("Surface occluded, skipping frame.");
+                    return;
+                }
+                wgpu::CurrentSurfaceTexture::Validation => {
+                    log::warn!("Surface validation error, skipping frame.");
+                    return;
+                }
+                #[allow(unreachable_patterns)]
+                _ => {
+                    log::warn!("Unhandled surface texture state, skipping frame.");
+                    return;
+                }
             }
-            wgpu::CurrentSurfaceTexture::Timeout => {
-                log::debug!("Surface timeout, skipping frame.");
-                return;
-            }
-            wgpu::CurrentSurfaceTexture::Occluded => {
-                log::debug!("Surface occluded, skipping frame.");
-                return;
-            }
-            wgpu::CurrentSurfaceTexture::Validation => {
-                log::warn!("Surface validation error, skipping frame.");
-                return;
-            }
-            #[allow(unreachable_patterns)]
-            _ => {
-                log::warn!("Unhandled surface texture state, skipping frame.");
-                return;
-            }
+        }
+        let Some(frame) = frame else {
+            log::trace!("Surface acquire failed after retries, skipping frame.");
+            return;
         };
-
+        
         let view = frame.texture.create_view(&Default::default());
         let mut encoder = self.device.create_command_encoder(&Default::default());
 

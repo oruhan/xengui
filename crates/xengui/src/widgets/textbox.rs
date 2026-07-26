@@ -940,14 +940,6 @@ impl Widget for TextBox {
     }
 
     fn paint(&self, ctx: &mut PaintContext) {
-        log::trace!(
-            "paint -> '{:?}' x={} y={} dirty={:?}",
-            self.content,
-            self.layout_box.x,
-            self.layout_box.y,
-            self.is_dirty()
-        );
-
         let style = &self.base.computed_style;
 
         self.paint_box(ctx);
