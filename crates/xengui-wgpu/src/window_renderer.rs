@@ -157,15 +157,39 @@ impl WgpuWindowRenderer {
             surface_caps.alpha_modes
         );
 
+        // Fifo blocks get_current_texture() until the previous frame's
+        // vsync completes. The whole resize pipeline runs synchronously
+        // inside WM_SIZE (Windows never pumps RedrawRequested during a
+        // live resize), so a blocked acquire stalls that handler - DWM
+        // then stretches the last presented (stale-sized) buffer to fill
+        // the already-grown window until the stalled call returns. A
+        // non-blocking present mode keeps acquire immediate so every
+        // WM_SIZE can finish its own layout/raster/present without
+        // falling behind the drag.
+        let present_mode = surface_caps.present_modes
+            .iter()
+            .copied()
+            .find(|m| *m == wgpu::PresentMode::Immediate)
+            .or_else(||
+                surface_caps.present_modes
+                    .iter()
+                    .copied()
+                    .find(|m| *m == wgpu::PresentMode::Mailbox)
+            )
+            .unwrap_or(wgpu::PresentMode::Fifo);
+
+        log::info!(
+            "surface present_mode selected: {:?} (available: {:?})",
+            present_mode,
+            surface_caps.present_modes
+        );
+
         let config = wgpu::SurfaceConfiguration {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
             format: surface_format,
             width: width.max(1),
             height: height.max(1),
-            present_mode: wgpu::PresentMode::Fifo,
-            // Lower buffering latency so a presented frame reaches the screen
-            // sooner, shrinking the window where DWM shows a stretched
-            // previous frame while catching up to a burst of resize events.
+            present_mode,
             desired_maximum_frame_latency: 1,
             alpha_mode,
             view_formats: vec![],
@@ -201,13 +225,9 @@ impl WgpuWindowRenderer {
         theme: SystemTheme,
         scale_factor: f32
     ) {
-        // Outdated/Lost/Timeout right after a resize are expected while the
-        // swapchain catches up to the new size - reconfiguring and retrying
-        // immediately (instead of skipping the frame) is what guarantees a
-        // real, correctly sized frame replaces the stale one on screen.
-        const MAX_ACQUIRE_ATTEMPTS: u32 = 4;
+        const MAX_ACQUIRE_ATTEMPTS: u32 = 8;
         let mut frame = None;
-        for _ in 0..MAX_ACQUIRE_ATTEMPTS {
+        for attempt in 0..MAX_ACQUIRE_ATTEMPTS {
             match self.surface.get_current_texture() {
                 | wgpu::CurrentSurfaceTexture::Success(t)
                 | wgpu::CurrentSurfaceTexture::Suboptimal(t) => {
@@ -217,7 +237,14 @@ impl WgpuWindowRenderer {
                 wgpu::CurrentSurfaceTexture::Outdated | wgpu::CurrentSurfaceTexture::Lost => {
                     self.surface.configure(&self.device, &self.config);
                 }
-                wgpu::CurrentSurfaceTexture::Timeout => {}
+                // Reconfiguring drops the backed-up (stale-sized) image queue
+                // instead of spinning on it, so a resize-triggered paint isn't
+                // starved mid-drag.
+                wgpu::CurrentSurfaceTexture::Timeout => {
+                    if attempt >= MAX_ACQUIRE_ATTEMPTS / 2 {
+                        self.surface.configure(&self.device, &self.config);
+                    }
+                }
                 wgpu::CurrentSurfaceTexture::Occluded => {
                     log::trace!("Surface occluded, skipping frame.");
                     return;
@@ -234,10 +261,13 @@ impl WgpuWindowRenderer {
             }
         }
         let Some(frame) = frame else {
-            log::trace!("Surface acquire failed after retries, skipping frame.");
+            // A frame dropped here during a live resize is the ghosting
+            // symptom itself: the compositor keeps stretching the last
+            // presented (now wrong-sized) buffer until a new one lands.
+            log::warn!("Surface acquire failed after retries, skipping frame.");
             return;
         };
-        
+
         let view = frame.texture.create_view(&Default::default());
         let mut encoder = self.device.create_command_encoder(&Default::default());
 

@@ -373,6 +373,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 )
                                 .child(
                                     Button::new()
+                                        .label("")
+                                        .font_size(15)
+                                        .width(px!(64))
+                                        .height(px!(48))
+                                        .background(Color::BLUE_500)
+                                        .padding(Edges::only(12, 8, 12, 8))
+                                        .border(Border::new(1, Color::BLUE_500, px!(8.0)))
+                                        .transition_all(Transition::new(Duration::from_millis(200)))
+                                        .hover_style(|s, _theme: &Theme|
+                                            s.border(Border::new(1, Color::BLUE_500, px!(20.0)))
+                                        )
+                                )
+                                .child(
+                                    Button::new()
                                         .label("disabled_button1")
                                         .enabled(false)
                                         .font_size(13)
