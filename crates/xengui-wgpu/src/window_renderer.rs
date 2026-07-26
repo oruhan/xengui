@@ -246,9 +246,11 @@ impl WgpuWindowRenderer {
                 // compounding into visible corruption. Reconfiguring
                 // instead makes the next acquire hand back a texture
                 // sized to the window we actually have right now.
-                | wgpu::CurrentSurfaceTexture::Suboptimal(_)
-                | wgpu::CurrentSurfaceTexture::Outdated
-                | wgpu::CurrentSurfaceTexture::Lost => {
+                wgpu::CurrentSurfaceTexture::Suboptimal(texture) => {
+                    drop(texture);
+                    self.surface.configure(&self.device, &self.config);
+                }
+                wgpu::CurrentSurfaceTexture::Outdated | wgpu::CurrentSurfaceTexture::Lost => {
                     self.surface.configure(&self.device, &self.config);
                 }
                 // Reconfiguring drops the backed-up (stale-sized) image queue
