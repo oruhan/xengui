@@ -314,8 +314,16 @@ impl WgpuWindowRenderer {
             self.draw_chrome_border(&mut encoder, &view, width, color, scale_factor);
         }
 
-        self.queue.submit(Some(encoder.finish()));
+        let _submission_index = self.queue.submit(Some(encoder.finish()));
         self.queue.present(frame);
+
+        #[cfg(target_os = "windows")]
+        {
+            let _ = self.device.poll(wgpu::PollType::Wait {
+                submission_index: Some(_submission_index),
+                timeout: None,
+            });
+        }
     }
 
     fn draw_chrome_shadow(
