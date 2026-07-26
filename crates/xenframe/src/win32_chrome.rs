@@ -8,8 +8,6 @@ use windows_sys::Win32::Foundation::{ HWND, LPARAM, LRESULT, RECT, WPARAM };
 use windows_sys::Win32::UI::Shell::{ DefSubclassProc, RemoveWindowSubclass, SetWindowSubclass };
 use windows_sys::Win32::UI::WindowsAndMessaging::{
     GetWindowRect,
-    IsZoomed,
-    SetWindowPos,
     HTBOTTOM,
     HTBOTTOMLEFT,
     HTBOTTOMRIGHT,
@@ -19,15 +17,18 @@ use windows_sys::Win32::UI::WindowsAndMessaging::{
     HTTOP,
     HTTOPLEFT,
     HTTOPRIGHT,
+    IsZoomed,
     NCCALCSIZE_PARAMS,
     SWP_FRAMECHANGED,
     SWP_NOACTIVATE,
     SWP_NOMOVE,
     SWP_NOSIZE,
     SWP_NOZORDER,
+    SetWindowPos,
     WM_DESTROY,
     WM_NCCALCSIZE,
     WM_NCHITTEST,
+    WVR_REDRAW,
 };
 use windows_sys::Win32::Graphics::Dwm::{
     DwmExtendFrameIntoClientArea,
@@ -61,8 +62,7 @@ unsafe extern "system" fn custom_chrome_subclass(
                 params.rgrc[0] = rect;
             }
 
-            // Return 0 to remove the native OS titlebar area entirely
-            return 0;
+            return WVR_REDRAW as LRESULT;
         }
         WM_NCHITTEST => {
             // Call default proc first to let OS evaluate base hit areas
