@@ -681,7 +681,25 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
                         .as_ref()
                         .map_or(1.0, |w| w.scale_factor() as f32);
 
-                    renderer.render_frame(&mut self.root, theme, scale_factor);
+                    // Re-syncs against the window's real current size before
+                    // painting - during interactive resize a paint can arrive
+                    // slightly out of sync with the matching resize event, and
+                    // painting into a stale-sized surface is what gets visibly
+                    // stretched by the compositor.
+                    match &self.window {
+                        Some(window) => {
+                            let size = window.inner_size();
+                            renderer.resize(
+                                &mut self.root,
+                                theme,
+                                scale_factor,
+                                size.width,
+                                size.height
+                            );
+                        }
+                        None => renderer.render_frame(&mut self.root, theme, scale_factor),
+                    }
+
                     if !self.is_visible && let Some(window) = &self.window {
                         window.set_visible(true);
                         self.is_visible = true;
@@ -712,6 +730,9 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
                     if !self.is_visible && let Some(window) = &self.window {
                         window.set_visible(true);
                         self.is_visible = true;
+                    }
+                    if let Some(window) = &self.window {
+                        window.request_redraw();
                     }
                 }
             }

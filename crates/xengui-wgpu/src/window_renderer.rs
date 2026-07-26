@@ -165,7 +165,10 @@ impl WgpuWindowRenderer {
             width: width.max(1),
             height: height.max(1),
             present_mode: wgpu::PresentMode::Fifo,
-            desired_maximum_frame_latency: 2,
+            // Lower buffering latency so a presented frame reaches the screen
+            // sooner, shrinking the window where DWM shows a stretched
+            // previous frame while catching up to a burst of resize events.
+            desired_maximum_frame_latency: 1,
             alpha_mode,
             view_formats: vec![],
             color_space: wgpu::SurfaceColorSpace::Auto,
@@ -437,15 +440,18 @@ impl WgpuWindowRenderer {
         width: u32,
         height: u32
     ) {
-        if width == self.config.width && height == self.config.height {
+        if width == 0 || height == 0 {
             return;
         }
-        if width > 0 && height > 0 {
+        // Only reconfigure the surface when the size actually changed, but
+        // always render below - this makes resize() safe to call on every
+        // paint as the single source of truth for "what size to draw at".
+        if width != self.config.width || height != self.config.height {
             self.config.width = width;
             self.config.height = height;
             self.surface.configure(&self.device, &self.config);
             self.frame.resize();
-            self.render_frame(tree, theme, scale_factor);
         }
+        self.render_frame(tree, theme, scale_factor);
     }
 }
