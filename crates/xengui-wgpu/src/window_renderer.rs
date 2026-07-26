@@ -169,12 +169,12 @@ impl WgpuWindowRenderer {
         let present_mode = surface_caps.present_modes
             .iter()
             .copied()
-            .find(|m| *m == wgpu::PresentMode::Immediate)
+            .find(|m| *m == wgpu::PresentMode::Mailbox)
             .or_else(||
                 surface_caps.present_modes
                     .iter()
                     .copied()
-                    .find(|m| *m == wgpu::PresentMode::Mailbox)
+                    .find(|m| *m == wgpu::PresentMode::Immediate)
             )
             .unwrap_or(wgpu::PresentMode::Fifo);
 
@@ -225,7 +225,12 @@ impl WgpuWindowRenderer {
         theme: SystemTheme,
         scale_factor: f32
     ) {
-        log::info!("render_frame: {}x{} at {:?}", self.config.width, self.config.height, std::time::Instant::now());
+        log::info!(
+            "render_frame: {}x{} at {:?}",
+            self.config.width,
+            self.config.height,
+            std::time::Instant::now()
+        );
 
         const MAX_ACQUIRE_ATTEMPTS: u32 = 8;
         let mut frame = None;
