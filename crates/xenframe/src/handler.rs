@@ -473,17 +473,7 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
                             // WM_DESTROY always stop it first.
                             let app = unsafe { &mut *self_ptr };
                             let size = window_for_tick.inner_size();
-                            if let Some(renderer) = &mut app.renderer {
-                                let theme = crate::window::system_theme(app.config.theme);
-                                let scale_factor = window_for_tick.scale_factor() as f32;
-                                renderer.resize(
-                                    &mut app.root,
-                                    theme,
-                                    scale_factor,
-                                    size.width,
-                                    size.height
-                                );
-                            }
+                            app.resize_synced(size.width, size.height);
                         });
                     }
                 }
@@ -732,14 +722,12 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
             }
             WindowEvent::Resized(new_size) => {
                 log::info!("WindowEvent::Resized {:?} at {:?}", new_size, web_time::Instant::now());
+                #[cfg(target_os = "windows")]
+                {
+                    self.resize_synced(new_size.width, new_size.height);
+                }
+                #[cfg(not(target_os = "windows"))]
                 if let Some(renderer) = &mut self.renderer {
-                    // Paint synchronously inside the resize notification itself.
-                    // Win32 pumps WM_SIZE inside its own modal sizing loop and
-                    // never reaches RedrawRequested/about_to_wait while the
-                    // mouse button is held, so deferring the draw leaves the
-                    // previous, wrong-sized frame on screen.
-                    #[cfg(target_os = "windows")]
-                    crate::win32_chrome::flush_dwm();
                     let theme = crate::window::system_theme(self.config.theme);
                     let scale_factor = self.window
                         .as_ref()
@@ -751,8 +739,6 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
                         new_size.width,
                         new_size.height
                     );
-                    #[cfg(target_os = "windows")]
-                    crate::win32_chrome::flush_dwm();
                     if !self.is_visible && let Some(window) = &self.window {
                         window.set_visible(true);
                         self.is_visible = true;

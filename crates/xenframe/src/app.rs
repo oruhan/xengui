@@ -68,6 +68,8 @@ pub struct App {
     pub(crate) clipboard: xen_clipboard::Clipboard,
     pub(crate) pending_long_press: Option<(Instant, (f32, f32), String)>,
     pub(crate) last_titlebar_click: Option<(Instant, (f32, f32))>,
+    #[cfg(target_os = "windows")]
+    pub(crate) last_rendered_size: Option<(u32, u32)>,
 
     #[cfg(target_arch = "wasm32")]
     pub(crate) initial_resize_done: Rc<RefCell<bool>>,
@@ -101,6 +103,8 @@ impl App {
             clipboard: xen_clipboard::Clipboard::new(),
             pending_long_press: None,
             last_titlebar_click: None,
+            #[cfg(target_os = "windows")]
+            last_rendered_size: None,
 
             #[cfg(target_arch = "wasm32")]
             initial_resize_done: Rc::new(RefCell::new(false)),
@@ -525,6 +529,43 @@ impl App {
             true
         } else {
             false
+        }
+    }
+
+    // Single entry point for every size-triggered render on Windows'
+    // borderless path. WindowEvent::Resized and the WM_TIMER-driven modal
+    // resize tick both used to render+present independently, racing each
+    // other - a corner drag that also moves the window's origin (top-left)
+    // could show a just-superseded frame flash back in, since each path
+    // had no idea the other had already drawn this size. Tracking the
+    // last size actually rendered here makes whichever path fires first
+    // for a given size win, and the other becomes a guaranteed no-op.
+    #[cfg(target_os = "windows")]
+    #[cfg(target_os = "windows")]
+    pub(crate) fn resize_synced(&mut self, width: u32, height: u32) {
+        xengui::devtools::record_size("resize_synced:enter", width, height);
+
+        if self.last_rendered_size == Some((width, height)) {
+            xengui::devtools::record_size("resize_synced:dedup-skip", width, height);
+            return;
+        }
+        self.last_rendered_size = Some((width, height));
+
+        let Some(renderer) = &mut self.renderer else {
+            return;
+        };
+        let theme = crate::window::system_theme(self.config.theme);
+        let scale_factor = self.window.as_ref().map_or(1.0, |w| w.scale_factor() as f32);
+
+        crate::win32_chrome::flush_dwm();
+        xengui::devtools::record_size("resize_synced:render_begin", width, height);
+        renderer.resize(&mut self.root, theme, scale_factor, width, height);
+        xengui::devtools::record_size("resize_synced:render_end", width, height);
+        crate::win32_chrome::flush_dwm();
+
+        if !self.is_visible && let Some(window) = &self.window {
+            window.set_visible(true);
+            self.is_visible = true;
         }
     }
 }

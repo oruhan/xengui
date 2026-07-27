@@ -11,6 +11,7 @@ pub mod text;
 pub mod hooks;
 pub mod widget;
 pub mod widget_base;
+pub mod devtools;
 pub mod animation;
 pub mod constants;
 pub mod dispatcher;

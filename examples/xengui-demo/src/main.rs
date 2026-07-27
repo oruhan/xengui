@@ -6,7 +6,7 @@ use web_time::Duration;
 
 #[cfg(not(target_arch = "wasm32"))]
 use xenframe::WindowPosition;
-use xengui::{ Display::Flex, FlexDirection::{ Column, Row }, widgets::Link, * };
+use xengui::{ Display::Flex, FlexDirection::{ Column, Row }, FontWeight::Medium, widgets::Link, * };
 use xenframe::{ App, AppConfig };
 /*use xengui_wgpu::{ WindowShadow };*/
 //use xen_clipboard::Clipboard;
@@ -114,7 +114,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 .align_items(AlignItems::Center)
                                 .justify_content(JustifyContent::SpaceBetween)
                                 .width(pct!(100))
-                                .height(px!(48))
+                                .height(px!(55))
                                 .background(|theme: &Theme| theme.surface)
                                 .box_shadow(
                                     BoxShadow::new(0.0, 4.0, 16.0, Color::NEUTRAL_900).spread(1.0)
@@ -157,6 +157,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                         .child(
                                             Button::new()
                                                 .background(Color::BLUE_500)
+                                                .font_size(14)
+                                                .font_weight(Medium)
                                                 .transition_all(
                                                     Transition::new(
                                                         Duration::from_millis(200)
@@ -174,7 +176,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                                         .border(Border::new(1, Color::BLUE_600, 99))
                                                         .scale(0.97)
                                                 )
-                                                .padding(Edges::only(15, 9, 15, 9))
+                                                .padding(Edges::only(14, 7, 14, 7))
                                                 .label("Get started")
                                         )
                                 )
@@ -229,6 +231,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                                 .child(
                                                     Button::new()
                                                         .background(Color::BLUE_500)
+                                                        .font_weight(Medium)
                                                         .transition_all(
                                                             Transition::new(
                                                                 Duration::from_millis(200)
@@ -266,6 +269,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                                 .child(
                                                     Button::new()
                                                         .background(Color::hex("#24292f"))
+                                                        .font_weight(Medium)
                                                         .transition_all(
                                                             Transition::new(
                                                                 Duration::from_millis(200)

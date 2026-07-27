@@ -234,62 +234,69 @@ impl WgpuWindowRenderer {
         for attempt in 0..MAX_ACQUIRE_ATTEMPTS {
             match self.surface.get_current_texture() {
                 wgpu::CurrentSurfaceTexture::Success(t) => {
+                    xengui::devtools::record_note(
+                        "surface:acquire",
+                        format!("success attempt={attempt}")
+                    );
                     frame = Some(t);
                     break;
                 }
-                // Suboptimal means the acquired image isn't guaranteed to
-                // match the surface's real current size anymore (the
-                // window kept changing since this swapchain was last
-                // configured) - accepting it would bake that stale size
-                // into every viewport/NDC calculation below, and the
-                // compositor then stretches the mismatch again on top,
-                // compounding into visible corruption. Reconfiguring
-                // instead makes the next acquire hand back a texture
-                // sized to the window we actually have right now.
                 wgpu::CurrentSurfaceTexture::Suboptimal(texture) => {
+                    xengui::devtools::record_note(
+                        "surface:acquire",
+                        format!("suboptimal attempt={attempt}")
+                    );
                     drop(texture);
                     self.surface.configure(&self.device, &self.config);
                 }
                 wgpu::CurrentSurfaceTexture::Outdated | wgpu::CurrentSurfaceTexture::Lost => {
+                    xengui::devtools::record_note(
+                        "surface:acquire",
+                        format!("outdated/lost attempt={attempt}")
+                    );
                     self.surface.configure(&self.device, &self.config);
                 }
-                // Reconfiguring drops the backed-up (stale-sized) image queue
-                // instead of spinning on it, so a resize-triggered paint isn't
-                // starved mid-drag.
                 wgpu::CurrentSurfaceTexture::Timeout => {
+                    xengui::devtools::record_note(
+                        "surface:acquire",
+                        format!("timeout attempt={attempt}")
+                    );
                     if attempt >= MAX_ACQUIRE_ATTEMPTS / 2 {
                         self.surface.configure(&self.device, &self.config);
                     }
                 }
                 wgpu::CurrentSurfaceTexture::Occluded => {
+                    xengui::devtools::record("surface:occluded-skip");
                     log::trace!("Surface occluded, skipping frame.");
                     return;
                 }
                 wgpu::CurrentSurfaceTexture::Validation => {
+                    xengui::devtools::record("surface:validation-skip");
                     log::warn!("Surface validation error, skipping frame.");
                     return;
                 }
                 #[allow(unreachable_patterns)]
                 _ => {
+                    xengui::devtools::record("surface:unhandled-skip");
                     log::warn!("Unhandled surface texture state, skipping frame.");
                     return;
                 }
             }
         }
         let Some(frame) = frame else {
-            // A frame dropped here during a live resize is the ghosting
-            // symptom itself: the compositor keeps stretching the last
-            // presented (now wrong-sized) buffer until a new one lands.
+            xengui::devtools::record("surface:acquire-failed-skip");
             log::warn!("Surface acquire failed after retries, skipping frame.");
             return;
         };
 
-        // The size actually backing this texture, not merely the size we
-        // last asked the surface to configure to - these can briefly
-        // diverge around a resize, and rendering with the wrong one is
-        // what stretches/misaligns the frame relative to the real window.
         let frame_size = frame.texture.size();
         let (frame_width, frame_height) = (frame_size.width, frame_size.height);
+        xengui::devtools::record_size_note(
+            "frame:acquired",
+            frame_width,
+            frame_height,
+            format!("config={}x{}", self.config.width, self.config.height)
+        );
 
         let view = frame.texture.create_view(&Default::default());
         let mut encoder = self.device.create_command_encoder(&Default::default());
@@ -330,8 +337,11 @@ impl WgpuWindowRenderer {
             self.draw_chrome_border(&mut encoder, &view, width, color, scale_factor);
         }
 
+        xengui::devtools::record("frame:submit");
         self.queue.submit(Some(encoder.finish()));
+        xengui::devtools::record("frame:present");
         self.queue.present(frame);
+        xengui::devtools::record("frame:presented");
     }
 
     fn draw_chrome_shadow(
@@ -504,10 +514,8 @@ impl WgpuWindowRenderer {
         if width == 0 || height == 0 {
             return;
         }
-        // Only reconfigure the surface when the size actually changed, but
-        // always render below - this makes resize() safe to call on every
-        // paint as the single source of truth for "what size to draw at".
         if width != self.config.width || height != self.config.height {
+            xengui::devtools::record_size("surface:reconfigure", width, height);
             self.config.width = width;
             self.config.height = height;
             self.surface.configure(&self.device, &self.config);

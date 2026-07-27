@@ -7,7 +7,38 @@ use winit::window::Window;
 use windows_sys::Win32::Foundation::{ HWND, LPARAM, LRESULT, RECT, WPARAM };
 use windows_sys::Win32::UI::Shell::{ DefSubclassProc, RemoveWindowSubclass, SetWindowSubclass };
 use windows_sys::Win32::UI::WindowsAndMessaging::{
-    GetWindowRect, HTBOTTOM, HTBOTTOMLEFT, HTBOTTOMRIGHT, HTCLIENT, HTLEFT, HTRIGHT, HTTOP, HTTOPLEFT, HTTOPRIGHT, IsZoomed, KillTimer, NCCALCSIZE_PARAMS, SWP_FRAMECHANGED, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER, SetTimer, SetWindowPos, WM_DESTROY, WM_ENTERSIZEMOVE, WM_EXITSIZEMOVE, WM_NCCALCSIZE, WM_NCHITTEST, WM_TIMER, WVR_REDRAW,
+    GetWindowRect,
+    HTBOTTOM,
+    HTBOTTOMLEFT,
+    HTBOTTOMRIGHT,
+    HTCLIENT,
+    HTLEFT,
+    HTRIGHT,
+    HTTOP,
+    HTTOPLEFT,
+    HTTOPRIGHT,
+    IsZoomed,
+    KillTimer,
+    NCCALCSIZE_PARAMS,
+    SWP_FRAMECHANGED,
+    SWP_NOACTIVATE,
+    SWP_NOMOVE,
+    SWP_NOSIZE,
+    SWP_NOZORDER,
+    SetTimer,
+    SetWindowPos,
+    WINDOWPOS,
+    WM_DESTROY,
+    WM_ENTERSIZEMOVE,
+    WM_ERASEBKGND,
+    WM_EXITSIZEMOVE,
+    WM_NCCALCSIZE,
+    WM_NCHITTEST,
+    WM_PAINT,
+    WM_SIZE,
+    WM_TIMER,
+    WM_WINDOWPOSCHANGED,
+    WVR_REDRAW,
 };
 use windows_sys::Win32::Graphics::Dwm::{
     DwmExtendFrameIntoClientArea,
@@ -109,11 +140,22 @@ unsafe extern "system" fn custom_chrome_subclass(
             }
         }
         WM_ENTERSIZEMOVE => {
+            xengui::devtools::clear();
+            xengui::devtools::record("WM_ENTERSIZEMOVE");
             unsafe {
                 SetTimer(hwnd, RESIZE_TIMER_ID, RESIZE_TIMER_INTERVAL_MS, None);
             }
         }
         WM_TIMER if wparam == RESIZE_TIMER_ID => {
+            let mut rect = RECT { left: 0, top: 0, right: 0, bottom: 0 };
+            unsafe {
+                GetWindowRect(hwnd, &mut rect);
+            }
+            xengui::devtools::record_size(
+                "WM_TIMER",
+                (rect.right - rect.left).max(0) as u32,
+                (rect.bottom - rect.top).max(0) as u32
+            );
             RESIZE_TICK.with(|cell| {
                 if let Some(tick) = cell.borrow_mut().as_mut() {
                     tick();
@@ -125,6 +167,28 @@ unsafe extern "system" fn custom_chrome_subclass(
             unsafe {
                 KillTimer(hwnd, RESIZE_TIMER_ID);
             }
+            xengui::devtools::record("WM_EXITSIZEMOVE");
+            xengui::devtools::dump("resize gesture ended");
+        }
+        WM_WINDOWPOSCHANGED => {
+            let pos = unsafe { &*(lparam as *const WINDOWPOS) };
+            xengui::devtools::record_size_note(
+                "WM_WINDOWPOSCHANGED",
+                pos.cx.max(0) as u32,
+                pos.cy.max(0) as u32,
+                format!("at ({}, {})", pos.x, pos.y)
+            );
+        }
+        WM_SIZE => {
+            let width = (lparam & 0xffff) as u16 as u32;
+            let height = ((lparam >> 16) & 0xffff) as u16 as u32;
+            xengui::devtools::record_size("WM_SIZE", width, height);
+        }
+        WM_ERASEBKGND => {
+            xengui::devtools::record("WM_ERASEBKGND");
+        }
+        WM_PAINT => {
+            xengui::devtools::record("WM_PAINT");
         }
         WM_DESTROY => {
             // Remove subclass hook when window is destroyed
