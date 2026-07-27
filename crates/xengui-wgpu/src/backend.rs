@@ -5,7 +5,6 @@ use crate::pipelines::{
     RectPipeline,
     TextPipeline,
     TrianglePipeline,
-    WindowMaskPipeline,
 };
 use xengui::{
     BoxShadowCommand,
@@ -27,7 +26,6 @@ pub struct WgpuPipelines {
     image: ImagePipeline,
     text: TextPipeline,
     pub(crate) box_shadow: BoxShadowPipeline,
-    pub(crate) window_mask: WindowMaskPipeline,
 }
 
 impl WgpuPipelines {
@@ -43,7 +41,6 @@ impl WgpuPipelines {
             image: ImagePipeline::new(device, surface_format),
             text: TextPipeline::new(device, queue, surface_format, user_fonts)?,
             box_shadow: BoxShadowPipeline::new(device, surface_format),
-            window_mask: WindowMaskPipeline::new(device, surface_format),
         })
     }
 

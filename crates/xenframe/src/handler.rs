@@ -454,28 +454,9 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
                     user_fonts
                 )
             {
-                Ok(mut renderer) => {
-                    renderer.set_chrome(xengui_wgpu::WindowChrome {
-                        radius: self.config.window_radius,
-                        shadow: self.config.window_shadow,
-                        border: self.config.window_border,
-                    });
+                Ok(renderer) => {
                     self.renderer = Some(renderer);
                     log::info!("application resumed, gpu context ready");
-
-                    #[cfg(target_os = "windows")]
-                    if !self.config.decorations {
-                        let window_for_tick = window.clone();
-                        let self_ptr: *mut Self = self;
-                        crate::win32_chrome::set_resize_tick_callback(move || {
-                            // SAFETY: the timer only fires while the window (and
-                            // therefore this App) is alive, since WM_EXITSIZEMOVE/
-                            // WM_DESTROY always stop it first.
-                            let app = unsafe { &mut *self_ptr };
-                            let size = window_for_tick.inner_size();
-                            app.resize_synced(size.width, size.height);
-                        });
-                    }
                 }
                 Err(e) => {
                     log::info!("cannot start gpu pipeline: {}", e);
@@ -618,13 +599,6 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
         match event {
             XenEvent::RendererReady(renderer) => {
                 self.renderer = Some(*renderer);
-                if let Some(r) = &mut self.renderer {
-                    r.set_chrome(xengui_wgpu::WindowChrome {
-                        radius: self.config.window_radius,
-                        shadow: self.config.window_shadow,
-                        border: self.config.window_border,
-                    });
-                }
                 log::info!("web gpu context successfully attached to event loop");
                 if let Some(window) = &self.window {
                     let size = window.inner_size();

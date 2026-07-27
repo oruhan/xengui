@@ -10,8 +10,6 @@
 mod pipelines;
 mod backend;
 mod window_renderer;
-mod window_chrome;
 
 pub use backend::{ WgpuFrame, WgpuPipelines };
 pub use window_renderer::WgpuWindowRenderer;
-pub use window_chrome::{ WindowChrome, WindowShadow };

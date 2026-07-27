@@ -1,5 +1,4 @@
 use xengui::{ Theme };
-use xengui_wgpu::{ WindowShadow };
 
 #[cfg(not(target_arch = "wasm32"))]
 use crate::WindowPosition;
@@ -89,12 +88,6 @@ pub struct AppConfig {
     /// xenframe punches the corners transparent in the wgpu surface instead.
     pub window_radius: f32,
 
-    /// Soft drop shadow drawn behind the window when `decorations` is
-    /// false. The window must be sized with `shadow.margin` logical px of
-    /// extra transparent padding around the visual content for the blur
-    /// to have room to render.
-    pub window_shadow: Option<WindowShadow>,
-
     /// Border stroke (width, color) drawn around the window edge when
     /// `decorations` is false.
     pub window_border: Option<(f32, xengui::Color)>,
@@ -134,7 +127,6 @@ impl Default for AppConfig {
             reload_shortcut: false,
 
             window_radius: 0.0,
-            window_shadow: None,
             window_border: None,
         }
     }
