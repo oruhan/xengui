@@ -166,12 +166,12 @@ impl WgpuWindowRenderer {
         let present_mode = surface_caps.present_modes
             .iter()
             .copied()
-            .find(|m| *m == wgpu::PresentMode::Immediate)
+            .find(|m| *m == wgpu::PresentMode::Mailbox)
             .or_else(||
                 surface_caps.present_modes
                     .iter()
                     .copied()
-                    .find(|m| *m == wgpu::PresentMode::Mailbox)
+                    .find(|m| *m == wgpu::PresentMode::Immediate)
             )
             .unwrap_or(wgpu::PresentMode::Fifo);
 
@@ -187,7 +187,7 @@ impl WgpuWindowRenderer {
             width: width.max(1),
             height: height.max(1),
             present_mode,
-            desired_maximum_frame_latency: 2,
+            desired_maximum_frame_latency: 1,
             alpha_mode,
             view_formats: vec![],
             color_space: wgpu::SurfaceColorSpace::Auto,

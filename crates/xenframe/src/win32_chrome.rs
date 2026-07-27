@@ -41,11 +41,12 @@ use windows_sys::Win32::UI::WindowsAndMessaging::{
     WVR_REDRAW,
 };
 use windows_sys::Win32::Graphics::Dwm::{
-    DwmExtendFrameIntoClientArea,
-    DwmSetWindowAttribute,
+    DWMWA_TRANSITIONS_FORCEDISABLED,
     DWMWA_USE_IMMERSIVE_DARK_MODE,
     DWMWA_WINDOW_CORNER_PREFERENCE,
     DWMWCP_ROUND,
+    DwmExtendFrameIntoClientArea,
+    DwmSetWindowAttribute,
 };
 use windows_sys::Win32::UI::Controls::MARGINS;
 use windows_sys::Win32::Graphics::Dwm::DwmFlush;
@@ -90,7 +91,6 @@ unsafe extern "system" fn custom_chrome_subclass(
     match msg {
         WM_NCCALCSIZE if wparam != 0 => {
             let params = unsafe { &mut *(lparam as *mut NCCALCSIZE_PARAMS) };
-
             if (unsafe { IsZoomed(hwnd) }) != 0 {
                 let mut rect = RECT { left: 0, top: 0, right: 0, bottom: 0 };
                 unsafe {
@@ -99,8 +99,6 @@ unsafe extern "system" fn custom_chrome_subclass(
                 params.rgrc[0] = rect;
                 return WVR_REDRAW as LRESULT;
             }
-
-            return unsafe { DefSubclassProc(hwnd, msg, wparam, lparam) };
         }
         WM_NCHITTEST => {
             // Call default proc first to let OS evaluate base hit areas
@@ -142,7 +140,14 @@ unsafe extern "system" fn custom_chrome_subclass(
         WM_ENTERSIZEMOVE => {
             xengui::devtools::clear();
             xengui::devtools::record("WM_ENTERSIZEMOVE");
+            let disable: i32 = 1;
             unsafe {
+                DwmSetWindowAttribute(
+                    hwnd,
+                    DWMWA_TRANSITIONS_FORCEDISABLED as u32,
+                    &disable as *const _ as *const _,
+                    std::mem::size_of_val(&disable) as u32
+                );
                 SetTimer(hwnd, RESIZE_TIMER_ID, RESIZE_TIMER_INTERVAL_MS, None);
             }
         }
@@ -166,6 +171,13 @@ unsafe extern "system" fn custom_chrome_subclass(
         WM_EXITSIZEMOVE => {
             unsafe {
                 KillTimer(hwnd, RESIZE_TIMER_ID);
+                let disable: i32 = 0;
+                DwmSetWindowAttribute(
+                    hwnd,
+                    DWMWA_TRANSITIONS_FORCEDISABLED as u32,
+                    &disable as *const _ as *const _,
+                    std::mem::size_of_val(&disable) as u32
+                );
             }
             xengui::devtools::record("WM_EXITSIZEMOVE");
             xengui::devtools::dump("resize gesture ended");
