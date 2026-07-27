@@ -557,10 +557,10 @@ impl App {
         let theme = crate::window::system_theme(self.config.theme);
         let scale_factor = self.window.as_ref().map_or(1.0, |w| w.scale_factor() as f32);
 
+        crate::win32_chrome::flush_dwm();
         xengui::devtools::record_size("resize_synced:render_begin", width, height);
         renderer.resize(&mut self.root, theme, scale_factor, width, height);
         xengui::devtools::record_size("resize_synced:render_end", width, height);
-        crate::win32_chrome::flush_dwm();
 
         if !self.is_visible && let Some(window) = &self.window {
             window.set_visible(true);
