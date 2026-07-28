@@ -1,0 +1,398 @@
+// SPDX-License-Identifier: Apache-2.0
+use crate::{
+    AnimKey,
+    AnimLayer,
+    AnimProperty,
+    AnimValue,
+    AnimationManager,
+    Background,
+    Color,
+    Constraints,
+    Easing,
+    Edges,
+    EventCtx,
+    EventStatus,
+    InputEvent,
+    LayoutBox,
+    Length,
+    MeasureContext,
+    MeasureResult,
+    PaintContext,
+    RectCommand,
+    Style,
+    StyleBuilder,
+    TextCommand,
+    Transition,
+    Widget,
+    WidgetBase,
+    WidgetId,
+    properties::DEFAULT_FONT_SIZE,
+};
+use smol_str::SmolStr;
+use std::cell::Cell;
+use web_time::{ Duration, Instant };
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum TooltipPlacement {
+    #[default]
+    Top,
+    Bottom,
+    Left,
+    Right,
+}
+
+const DEFAULT_DELAY: Duration = Duration::from_millis(400);
+const DEFAULT_GAP: f32 = 6.0;
+const FADE_TRANSITION: Transition = Transition::new(Duration::from_millis(120)).easing(
+    Easing::EaseOut
+);
+const TOOLTIP_PADDING_X: f32 = 8.0;
+const TOOLTIP_PADDING_Y: f32 = 5.0;
+
+/// Wraps exactly one child widget and shows a small floating label near it
+/// once the pointer rests over the child for `delay`. The wrapped child
+/// keeps receiving input normally - this widget only tracks hover via
+/// bubbled `MouseMoved` events and paints the popup in `paint_top`, so it
+/// always renders above everything else.
+pub struct Tooltip {
+    base: WidgetBase,
+    anim_id: WidgetId,
+    children: Vec<Box<dyn Widget>>,
+    layout_box: LayoutBox,
+
+    text: SmolStr,
+    placement: TooltipPlacement,
+    delay: Duration,
+    gap: f32,
+
+    background: Option<Background>,
+    text_color: Option<Color>,
+    padding: Option<Edges>,
+    border_radius: Option<Length>,
+    font_size: Option<Length>,
+
+    hover_start: Cell<Option<Instant>>,
+    showing: Cell<bool>,
+    opacity_anim: Cell<f32>,
+    label_size: Cell<(f32, f32)>,
+}
+
+impl Tooltip {
+    pub fn new(text: impl Into<SmolStr>) -> Self {
+        Self {
+            base: WidgetBase::new(crate::Interaction::new()),
+            anim_id: WidgetId::new_unique(),
+            children: Vec::new(),
+            layout_box: LayoutBox::default(),
+
+            text: text.into(),
+            placement: TooltipPlacement::default(),
+            delay: DEFAULT_DELAY,
+            gap: DEFAULT_GAP,
+
+            background: None,
+            text_color: None,
+            padding: None,
+            border_radius: None,
+            font_size: None,
+
+            hover_start: Cell::new(None),
+            showing: Cell::new(false),
+            opacity_anim: Cell::new(0.0),
+            label_size: Cell::new((0.0, 0.0)),
+        }
+    }
+
+    pub fn key(mut self, key: impl Into<SmolStr>) -> Self {
+        self.base.key = Some(key.into());
+        self
+    }
+
+    /// Sets the anchor widget. Only the last call matters - a second
+    /// child replaces the first instead of appending.
+    pub fn child(mut self, child: impl Widget + 'static) -> Self {
+        self.children = vec![Box::new(child)];
+        self
+    }
+
+    pub fn placement(mut self, placement: TooltipPlacement) -> Self {
+        self.placement = placement;
+        self
+    }
+
+    pub fn delay(mut self, delay: Duration) -> Self {
+        self.delay = delay;
+        self
+    }
+
+    pub fn gap(mut self, gap: f32) -> Self {
+        self.gap = gap;
+        self
+    }
+
+    pub fn background(mut self, color: Color) -> Self {
+        self.background = Some(Background::Color(color));
+        self
+    }
+
+    pub fn text_color(mut self, color: Color) -> Self {
+        self.text_color = Some(color);
+        self
+    }
+
+    pub fn padding(mut self, padding: impl Into<Edges>) -> Self {
+        self.padding = Some(padding.into());
+        self
+    }
+
+    pub fn border_radius(mut self, radius: impl Into<Length>) -> Self {
+        self.border_radius = Some(radius.into());
+        self
+    }
+
+    pub fn font_size(mut self, size: impl Into<Length>) -> Self {
+        self.font_size = Some(size.into());
+        self
+    }
+
+    fn effective_padding(&self) -> Edges {
+        self.padding.unwrap_or_else(|| Edges::symmetric(TOOLTIP_PADDING_X, TOOLTIP_PADDING_Y))
+    }
+
+    fn recompute_style(&mut self) {
+        self.base.computed_style = self.base.inherited_style.inherit_style(&self.base.style);
+    }
+
+    fn box_position(&self, anchor: LayoutBox, size: (f32, f32)) -> (f32, f32) {
+        let (w, h) = size;
+        match self.placement {
+            TooltipPlacement::Top => (anchor.x + (anchor.width - w) * 0.5, anchor.y - h - self.gap),
+            TooltipPlacement::Bottom =>
+                (anchor.x + (anchor.width - w) * 0.5, anchor.y + anchor.height + self.gap),
+            TooltipPlacement::Left =>
+                (anchor.x - w - self.gap, anchor.y + (anchor.height - h) * 0.5),
+            TooltipPlacement::Right =>
+                (anchor.x + anchor.width + self.gap, anchor.y + (anchor.height - h) * 0.5),
+        }
+    }
+}
+
+impl StyleBuilder for Tooltip {
+    fn style_mut(&mut self) -> &mut Style {
+        &mut self.base.style
+    }
+
+    fn mark_dirty(&mut self) {
+        self.base.dirty = true;
+        self.recompute_style();
+    }
+}
+
+impl Widget for Tooltip {
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+
+    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+        self
+    }
+
+    fn debug_name(&self) -> &'static str {
+        "Widget#Tooltip"
+    }
+
+    fn get_key(&self) -> Option<&SmolStr> {
+        self.base.key.as_ref()
+    }
+
+    fn is_dirty(&self) -> bool {
+        self.base.dirty
+    }
+
+    fn set_dirty(&mut self, dirty: bool) {
+        self.base.dirty = dirty;
+    }
+
+    fn style(&self) -> &Style {
+        &self.base.style
+    }
+
+    fn style_mut(&mut self) -> &mut Style {
+        &mut self.base.style
+    }
+
+    fn computed_style(&self) -> &Style {
+        &self.base.computed_style
+    }
+
+    fn children(&self) -> &[Box<dyn Widget>] {
+        &self.children
+    }
+
+    fn children_mut(&mut self) -> Option<&mut Vec<Box<dyn Widget>>> {
+        Some(&mut self.children)
+    }
+
+    fn measure(&self, _ctx: &mut MeasureContext, _constraints: Constraints) -> MeasureResult {
+        MeasureResult::new(0.0, 0.0)
+    }
+
+    fn on_layout_pass(&self, ctx: &mut MeasureContext) {
+        let sf = ctx.scale_factor;
+        let style = &self.base.computed_style;
+        let font_size = self.font_size
+            .map(|s| s.to_physical(sf))
+            .unwrap_or(DEFAULT_FONT_SIZE.to_physical(sf));
+
+        let result = ctx.text.measure(
+            &self.text,
+            style.font.as_deref(),
+            font_size,
+            style.font_weight.unwrap_or_default(),
+            style.font_style.unwrap_or_default(),
+            0.0,
+            0.0,
+            None
+        );
+
+        let padding = self.effective_padding();
+        let w = result.width + padding.left.to_physical(sf) + padding.right.to_physical(sf);
+        let h = result.height + padding.top.to_physical(sf) + padding.bottom.to_physical(sf);
+        self.label_size.set((w, h));
+    }
+
+    fn layout(&mut self, rect: LayoutBox) {
+        self.layout_box = rect;
+    }
+
+    fn layout_box(&self) -> &LayoutBox {
+        &self.layout_box
+    }
+
+    fn paint(&self, _ctx: &mut PaintContext) {}
+
+    fn paint_top(&self, ctx: &mut PaintContext) {
+        let opacity = self.opacity_anim.get();
+        if opacity <= 0.001 {
+            return;
+        }
+
+        let theme = crate::current_theme();
+        let sf = ctx.scale_factor;
+        let size = self.label_size.get();
+        let (x, y) = self.box_position(self.layout_box, size);
+
+        let bg = self.background.clone().unwrap_or(Background::Color(theme.foreground));
+        let Background::Color(bg_color) = bg;
+        let radius = self.border_radius.unwrap_or(Length::px(4.0)).to_physical(sf);
+
+        ctx.draw_rect(RectCommand {
+            position: (x, y),
+            size,
+            background: Some(Background::Color(bg_color.with_alpha_f32(bg_color.a() * opacity))),
+            border_radius: Some(Length::px(radius)),
+            border_width: None,
+            border_color: None,
+            clip_rect: None,
+        });
+
+        let padding = self.effective_padding();
+        let text_color = self.text_color.unwrap_or(theme.background).with_alpha_f32(opacity);
+
+        let mut text_style = self.base.computed_style.clone();
+        text_style.font_size.get_or_insert(self.font_size.unwrap_or(DEFAULT_FONT_SIZE));
+        text_style.color = Some(text_color);
+
+        ctx.draw_text(TextCommand {
+            text: self.text.clone(),
+            position: (x + padding.left.to_physical(sf), y + padding.top.to_physical(sf)),
+            style: text_style,
+            max_width: None,
+            clip_rect: None,
+        });
+    }
+
+    fn event(&mut self, event: &InputEvent, ctx: &mut EventCtx) -> EventStatus {
+        match event {
+            InputEvent::MouseMoved { position } => {
+                let hovering = self.layout_box.contains_rounded(*position, 0.0);
+                if hovering && self.hover_start.get().is_none() {
+                    self.hover_start.set(Some(Instant::now()));
+                } else if !hovering && self.hover_start.get().is_some() {
+                    self.hover_start.set(None);
+                    if self.showing.get() {
+                        self.showing.set(false);
+                        self.base.dirty = true;
+                        ctx.request_redraw();
+                    }
+                }
+            }
+            InputEvent::AnimationTick { .. } => {
+                if
+                    !self.showing.get() &&
+                    let Some(start) = self.hover_start.get() &&
+                    Instant::now().duration_since(start) >= self.delay
+                {
+                    self.showing.set(true);
+                    self.base.dirty = true;
+                    ctx.request_redraw();
+                }
+            }
+            _ => {}
+        }
+        EventStatus::Ignored
+    }
+
+    fn content_eq(&self, other: &dyn Widget) -> bool {
+        let Some(other) = other.as_any().downcast_ref::<Tooltip>() else {
+            return false;
+        };
+
+        self.text == other.text &&
+            self.placement == other.placement &&
+            self.delay == other.delay &&
+            self.gap == other.gap &&
+            self.background == other.background &&
+            self.text_color == other.text_color &&
+            self.padding == other.padding &&
+            self.border_radius == other.border_radius &&
+            self.font_size == other.font_size &&
+            self.base.style == other.base.style
+    }
+
+    fn cascade_style(&mut self, parent: &Style, anim: &mut AnimationManager) {
+        self.base.inherited_style = parent.clone();
+        self.recompute_style();
+
+        let target = if self.showing.get() { 1.0 } else { 0.0 };
+        let key = AnimKey {
+            widget: self.anim_id,
+            layer: AnimLayer::Root,
+            property: AnimProperty::Opacity,
+        };
+        anim.set_target(key, AnimValue([target, 0.0, 0.0, 0.0]), Some(FADE_TRANSITION));
+        self.opacity_anim.set(anim.value(key).map_or(target, |v| v.0[0]));
+
+        for child in self.children.iter_mut() {
+            child.cascade_style(&self.base.computed_style, anim);
+        }
+    }
+
+    fn wants_animation_frame(&self) -> bool {
+        self.hover_start.get().is_some() && !self.showing.get()
+    }
+
+    fn transfer_measured_state(&mut self, old: &dyn Widget) {
+        if let Some(old) = old.as_any().downcast_ref::<Tooltip>() {
+            self.anim_id = old.anim_id;
+            self.hover_start.set(old.hover_start.get());
+            self.showing.set(old.showing.get());
+            self.opacity_anim.set(old.opacity_anim.get());
+            self.label_size.set(old.label_size.get());
+        }
+    }
+
+    fn anim_id(&self) -> WidgetId {
+        self.anim_id
+    }
+}

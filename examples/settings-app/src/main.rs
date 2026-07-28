@@ -261,6 +261,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                             set_text.set(value.to_string())
                                         )
                                 )
+                                .child(Checkbox::new())
                                 .child(
                                     Button::new()
                                         .label("button1")

@@ -78,6 +78,7 @@ pub use widgets::{
     image_source_from_bytes,
     Button,
     IconPosition,
+    Checkbox,
     ContextMenu,
     ContextMenuHandle,
     ContextMenuItem,
@@ -93,6 +94,8 @@ pub use widgets::{
     SvgRectBuilder,
     View,
     TextBox,
+    Tooltip,
+    TooltipPlacement,
 };
 pub use redraw::RedrawRequester;
 pub use xen_svg::{ SvgColor, SvgDocument, SvgElement, Transform2D };
