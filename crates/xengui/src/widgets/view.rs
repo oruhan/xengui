@@ -370,20 +370,14 @@ impl View {
         if pressed {
             return match style.scrollbar_pressed.as_ref().or(style.scrollbar_hover.as_ref()) {
                 Some(patch) => base.patched(patch, DEFAULT_SCROLLBAR_THUMB_HOVER_THICKNESS),
-                // No custom pressed/hover style set: still apply the default
-                // hover thickness instead of leaving it unchanged.
-                None =>
-                    ResolvedScrollbar {
-                        thickness: DEFAULT_SCROLLBAR_THUMB_HOVER_THICKNESS,
-                        ..base
-                    },
+                None => base,
             };
         }
 
         if hovered {
             return match style.scrollbar_hover.as_ref() {
                 Some(patch) => base.patched(patch, DEFAULT_SCROLLBAR_THUMB_HOVER_THICKNESS),
-                None => ResolvedScrollbar { thickness: DEFAULT_SCROLLBAR_THUMB_HOVER_THICKNESS, ..base },
+                None => base,
             };
         }
 
