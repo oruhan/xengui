@@ -29,10 +29,6 @@ impl WgpuWindowRenderer {
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
             backends: if cfg!(target_os = "windows") {
                 wgpu::Backends::VULKAN
-            } else if cfg!(target_os = "macos") {
-                wgpu::Backends::METAL
-            } else if cfg!(target_os = "linux") {
-                wgpu::Backends::VULKAN
             } else {
                 wgpu::Backends::PRIMARY
             },

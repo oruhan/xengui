@@ -94,150 +94,138 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             ::new()
             .route("/", |_|
                 Box::new(
-                    View::new()
-                        .font("Inter")
-                        .display(Flex)
-                        .flex_direction(Column)
-                        .gap(0, 4)
-                        .background(|theme: &Theme| theme.background)
-                        .overflow_y(Overflow::Scroll)
-                        .scrollbar_gutter(ScrollbarGutter::Stable)
-                        .scrollbar_track_color(Color::NEUTRAL_800)
-                        /* Navbar */
-                        .child(
-                            View::new()
-                                .position(Position::Sticky)
-                                .top(0)
-                                .z_index(10)
-                                .display(Flex)
-                                .flex_direction(Row)
-                                .align_items(AlignItems::Center)
-                                .justify_content(JustifyContent::SpaceBetween)
-                                .width(pct!(100))
-                                .height(px!(55))
-                                .background(|theme: &Theme| theme.surface)
-                                .box_shadow(
-                                    BoxShadow::new(0.0, 4.0, 16.0, Color::NEUTRAL_900).spread(1.0)
-                                )
-                                .border(|theme: &Theme| Border::bottom(1, theme.border))
-                                .padding(Edges::symmetric(120, 0))
-                                .child(
-                                    xen_router
-                                        ::router_link("/")
-                                        .font_size(18)
-                                        .font_weight(FontWeight::Medium)
-                                        .label("XenGui")
-                                )
-                                .child(
-                                    View::new()
-                                        .display(Flex)
-                                        .flex_direction(Row)
-                                        .gap(20, 0)
-                                        .child(xen_router::router_link("/docs").label("Docs"))
-                                        .child(
-                                            xen_router::router_link("/examples").label("Examples")
-                                        )
-                                        .child(
-                                            xen_router
-                                                ::router_link("/playground")
-                                                .label("Playground")
-                                        )
-                                        .child(
-                                            Link::new()
-                                                .href("https://github.com/randseas/xengui")
-                                                .target_blank(true)
-                                                .label("GitHub")
-                                        )
-                                )
-                                .child(
-                                    View::new()
-                                        .display(Flex)
-                                        .flex_direction(Row)
-                                        .gap(4, 0)
-                                        .child(
-                                            Button::new()
-                                                .background(Color::BLUE_500)
-                                                .font_size(14)
-                                                .font_weight(Medium)
-                                                .transition_all(
-                                                    Transition::new(
-                                                        Duration::from_millis(200)
-                                                    ).easing(Easing::EaseInOut)
-                                                )
-                                                .border(Border::new(1, Color::BLUE_400, 99))
-                                                .hover_style(|ctx: StylePatch, _theme: &Theme|
-                                                    ctx
-                                                        .background(Color::BLUE_600)
-                                                        .border(Border::new(1, Color::BLUE_500, 99))
-                                                )
-                                                .pressed_style(|ctx: StylePatch, _theme: &Theme|
-                                                    ctx
-                                                        .background(Color::BLUE_700)
-                                                        .border(Border::new(1, Color::BLUE_600, 99))
-                                                        .scale(0.97)
-                                                )
-                                                .padding(Edges::only(14, 7, 14, 7))
-                                                .label("Get started")
-                                        )
-                                )
+                    ContextMenu::new()
+                        .item(
+                            ContextMenuItem::new("Back")
+                                .shortcut("Ctrl+B")
+                                .enabled(false)
+                                .on_click(|_ctx| {
+                                    log::info!("context menu -> back");
+                                })
                         )
-                        /* Main */
+                        .item(
+                            ContextMenuItem::new("Forward")
+                                .shortcut("Ctrl+F")
+                                .enabled(true)
+                                .on_click(|_ctx| {
+                                    log::info!("context menu -> forward");
+                                })
+                        )
+                        .item(
+                            ContextMenuItem::new("Reload")
+                                .shortcut("Ctrl+R")
+                                .on_click(|_ctx| {
+                                    log::info!("context menu -> reload");
+                                    xenframe::request_reload();
+                                })
+                        )
+                        .divider()
+                        .item(
+                            ContextMenuItem::new("New")
+                                .shortcut("Ctrl+N")
+                                .submenu_item(ContextMenuItem::new("Text file"))
+                                .submenu_item(ContextMenuItem::new("HTML file"))
+                                .submenu_divider()
+                                .submenu_item(ContextMenuItem::new("JS file"))
+                                .submenu_item(ContextMenuItem::new("Rust file"))
+                                .on_click(|_ctx| {
+                                    log::info!("context menu -> new file");
+                                })
+                        )
+                        .divider()
+                        .item(
+                            ContextMenuItem::new("Inspect").on_click(|_ctx| {
+                                log::info!("context menu -> inspect");
+                            })
+                        )
+                        .font("Noto_Sans")
+                        .item_border(Border::new(0, Color::TRANSPARENT, 6))
+                        .padding(4.0)
+                        .font_size(12)
+                        .menu_min_width(200.0)
+                        .menu_background(|theme: &Theme| theme.surface)
+                        .border(|theme: &Theme| Border::new(1, theme.border, px!(10.0)))
                         .child(
                             View::new()
+                                .font("Inter")
                                 .display(Flex)
                                 .flex_direction(Column)
-                                .align_items(AlignItems::Start)
-                                .justify_content(JustifyContent::Center)
-                                //.min_height(pct!(100.0))
-                                .padding(Edges::only(120, 160, 120, 0))
+                                .gap(0, 4)
+                                .background(|theme: &Theme| theme.background)
+                                .overflow_y(Overflow::Auto)
+                                .scrollbar_gutter(ScrollbarGutter::Stable)
+                                .scrollbar_track_color(Color::NEUTRAL_800)
+                                /* Navbar */
                                 .child(
                                     View::new()
+                                        .position(Position::Sticky)
+                                        .top(0)
+                                        .z_index(10)
                                         .display(Flex)
-                                        .flex_direction(Column)
-                                        .align_items(AlignItems::Start)
-                                        .justify_content(JustifyContent::Start)
+                                        .flex_direction(Row)
+                                        .align_items(AlignItems::Center)
+                                        .justify_content(JustifyContent::SpaceBetween)
+                                        .width(pct!(100))
+                                        .height(px!(55))
+                                        .background(|theme: &Theme| theme.surface)
+                                        .box_shadow(
+                                            BoxShadow::new(
+                                                0.0,
+                                                4.0,
+                                                16.0,
+                                                Color::NEUTRAL_900
+                                            ).spread(1.0)
+                                        )
+                                        .border(|theme: &Theme| Border::bottom(1, theme.border))
+                                        .padding(Edges::symmetric(120, 0))
+                                        .child(
+                                            xen_router
+                                                ::router_link("/")
+                                                .font_size(18)
+                                                .font_weight(FontWeight::Medium)
+                                                .label("XenGui")
+                                        )
                                         .child(
                                             View::new()
                                                 .display(Flex)
-                                                .flex_direction(Column)
-                                                .font_size(60)
-                                                .font_weight(FontWeight::Medium)
-                                                .line_height(pct!(78.0))
-                                                .letter_spacing(px!(-2.25))
-                                                .color(|theme: &Theme| theme.foreground)
-                                                .child(Label::new().label("The GUI framework"))
-                                                .child(Label::new().label("Rust deserves"))
+                                                .flex_direction(Row)
+                                                .gap(20, 0)
                                                 .child(
-                                                    Label::new()
-                                                        .color(
-                                                            |theme: &Theme| theme.foreground_muted
-                                                        )
-                                                        .font_size(16)
-                                                        .font_weight(FontWeight::Regular)
-                                                        .line_height(px!(10.0))
-                                                        .letter_spacing(px!(-0.1))
-                                                        .margin(Edges::only(0, 16, 0, 8))
-                                                        .label(
-                                                            "Build native desktop, web, mobile, and embedded applications from a single codebase."
-                                                        )
+                                                    xen_router::router_link("/docs").label("Docs")
+                                                )
+                                                .child(
+                                                    xen_router
+                                                        ::router_link("/examples")
+                                                        .label("Examples")
+                                                )
+                                                .child(
+                                                    xen_router
+                                                        ::router_link("/playground")
+                                                        .label("Playground")
+                                                )
+                                                .child(
+                                                    Link::new()
+                                                        .href("https://github.com/randseas/xengui")
+                                                        .target_blank(true)
+                                                        .label("GitHub")
                                                 )
                                         )
                                         .child(
                                             View::new()
                                                 .display(Flex)
                                                 .flex_direction(Row)
-                                                .margin(Edges::only(0, 16, 0, 16))
                                                 .gap(4, 0)
                                                 .child(
                                                     Button::new()
                                                         .background(Color::BLUE_500)
+                                                        .font_size(14)
                                                         .font_weight(Medium)
                                                         .transition_all(
                                                             Transition::new(
                                                                 Duration::from_millis(200)
                                                             ).easing(Easing::EaseInOut)
                                                         )
-                                                        .border(Border::new(1, Color::BLUE_400, 10))
+                                                        .border(Border::new(1, Color::BLUE_400, 99))
                                                         .hover_style(
                                                             |ctx: StylePatch, _theme: &Theme|
                                                                 ctx
@@ -246,7 +234,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                                                         Border::new(
                                                                             1,
                                                                             Color::BLUE_500,
-                                                                            10
+                                                                            99
                                                                         )
                                                                     )
                                                         )
@@ -258,75 +246,196 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                                                         Border::new(
                                                                             1,
                                                                             Color::BLUE_600,
-                                                                            10
+                                                                            99
                                                                         )
                                                                     )
                                                                     .scale(0.97)
                                                         )
-                                                        .padding(Edges::only(15, 9, 15, 9))
+                                                        .padding(Edges::only(14, 7, 14, 7))
                                                         .label("Get started")
-                                                )
-                                                .child(
-                                                    Button::new()
-                                                        .background(Color::hex("#24292f"))
-                                                        .font_weight(Medium)
-                                                        .transition_all(
-                                                            Transition::new(
-                                                                Duration::from_millis(200)
-                                                            ).easing(Easing::EaseInOut)
-                                                        )
-                                                        .border(
-                                                            Border::new(
-                                                                1,
-                                                                Color::hex("#3d444d"),
-                                                                10
-                                                            )
-                                                        )
-                                                        .hover_style(
-                                                            |ctx: StylePatch, _theme: &Theme|
-                                                                ctx
-                                                                    .background(
-                                                                        Color::hex("#30363d")
-                                                                    )
-                                                                    .border(
-                                                                        Border::new(
-                                                                            1,
-                                                                            Color::hex("#4b5561"),
-                                                                            10
-                                                                        )
-                                                                    )
-                                                        )
-                                                        .pressed_style(
-                                                            |ctx: StylePatch, _theme: &Theme|
-                                                                ctx
-                                                                    .background(
-                                                                        Color::hex("#1f2328")
-                                                                    )
-                                                                    .scale(0.97)
-                                                        )
-                                                        .padding(Edges::only(15, 9, 15, 9))
-                                                        .label("GitHub")
                                                 )
                                         )
                                 )
+                                /* Main */
                                 .child(
                                     View::new()
-                                        .background(|theme: &Theme| theme.surface)
-                                        .border(|theme: &Theme| Border::new(1, theme.border, 12))
-                                        .width(pct!(100))
-                                        .height(px!(640))
-                                        .child(Label::new().label("App"))
+                                        .display(Flex)
+                                        .flex_direction(Column)
+                                        .align_items(AlignItems::Start)
+                                        .justify_content(JustifyContent::Center)
+                                        //.min_height(pct!(100.0))
+                                        .padding(Edges::only(120, 160, 120, 0))
+                                        .child(
+                                            View::new()
+                                                .display(Flex)
+                                                .flex_direction(Column)
+                                                .align_items(AlignItems::Start)
+                                                .justify_content(JustifyContent::Start)
+                                                .child(
+                                                    View::new()
+                                                        .display(Flex)
+                                                        .flex_direction(Column)
+                                                        .font_size(60)
+                                                        .font_weight(FontWeight::Medium)
+                                                        .line_height(pct!(78.0))
+                                                        .letter_spacing(px!(-2.25))
+                                                        .color(|theme: &Theme| theme.foreground)
+                                                        .child(
+                                                            Label::new().label("The GUI framework")
+                                                        )
+                                                        .child(Label::new().label("Rust deserves"))
+                                                        .child(
+                                                            Label::new()
+                                                                .color(
+                                                                    |theme: &Theme|
+                                                                        theme.foreground_muted
+                                                                )
+                                                                .font_size(16)
+                                                                .font_weight(FontWeight::Regular)
+                                                                .line_height(px!(10.0))
+                                                                .letter_spacing(px!(-0.1))
+                                                                .margin(Edges::only(0, 16, 0, 8))
+                                                                .label(
+                                                                    "Build native desktop, web, mobile, and embedded applications from a single codebase."
+                                                                )
+                                                        )
+                                                )
+                                                .child(
+                                                    View::new()
+                                                        .display(Flex)
+                                                        .flex_direction(Row)
+                                                        .margin(Edges::only(0, 16, 0, 16))
+                                                        .gap(4, 0)
+                                                        .child(
+                                                            Button::new()
+                                                                .background(Color::BLUE_500)
+                                                                .font_weight(Medium)
+                                                                .transition_all(
+                                                                    Transition::new(
+                                                                        Duration::from_millis(200)
+                                                                    ).easing(Easing::EaseInOut)
+                                                                )
+                                                                .border(
+                                                                    Border::new(
+                                                                        1,
+                                                                        Color::BLUE_400,
+                                                                        10
+                                                                    )
+                                                                )
+                                                                .hover_style(
+                                                                    |
+                                                                        ctx: StylePatch,
+                                                                        _theme: &Theme
+                                                                    |
+                                                                        ctx
+                                                                            .background(
+                                                                                Color::BLUE_600
+                                                                            )
+                                                                            .border(
+                                                                                Border::new(
+                                                                                    1,
+                                                                                    Color::BLUE_500,
+                                                                                    10
+                                                                                )
+                                                                            )
+                                                                )
+                                                                .pressed_style(
+                                                                    |
+                                                                        ctx: StylePatch,
+                                                                        _theme: &Theme
+                                                                    |
+                                                                        ctx
+                                                                            .background(
+                                                                                Color::BLUE_700
+                                                                            )
+                                                                            .border(
+                                                                                Border::new(
+                                                                                    1,
+                                                                                    Color::BLUE_600,
+                                                                                    10
+                                                                                )
+                                                                            )
+                                                                            .scale(0.97)
+                                                                )
+                                                                .padding(Edges::only(15, 9, 15, 9))
+                                                                .label("Get started")
+                                                        )
+                                                        .child(
+                                                            Button::new()
+                                                                .background(Color::hex("#24292f"))
+                                                                .font_weight(Medium)
+                                                                .transition_all(
+                                                                    Transition::new(
+                                                                        Duration::from_millis(200)
+                                                                    ).easing(Easing::EaseInOut)
+                                                                )
+                                                                .border(
+                                                                    Border::new(
+                                                                        1,
+                                                                        Color::hex("#3d444d"),
+                                                                        10
+                                                                    )
+                                                                )
+                                                                .hover_style(
+                                                                    |
+                                                                        ctx: StylePatch,
+                                                                        _theme: &Theme
+                                                                    |
+                                                                        ctx
+                                                                            .background(
+                                                                                Color::hex(
+                                                                                    "#30363d"
+                                                                                )
+                                                                            )
+                                                                            .border(
+                                                                                Border::new(
+                                                                                    1,
+                                                                                    Color::hex(
+                                                                                        "#4b5561"
+                                                                                    ),
+                                                                                    10
+                                                                                )
+                                                                            )
+                                                                )
+                                                                .pressed_style(
+                                                                    |
+                                                                        ctx: StylePatch,
+                                                                        _theme: &Theme
+                                                                    |
+                                                                        ctx
+                                                                            .background(
+                                                                                Color::hex(
+                                                                                    "#1f2328"
+                                                                                )
+                                                                            )
+                                                                            .scale(0.97)
+                                                                )
+                                                                .padding(Edges::only(15, 9, 15, 9))
+                                                                .label("GitHub")
+                                                        )
+                                                )
+                                        )
+                                        .child(
+                                            View::new()
+                                                .background(|theme: &Theme| theme.surface)
+                                                .border(|theme: &Theme|
+                                                    Border::new(1, theme.border, 12)
+                                                )
+                                                .width(pct!(100))
+                                                .height(px!(640))
+                                                .child(Label::new().label("App"))
+                                        )
                                 )
-                        )
-                        /* Footer */
-                        .child(
-                            View::new()
-                                .display(Flex)
-                                .flex_direction(Column)
-                                .align_items(AlignItems::Start)
-                                .justify_content(JustifyContent::Center)
-                                .padding(Edges::symmetric(120, 0))
-                                .child(Label::new().label("Footer"))
+                                /* Footer */
+                                .child(
+                                    View::new()
+                                        .display(Flex)
+                                        .flex_direction(Column)
+                                        .align_items(AlignItems::Start)
+                                        .justify_content(JustifyContent::Center)
+                                        .padding(Edges::symmetric(120, 0))
+                                        .child(Label::new().label("Footer"))
+                                )
                         )
                 )
             )
@@ -616,7 +725,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     });*/
 
     if let Err(e) = app.run() {
-        eprintln!("Error running app: {:?}", e);
+        eprintln!("[xengui-demo] Error running app: {:?}", e);
+
+        eprintln!("TYPE: {}", std::any::type_name_of_val(&e));
+        eprintln!("DEBUG: {:?}", e);
+        eprintln!("DISPLAY: {}", e);
     }
 
     Ok(())

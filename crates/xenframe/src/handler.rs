@@ -1090,6 +1090,7 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
 
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
         if crate::window_controls::take_close_requested() {
+            log::trace!("event_loop.exit() called here");
             event_loop.exit();
             return;
         }

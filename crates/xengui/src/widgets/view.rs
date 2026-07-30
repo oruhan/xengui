@@ -71,11 +71,15 @@ fn point_in_rect(point: (f32, f32), rect: (f32, f32, f32, f32)) -> bool {
 // Builds a solid, filled arrow with rounded corners: three straight
 // corner points defining the arrow's silhouette, each corner rounded off
 // with a small tangent arc, then fan-triangulated from the centroid.
-fn rounded_arrow_triangles(rect: (f32, f32, f32, f32), direction: ArrowDirection) -> Vec<Triangle> {
+fn rounded_arrow_triangles(
+    rect: (f32, f32, f32, f32),
+    direction: ArrowDirection,
+    sf: f32
+) -> Vec<Triangle> {
     let (x, y, w, h) = rect;
     let cx = x + w * 0.5;
     let cy = y + h * 0.5;
-    let s = SCROLLBAR_ARROW_SIZE;
+    let s = SCROLLBAR_ARROW_SIZE * sf;
 
     let (a, tip, b) = match direction {
         ArrowDirection::Up => ((cx - s, cy + s * 0.5), (cx, cy - s * 0.5), (cx + s, cy + s * 0.5)),
@@ -91,7 +95,7 @@ fn rounded_arrow_triangles(rect: (f32, f32, f32, f32), direction: ArrowDirection
         a,
         tip,
         b,
-        SCROLLBAR_ARROW_CORNER_RADIUS,
+        SCROLLBAR_ARROW_CORNER_RADIUS * sf,
         SCROLLBAR_ARROW_CAP_SEGMENTS
     );
     fan_triangulate(&polygon)
@@ -199,6 +203,7 @@ pub struct View {
     // flush against it instead of the raw box edge.
     scrollbar_right_inset: Cell<f32>,
     scrollbar_bottom_inset: Cell<f32>,
+    scale_factor: Cell<f32>,
     context_menu: Option<ContextMenuHandle>,
 }
 
@@ -220,6 +225,7 @@ impl View {
             scrollbar_thickness_anim: Cell::new(0.0),
             scrollbar_right_inset: Cell::new(0.0),
             scrollbar_bottom_inset: Cell::new(0.0),
+            scale_factor: Cell::new(1.0),
             context_menu: None,
         };
 
@@ -300,7 +306,12 @@ impl View {
     fn active_scrollbar(&self) -> ResolvedScrollbar {
         let pressed = self.scrollbar_drag.get().is_some();
         let hovered = self.scrollbar_hovered.get();
+        let sf = self.scale_factor.get();
         let mut sb = self.resolved_scrollbar_for_state(hovered, pressed);
+        sb.min_thumb_length *= sf;
+        sb.thumb_radius *= sf;
+        sb.thumb_border_width *= sf;
+        sb.track_border_width *= sf;
         sb.thickness = self.current_scrollbar_thickness();
         sb
     }
@@ -308,7 +319,7 @@ impl View {
     fn target_scrollbar_thickness(&self) -> f32 {
         let pressed = self.scrollbar_drag.get().is_some();
         let hovered = self.scrollbar_hovered.get();
-        self.resolved_scrollbar_for_state(hovered, pressed).thickness
+        self.resolved_scrollbar_for_state(hovered, pressed).thickness * self.scale_factor.get()
     }
 
     fn current_scrollbar_thickness(&self) -> f32 {
@@ -351,12 +362,13 @@ impl View {
             return;
         }
 
+        let sf = self.scale_factor.get();
         let thickness = self.resolved_scrollbar().thickness;
         let mut padding = self.base.computed_style.padding.unwrap_or_default();
         let (shows_x, shows_y) = self.scrollbar_visibility();
 
-        self.scrollbar_right_inset.set(if shows_y { padding.right.value() } else { 0.0 });
-        self.scrollbar_bottom_inset.set(if shows_x { padding.bottom.value() } else { 0.0 });
+        self.scrollbar_right_inset.set(if shows_y { padding.right.to_physical(sf) } else { 0.0 });
+        self.scrollbar_bottom_inset.set(if shows_x { padding.bottom.to_physical(sf) } else { 0.0 });
 
         if shows_y {
             padding.right = padding.right.add_px(thickness);
@@ -413,7 +425,7 @@ impl View {
         }
 
         let b = self.layout_box;
-        let t = self.resolved_scrollbar_for_state(true, false).thickness;
+        let t = self.resolved_scrollbar_for_state(true, false).thickness * self.scale_factor.get();
         let right_inset = self.scrollbar_right_inset.get();
         let bottom_inset = self.scrollbar_bottom_inset.get();
 
@@ -516,14 +528,10 @@ impl View {
         let progress = if max_offset > 0.0 { self.scroll_offset.get().1 / max_offset } else { 0.0 };
         let thumb_y = track_y + progress * (track_h - thumb_h);
 
-        let thumb_w = (sb.thickness - SCROLLBAR_THUMB_PADDING * 2.0).max(1.0);
+        let pad = SCROLLBAR_THUMB_PADDING * self.scale_factor.get();
+        let thumb_w = (sb.thickness - pad * 2.0).max(1.0);
         let right_inset = self.scrollbar_right_inset.get();
-        Some((
-            b.x + b.width - right_inset - sb.thickness + SCROLLBAR_THUMB_PADDING,
-            thumb_y,
-            thumb_w,
-            thumb_h,
-        ))
+        Some((b.x + b.width - right_inset - sb.thickness + pad, thumb_y, thumb_w, thumb_h))
     }
 
     fn horizontal_thumb_rect(&self) -> Option<(f32, f32, f32, f32)> {
@@ -537,14 +545,10 @@ impl View {
         let progress = if max_offset > 0.0 { self.scroll_offset.get().0 / max_offset } else { 0.0 };
         let thumb_x = track_x + progress * (track_w - thumb_w);
 
-        let thumb_h = (sb.thickness - SCROLLBAR_THUMB_PADDING * 2.0).max(1.0);
+        let pad = SCROLLBAR_THUMB_PADDING * self.scale_factor.get();
+        let thumb_h = (sb.thickness - pad * 2.0).max(1.0);
         let bottom_inset = self.scrollbar_bottom_inset.get();
-        Some((
-            thumb_x,
-            b.y + b.height - bottom_inset - sb.thickness + SCROLLBAR_THUMB_PADDING,
-            thumb_w,
-            thumb_h,
-        ))
+        Some((thumb_x, b.y + b.height - bottom_inset - sb.thickness + pad, thumb_w, thumb_h))
     }
 
     fn vertical_buttons(&self) -> Option<(Rect, Rect)> {
@@ -960,6 +964,10 @@ impl Widget for View {
         MeasureResult::new(0.0, 0.0)
     }
 
+    fn on_layout_pass(&self, ctx: &mut MeasureContext) {
+        self.scale_factor.set(ctx.scale_factor);
+    }
+
     fn paint(&self, ctx: &mut PaintContext) {
         self.paint_box(ctx);
         self.paint_outline(ctx);
@@ -1055,7 +1063,7 @@ impl Widget for View {
                 let dim = axis_dim * (if edge_disabled { 0.35 } else { 1.0 });
                 let color = sb.arrow_color.with_alpha_f32(sb.arrow_color.a() * dim);
 
-                for (p0, p1, p2) in rounded_arrow_triangles(rect, dir) {
+                for (p0, p1, p2) in rounded_arrow_triangles(rect, dir, ctx.scale_factor) {
                     ctx.draw_triangle(TriangleCommand { p0, p1, p2, color, clip_rect: None });
                 }
             }
@@ -1072,7 +1080,7 @@ impl Widget for View {
                 let dim = axis_dim * (if edge_disabled { 0.35 } else { 1.0 });
                 let color = sb.arrow_color.with_alpha_f32(sb.arrow_color.a() * dim);
 
-                for (p0, p1, p2) in rounded_arrow_triangles(rect, dir) {
+                for (p0, p1, p2) in rounded_arrow_triangles(rect, dir, ctx.scale_factor) {
                     ctx.draw_triangle(TriangleCommand { p0, p1, p2, color, clip_rect: None });
                 }
             }
@@ -1212,6 +1220,7 @@ impl Widget for View {
             self.scrollbar_thickness_anim.set(old.scrollbar_thickness_anim.get());
             self.scrollbar_right_inset.set(old.scrollbar_right_inset.get());
             self.scrollbar_bottom_inset.set(old.scrollbar_bottom_inset.get());
+            self.scale_factor.set(old.scale_factor.get());
             self.anim_id = old.anim_id;
         }
     }

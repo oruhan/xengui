@@ -227,7 +227,7 @@ fn point_in_rect(point: (f32, f32), rect: (f32, f32, f32, f32)) -> bool {
     px >= rx && px <= rx + rw && py >= ry && py <= ry + rh
 }
 
-fn menu_height(entries: &[ContextMenuEntry], padding: f32) -> f32 {
+fn menu_height(entries: &[ContextMenuEntry], padding: f32, sf: f32) -> f32 {
     let sum: f32 = entries
         .iter()
         .map(|e| {
@@ -237,7 +237,7 @@ fn menu_height(entries: &[ContextMenuEntry], padding: f32) -> f32 {
             }
         })
         .sum();
-    sum + padding * 2.0
+    sum * sf + padding * 2.0 * sf
 }
 
 // Measures each item's label/shortcut natural width in `entries`, caches
@@ -253,7 +253,8 @@ fn measure_entries_width(
     font_style: FontStyle,
     letter_spacing: f32,
     line_height: f32,
-    pad_lr: f32
+    pad_lr: f32,
+    sf: f32
 ) -> f32 {
     let mut max_w: f32 = 0.0;
 
@@ -290,9 +291,9 @@ fn measure_entries_width(
             });
         item.shortcut_width.set(shortcut_w);
 
-        let arrow_w = if item.has_submenu() { SUBMENU_ARROW_RESERVED } else { 0.0 };
-        let shortcut_gap = if shortcut_w > 0.0 { SHORTCUT_GAP } else { 0.0 };
-        let shortcut_padding = if shortcut_w > 0.0 { SHORTCUT_RIGHT_PADDING } else { 0.0 };
+        let arrow_w = if item.has_submenu() { SUBMENU_ARROW_RESERVED * sf } else { 0.0 };
+        let shortcut_gap = if shortcut_w > 0.0 { SHORTCUT_GAP * sf } else { 0.0 };
+        let shortcut_padding = if shortcut_w > 0.0 { SHORTCUT_RIGHT_PADDING * sf } else { 0.0 };
 
         let row_w = label_w + shortcut_gap + shortcut_w + shortcut_padding + arrow_w + pad_lr;
         max_w = max_w.max(row_w);
@@ -307,7 +308,8 @@ fn measure_entries_width(
                 font_style,
                 letter_spacing,
                 line_height,
-                pad_lr
+                pad_lr,
+                sf
             );
             item.submenu_width.set(sub_w);
         }
@@ -321,27 +323,31 @@ fn entry_rect_at(
     pos: (f32, f32),
     size: (f32, f32),
     padding: f32,
+    sf: f32,
     index: usize
 ) -> (f32, f32, f32, f32) {
     let (mx, my) = pos;
     let (mw, _) = size;
+    let padding = padding * sf;
+    let item_h = ITEM_HEIGHT * sf;
+    let divider_h = DIVIDER_HEIGHT * sf;
 
     let y_offset: f32 = entries[..index]
         .iter()
         .map(|e| {
             match e {
-                ContextMenuEntry::Item(_) => ITEM_HEIGHT,
-                ContextMenuEntry::Divider => DIVIDER_HEIGHT,
+                ContextMenuEntry::Item(_) => item_h,
+                ContextMenuEntry::Divider => divider_h,
             }
         })
         .sum();
 
     match entries[index] {
         ContextMenuEntry::Item(_) =>
-            (mx + padding, my + padding + y_offset, mw - padding * 2.0, ITEM_HEIGHT),
+            (mx + padding, my + padding + y_offset, mw - padding * 2.0, item_h),
         ContextMenuEntry::Divider => {
-            let line_y = my + padding + y_offset + DIVIDER_HEIGHT * 0.5;
-            (mx + padding, line_y, mw - padding * 2.0, DIVIDER_LINE_THICKNESS)
+            let line_y = my + padding + y_offset + divider_h * 0.5;
+            (mx + padding, line_y, mw - padding * 2.0, DIVIDER_LINE_THICKNESS * sf)
         }
     }
 }
@@ -351,6 +357,7 @@ fn index_at(
     pos: (f32, f32),
     size: (f32, f32),
     padding: f32,
+    sf: f32,
     point: (f32, f32)
 ) -> Option<usize> {
     if !point_in_rect(point, (pos.0, pos.1, size.0, size.1)) {
@@ -360,7 +367,7 @@ fn index_at(
         if !matches!(entries[i], ContextMenuEntry::Item(_)) {
             return false;
         }
-        let (x, y, w, h) = entry_rect_at(entries, pos, size, padding, i);
+        let (x, y, w, h) = entry_rect_at(entries, pos, size, padding, sf, i);
         point.0 >= x && point.0 <= x + w && point.1 >= y && point.1 <= y + h
     })
 }
@@ -368,28 +375,28 @@ fn index_at(
 // Builds a rounded-corner chevron ("›") as a set of filled triangles:
 // two thick line segments plus round caps at the joints, so the arrow
 // reads as a smooth stroke instead of a sharp mitered triangle.
-
-fn submenu_arrow_triangles(rect: Rect) -> Vec<Triangle> {
+fn submenu_arrow_triangles(rect: Rect, sf: f32) -> Vec<Triangle> {
     let (x, y, w, h) = rect;
     let cy = y + h * 0.5;
-    let right = x + w - SHORTCUT_RIGHT_PADDING;
+    let right = x + w - SHORTCUT_RIGHT_PADDING * sf;
 
-    let top = (right - ARROW_SIZE, cy - ARROW_SIZE);
+    let top = (right - ARROW_SIZE * sf, cy - ARROW_SIZE * sf);
     let tip = (right, cy);
-    let bottom = (right - ARROW_SIZE, cy + ARROW_SIZE);
+    let bottom = (right - ARROW_SIZE * sf, cy + ARROW_SIZE * sf);
 
-    let mut tris = arrow_segment(top, tip);
-    tris.extend(arrow_segment(tip, bottom));
-    tris.extend(arrow_cap(top));
-    tris.extend(arrow_cap(tip));
-    tris.extend(arrow_cap(bottom));
+    let mut tris = arrow_segment(top, tip, sf);
+    tris.extend(arrow_segment(tip, bottom, sf));
+    tris.extend(arrow_cap(top, sf));
+    tris.extend(arrow_cap(tip, sf));
+    tris.extend(arrow_cap(bottom, sf));
     tris
 }
 
-fn arrow_segment(a: Point, b: Point) -> Vec<Triangle> {
+fn arrow_segment(a: Point, b: Point, sf: f32) -> Vec<Triangle> {
     let (dx, dy) = (b.0 - a.0, b.1 - a.1);
     let len = (dx * dx + dy * dy).sqrt().max(0.0001);
-    let (nx, ny) = ((-dy / len) * ARROW_THICKNESS * 0.5, (dx / len) * ARROW_THICKNESS * 0.5);
+    let thickness = ARROW_THICKNESS * sf;
+    let (nx, ny) = ((-dy / len) * thickness * 0.5, (dx / len) * thickness * 0.5);
     let p0 = (a.0 + nx, a.1 + ny);
     let p1 = (a.0 - nx, a.1 - ny);
     let p2 = (b.0 + nx, b.1 + ny);
@@ -399,9 +406,8 @@ fn arrow_segment(a: Point, b: Point) -> Vec<Triangle> {
 
 // Small filled fan approximating a circle, rounding off a joint or line
 // end that would otherwise show as a sharp corner.
-
-fn arrow_cap(center: Point) -> Vec<Triangle> {
-    let r = ARROW_THICKNESS * 0.5;
+fn arrow_cap(center: Point, sf: f32) -> Vec<Triangle> {
+    let r = ARROW_THICKNESS * sf * 0.5;
     (0..ARROW_CAP_SEGMENTS)
         .map(|i| {
             let a0 = ((i as f32) / (ARROW_CAP_SEGMENTS as f32)) * std::f32::consts::TAU;
@@ -443,6 +449,7 @@ pub struct ContextMenu {
     closing_submenus: RefCell<Vec<OpenSubmenu>>,
 
     natural_width: Cell<f32>,
+    scale_factor: Cell<f32>,
     external_open: ContextMenuHandle,
 
     item_background: Option<Background>,
@@ -492,6 +499,7 @@ impl ContextMenu {
             closing_submenus: RefCell::new(Vec::new()),
 
             natural_width: Cell::new(0.0),
+            scale_factor: Cell::new(1.0),
             external_open: ContextMenuHandle::new(),
 
             item_background: None,
@@ -716,24 +724,26 @@ impl ContextMenu {
     // Resolves the actual width a menu level should open at, given that
     // level's natural (content-measured) width.
     fn resolve_width(&self, natural: f32) -> f32 {
+        let sf = self.scale_factor.get();
         if let Some(w) = self.menu_width {
-            return w;
+            return w * sf;
         }
-        let min = self.menu_min_width.unwrap_or(DEFAULT_MENU_MIN_WIDTH);
+        let min = self.menu_min_width.unwrap_or(DEFAULT_MENU_MIN_WIDTH) * sf;
         let mut w = natural.max(min);
         if let Some(max) = self.menu_max_width {
-            w = w.min(max);
+            w = w.min(max * sf);
         }
         w
     }
 
     fn resolve_height(&self, natural: f32) -> f32 {
+        let sf = self.scale_factor.get();
         let mut h = natural;
         if let Some(min) = self.menu_min_height {
-            h = h.max(min);
+            h = h.max(min * sf);
         }
         if let Some(max) = self.menu_max_height {
-            h = h.min(max);
+            h = h.min(max * sf);
         }
         h
     }
@@ -867,8 +877,9 @@ impl ContextMenu {
     }
 
     fn open_at_impl(&self, position: (f32, f32)) {
+        let sf = self.scale_factor.get();
         let width = self.resolve_width(self.natural_width.get());
-        let height = self.resolve_height(menu_height(&self.entries, self.effective_padding()));
+        let height = self.resolve_height(menu_height(&self.entries, self.effective_padding(), sf));
 
         let bounds_x = self.layout_box.x;
         let bounds_y = self.layout_box.y;
@@ -932,6 +943,7 @@ impl ContextMenu {
     fn hit_level_index(&self, point: (f32, f32)) -> Option<(usize, usize)> {
         let depth = self.submenu_stack.borrow().len();
         let padding = self.effective_padding();
+        let sf = self.scale_factor.get();
 
         for level in (0..=depth).rev() {
             let (path, pos, size) = if level == 0 {
@@ -947,7 +959,7 @@ impl ContextMenu {
             }
 
             let entries = self.entries_at(&path);
-            return index_at(entries, pos, size, padding, point).map(|idx| (level, idx));
+            return index_at(entries, pos, size, padding, sf, point).map(|idx| (level, idx));
         }
         None
     }
@@ -955,6 +967,7 @@ impl ContextMenu {
     fn update_hover(&self, point: (f32, f32), ctx: &mut EventCtx) {
         let depth = self.submenu_stack.borrow().len();
         let padding = self.effective_padding();
+        let sf = self.scale_factor.get();
 
         for level in (0..=depth).rev() {
             let (path, pos, size) = if level == 0 {
@@ -970,7 +983,7 @@ impl ContextMenu {
             }
 
             let entries = self.entries_at(&path);
-            let idx = index_at(entries, pos, size, padding, point);
+            let idx = index_at(entries, pos, size, padding, sf, point);
 
             let current = if level == 0 {
                 self.hovered_index.get()
@@ -993,16 +1006,14 @@ impl ContextMenu {
                     item.enabled &&
                     item.has_submenu()
                 {
-                    let rect = entry_rect_at(entries, pos, size, padding, i);
+                    let rect = entry_rect_at(entries, pos, size, padding, sf, i);
                     let mut child_path = path.clone();
                     child_path.push(i);
                     let child_entries = self.entries_at(&child_path);
                     let child_w = self.resolve_width(item.submenu_width.get());
-                    let child_h = self.resolve_height(menu_height(child_entries, padding));
+                    let child_h = self.resolve_height(menu_height(child_entries, padding, sf));
                     let child_pos = self.position_submenu(rect, child_w, child_h);
 
-                    // Cancels any in-progress close fade for this submenu so
-                    // reopening it doesn't fight the closing animation for the same key.
                     self.closing_submenus.borrow_mut().retain(|c| c.anim_id != item.anim_id);
 
                     self.submenu_stack.borrow_mut().push(OpenSubmenu {
@@ -1054,6 +1065,7 @@ impl ContextMenu {
     ) {
         let (mx, my) = pos;
         let (mw, mh) = size;
+        let sf = ctx.scale_factor;
 
         let bg = self.background.clone().unwrap_or(Background::Color(theme.surface));
         let border = self.border.as_ref();
@@ -1063,21 +1075,24 @@ impl ContextMenu {
             position: (mx, my),
             size: (mw, mh),
             background: Some(faded_background(bg, opacity)),
-            border_radius: border.and_then(|b| b.radius),
-            border_width: border.map(|b| b.top),
+            border_radius: border.and_then(|b| b.radius).map(|r| Length::px(r.to_physical(sf))),
+            border_width: border.map(|b| Length::px(b.top.to_physical(sf))),
             border_color: Some(border_color.with_alpha_f32(border_color.a() * opacity)),
             clip_rect: None,
         });
 
         let divider_color = self.divider_color.unwrap_or(theme.border);
-        let sf = ctx.scale_factor;
         let pad = self.effective_item_padding();
-        let (pad_l, pad_t, pad_b) = (pad.left.value(), pad.top.value(), pad.bottom.value());
+        let (pad_l, pad_t, pad_b) = (
+            pad.left.to_physical(sf),
+            pad.top.to_physical(sf),
+            pad.bottom.to_physical(sf),
+        );
 
         for (i, entry) in entries.iter().enumerate() {
             let item = match entry {
                 ContextMenuEntry::Divider => {
-                    let (x, y, w, h) = entry_rect_at(entries, pos, size, padding, i);
+                    let (x, y, w, h) = entry_rect_at(entries, pos, size, padding, sf, i);
                     ctx.draw_rect(RectCommand {
                         position: (x, y),
                         size: (w, h),
@@ -1096,11 +1111,8 @@ impl ContextMenu {
                 ContextMenuEntry::Item(item) => item,
             };
 
-            let (x, y, w, h) = entry_rect_at(entries, pos, size, padding, i);
+            let (x, y, w, h) = entry_rect_at(entries, pos, size, padding, sf, i);
 
-            // Only the highlight rect scales with hover; the label, shortcut
-            // and arrow keep the row's real geometry so they don't visibly
-            // detach from a still-settling scale animation.
             let item_scale = item.scale_progress.get();
             let (bg_x, bg_y, bg_w, bg_h) = if (item_scale - 1.0).abs() > f32::EPSILON {
                 let scaled = crate::scaled_layout_box(
@@ -1115,9 +1127,6 @@ impl ContextMenu {
             let is_hovered = item.enabled && hovered_index == Some(i);
             let is_pressed = is_hovered && pressed_index == Some(i);
 
-            // Keeps blending toward the hover/pressed color even after the
-            // pointer leaves, so hover_progress drives a real fade back to
-            // idle instead of an instant snap.
             let (target_bg, hover_text_color_opt) = if is_pressed {
                 (
                     self.item_pressed_background
@@ -1143,8 +1152,6 @@ impl ContextMenu {
                 self.item_border
             };
 
-            // A press snaps straight to its color; otherwise the highlight
-            // fades using this item's own animated hover progress.
             let t = if is_pressed { 1.0 } else { item.hover_progress.get() };
 
             let idle_bg_color = match &self.item_background {
@@ -1161,8 +1168,11 @@ impl ContextMenu {
                     position: (bg_x, bg_y),
                     size: (bg_w, bg_h),
                     background: Some(faded_background(Background::Color(blended_bg), opacity)),
-                    border_radius: border.and_then(|b| b.radius).or(Some(Length::px(4.0))),
-                    border_width: border.map(|b| b.top),
+                    border_radius: border
+                        .and_then(|b| b.radius)
+                        .map(|r| Length::px(r.to_physical(sf)))
+                        .or(Some(Length::px(4.0 * sf))),
+                    border_width: border.map(|b| Length::px(b.top.to_physical(sf))),
                     border_color: border.map(|b| b.color.with_alpha_f32(b.color.a() * opacity)),
                     clip_rect: None,
                 });
@@ -1198,16 +1208,13 @@ impl ContextMenu {
             let inner_h = (h - pad_t - pad_b).max(0.0);
             let text_y = y + pad_t + (inner_h - text_h).max(0.0) * 0.5;
 
-            // Submenu arrow and shortcut are independent - an item with
-            // both shows the shortcut just left of the arrow instead of
-            // the arrow silently hiding it.
             let mut right_reserved = 0.0;
 
             if item.has_submenu() {
                 let arrow_color = base_color.with_alpha_f32(
                     base_color.a() * opacity * alpha_scale * 0.8
                 );
-                for (p0, p1, p2) in submenu_arrow_triangles((x, y, w, h)) {
+                for (p0, p1, p2) in submenu_arrow_triangles((x, y, w, h), sf) {
                     ctx.draw_triangle(TriangleCommand {
                         p0,
                         p1,
@@ -1216,7 +1223,7 @@ impl ContextMenu {
                         clip_rect: None,
                     });
                 }
-                right_reserved += SUBMENU_ARROW_RESERVED;
+                right_reserved += SUBMENU_ARROW_RESERVED * sf;
             }
 
             if let Some(shortcut) = &item.shortcut {
@@ -1226,7 +1233,7 @@ impl ContextMenu {
                 );
 
                 let shortcut_w = item.shortcut_width.get();
-                let shortcut_padding = SHORTCUT_RIGHT_PADDING;
+                let shortcut_padding = SHORTCUT_RIGHT_PADDING * sf;
 
                 ctx.draw_text(TextCommand {
                     text: shortcut.clone(),
@@ -1235,7 +1242,7 @@ impl ContextMenu {
                     max_width: Some(shortcut_w),
                     clip_rect: None,
                 });
-                right_reserved += shortcut_w + SHORTCUT_GAP + shortcut_padding;
+                right_reserved += shortcut_w + SHORTCUT_GAP * sf + shortcut_padding;
             }
 
             ctx.draw_text(TextCommand {
@@ -1317,6 +1324,7 @@ impl Widget for ContextMenu {
 
     fn on_layout_pass(&self, ctx: &mut MeasureContext) {
         let sf = ctx.scale_factor;
+        self.scale_factor.set(sf);
         let style = &self.base.computed_style;
         let padding = self.effective_item_padding();
         let font = style.font.as_deref();
@@ -1340,7 +1348,8 @@ impl Widget for ContextMenu {
             font_style,
             letter_spacing,
             line_height,
-            pad_lr
+            pad_lr,
+            sf
         );
         self.natural_width.set(width);
     }
@@ -1599,6 +1608,7 @@ impl Widget for ContextMenu {
             self.pressed_index.set(old.pressed_index.get());
             self.submenu_stack.replace(old.submenu_stack.borrow().clone());
             self.closing_submenus.replace(old.closing_submenus.borrow().clone());
+            self.scale_factor.set(old.scale_factor.get());
             self.anim_id = old.anim_id;
             transfer_entry_anim_state(&mut self.entries, &old.entries);
         }
