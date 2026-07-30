@@ -97,7 +97,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     ContextMenu::new()
                         .item(
                             ContextMenuItem::new("Back")
-                                .shortcut("Ctrl+B")
+                                .shortcut("Alt+Arrow Left")
                                 .enabled(false)
                                 .on_click(|_ctx| {
                                     log::info!("context menu -> back");
@@ -105,7 +105,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         )
                         .item(
                             ContextMenuItem::new("Forward")
-                                .shortcut("Ctrl+F")
+                                .shortcut("Alt+Arrow Right")
                                 .enabled(true)
                                 .on_click(|_ctx| {
                                     log::info!("context menu -> forward");

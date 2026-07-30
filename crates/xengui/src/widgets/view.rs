@@ -351,21 +351,26 @@ impl View {
         }
     }
 
-    // Reserves layout space for the scrollbar via extra padding so content
-    // doesn't shift when it appears/disappears, matching CSS's
-    // `scrollbar-gutter: stable`.
+    // Reserves layout space for the scrollbar so content doesn't shift
+    // when it appears/disappears, matching CSS's `scrollbar-gutter`.
+    // Stable/StableBothEdges reserve purely from the static overflow mode
+    // (Scroll/Auto), never from whether content currently overflows - this
+    // keeps the reservation fixed regardless of content size or hover,
+    // instead of only catching up once a later layout pass re-measures
+    // the content and happens to get retriggered by something like hover.
+    // Auto instead mirrors the scrollbar's actual current visibility.
     fn apply_scrollbar_gutter(&mut self) {
         let gutter = self.base.computed_style.scrollbar_gutter.unwrap_or_default();
-        if gutter == ScrollbarGutter::Auto {
-            self.scrollbar_right_inset.set(0.0);
-            self.scrollbar_bottom_inset.set(0.0);
-            return;
-        }
 
         let sf = self.scale_factor.get();
         let thickness = self.resolved_scrollbar().thickness;
         let mut padding = self.base.computed_style.padding.unwrap_or_default();
-        let (shows_x, shows_y) = self.scrollbar_visibility();
+
+        let (shows_x, shows_y) = if gutter == ScrollbarGutter::Auto {
+            self.scrollbar_visibility()
+        } else {
+            (self.is_scrollable_x(), self.is_scrollable_y())
+        };
 
         self.scrollbar_right_inset.set(if shows_y { padding.right.to_physical(sf) } else { 0.0 });
         self.scrollbar_bottom_inset.set(if shows_x { padding.bottom.to_physical(sf) } else { 0.0 });

@@ -4,7 +4,10 @@
 /// shown, so content doesn't shift when a scrollbar appears/disappears.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub enum ScrollbarGutter {
-    /// No space is reserved; the scrollbar overlays content when shown.
+    /// Reserves scrollbar-width space on the scrollbar's own edge whenever
+    /// that axis is scrollable. The reserved amount is fixed to the
+    /// resting thickness, so it's already there before the scrollbar is
+    /// hovered and never grows or shrinks afterward.
     #[default]
     Auto,
     /// Reserves scrollbar-width space on the scrollbar's own edge.
