@@ -1,12 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
-    BoxShadow,
-    Overflow,
-    ScrollbarGutter,
-    TransitionProperty,
-    properties::StyleValue,
-    style::{ FontStyle, FontWeight, IntoThemed, LetterSpacing },
+    BoxShadow, Overflow, Overscroll, ScrollbarGutter, TransitionProperty, properties::StyleValue, style::{ FontStyle, FontWeight, IntoThemed, LetterSpacing },
 };
 
 use super::{
@@ -381,6 +376,14 @@ pub trait StyleBuilder: Sized {
         self.style_mut().overflow_x = Some(x);
 
         self.style_mut().overflow_y = Some(y);
+
+        self.mark_dirty();
+
+        self
+    }
+
+    fn overscroll(mut self, overscroll: Overscroll) -> Self {
+        self.style_mut().overscroll = Some(overscroll);
 
         self.mark_dirty();
 

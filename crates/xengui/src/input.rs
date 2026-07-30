@@ -138,6 +138,19 @@ pub enum ImeEvent {
     Disabled,
 }
 
+/// Phase of a touch-driven pan gesture. Dispatched positionally alongside
+/// (not instead of) the ordinary mouse-shaped events touch input already
+/// synthesizes for hover/press/click compatibility, so a scrollable widget
+/// can turn a finger drag into a scroll without any widget needing to know
+/// whether its mouse events came from a real mouse or from touch.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TouchPanPhase {
+    Start,
+    Move,
+    End,
+    Cancel,
+}
+
 #[derive(Clone, Debug)]
 pub enum InputEvent {
     MouseMoved {
@@ -168,6 +181,10 @@ pub enum InputEvent {
     BlinkTick,
     AnimationTick {
         dt: f32,
+    },
+    TouchPan {
+        phase: TouchPanPhase,
+        position: (f32, f32),
     },
 }
 

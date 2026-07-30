@@ -73,6 +73,7 @@ pub use style::{
     FontStyle,
     FontWeight,
     Overflow,
+    Overscroll
 };
 pub use widgets::{
     image_source_from_bytes,

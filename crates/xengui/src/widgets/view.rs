@@ -4,9 +4,13 @@ use crate::{
     AnimLayer,
     AnimProperty,
     AnimationManager,
+    AUTO_SCROLL_DEAD_ZONE_DP,
+    AUTO_SCROLL_MAX_SPEED,
+    AUTO_SCROLL_RANGE_DP,
     Background,
     Constraints,
     ContextMenuHandle,
+    Cursor,
     DEFAULT_SCROLLBAR_HOVER_THICKNESS,
     ElementState,
     EventCtx,
@@ -20,9 +24,15 @@ use crate::{
     MeasureContext,
     MeasureResult,
     ModifiersState,
+    MOMENTUM_FRICTION,
+    MOMENTUM_MIN_SPEED,
     MouseButton,
     MouseScrollDelta,
     Overflow,
+    Overscroll,
+    OVERSCROLL_GLOW_DECAY_PER_SEC,
+    OVERSCROLL_RETURN_TRANSITION,
+    OVERSCROLL_RUBBER_BAND_RANGE,
     PaintContext,
     Point,
     Rect,
@@ -38,6 +48,8 @@ use crate::{
     ScrollbarGutter,
     Style,
     StyleBuilder,
+    TOUCH_PAN_THRESHOLD_DP,
+    TouchPanPhase,
     Triangle,
     TriangleCommand,
     Widget,
@@ -46,6 +58,7 @@ use crate::{
 };
 use xen_animation::{ AnimValue };
 use std::cell::Cell;
+use web_time::Instant;
 
 #[derive(Clone, Copy)]
 struct ScrollDrag {
@@ -60,6 +73,50 @@ enum ArrowDirection {
     Down,
     Left,
     Right,
+}
+
+#[derive(Clone, Copy)]
+struct AutoScrollState {
+    origin: (f32, f32),
+    current: (f32, f32),
+}
+
+#[derive(Clone, Copy)]
+struct TouchPanState {
+    origin: (f32, f32),
+    last_position: (f32, f32),
+    last_time: Instant,
+    velocity: (f32, f32),
+    // Becomes true once total movement since `origin` clears the
+    // jitter-filtering threshold, after which the gesture actually scrolls.
+    dragging: bool,
+}
+
+#[derive(Clone, Copy)]
+struct MomentumState {
+    velocity: (f32, f32),
+}
+
+#[derive(Clone, Copy)]
+enum EdgeSide {
+    Top,
+    Right,
+    Bottom,
+    Left,
+}
+
+// Maps `Overscroll::Auto` onto each platform's own scroll-edge
+// convention. Concrete `Overscroll` values bypass this entirely.
+fn platform_default_overscroll() -> Overscroll {
+    if cfg!(target_os = "ios") {
+        Overscroll::Bounce
+    } else if cfg!(target_os = "android") {
+        Overscroll::Stretch
+    } else if cfg!(target_arch = "wasm32") {
+        Overscroll::Bounce
+    } else {
+        Overscroll::Disabled
+    }
 }
 
 fn point_in_rect(point: (f32, f32), rect: (f32, f32, f32, f32)) -> bool {
@@ -199,12 +256,19 @@ pub struct View {
     scroll_step: f32,
     scrollbar_hovered: Cell<bool>,
     scrollbar_thickness_anim: Cell<f32>,
-    // Original (pre-gutter) right/bottom padding, so the scrollbar renders
-    // flush against it instead of the raw box edge.
     scrollbar_right_inset: Cell<f32>,
     scrollbar_bottom_inset: Cell<f32>,
     scale_factor: Cell<f32>,
     context_menu: Option<ContextMenuHandle>,
+
+    auto_scroll_enabled: bool,
+    auto_scroll: Cell<Option<AutoScrollState>>,
+
+    touch_pan: Cell<Option<TouchPanState>>,
+    momentum: Cell<Option<MomentumState>>,
+
+    // Edge-glow intensity for `Overscroll::Glow`, indexed [top, right, bottom, left].
+    overscroll_glow: Cell<[f32; 4]>,
 }
 
 impl View {
@@ -227,6 +291,14 @@ impl View {
             scrollbar_bottom_inset: Cell::new(0.0),
             scale_factor: Cell::new(1.0),
             context_menu: None,
+
+            auto_scroll_enabled: true,
+            auto_scroll: Cell::new(None),
+
+            touch_pan: Cell::new(None),
+            momentum: Cell::new(None),
+
+            overscroll_glow: Cell::new([0.0; 4]),
         };
 
         view = view
@@ -270,6 +342,14 @@ impl View {
         self
     }
 
+    /// Enables or disables middle-click AutoScroll for this view. Enabled
+    /// by default; has no effect unless the view is scrollable on at
+    /// least one axis.
+    pub fn auto_scroll(mut self, enabled: bool) -> Self {
+        self.auto_scroll_enabled = enabled;
+        self
+    }
+
     fn recompute_style(&mut self) {
         self.base.recompute_style();
         self.base.interaction.hover_cursor = self.base.computed_style.cursor;
@@ -299,6 +379,106 @@ impl View {
         }
 
         base
+    }
+
+    fn resolved_overscroll(&self) -> Overscroll {
+        self.base.computed_style.overscroll.unwrap_or_default()
+    }
+
+    fn effective_overscroll(&self) -> Overscroll {
+        match self.resolved_overscroll() {
+            Overscroll::Auto => platform_default_overscroll(),
+            other => other,
+        }
+    }
+
+    // Diminishing-returns rubber-band curve: as `overshoot` grows, the
+    // damped result approaches `range` asymptotically instead of linearly.
+    fn rubber_band(overshoot: f32, range: f32) -> f32 {
+        range * (1.0 - 1.0 / (overshoot / range + 1.0))
+    }
+
+    // Applies the current Overscroll mode to a proposed (possibly
+    // out-of-bounds) offset for one axis. `allow_rubber_band` distinguishes
+    // direct manipulation (drag/momentum), which may rubber-band, from
+    // discrete nudges (wheel/scrollbar), which always clamp hard. Returns
+    // the reactive offset and whether the bound was hit hard.
+    fn react_to_bounds(&self, raw: f32, max: f32, allow_rubber_band: bool) -> (f32, bool) {
+        if raw >= 0.0 && raw <= max {
+            return (raw, false);
+        }
+
+        let mode = self.effective_overscroll();
+        let rubber_bandable =
+            allow_rubber_band && matches!(mode, Overscroll::Bounce | Overscroll::Stretch);
+
+        if rubber_bandable {
+            let range = OVERSCROLL_RUBBER_BAND_RANGE * self.scale_factor.get();
+            let value = if raw < 0.0 {
+                -Self::rubber_band(-raw, range)
+            } else {
+                max + Self::rubber_band(raw - max, range)
+            };
+            (value, false)
+        } else {
+            (raw.clamp(0.0, max), true)
+        }
+    }
+
+    fn note_edge_hit(&self, side: EdgeSide, ctx: &mut EventCtx) {
+        if self.effective_overscroll() != Overscroll::Glow {
+            return;
+        }
+        let mut glow = self.overscroll_glow.get();
+        let idx = match side {
+            EdgeSide::Top => 0,
+            EdgeSide::Right => 1,
+            EdgeSide::Bottom => 2,
+            EdgeSide::Left => 3,
+        };
+        glow[idx] = 1.0;
+        self.overscroll_glow.set(glow);
+        ctx.request_redraw();
+    }
+
+    fn tick_overscroll_glow(&self, dt: f32, ctx: &mut EventCtx) {
+        let mut glow = self.overscroll_glow.get();
+        let mut any = false;
+        for v in glow.iter_mut() {
+            if *v > 0.0 {
+                *v = (*v - OVERSCROLL_GLOW_DECAY_PER_SEC * dt).max(0.0);
+                any = true;
+            }
+        }
+        self.overscroll_glow.set(glow);
+        if any {
+            ctx.request_redraw();
+        }
+    }
+
+    fn glow_active(&self) -> bool {
+        self.overscroll_glow
+            .get()
+            .iter()
+            .any(|v| *v > 0.0)
+    }
+
+    // A new discrete gesture (wheel, scrollbar drag, a fresh touch pan, or
+    // AutoScroll activation) always takes over from whatever other
+    // scroll-driving gesture was previously in flight on this view.
+    fn cancel_conflicting_gestures(&self) {
+        self.auto_scroll.set(None);
+        self.touch_pan.set(None);
+        self.momentum.set(None);
+    }
+
+    fn spring_back_if_needed(&mut self, ctx: &mut EventCtx) {
+        let clamped = self.clamp_offset(self.scroll_offset.get());
+        if clamped != self.scroll_target.get() {
+            self.scroll_target.set(clamped);
+            self.base.dirty = true;
+            ctx.request_redraw();
+        }
     }
 
     // Scrollbar style used for this frame: colors/borders switch immediately
@@ -391,9 +571,6 @@ impl View {
         self.base.computed_style.padding = Some(padding);
     }
 
-    // Pulls scroll_offset toward scroll_target through the shared
-    // AnimationManager; a thumb drag snaps instantly instead of easing so
-    // it tracks the cursor 1:1.
     fn animate_scroll(&mut self, anim: &mut AnimationManager) {
         let target = self.scroll_target.get();
         let key = AnimKey {
@@ -402,8 +579,23 @@ impl View {
             property: AnimProperty::ScrollOffset,
         };
 
-        let transition = if self.scrollbar_drag.get().is_some() {
+        let direct_manipulation =
+            self.scrollbar_drag.get().is_some() ||
+            self.touch_pan.get().is_some() ||
+            self.momentum.get().is_some() ||
+            self.auto_scroll.get().is_some();
+
+        let offset = self.scroll_offset.get();
+        let overscrolled =
+            offset.0 < 0.0 ||
+            offset.0 > self.max_scroll_x() ||
+            offset.1 < 0.0 ||
+            offset.1 > self.max_scroll_y();
+
+        let transition = if direct_manipulation {
             None
+        } else if overscrolled {
+            Some(OVERSCROLL_RETURN_TRANSITION)
         } else {
             Some(SCROLL_TRANSITION)
         };
@@ -683,12 +875,20 @@ impl View {
             return false;
         }
 
-        let current = self.scroll_target.get();
-        let next = self.clamp_offset((current.0 + dx, current.1 + dy));
+        self.cancel_conflicting_gestures();
 
-        // A no-op scroll (already at the edge, or this widget inherited a
-        // scrollable style from an ancestor without actually overflowing)
-        // must report unhandled so the event bubbles up to a real scrollable parent.
+        let current = self.scroll_target.get();
+        let (next_x, hit_x) = self.react_to_bounds(current.0 + dx, self.max_scroll_x(), false);
+        let (next_y, hit_y) = self.react_to_bounds(current.1 + dy, self.max_scroll_y(), false);
+        if hit_x {
+            self.note_edge_hit(if dx < 0.0 { EdgeSide::Left } else { EdgeSide::Right }, ctx);
+        }
+        if hit_y {
+            self.note_edge_hit(if dy < 0.0 { EdgeSide::Top } else { EdgeSide::Bottom }, ctx);
+        }
+
+        let next = (next_x, next_y);
+
         if next == current {
             return false;
         }
@@ -712,6 +912,7 @@ impl View {
 
         match state {
             ElementState::Pressed => {
+                self.cancel_conflicting_gestures();
                 let target = self.scroll_target.get();
 
                 if active_y && let Some((up, down)) = self.vertical_buttons() {
@@ -906,6 +1107,403 @@ impl View {
 
         true
     }
+
+    // AutoScroll's own lifecycle (activation / deactivation / per-frame
+    // tick), checked ahead of the view's other input handling since,
+    // while active, no other gesture should compete with it.
+    fn handle_auto_scroll(
+        &mut self,
+        event: &InputEvent,
+        ctx: &mut EventCtx
+    ) -> Option<EventStatus> {
+        match event {
+            InputEvent::MouseInput {
+                state: ElementState::Pressed,
+                button: MouseButton::Middle,
+                position,
+            } => {
+                if self.auto_scroll.get().is_some() {
+                    self.auto_scroll.set(None);
+                    ctx.request_redraw();
+                    return Some(EventStatus::Handled);
+                }
+
+                if
+                    self.auto_scroll_enabled &&
+                    self.hit_test(*position) &&
+                    (self.is_scrollable_x() || self.is_scrollable_y())
+                {
+                    self.cancel_conflicting_gestures();
+                    self.auto_scroll.set(
+                        Some(AutoScrollState { origin: *position, current: *position })
+                    );
+                    ctx.set_cursor_icon(Cursor::AllScroll);
+                    // Escape only reaches a widget on the focused path -
+                    // claiming focus here is what lets it cancel AutoScroll.
+                    ctx.request_focus();
+                    ctx.request_redraw();
+                    return Some(EventStatus::Handled);
+                }
+
+                None
+            }
+
+            InputEvent::MouseInput { state: ElementState::Pressed, .. } if
+                self.auto_scroll.get().is_some()
+            => {
+                self.auto_scroll.set(None);
+                ctx.request_redraw();
+                Some(EventStatus::Handled)
+            }
+
+            InputEvent::KeyInput { event: key_event, .. } if
+                self.auto_scroll.get().is_some() &&
+                key_event.key == Key::Escape &&
+                key_event.state == KeyState::Pressed
+            => {
+                self.auto_scroll.set(None);
+                ctx.request_redraw();
+                Some(EventStatus::Handled)
+            }
+
+            InputEvent::MouseMoved { position } if self.auto_scroll.get().is_some() => {
+                if let Some(mut state) = self.auto_scroll.get() {
+                    state.current = *position;
+                    self.auto_scroll.set(Some(state));
+                }
+                ctx.set_cursor_icon(Cursor::AllScroll);
+                Some(EventStatus::Handled)
+            }
+
+            InputEvent::AnimationTick { dt } if self.auto_scroll.get().is_some() => {
+                self.tick_auto_scroll(*dt, ctx);
+                Some(EventStatus::Handled)
+            }
+
+            _ => None,
+        }
+    }
+
+    fn tick_auto_scroll(&mut self, dt: f32, ctx: &mut EventCtx) {
+        let Some(state) = self.auto_scroll.get() else {
+            return;
+        };
+        let sf = self.scale_factor.get();
+        let dead_zone = AUTO_SCROLL_DEAD_ZONE_DP * sf;
+        let range = AUTO_SCROLL_RANGE_DP * sf;
+        let max_speed = AUTO_SCROLL_MAX_SPEED * sf;
+
+        let speed_along = |delta: f32| -> f32 {
+            let mag = delta.abs();
+            if mag <= dead_zone {
+                return 0.0;
+            }
+            let t = ((mag - dead_zone) / range).min(1.0);
+            delta.signum() * max_speed * t * t
+        };
+
+        let dx = state.current.0 - state.origin.0;
+        let dy = state.current.1 - state.origin.1;
+
+        let vx = if self.is_scrollable_x() { speed_along(dx) } else { 0.0 };
+        let vy = if self.is_scrollable_y() { speed_along(dy) } else { 0.0 };
+
+        if vx == 0.0 && vy == 0.0 {
+            return;
+        }
+
+        let current = self.scroll_offset.get();
+        let (next_x, hit_x) = self.react_to_bounds(current.0 + vx * dt, self.max_scroll_x(), false);
+        let (next_y, hit_y) = self.react_to_bounds(current.1 + vy * dt, self.max_scroll_y(), false);
+        if hit_x {
+            self.note_edge_hit(if vx < 0.0 { EdgeSide::Left } else { EdgeSide::Right }, ctx);
+        }
+        if hit_y {
+            self.note_edge_hit(if vy < 0.0 { EdgeSide::Top } else { EdgeSide::Bottom }, ctx);
+        }
+
+        let next = (next_x, next_y);
+        if next != current {
+            self.scroll_offset.set(next);
+            self.scroll_target.set(next);
+            self.base.dirty = true;
+            ctx.request_redraw();
+        }
+    }
+
+    // Claims the dedicated TouchPan gesture (by returning Handled on
+    // Start) for whichever scrollable view is nearest the touched leaf,
+    // so nested scrollables scroll the innermost one first.
+    fn handle_touch_pan(&mut self, event: &InputEvent, ctx: &mut EventCtx) -> Option<EventStatus> {
+        let InputEvent::TouchPan { phase, position } = event else {
+            return None;
+        };
+
+        match phase {
+            TouchPanPhase::Start => {
+                if !(self.is_scrollable_x() || self.is_scrollable_y()) {
+                    return None;
+                }
+                self.cancel_conflicting_gestures();
+                self.touch_pan.set(
+                    Some(TouchPanState {
+                        origin: *position,
+                        last_position: *position,
+                        last_time: Instant::now(),
+                        velocity: (0.0, 0.0),
+                        dragging: false,
+                    })
+                );
+                Some(EventStatus::Handled)
+            }
+
+            TouchPanPhase::Move => {
+                let mut state = self.touch_pan.get()?;
+
+                let now = Instant::now();
+                let dt = now
+                    .duration_since(state.last_time)
+                    .as_secs_f32()
+                    .max(1.0 / 240.0);
+
+                if !state.dragging {
+                    let threshold = TOUCH_PAN_THRESHOLD_DP * self.scale_factor.get();
+                    let moved =
+                        (position.0 - state.origin.0).abs() + (position.1 - state.origin.1).abs();
+                    if moved < threshold {
+                        return Some(EventStatus::Handled);
+                    }
+                    state.dragging = true;
+                }
+
+                let dx = position.0 - state.last_position.0;
+                let dy = position.1 - state.last_position.1;
+
+                let inst_vx = dx / dt;
+                let inst_vy = dy / dt;
+                state.velocity = (
+                    state.velocity.0 * 0.8 + inst_vx * 0.2,
+                    state.velocity.1 * 0.8 + inst_vy * 0.2,
+                );
+                state.last_position = *position;
+                state.last_time = now;
+                self.touch_pan.set(Some(state));
+
+                // Content follows the finger: dragging down/right reveals
+                // earlier content, so the offset moves the opposite way.
+                let current = self.scroll_offset.get();
+                let (next_x, hit_x) = self.react_to_bounds(
+                    current.0 - dx,
+                    self.max_scroll_x(),
+                    true
+                );
+                let (next_y, hit_y) = self.react_to_bounds(
+                    current.1 - dy,
+                    self.max_scroll_y(),
+                    true
+                );
+                if hit_x {
+                    self.note_edge_hit(
+                        if dx > 0.0 {
+                            EdgeSide::Left
+                        } else {
+                            EdgeSide::Right
+                        },
+                        ctx
+                    );
+                }
+                if hit_y {
+                    self.note_edge_hit(
+                        if dy > 0.0 {
+                            EdgeSide::Top
+                        } else {
+                            EdgeSide::Bottom
+                        },
+                        ctx
+                    );
+                }
+
+                let next = (next_x, next_y);
+                if next != current {
+                    self.scroll_offset.set(next);
+                    self.scroll_target.set(next);
+                    self.base.dirty = true;
+                    ctx.request_redraw();
+                }
+
+                Some(EventStatus::Handled)
+            }
+
+            TouchPanPhase::End => {
+                let state = self.touch_pan.take()?;
+                self.end_touch_pan(state, ctx);
+                Some(EventStatus::Handled)
+            }
+
+            TouchPanPhase::Cancel => {
+                self.touch_pan.take()?;
+                self.spring_back_if_needed(ctx);
+                Some(EventStatus::Handled)
+            }
+        }
+    }
+
+    fn end_touch_pan(&mut self, state: TouchPanState, ctx: &mut EventCtx) {
+        if !state.dragging {
+            return;
+        }
+
+        let current = self.scroll_offset.get();
+        let out_of_bounds =
+            current.0 < 0.0 ||
+            current.0 > self.max_scroll_x() ||
+            current.1 < 0.0 ||
+            current.1 > self.max_scroll_y();
+
+        if out_of_bounds {
+            self.spring_back_if_needed(ctx);
+            return;
+        }
+
+        let sf = self.scale_factor.get();
+        let vx = if self.is_scrollable_x() { state.velocity.0 } else { 0.0 };
+        let vy = if self.is_scrollable_y() { state.velocity.1 } else { 0.0 };
+
+        if vx.abs() < MOMENTUM_MIN_SPEED * sf && vy.abs() < MOMENTUM_MIN_SPEED * sf {
+            return;
+        }
+
+        self.momentum.set(Some(MomentumState { velocity: (vx, vy) }));
+        self.base.dirty = true;
+        ctx.request_redraw();
+    }
+
+    fn tick_momentum(&mut self, dt: f32, ctx: &mut EventCtx) {
+        let Some(mut state) = self.momentum.get() else {
+            return;
+        };
+
+        let current = self.scroll_offset.get();
+        let raw_x = current.0 - state.velocity.0 * dt;
+        let raw_y = current.1 - state.velocity.1 * dt;
+
+        let max_x = self.max_scroll_x();
+        let max_y = self.max_scroll_y();
+
+        // Momentum always integrates against the hard bounds - any
+        // rubber-bounce is a separate, explicit hand-off (below) instead
+        // of something momentum has to keep reconciling every tick.
+        let clamped_x = raw_x.clamp(0.0, max_x);
+        let clamped_y = raw_y.clamp(0.0, max_y);
+        let hit_x = clamped_x != raw_x;
+        let hit_y = clamped_y != raw_y;
+
+        if hit_x {
+            self.note_edge_hit(
+                if state.velocity.0 > 0.0 {
+                    EdgeSide::Left
+                } else {
+                    EdgeSide::Right
+                },
+                ctx
+            );
+        }
+        if hit_y {
+            self.note_edge_hit(
+                if state.velocity.1 > 0.0 {
+                    EdgeSide::Top
+                } else {
+                    EdgeSide::Bottom
+                },
+                ctx
+            );
+        }
+
+        self.scroll_offset.set((clamped_x, clamped_y));
+        self.scroll_target.set((clamped_x, clamped_y));
+        self.base.dirty = true;
+        ctx.request_redraw();
+
+        let decay = (-MOMENTUM_FRICTION * dt).exp();
+        state.velocity.0 *= if hit_x { 0.0 } else { decay };
+        state.velocity.1 *= if hit_y { 0.0 } else { decay };
+
+        let sf = self.scale_factor.get();
+        let min_speed = MOMENTUM_MIN_SPEED * sf;
+        let settled = state.velocity.0.abs() < min_speed && state.velocity.1.abs() < min_speed;
+
+        if settled {
+            self.momentum.set(None);
+            if
+                (hit_x || hit_y) &&
+                matches!(self.effective_overscroll(), Overscroll::Bounce | Overscroll::Stretch)
+            {
+                self.play_bounce_impact(hit_x, hit_y, ctx);
+            }
+        } else {
+            self.momentum.set(Some(state));
+        }
+    }
+
+    // A brief rubber-band-and-return played once a fling comes to rest
+    // against the bound, giving Bounce/Stretch a little give-and-spring-back
+    // on impact without momentum having to track overscroll every tick.
+    fn play_bounce_impact(&mut self, hit_x: bool, hit_y: bool, ctx: &mut EventCtx) {
+        let sf = self.scale_factor.get();
+        let nudge_scale = if self.effective_overscroll() == Overscroll::Stretch {
+            0.12
+        } else {
+            0.22
+        };
+        let nudge = OVERSCROLL_RUBBER_BAND_RANGE * nudge_scale * sf;
+        let mut offset = self.scroll_offset.get();
+
+        if hit_x {
+            offset.0 = if offset.0 <= 0.0 { -nudge } else { offset.0 + nudge };
+        }
+        if hit_y {
+            offset.1 = if offset.1 <= 0.0 { -nudge } else { offset.1 + nudge };
+        }
+
+        self.scroll_offset.set(offset);
+        self.spring_back_if_needed(ctx);
+    }
+
+    // Renders a soft translucent band at whichever edges recently hit
+    // their scroll bound under `Overscroll::Glow` (a flat fade instead of
+    // a true radial gradient, since the paint primitives here don't have
+    // a gradient shader).
+    fn paint_overscroll_glow(&self, ctx: &mut PaintContext) {
+        let glow = self.overscroll_glow.get();
+        if glow.iter().all(|v| *v <= 0.0) {
+            return;
+        }
+
+        let b = self.layout_box;
+        let sf = self.scale_factor.get();
+        let band = 48.0 * sf;
+        let color = crate::current_theme().primary;
+
+        let mut draw_band = |alpha: f32, position: (f32, f32), size: (f32, f32)| {
+            if alpha <= 0.0 {
+                return;
+            }
+            ctx.draw_rect(RectCommand {
+                position,
+                size,
+                background: Some(Background::Color(color.with_alpha_f32(color.a() * alpha * 0.35))),
+                border_radius: None,
+                border_width: None,
+                border_color: None,
+                clip_rect: None,
+            });
+        };
+
+        draw_band(glow[0], (b.x, b.y), (b.width, band));
+        draw_band(glow[1], (b.x + b.width - band, b.y), (band, b.height));
+        draw_band(glow[2], (b.x, b.y + b.height - band), (b.width, band));
+        draw_band(glow[3], (b.x, b.y), (band, b.height));
+    }
 }
 
 impl Default for View {
@@ -1090,9 +1688,25 @@ impl Widget for View {
                 }
             }
         }
+
+        self.paint_overscroll_glow(ctx);
     }
 
     fn event(&mut self, event: &InputEvent, ctx: &mut EventCtx) -> EventStatus {
+        if let Some(status) = self.handle_auto_scroll(event, ctx) {
+            return status;
+        }
+        if let Some(status) = self.handle_touch_pan(event, ctx) {
+            return status;
+        }
+
+        if let InputEvent::AnimationTick { dt } = event {
+            if self.momentum.get().is_some() {
+                self.tick_momentum(*dt, ctx);
+            }
+            self.tick_overscroll_glow(*dt, ctx);
+        }
+
         if
             let InputEvent::MouseInput {
                 state: ElementState::Pressed,
@@ -1182,6 +1796,10 @@ impl Widget for View {
         status
     }
 
+    fn wants_animation_frame(&self) -> bool {
+        self.momentum.get().is_some() || self.auto_scroll.get().is_some() || self.glow_active()
+    }
+
     fn content_eq(&self, other: &dyn Widget) -> bool {
         let Some(other) = other.as_any().downcast_ref::<View>() else {
             return false;
@@ -1227,6 +1845,11 @@ impl Widget for View {
             self.scrollbar_bottom_inset.set(old.scrollbar_bottom_inset.get());
             self.scale_factor.set(old.scale_factor.get());
             self.anim_id = old.anim_id;
+
+            self.auto_scroll.set(old.auto_scroll.get());
+            self.touch_pan.set(old.touch_pan.get());
+            self.momentum.set(old.momentum.get());
+            self.overscroll_glow.set(old.overscroll_glow.get());
         }
     }
 

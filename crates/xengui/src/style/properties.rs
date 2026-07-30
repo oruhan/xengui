@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 use smol_str::SmolStr;
-use crate::{ BoxShadow, Cursor, ScrollbarGutter, TransitionProperty };
+use crate::{ BoxShadow, Cursor, Overscroll, ScrollbarGutter, TransitionProperty };
 use super::{
     Outline,
     AlignItems,
@@ -110,6 +110,7 @@ pub struct Style {
     pub left: Option<Length>,
     pub overflow_x: Option<Overflow>,
     pub overflow_y: Option<Overflow>,
+    pub overscroll: Option<Overscroll>,
 
     /// Paint order relative to siblings; higher values paint later, on top. Mirrors CSS z-index.
     pub z_index: Option<i32>,
@@ -202,6 +203,7 @@ impl Style {
             left: patch.left.or(self.left),
             overflow_x: patch.overflow_x.or_else(|| self.overflow_x),
             overflow_y: patch.overflow_y.or_else(|| self.overflow_y),
+            overscroll: patch.overscroll.or(self.overscroll),
 
             z_index: patch.z_index.or(self.z_index),
 

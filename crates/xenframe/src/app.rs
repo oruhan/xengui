@@ -15,6 +15,7 @@ use xengui::{
     MouseButton,
     TOUCH_LONG_PRESS_DURATION,
     TOUCH_LONG_PRESS_MOVE_TOLERANCE_DP,
+    TouchPanPhase,
     Widget,
     clear_text_selection_recursive,
     collect_focusable_paths,
@@ -359,8 +360,6 @@ impl App {
                 self.input.cursor_pos = Some(point);
                 let path = hit_test_path(&self.root, point);
 
-                // Same out-of-subtree focus release as WindowEvent::MouseInput;
-                // touch presses don't go through that handler so this is repeated here.
                 if let Some(focused) = self.input.focused_path.clone() {
                     let stays_focused = path
                         .as_deref()
@@ -408,11 +407,20 @@ impl App {
                     );
                     suppress_drag = ctx.take_suppress_text_drag();
                     self.apply_event_ctx(ctx);
+
+                    // Dispatched alongside the mouse-shaped press above so a
+                    // scrollable ancestor can claim this as a pan gesture
+                    // without affecting ordinary tap/click handling.
+                    let mut pan_ctx = EventCtx::new();
+                    dispatch_positional(
+                        &mut self.root,
+                        path,
+                        &(InputEvent::TouchPan { phase: TouchPanPhase::Start, position: point }),
+                        &mut pan_ctx
+                    );
+                    self.apply_event_ctx(pan_ctx);
                 }
 
-                // A double/triple tap already resolved its own word/line
-                // selection - letting a drag anchor survive here would let
-                // the next Moved event immediately overwrite it.
                 self.input.text_drag_anchor = if suppress_drag { None } else { Some(point) };
                 self.pending_long_press = path.map(|p| (
                     Instant::now() + TOUCH_LONG_PRESS_DURATION,
@@ -432,6 +440,15 @@ impl App {
                         &mut ctx
                     );
                     self.apply_event_ctx(ctx);
+
+                    let mut pan_ctx = EventCtx::new();
+                    dispatch_positional(
+                        &mut self.root,
+                        &path,
+                        &(InputEvent::TouchPan { phase: TouchPanPhase::Move, position: point }),
+                        &mut pan_ctx
+                    );
+                    self.apply_event_ctx(pan_ctx);
                 }
 
                 if let Some(anchor) = self.input.text_drag_anchor {
@@ -466,6 +483,15 @@ impl App {
                         &mut ctx
                     );
                     self.apply_event_ctx(ctx);
+
+                    let mut pan_ctx = EventCtx::new();
+                    dispatch_positional(
+                        &mut self.root,
+                        &path,
+                        &(InputEvent::TouchPan { phase: TouchPanPhase::End, position: point }),
+                        &mut pan_ctx
+                    );
+                    self.apply_event_ctx(pan_ctx);
                 }
 
                 if let Some(old) = self.input.hovered_path.take() {
@@ -481,6 +507,17 @@ impl App {
             }
 
             TouchPhase::Cancelled => {
+                if let Some(path) = self.input.hovered_path.clone() {
+                    let mut pan_ctx = EventCtx::new();
+                    dispatch_positional(
+                        &mut self.root,
+                        &path,
+                        &(InputEvent::TouchPan { phase: TouchPanPhase::Cancel, position: point }),
+                        &mut pan_ctx
+                    );
+                    self.apply_event_ctx(pan_ctx);
+                }
+
                 if let Some(old) = self.input.hovered_path.take() {
                     let mut ctx = EventCtx::new();
                     dispatch_to_path(&mut self.root, &old, &InputEvent::MouseExited, &mut ctx);
