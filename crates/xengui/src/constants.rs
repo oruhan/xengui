@@ -21,9 +21,9 @@ pub const MULTI_CLICK_INTERVAL: Duration = Duration::from_millis(400);
 
 /* ---- Scrollbar ---- */
 /// Scrollbar thumb thickness while neither hovered nor pressed.
-pub const DEFAULT_SCROLLBAR_THUMB_THICKNESS: f32 = 4.0;
+pub const DEFAULT_SCROLLBAR_THUMB_THICKNESS: f32 = 5.0;
 /// Scrollbar thumb thickness while hovered or pressed, unless overridden.
-pub const DEFAULT_SCROLLBAR_THUMB_HOVER_THICKNESS: f32 = 6.0;
+pub const DEFAULT_SCROLLBAR_THUMB_HOVER_THICKNESS: f32 = 5.0;
 
 // Eased transition applied to scroll position when animating toward a
 // wheel/nudge target; drag updates bypass this and snap instantly.
@@ -40,7 +40,7 @@ pub const SCROLLBAR_DISABLED_OPACITY: f32 = 0.35;
 
 /// Padding (px) trimmed from each side of the scrollbar thumb's
 /// cross-axis thickness, so it renders thinner than its track.
-pub const SCROLLBAR_THUMB_PADDING: f32 = 2.0;
+pub const SCROLLBAR_THUMB_PADDING: f32 = 4.0;
 
 pub const SCROLLBAR_ARROW_SIZE: f32 = 6.0;
 pub const SCROLLBAR_ARROW_CAP_SEGMENTS: usize = 24;
