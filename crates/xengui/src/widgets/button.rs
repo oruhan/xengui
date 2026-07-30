@@ -435,8 +435,11 @@ impl Widget for Button {
         let scaled_text_w = text_w * content_scale;
         let scaled_text_h = text_h * content_scale;
         let content_box = LayoutBox {
-            x: pivot_x + (text_center_x - pivot_x) * content_scale - scaled_text_w * 0.5,
-            y: pivot_y + (text_center_y - pivot_y) * content_scale - scaled_text_h * 0.5,
+            // Rounded so the glyph rasterizer's own baseline snapping can't
+            // land on a different pixel row than the previous frame for a
+            // sub-pixel-different (but visually unchanged) position.
+            x: (pivot_x + (text_center_x - pivot_x) * content_scale - scaled_text_w * 0.5).round(),
+            y: (pivot_y + (text_center_y - pivot_y) * content_scale - scaled_text_h * 0.5).round(),
             width: scaled_text_w,
             height: scaled_text_h,
         };
