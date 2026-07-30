@@ -1,15 +1,15 @@
 #[component]
-fn PageName() -> impl Widget {
-    let count = use_state(|| 0);
+fn Page() -> impl Widget {
+    let count = use_state(0i32);
 
     fn increment() {
         count.set(count + 1)
     };
 
-    xui! {
+    rsx! {
         <View>
-          <Label style={ color: "#ffffff" }>Count: {count.get()}</Label>
-          <Button onClick={increment}>Tıkla!</Button>
+            <Label style={ color: "#ffffff" }>Count: {count.get()}</Label>
+            <Button onClick={increment}>Increment</Button>
         </View>
     }
 }
