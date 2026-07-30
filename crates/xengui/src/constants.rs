@@ -21,7 +21,7 @@ pub const MULTI_CLICK_INTERVAL: Duration = Duration::from_millis(400);
 
 /* ---- Scrollbar ---- */
 /// Scrollbar thickness while neither hovered nor pressed.
-pub const DEFAULT_SCROLLBAR_THICKNESS: f32 = 15.0;
+pub const DEFAULT_SCROLLBAR_THICKNESS: f32 = 12.0;
 /// Scrollbar thickness while hovered or pressed, unless overridden.
 pub const DEFAULT_SCROLLBAR_HOVER_THICKNESS: f32 = 15.0;
 

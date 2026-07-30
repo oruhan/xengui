@@ -155,6 +155,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 .overflow_y(Overflow::Auto)
                                 .scrollbar_gutter(ScrollbarGutter::Stable)
                                 .scrollbar_track_color(Color::NEUTRAL_800)
+                                .overscroll(Overscroll::Stretch)
                                 /* Navbar */
                                 .child(
                                     View::new()
