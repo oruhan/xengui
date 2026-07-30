@@ -1,4 +1,4 @@
-use crate::{ Color, DEFAULT_SCROLLBAR_THICKNESS };
+use crate::{ Color, DEFAULT_SCROLLBAR_THUMB_THICKNESS };
 
 #[derive(Clone, Copy, Debug, PartialEq, Default)]
 pub struct ScrollbarStyle {
@@ -33,7 +33,7 @@ impl ScrollbarStyle {
     }
 
     pub fn resolve(&self) -> ResolvedScrollbar {
-        let thickness = self.thickness.unwrap_or(DEFAULT_SCROLLBAR_THICKNESS);
+        let thickness = self.thickness.unwrap_or(DEFAULT_SCROLLBAR_THUMB_THICKNESS);
         let thumb_color = self.thumb_color.unwrap_or(Color::NEUTRAL_400.with_alpha(160));
         ResolvedScrollbar {
             thickness,

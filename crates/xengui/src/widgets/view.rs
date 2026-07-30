@@ -11,7 +11,7 @@ use crate::{
     Constraints,
     ContextMenuHandle,
     Cursor,
-    DEFAULT_SCROLLBAR_HOVER_THICKNESS,
+    DEFAULT_SCROLLBAR_THUMB_HOVER_THICKNESS,
     ElementState,
     EventCtx,
     EventStatus,
@@ -79,6 +79,9 @@ enum ArrowDirection {
 struct AutoScrollState {
     origin: (f32, f32),
     current: (f32, f32),
+    // Reflects which axes are actually scrollable, chosen once at
+    // activation so it matches the native OS pan cursor for that case.
+    cursor: Cursor,
 }
 
 #[derive(Clone, Copy)]
@@ -366,15 +369,21 @@ impl View {
 
         if pressed {
             return match style.scrollbar_pressed.as_ref().or(style.scrollbar_hover.as_ref()) {
-                Some(patch) => base.patched(patch, DEFAULT_SCROLLBAR_HOVER_THICKNESS),
-                None => base,
+                Some(patch) => base.patched(patch, DEFAULT_SCROLLBAR_THUMB_HOVER_THICKNESS),
+                // No custom pressed/hover style set: still apply the default
+                // hover thickness instead of leaving it unchanged.
+                None =>
+                    ResolvedScrollbar {
+                        thickness: DEFAULT_SCROLLBAR_THUMB_HOVER_THICKNESS,
+                        ..base
+                    },
             };
         }
 
         if hovered {
             return match style.scrollbar_hover.as_ref() {
-                Some(patch) => base.patched(patch, DEFAULT_SCROLLBAR_HOVER_THICKNESS),
-                None => base,
+                Some(patch) => base.patched(patch, DEFAULT_SCROLLBAR_THUMB_HOVER_THICKNESS),
+                None => ResolvedScrollbar { thickness: DEFAULT_SCROLLBAR_THUMB_HOVER_THICKNESS, ..base },
             };
         }
 
@@ -481,8 +490,6 @@ impl View {
         }
     }
 
-    // Scrollbar style used for this frame: colors/borders switch immediately
-    // with hover/pressed state, thickness comes from the animated value.
     fn active_scrollbar(&self) -> ResolvedScrollbar {
         let pressed = self.scrollbar_drag.get().is_some();
         let hovered = self.scrollbar_hovered.get();
@@ -492,8 +499,25 @@ impl View {
         sb.thumb_radius *= sf;
         sb.thumb_border_width *= sf;
         sb.track_border_width *= sf;
-        sb.thickness = self.current_scrollbar_thickness() * sf;
+        sb.thickness = self.track_thickness();
         sb
+    }
+
+    // Derived from the largest possible thumb thickness (idle/hover/pressed)
+    // plus padding on both sides, so the gutter never resizes when the
+    // thumb itself animates - only the thumb's own thickness moves within it.
+    fn track_thickness_logical(&self) -> f32 {
+        let style = &self.base.computed_style;
+        let idle = style.scrollbar.unwrap_or_default().resolve().thickness;
+        let hover = style.scrollbar_hover
+            .and_then(|p| p.thickness)
+            .unwrap_or(DEFAULT_SCROLLBAR_THUMB_HOVER_THICKNESS);
+        let pressed = style.scrollbar_pressed.and_then(|p| p.thickness).unwrap_or(hover);
+        idle.max(hover).max(pressed) + SCROLLBAR_THUMB_PADDING * 2.0
+    }
+
+    fn track_thickness(&self) -> f32 {
+        self.track_thickness_logical() * self.scale_factor.get()
     }
 
     fn target_scrollbar_thickness(&self) -> f32 {
@@ -543,7 +567,7 @@ impl View {
         let gutter = self.base.computed_style.scrollbar_gutter.unwrap_or_default();
 
         let sf = self.scale_factor.get();
-        let thickness = self.resolved_scrollbar().thickness;
+        let thickness = self.track_thickness_logical();
         let mut padding = self.base.computed_style.padding.unwrap_or_default();
 
         let (shows_x, shows_y) = if gutter == ScrollbarGutter::Auto {
@@ -725,10 +749,12 @@ impl View {
         let progress = if max_offset > 0.0 { self.scroll_offset.get().1 / max_offset } else { 0.0 };
         let thumb_y = track_y + progress * (track_h - thumb_h);
 
-        let pad = SCROLLBAR_THUMB_PADDING * self.scale_factor.get();
-        let thumb_w = (sb.thickness - pad * 2.0).max(1.0);
+        let thumb_w = (self.current_scrollbar_thickness() * self.scale_factor.get()).min(
+            sb.thickness
+        );
         let right_inset = self.scrollbar_right_inset.get();
-        Some((b.x + b.width - right_inset - sb.thickness + pad, thumb_y, thumb_w, thumb_h))
+        let thumb_x = b.x + b.width - right_inset - sb.thickness + (sb.thickness - thumb_w) * 0.5;
+        Some((thumb_x, thumb_y, thumb_w, thumb_h))
     }
 
     fn horizontal_thumb_rect(&self) -> Option<(f32, f32, f32, f32)> {
@@ -742,10 +768,12 @@ impl View {
         let progress = if max_offset > 0.0 { self.scroll_offset.get().0 / max_offset } else { 0.0 };
         let thumb_x = track_x + progress * (track_w - thumb_w);
 
-        let pad = SCROLLBAR_THUMB_PADDING * self.scale_factor.get();
-        let thumb_h = (sb.thickness - pad * 2.0).max(1.0);
+        let thumb_h = (self.current_scrollbar_thickness() * self.scale_factor.get()).min(
+            sb.thickness
+        );
         let bottom_inset = self.scrollbar_bottom_inset.get();
-        Some((thumb_x, b.y + b.height - bottom_inset - sb.thickness + pad, thumb_w, thumb_h))
+        let thumb_y = b.y + b.height - bottom_inset - sb.thickness + (sb.thickness - thumb_h) * 0.5;
+        Some((thumb_x, thumb_y, thumb_w, thumb_h))
     }
 
     fn vertical_buttons(&self) -> Option<(Rect, Rect)> {
@@ -1108,9 +1136,16 @@ impl View {
         true
     }
 
-    // AutoScroll's own lifecycle (activation / deactivation / per-frame
-    // tick), checked ahead of the view's other input handling since,
-    // while active, no other gesture should compete with it.
+    fn autoscroll_cursor(&self) -> Cursor {
+        let (active_x, active_y) = self.scrollbar_active();
+        match (active_x, active_y) {
+            (true, true) => Cursor::AllScroll,
+            (true, false) => Cursor::EwResize,
+            (false, true) => Cursor::NsResize,
+            (false, false) => Cursor::AllScroll,
+        }
+    }
+
     fn handle_auto_scroll(
         &mut self,
         event: &InputEvent,
@@ -1124,6 +1159,7 @@ impl View {
             } => {
                 if self.auto_scroll.get().is_some() {
                     self.auto_scroll.set(None);
+                    ctx.set_cursor_icon(Cursor::Default);
                     ctx.request_redraw();
                     return Some(EventStatus::Handled);
                 }
@@ -1134,10 +1170,11 @@ impl View {
                     (self.is_scrollable_x() || self.is_scrollable_y())
                 {
                     self.cancel_conflicting_gestures();
+                    let cursor = self.autoscroll_cursor();
                     self.auto_scroll.set(
-                        Some(AutoScrollState { origin: *position, current: *position })
+                        Some(AutoScrollState { origin: *position, current: *position, cursor })
                     );
-                    ctx.set_cursor_icon(Cursor::AllScroll);
+                    ctx.set_cursor_icon(cursor);
                     // Escape only reaches a widget on the focused path -
                     // claiming focus here is what lets it cancel AutoScroll.
                     ctx.request_focus();
@@ -1152,6 +1189,7 @@ impl View {
                 self.auto_scroll.get().is_some()
             => {
                 self.auto_scroll.set(None);
+                ctx.set_cursor_icon(Cursor::Default);
                 ctx.request_redraw();
                 Some(EventStatus::Handled)
             }
@@ -1162,6 +1200,7 @@ impl View {
                 key_event.state == KeyState::Pressed
             => {
                 self.auto_scroll.set(None);
+                ctx.set_cursor_icon(Cursor::Default);
                 ctx.request_redraw();
                 Some(EventStatus::Handled)
             }
@@ -1169,9 +1208,9 @@ impl View {
             InputEvent::MouseMoved { position } if self.auto_scroll.get().is_some() => {
                 if let Some(mut state) = self.auto_scroll.get() {
                     state.current = *position;
+                    ctx.set_cursor_icon(state.cursor);
                     self.auto_scroll.set(Some(state));
                 }
-                ctx.set_cursor_icon(Cursor::AllScroll);
                 Some(EventStatus::Handled)
             }
 
@@ -1193,13 +1232,16 @@ impl View {
         let range = AUTO_SCROLL_RANGE_DP * sf;
         let max_speed = AUTO_SCROLL_MAX_SPEED * sf;
 
+        // Cubic ease-in: speed stays close to zero just past the activation
+        // radius for fine-grained control, then ramps up smoothly toward
+        // max_speed with no abrupt jump anywhere along the curve.
         let speed_along = |delta: f32| -> f32 {
             let mag = delta.abs();
             if mag <= dead_zone {
                 return 0.0;
             }
             let t = ((mag - dead_zone) / range).min(1.0);
-            delta.signum() * max_speed * t * t
+            delta.signum() * max_speed * t * t * t
         };
 
         let dx = state.current.0 - state.origin.0;

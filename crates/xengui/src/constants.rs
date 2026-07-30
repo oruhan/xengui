@@ -20,10 +20,10 @@ pub const TOUCH_LONG_PRESS_DURATION: Duration = Duration::from_millis(350);
 pub const MULTI_CLICK_INTERVAL: Duration = Duration::from_millis(400);
 
 /* ---- Scrollbar ---- */
-/// Scrollbar thickness while neither hovered nor pressed.
-pub const DEFAULT_SCROLLBAR_THICKNESS: f32 = 12.0;
-/// Scrollbar thickness while hovered or pressed, unless overridden.
-pub const DEFAULT_SCROLLBAR_HOVER_THICKNESS: f32 = 15.0;
+/// Scrollbar thumb thickness while neither hovered nor pressed.
+pub const DEFAULT_SCROLLBAR_THUMB_THICKNESS: f32 = 4.0;
+/// Scrollbar thumb thickness while hovered or pressed, unless overridden.
+pub const DEFAULT_SCROLLBAR_THUMB_HOVER_THICKNESS: f32 = 6.0;
 
 // Eased transition applied to scroll position when animating toward a
 // wheel/nudge target; drag updates bypass this and snap instantly.
@@ -40,7 +40,7 @@ pub const SCROLLBAR_DISABLED_OPACITY: f32 = 0.35;
 
 /// Padding (px) trimmed from each side of the scrollbar thumb's
 /// cross-axis thickness, so it renders thinner than its track.
-pub const SCROLLBAR_THUMB_PADDING: f32 = 4.0;
+pub const SCROLLBAR_THUMB_PADDING: f32 = 2.0;
 
 pub const SCROLLBAR_ARROW_SIZE: f32 = 6.0;
 pub const SCROLLBAR_ARROW_CAP_SEGMENTS: usize = 24;
@@ -60,12 +60,12 @@ pub const MOMENTUM_MIN_SPEED: f32 = 4.0;
 /* ---- AutoScroll (middle-click pan) ---- */
 /// Radius (logical/DP units) around the activation point within which
 /// cursor movement produces no scrolling, matching native AutoScroll.
-pub const AUTO_SCROLL_DEAD_ZONE_DP: f32 = 12.0;
+pub const AUTO_SCROLL_DEAD_ZONE_DP: f32 = 4.0;
 /// Cursor distance (logical/DP units) past the dead zone at which
 /// AutoScroll reaches its maximum speed.
-pub const AUTO_SCROLL_RANGE_DP: f32 = 160.0;
+pub const AUTO_SCROLL_RANGE_DP: f32 = 220.0;
 /// Maximum AutoScroll speed, in logical px/sec, reached at `AUTO_SCROLL_RANGE_DP`.
-pub const AUTO_SCROLL_MAX_SPEED: f32 = 1400.0;
+pub const AUTO_SCROLL_MAX_SPEED: f32 = 1600.0;
 
 /* ---- Overscroll ---- */
 /// Visual travel (px) a rubber-banded drag/fling asymptotically
