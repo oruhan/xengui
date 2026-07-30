@@ -370,14 +370,22 @@ impl View {
         if pressed {
             return match style.scrollbar_pressed.as_ref().or(style.scrollbar_hover.as_ref()) {
                 Some(patch) => base.patched(patch, DEFAULT_SCROLLBAR_THUMB_HOVER_THICKNESS),
-                None => base,
+                None =>
+                    ResolvedScrollbar {
+                        thickness: DEFAULT_SCROLLBAR_THUMB_HOVER_THICKNESS,
+                        ..base
+                    },
             };
         }
 
         if hovered {
             return match style.scrollbar_hover.as_ref() {
                 Some(patch) => base.patched(patch, DEFAULT_SCROLLBAR_THUMB_HOVER_THICKNESS),
-                None => base,
+                None =>
+                    ResolvedScrollbar {
+                        thickness: DEFAULT_SCROLLBAR_THUMB_HOVER_THICKNESS,
+                        ..base
+                    },
             };
         }
 

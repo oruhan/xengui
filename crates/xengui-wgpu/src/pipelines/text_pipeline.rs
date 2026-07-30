@@ -237,12 +237,12 @@ impl TextPipeline {
         }
 
         let bounds = match clip_rect {
-            Some((x, _y, w, _h)) =>
+            Some((x, y, w, h)) =>
                 TextBounds {
                     left: x.round() as i32,
-                    top: i32::MIN,
+                    top: y.round() as i32,
                     right: (x + w).round() as i32,
-                    bottom: i32::MAX,
+                    bottom: (y + h).round() as i32,
                 },
             None =>
                 TextBounds {
