@@ -287,14 +287,14 @@ impl View {
         if pressed {
             return match style.scrollbar_pressed.as_ref().or(style.scrollbar_hover.as_ref()) {
                 Some(patch) => base.patched(patch, DEFAULT_SCROLLBAR_HOVER_THICKNESS),
-                None => ResolvedScrollbar { thickness: DEFAULT_SCROLLBAR_HOVER_THICKNESS, ..base },
+                None => base,
             };
         }
 
         if hovered {
             return match style.scrollbar_hover.as_ref() {
                 Some(patch) => base.patched(patch, DEFAULT_SCROLLBAR_HOVER_THICKNESS),
-                None => ResolvedScrollbar { thickness: DEFAULT_SCROLLBAR_HOVER_THICKNESS, ..base },
+                None => base,
             };
         }
 
@@ -312,14 +312,14 @@ impl View {
         sb.thumb_radius *= sf;
         sb.thumb_border_width *= sf;
         sb.track_border_width *= sf;
-        sb.thickness = self.current_scrollbar_thickness();
+        sb.thickness = self.current_scrollbar_thickness() * sf;
         sb
     }
 
     fn target_scrollbar_thickness(&self) -> f32 {
         let pressed = self.scrollbar_drag.get().is_some();
         let hovered = self.scrollbar_hovered.get();
-        self.resolved_scrollbar_for_state(hovered, pressed).thickness * self.scale_factor.get()
+        self.resolved_scrollbar_for_state(hovered, pressed).thickness
     }
 
     fn current_scrollbar_thickness(&self) -> f32 {
