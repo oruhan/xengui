@@ -43,6 +43,7 @@ impl Frame {
         old_path: Vec<usize>
     ) -> Self {
         let mut keyed_old = HashMap::new();
+        
         for (i, old) in old_siblings.iter().enumerate() {
             if let Some(key) = old.get_key() {
                 keyed_old.entry(key.clone()).or_insert(i);
