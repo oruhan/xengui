@@ -14,6 +14,7 @@ use crate::{
     ElementState,
     EventCtx,
     EventStatus,
+    FlexDirection,
     FontStyle,
     FontWeight,
     InputEvent,
@@ -529,6 +530,10 @@ impl ContextMenu {
             layout_box: LayoutBox::default(),
         };
         menu.base.style.size = Some(crate::Size::new(pct!(100.0), pct!(100.0)));
+        // Matches the layout engine's root container so a wrapped widget
+        // without an explicit width stretches to fill it exactly like it
+        // would as a direct root child.
+        menu.base.style.flex_direction = Some(FlexDirection::Column);
         menu.recompute_style();
         menu
     }
@@ -1593,7 +1598,7 @@ impl Widget for ContextMenu {
         }
 
         for child in self.children.iter_mut() {
-            child.cascade_style(&self.base.computed_style, anim);
+            child.cascade_style(parent, anim);
         }
     }
 
