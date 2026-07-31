@@ -63,7 +63,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 ```toml
 [dependencies]
-xenframe = "0.1.0"
+xenframe = "0.1.1"
 ```
 
 ## Documentation

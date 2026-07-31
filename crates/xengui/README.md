@@ -56,7 +56,7 @@ View::new()
 
 ```toml
 [dependencies]
-xengui = "0.2.6"
+xengui = "0.2.7"
 ```
 
 Most applications should also pull in a platform runtime crate (e.g. `xenframe`) and a render backend (e.g. `xengui-wgpu`) - see the [workspace README](https://github.com/randseas/xengui) for a full quick-start example.
