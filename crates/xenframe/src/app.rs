@@ -184,6 +184,12 @@ impl App {
             reconciler::WorkLoopStatus::Complete(tree) => {
                 self.root = tree;
                 self.reconcile_work = None;
+
+                // Runs effects only now that this tree is the real,
+                // committed one - never while reconciliation was still
+                // in flight or superseded by a newer render.
+                hooks::run_pending_effects();
+
                 if let Some(window) = &self.window {
                     window.request_redraw();
                 }

@@ -41,7 +41,16 @@ pub use animation::{
 pub use input::*;
 pub use interaction::*;
 pub use text::*;
-pub use hooks::{ component, use_state, ComponentId, ComponentKey, SetState };
+pub use hooks::{
+    component,
+    use_effect,
+    use_state,
+    ComponentId,
+    ComponentKey,
+    EffectCleanup,
+    EffectDeps,
+    SetState,
+};
 
 pub use input::{
     InputEvent,
@@ -73,7 +82,7 @@ pub use style::{
     FontStyle,
     FontWeight,
     Overflow,
-    Overscroll
+    Overscroll,
 };
 pub use widgets::{
     image_source_from_bytes,

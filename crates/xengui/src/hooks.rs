@@ -73,10 +73,18 @@ thread_local! {
     static LIVE_COMPONENTS: RefCell<HashSet<ComponentId>> = RefCell::new(HashSet::new());
 
     static DIRTY: Cell<bool> = const { Cell::new(false) };
+
     static REDRAW_HANDLE: RefCell<Option<Rc<dyn RedrawRequester>>> = const { RefCell::new(None) };
+
+    static RENDER_GENERATION: Cell<u64> = const { Cell::new(0) };
+
+    static PENDING_EFFECTS: RefCell<Vec<PendingEffect>> = const { RefCell::new(Vec::new()) };
 }
 
 pub fn begin_render() {
+    // Lets a render whose reconciliation gets superseded before finishing
+    // be identified later, so its queued effects are never executed.
+    RENDER_GENERATION.with(|g| g.set(g.get() + 1));
     LIVE_COMPONENTS.with(|s| s.borrow_mut().clear());
     COMPONENT_STACK.with(|s| {
         let mut s = s.borrow_mut();
@@ -92,9 +100,30 @@ pub fn end_render() {
     LIVE_COMPONENTS.with(|live| {
         let live = live.borrow();
         HOOK_STORE.with(|store| {
-            store.borrow_mut().retain(|id, _| live.contains(id));
+            store.borrow_mut().retain(|id, state| {
+                let keep = live.contains(id);
+                if !keep {
+                    run_unmount_cleanups(state);
+                }
+                keep
+            });
         });
     });
+}
+
+// Runs (and clears) every effect cleanup left behind by a component that
+// didn't appear in this render pass, since it will never build again.
+fn run_unmount_cleanups(state: &ComponentState) {
+    for slot in &state.slots {
+        let cleanup = slot
+            .borrow_mut()
+            .downcast_mut::<EffectRecord>()
+            .and_then(|record| record.cleanup.take());
+
+        if let Some(cleanup) = cleanup {
+            cleanup();
+        }
+    }
 }
 
 pub fn take_dirty() -> bool {
@@ -289,4 +318,340 @@ impl<T: 'static> SetState<T> {
 pub fn mark_dirty_and_redraw() {
     DIRTY.with(|d| d.set(true));
     request_redraw();
+}
+
+fn current_generation() -> u64 {
+    RENDER_GENERATION.with(Cell::get)
+}
+
+/// Object-safe equality for an effect's whole dependency list, so
+/// `use_effect` can accept `()`, arrays, or slices without needing one
+/// concrete type shared across every call site.
+trait StoredDeps: Any {
+    fn eq_dyn(&self, other: &dyn StoredDeps) -> bool;
+    fn as_any(&self) -> &dyn Any;
+}
+
+impl<T: PartialEq + 'static> StoredDeps for T {
+    fn eq_dyn(&self, other: &dyn StoredDeps) -> bool {
+        other
+            .as_any()
+            .downcast_ref::<T>()
+            .is_some_and(|o| self == o)
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+}
+
+/// Opaque, erased snapshot of a `use_effect` dependency list, stored
+/// between renders to decide whether the effect needs to run again.
+pub struct DepsSnapshot(Box<dyn StoredDeps>);
+
+fn deps_changed(old: &DepsSnapshot, new: &DepsSnapshot) -> bool {
+    !old.0.eq_dyn(new.0.as_ref())
+}
+
+/// Converts a dependency list passed to [`use_effect`] into a comparable,
+/// erased snapshot. Implemented for `()` (no dependencies - runs once),
+/// owned arrays, and array/slice references.
+pub trait EffectDeps {
+    fn snapshot(self) -> DepsSnapshot;
+}
+
+impl EffectDeps for () {
+    fn snapshot(self) -> DepsSnapshot {
+        DepsSnapshot(Box::new(()))
+    }
+}
+
+impl<T: PartialEq + 'static, const N: usize> EffectDeps for [T; N] {
+    fn snapshot(self) -> DepsSnapshot {
+        DepsSnapshot(Box::new(self))
+    }
+}
+
+impl<T: PartialEq + Clone + 'static, const N: usize> EffectDeps for &[T; N] {
+    fn snapshot(self) -> DepsSnapshot {
+        DepsSnapshot(Box::new(self.clone()))
+    }
+}
+
+impl<T: PartialEq + Clone + 'static> EffectDeps for &[T] {
+    fn snapshot(self) -> DepsSnapshot {
+        DepsSnapshot(Box::new(self.to_vec()))
+    }
+}
+
+/// Normalizes a `use_effect` closure's return value: `()` means no
+/// cleanup, anything callable once becomes the cleanup that runs before
+/// the next execution (or on unmount).
+pub trait EffectCleanup {
+    fn into_cleanup(self) -> Option<Box<dyn FnOnce()>>;
+}
+
+impl EffectCleanup for () {
+    fn into_cleanup(self) -> Option<Box<dyn FnOnce()>> {
+        None
+    }
+}
+
+impl<F: FnOnce() + 'static> EffectCleanup for F {
+    fn into_cleanup(self) -> Option<Box<dyn FnOnce()>> {
+        Some(Box::new(self))
+    }
+}
+
+struct EffectRecord {
+    deps: Option<DepsSnapshot>,
+    cleanup: Option<Box<dyn FnOnce()>>,
+    mounted: bool,
+    pending: bool,
+}
+
+type BoxedEffectFn = Box<dyn FnOnce() -> Option<Box<dyn FnOnce()>>>;
+
+struct PendingEffect {
+    slot: Rc<RefCell<Box<dyn Any>>>,
+    new_deps: DepsSnapshot,
+    run: BoxedEffectFn,
+    generation: u64,
+}
+
+/// Runs a side effect after this component's tree has actually been
+/// committed, similar to React's `useEffect`.
+///
+/// `effect` runs once after the first successful render, and again
+/// whenever `deps` changes value (compared by equality, not identity).
+/// Returning a closure from `effect` registers it as cleanup, run right
+/// before the next execution and when the component is unmounted.
+///
+/// ## Panics
+///
+/// Panics if called outside a `component()` scope, or if the order of
+/// hook invocations changes between rebuilds (see [`use_state`]).
+pub fn use_effect<F, R, D>(effect: F, deps: D)
+    where F: FnOnce() -> R + 'static, R: EffectCleanup + 'static, D: EffectDeps
+{
+    let id = current_component_id();
+    let new_deps = deps.snapshot();
+
+    let (slot, idx) = HOOK_STORE.with(|store| {
+        let mut store = store.borrow_mut();
+        let state = store
+            .get_mut(&id)
+            .expect("use_effect: internal error - provided binding used without begin/push");
+
+        let idx = state.cursor;
+        state.cursor += 1;
+
+        if idx == state.slots.len() {
+            state.slots.push(
+                Rc::new(
+                    RefCell::new(
+                        Box::new(EffectRecord {
+                            deps: None,
+                            cleanup: None,
+                            mounted: false,
+                            pending: false,
+                        }) as Box<dyn Any>
+                    )
+                )
+            );
+        }
+
+        (state.slots[idx].clone(), idx)
+    });
+
+    let should_run = {
+        let borrowed = slot.borrow();
+        let record = borrowed
+            .downcast_ref::<EffectRecord>()
+            .unwrap_or_else(|| {
+                panic!(
+                    "use_effect: hook order broken in component '{}' (slot #{idx}) - do not call use_effect conditionally.",
+                    id.as_str()
+                )
+            });
+
+        match &record.deps {
+            None => true,
+            Some(old_deps) => deps_changed(old_deps, &new_deps),
+        }
+    };
+
+    if !should_run {
+        return;
+    }
+
+    slot
+        .borrow_mut()
+        .downcast_mut::<EffectRecord>()
+        .expect("use_effect: internal error").pending = true;
+
+    let run: BoxedEffectFn = Box::new(move || effect().into_cleanup());
+
+    PENDING_EFFECTS.with(|q| {
+        q.borrow_mut().push(PendingEffect {
+            slot,
+            new_deps,
+            run,
+            generation: current_generation(),
+        });
+    });
+}
+
+/// Runs every effect queued by the render that was just committed to the
+/// tree. Must be called after reconciliation completes, never during
+/// widget building - the reconciler's own commit point is the intended
+/// caller.
+pub fn run_pending_effects() {
+    let generation = current_generation();
+    let pending = PENDING_EFFECTS.with(|q| std::mem::take(&mut *q.borrow_mut()));
+
+    for entry in pending {
+        // An effect queued by a render that got superseded before its
+        // reconciliation finished was never actually committed, so it
+        // must not run.
+        if entry.generation != generation {
+            continue;
+        }
+
+        let old_cleanup = {
+            let mut boxed = entry.slot.borrow_mut();
+            let record = boxed.downcast_mut::<EffectRecord>().expect("use_effect: internal error");
+            record.pending = false;
+            record.cleanup.take()
+        };
+
+        if let Some(cleanup) = old_cleanup {
+            cleanup();
+        }
+
+        let new_cleanup = (entry.run)();
+
+        let mut boxed = entry.slot.borrow_mut();
+        let record = boxed.downcast_mut::<EffectRecord>().expect("use_effect: internal error");
+        record.deps = Some(entry.new_deps);
+        record.cleanup = new_cleanup;
+        record.mounted = true;
+    }
+}
+
+#[cfg(test)]
+mod effect_tests {
+    use super::*;
+
+    #[test]
+    fn runs_once_on_mount_and_skips_unchanged_deps() {
+        let log = Rc::new(RefCell::new(Vec::<String>::new()));
+
+        let build = || {
+            component("effect_mount_root", || {
+                let log = log.clone();
+                use_effect(move || {
+                    log.borrow_mut().push("mount".to_string());
+                }, ());
+            });
+        };
+
+        begin_render();
+        build();
+        end_render();
+        run_pending_effects();
+
+        begin_render();
+        build();
+        end_render();
+        run_pending_effects();
+
+        assert_eq!(*log.borrow(), vec!["mount".to_string()]);
+    }
+
+    #[test]
+    fn reruns_when_deps_change() {
+        let log = Rc::new(RefCell::new(Vec::<String>::new()));
+
+        let build = |value: i32| {
+            component("effect_deps_root", || {
+                let log = log.clone();
+                use_effect(
+                    move || {
+                        log.borrow_mut().push(format!("run:{value}"));
+                    },
+                    [value]
+                );
+            });
+        };
+
+        begin_render();
+        build(1);
+        end_render();
+        run_pending_effects();
+
+        begin_render();
+        build(1);
+        end_render();
+        run_pending_effects();
+
+        begin_render();
+        build(2);
+        end_render();
+        run_pending_effects();
+
+        assert_eq!(*log.borrow(), vec!["run:1".to_string(), "run:2".to_string()]);
+    }
+
+    #[test]
+    fn cleanup_runs_before_rerun_and_on_unmount() {
+        let log = Rc::new(RefCell::new(Vec::<String>::new()));
+
+        let build_child = |value: i32| {
+            component("effect_cleanup_child", || {
+                let log = log.clone();
+                use_effect(
+                    move || {
+                        log.borrow_mut().push(format!("run:{value}"));
+                        move || {
+                            log.borrow_mut().push(format!("cleanup:{value}"));
+                        }
+                    },
+                    [value]
+                );
+            });
+        };
+
+        begin_render();
+        component("effect_cleanup_root", || build_child(1));
+        end_render();
+        run_pending_effects();
+
+        begin_render();
+        component("effect_cleanup_root", || build_child(2));
+        end_render();
+        run_pending_effects();
+
+        assert_eq!(
+            *log.borrow(),
+            vec!["run:1".to_string(), "cleanup:1".to_string(), "run:2".to_string()]
+        );
+
+        // Third render omits the child entirely, so its cleanup must fire
+        // once during end_render's unmount pass.
+        begin_render();
+        component("effect_cleanup_root", || {});
+        end_render();
+        run_pending_effects();
+
+        assert_eq!(
+            *log.borrow(),
+            vec![
+                "run:1".to_string(),
+                "cleanup:1".to_string(),
+                "run:2".to_string(),
+                "cleanup:2".to_string()
+            ]
+        );
+    }
 }
