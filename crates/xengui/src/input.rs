@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 use crate::Widget;
+use std::future::Future;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum KeyState {
@@ -208,6 +209,12 @@ pub struct EventCtx {
 impl EventCtx {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// Spawns a future on the framework's GUI-thread executor - shorthand
+    /// for `xengui::spawn` usable directly from an event callback.
+    pub fn spawn<F>(&self, future: F) where F: Future + 'static {
+        crate::task::spawn(future);
     }
 
     pub fn request_redraw(&mut self) {

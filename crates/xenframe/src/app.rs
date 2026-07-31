@@ -76,7 +76,9 @@ pub struct App {
     pub(crate) initial_resize_done: Rc<RefCell<bool>>,
     #[cfg(target_arch = "wasm32")]
     pub(crate) text_agent: Option<crate::text_agent::TextAgent>,
-    #[cfg(target_arch = "wasm32")]
+    // Lets the async executor wake a blocked event loop from any thread
+    // (e.g. a background HTTP client's I/O driver); needed on every
+    // platform, not just wasm.
     pub(crate) event_proxy: Option<winit::event_loop::EventLoopProxy<XenEvent>>,
     // Set right before focusing the hidden native <input>; the resulting
     // canvas blur is reported by winit as WindowEvent::Focused(false),
@@ -111,7 +113,6 @@ impl App {
             initial_resize_done: Rc::new(RefCell::new(false)),
             #[cfg(target_arch = "wasm32")]
             text_agent: None,
-            #[cfg(target_arch = "wasm32")]
             event_proxy: None,
             #[cfg(target_arch = "wasm32")]
             suppress_next_focus_loss: false,
@@ -204,10 +205,10 @@ impl App {
         let event_loop: EventLoop<XenEvent> = EventLoop::<XenEvent>::with_user_event().build()?;
         event_loop.set_control_flow(ControlFlow::Wait);
 
-        #[cfg(target_arch = "wasm32")]
-        {
-            self.event_proxy = Some(event_loop.create_proxy());
-        }
+        // Registered on every platform so the async executor can wake a
+        // blocked event loop from any thread, not only from wasm's own
+        // browser-callback plumbing.
+        self.event_proxy = Some(event_loop.create_proxy());
 
         event_loop.run_app(self)?;
         Ok(())

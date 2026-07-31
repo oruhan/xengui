@@ -442,6 +442,12 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
 
         set_redraw_handle(std::rc::Rc::new(crate::redraw::WinitRedraw(window.clone())));
 
+        if let Some(proxy) = &self.event_proxy {
+            xengui::task::set_executor_waker(
+                std::sync::Arc::new(crate::executor::WinitExecutorWaker(proxy.clone()))
+            );
+        }
+
         #[cfg(not(target_arch = "wasm32"))]
         {
             let user_fonts = std::mem::take(&mut self.config.fonts);
@@ -655,12 +661,20 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
                     }
                 }
             }
+            XenEvent::PollTasks => {
+                // No-op here: this event's only job is to wake a blocked
+                // `ControlFlow::Wait` loop. Actual polling happens once
+                // per iteration in `about_to_wait`.
+            }
         }
     }
 
     fn window_event(&mut self, _event_loop: &ActiveEventLoop, _id: WindowId, event: WindowEvent) {
         match event {
-            WindowEvent::CloseRequested => _event_loop.exit(),
+            WindowEvent::CloseRequested => {
+                xengui::task::cancel_all();
+                _event_loop.exit();
+            }
             WindowEvent::RedrawRequested => {
                 if hooks::take_dirty() {
                     if crate::app::take_reload_requested() {
@@ -1089,6 +1103,8 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
     }
 
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
+        xengui::task::poll();
+
         if crate::window_controls::take_close_requested() {
             log::trace!("event_loop.exit() called here");
             event_loop.exit();

@@ -17,6 +17,7 @@ pub mod text_agent;
 
 pub mod config;
 pub mod event;
+pub mod executor;
 pub mod redraw;
 
 pub mod window_controls;

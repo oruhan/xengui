@@ -17,6 +17,7 @@ pub mod constants;
 pub mod dispatcher;
 pub mod reconciler;
 pub mod redraw;
+pub mod task;
 pub mod types;
 
 pub use layout::*;
@@ -108,6 +109,7 @@ pub use widgets::{
     TooltipPlacement,
 };
 pub use redraw::RedrawRequester;
+pub use task::spawn;
 pub use xen_svg::{ SvgColor, SvgDocument, SvgElement, Transform2D };
 pub use svg_compat::IntoSvgColor;
 pub use types::*;
