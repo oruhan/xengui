@@ -45,11 +45,15 @@ pub use text::*;
 pub use hooks::{
     component,
     use_effect,
+    use_resource,
+    use_resource_once,
     use_state,
     ComponentId,
     ComponentKey,
     EffectCleanup,
     EffectDeps,
+    Resource,
+    ResourceState,
     SetState,
 };
 

@@ -213,7 +213,7 @@ impl StyleBuilder for Image {
 
 crate::impl_interaction_builders!(base Image);
 crate::impl_common_style_builders!(base Image);
-crate::impl_themed_style_builders!(base Image; hover_style => hover_style, pressed_style => pressed_style, disabled_style => disabled_style, focus_style => focus_style, focused_hover_style => focused_hover_style);
+crate::impl_themed_style_builders!(base Image; hover_style => hover_style, pressed_style => pressed_style, disabled_style => disabled_style, focus_style => focus_style, focused_hover_style => focused_hover_style, focused_pressed_style => focused_pressed_style);
 
 impl Widget for Image {
     crate::impl_widget_boilerplate!();

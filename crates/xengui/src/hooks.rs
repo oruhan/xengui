@@ -539,6 +539,229 @@ pub fn run_pending_effects() {
     }
 }
 
+// ---------------------------------------------------------------------
+// use_resource: combines use_state + use_effect + the task executor into
+// a single hook for async data loading with loading/error tracking,
+// dependency-driven reloads, and manual refresh/invalidate.
+// ---------------------------------------------------------------------
+
+use std::future::Future;
+
+/// Snapshot of an async resource's current lifecycle state.
+pub enum ResourceState<T, E> {
+    Idle,
+    Loading,
+    Ready(T),
+    Error(E),
+}
+
+impl<T, E> ResourceState<T, E> {
+    pub fn data(&self) -> Option<&T> {
+        match self {
+            Self::Ready(value) => Some(value),
+            _ => None,
+        }
+    }
+
+    pub fn error(&self) -> Option<&E> {
+        match self {
+            Self::Error(err) => Some(err),
+            _ => None,
+        }
+    }
+
+    pub fn is_loading(&self) -> bool {
+        matches!(self, Self::Loading)
+    }
+}
+
+impl<T: Clone, E: Clone> Clone for ResourceState<T, E> {
+    fn clone(&self) -> Self {
+        match self {
+            Self::Idle => Self::Idle,
+            Self::Loading => Self::Loading,
+            Self::Ready(v) => Self::Ready(v.clone()),
+            Self::Error(e) => Self::Error(e.clone()),
+        }
+    }
+}
+
+/// Handle returned by [`use_resource`]. `refresh`/`invalidate` stay valid
+/// for as long as the owning component is mounted, even when captured by
+/// a `move` closure (e.g. a button's `on_click`).
+pub struct Resource<T, E> {
+    state: ResourceState<T, E>,
+    do_refresh: Rc<dyn Fn()>,
+    do_invalidate: Rc<dyn Fn()>,
+}
+
+impl<T, E> Resource<T, E> {
+    pub fn data(&self) -> Option<&T> {
+        self.state.data()
+    }
+
+    pub fn error(&self) -> Option<&E> {
+        self.state.error()
+    }
+
+    pub fn loading(&self) -> bool {
+        self.state.is_loading()
+    }
+
+    pub fn has_value(&self) -> bool {
+        self.data().is_some()
+    }
+
+    pub fn has_error(&self) -> bool {
+        self.error().is_some()
+    }
+
+    pub fn state(&self) -> &ResourceState<T, E> {
+        &self.state
+    }
+
+    /// Reruns the loader with the most recently seen dependency value,
+    /// regardless of whether that value actually changed.
+    pub fn refresh(&self) {
+        (self.do_refresh)();
+    }
+
+    /// Clears the resource back to `Idle` without reloading.
+    pub fn invalidate(&self) {
+        (self.do_invalidate)();
+    }
+}
+
+impl<T: Clone, E: Clone> Clone for Resource<T, E> {
+    fn clone(&self) -> Self {
+        Self {
+            state: self.state.clone(),
+            do_refresh: self.do_refresh.clone(),
+            do_invalidate: self.do_invalidate.clone(),
+        }
+    }
+}
+
+// Bumps the shared generation counter, flips the resource into Loading,
+// and spawns the future on xengui's own task executor. A completion is
+// only applied if `gen_cell` still holds the generation this load was
+// started with, so a superseded load (newer deps, or a manual refresh)
+// can't clobber fresher data.
+fn spawn_resource_load<D, T, E, LF, Fut>(
+    gen_cell: Rc<Cell<u64>>,
+    loader: LF,
+    deps: D,
+    set_state: SetState<ResourceState<T, E>>
+)
+    where
+        D: 'static,
+        T: 'static,
+        E: 'static,
+        LF: Fn(D) -> Fut + 'static,
+        Fut: Future<Output = Result<T, E>> + 'static
+{
+    let my_generation = gen_cell.get() + 1;
+    gen_cell.set(my_generation);
+    set_state.set(ResourceState::Loading);
+
+    crate::task::spawn(async move {
+        let result = loader(deps).await;
+        if gen_cell.get() != my_generation {
+            return;
+        }
+        set_state.set(match result {
+            Ok(value) => ResourceState::Ready(value),
+            Err(err) => ResourceState::Error(err),
+        });
+    });
+}
+
+/// Loads async data with automatic loading/error tracking, reloading
+/// whenever `deps_fn`'s return value changes (compared by `PartialEq`,
+/// like `use_effect`'s dependency list).
+///
+/// ```ignore
+/// let github = use_resource(
+///     || username.clone(),
+///     |username| async move { fetch_user(username).await },
+/// );
+/// ```
+///
+/// ## Panics
+///
+/// Panics if called outside a `component()` scope, or if the order of
+/// hook invocations changes between rebuilds (see [`use_state`]).
+pub fn use_resource<D, T, E, DF, LF, Fut>(deps_fn: DF, loader: LF) -> Resource<T, E>
+    where
+        D: PartialEq + Clone + 'static,
+        T: Clone + 'static,
+        E: Clone + 'static,
+        DF: Fn() -> D,
+        LF: Fn(D) -> Fut + Clone + 'static,
+        Fut: Future<Output = Result<T, E>> + 'static
+{
+    let deps = deps_fn();
+
+    let (state, set_state) = use_state(ResourceState::<T, E>::Idle);
+
+    // Rc<Cell<_>>/Rc<RefCell<_>> act as persistent refs here: their
+    // identity survives rebuilds since the setter is never called, so
+    // mutating their contents in place doesn't itself trigger a rebuild.
+    let (gen_cell, _) = use_state(Rc::new(Cell::new(0u64)));
+    let (deps_cell, _) = use_state(Rc::new(RefCell::new(deps.clone())));
+    *deps_cell.borrow_mut() = deps.clone();
+
+    use_effect(
+        {
+            let gen_cell = gen_cell.clone();
+            let loader = loader.clone();
+            let set_state = set_state.clone();
+            let deps = deps.clone();
+            move || {
+                spawn_resource_load(gen_cell, loader, deps, set_state);
+            }
+        },
+        [deps]
+    );
+
+    let do_refresh: Rc<dyn Fn()> = {
+        let gen_cell = gen_cell.clone();
+        let loader = loader.clone();
+        let set_state = set_state.clone();
+        let deps_cell = deps_cell.clone();
+        Rc::new(move || {
+            let deps = deps_cell.borrow().clone();
+            spawn_resource_load(gen_cell.clone(), loader.clone(), deps, set_state.clone());
+        })
+    };
+
+    let do_invalidate: Rc<dyn Fn()> = {
+        let gen_cell = gen_cell.clone();
+        let set_state = set_state.clone();
+        Rc::new(move || {
+            gen_cell.set(gen_cell.get() + 1);
+            set_state.set(ResourceState::Idle);
+        })
+    };
+
+    Resource { state, do_refresh, do_invalidate }
+}
+
+/// Sugar for [`use_resource`] when the loader has no dependencies - runs
+/// once on mount and only reloads via an explicit `refresh()`.
+pub fn use_resource_once<T, E, LF, Fut>(loader: LF) -> Resource<T, E>
+    where
+        T: Clone + 'static,
+        E: Clone + 'static,
+        LF: Fn() -> Fut + Clone + 'static,
+        Fut: Future<Output = Result<T, E>> + 'static
+{
+    use_resource(
+        || (),
+        move |()| loader()
+    )
+}
+
 #[cfg(test)]
 mod effect_tests {
     use super::*;

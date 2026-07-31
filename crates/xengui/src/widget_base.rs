@@ -14,6 +14,7 @@ pub struct WidgetBase {
     pub disabled_style: Option<Style>,
     pub focus_style: Option<Style>,
     pub focused_hover_style: Option<Style>,
+    pub focused_pressed_style: Option<Style>,
 
     pub interaction: Interaction,
 }
@@ -32,31 +33,54 @@ impl WidgetBase {
             disabled_style: None,
             focus_style: None,
             focused_hover_style: None,
+            focused_pressed_style: None,
 
             interaction,
         }
     }
 
+    // Layers each active interaction-state patch on top of the base style,
+    // from least to most specific (hover -> pressed -> focus -> combined),
+    // so an unset field at any level simply falls through to the previous
+    // layer instead of the whole state reverting to the base style.
     pub fn recompute_style(&mut self) {
-        let patch = if !self.interaction.enabled {
-            self.disabled_style.as_ref()
-        } else if self.interaction.pressed {
-            self.pressed_style.as_ref().or(self.hover_style.as_ref())
-        } else if self.interaction.focused && self.interaction.hovered {
-            self.focused_hover_style.as_ref().or(self.hover_style.as_ref())
-        } else if self.interaction.hovered {
-            self.hover_style.as_ref()
-        } else if self.interaction.focused {
-            self.focus_style.as_ref()
-        } else {
-            None
-        };
-
         let base = self.inherited_style.inherit_style(&self.style);
-        self.computed_style = match patch {
-            Some(patch) => base.overlay(patch),
-            None => base,
-        };
+
+        if !self.interaction.enabled {
+            self.computed_style = match &self.disabled_style {
+                Some(patch) => base.overlay(patch),
+                None => base,
+            };
+            return;
+        }
+
+        let hovered = self.interaction.hovered;
+        let pressed = self.interaction.pressed;
+        let focused = self.interaction.focused;
+
+        let mut computed = base;
+
+        if hovered && let Some(patch) = &self.hover_style {
+            computed = computed.overlay(patch);
+        }
+
+        if pressed && let Some(patch) = &self.pressed_style {
+            computed = computed.overlay(patch);
+        }
+
+        if focused && let Some(patch) = &self.focus_style {
+            computed = computed.overlay(patch);
+        }
+
+        if focused && pressed {
+            if let Some(patch) = &self.focused_pressed_style {
+                computed = computed.overlay(patch);
+            }
+        } else if focused && hovered && let Some(patch) = &self.focused_hover_style {
+            computed = computed.overlay(patch);
+        }
+
+        self.computed_style = computed;
     }
 
     pub fn mark_dirty(&mut self) {

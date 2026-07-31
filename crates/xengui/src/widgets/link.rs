@@ -122,26 +122,7 @@ impl Link {
     }
 
     fn recompute_style(&mut self) {
-        let patch = if !self.base.interaction.enabled {
-            self.base.disabled_style.as_ref()
-        } else if self.base.interaction.pressed {
-            self.base.pressed_style.as_ref().or(self.base.hover_style.as_ref())
-        } else if self.base.interaction.focused && self.base.interaction.hovered {
-            self.base.focused_hover_style.as_ref().or(self.base.hover_style.as_ref())
-        } else if self.base.interaction.hovered {
-            self.base.hover_style.as_ref()
-        } else if self.base.interaction.focused {
-            self.base.focus_style.as_ref()
-        } else {
-            None
-        };
-
-        let base = self.base.inherited_style.inherit_style(&self.base.style);
-
-        self.base.computed_style = match patch {
-            Some(patch) => base.overlay(patch),
-            None => base,
-        };
+        self.base.recompute_style();
 
         self.base.interaction.hover_cursor = self.base.computed_style.cursor.or(
             Some(
@@ -243,7 +224,7 @@ impl WidgetContent for Link {
 
 crate::impl_interaction_builders!(base Link);
 crate::impl_common_style_builders!(base Link);
-crate::impl_themed_style_builders!(base Link; hover_style => hover_style, pressed_style => pressed_style, disabled_style => disabled_style, focus_style => focus_style, focused_hover_style => focused_hover_style);
+crate::impl_themed_style_builders!(base Link; hover_style => hover_style, pressed_style => pressed_style, disabled_style => disabled_style, focus_style => focus_style, focused_hover_style => focused_hover_style, focused_pressed_style => focused_pressed_style);
 
 impl Widget for Link {
     crate::impl_widget_boilerplate!();

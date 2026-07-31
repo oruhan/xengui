@@ -9,6 +9,7 @@ use crate::{
     ElementState,
     EventCtx,
     EventStatus,
+    ImeEvent,
     InputEvent,
     Interaction,
     Key,
@@ -845,7 +846,7 @@ impl WidgetContent for TextBox {
 
 crate::impl_interaction_builders!(base TextBox);
 crate::impl_common_style_builders!(base TextBox);
-crate::impl_themed_style_builders!(base TextBox; hover_style => hover_style, pressed_style => pressed_style, focus_style => focus_style, disabled_style => disabled_style, focused_hover_style => focused_hover_style);
+crate::impl_themed_style_builders!(base TextBox; hover_style => hover_style, pressed_style => pressed_style, focus_style => focus_style, disabled_style => disabled_style, focused_hover_style => focused_hover_style, focused_pressed_style => focused_pressed_style);
 
 impl Widget for TextBox {
     crate::impl_widget_boilerplate!();
@@ -1207,6 +1208,20 @@ impl Widget for TextBox {
                 return EventStatus::Handled;
             }
             return EventStatus::Ignored;
+        }
+
+        // Commits IME-composed text the same way a typed character would,
+        // so on_change fires for CJK and other IME input too.
+        if let InputEvent::Ime(ime_event) = event {
+            if !self.base.interaction.focused {
+                return EventStatus::Ignored;
+            }
+            if let ImeEvent::Commit(text) = ime_event {
+                self.insert_text(text, ctx);
+            }
+            self.base.dirty = true;
+            ctx.request_redraw();
+            return EventStatus::Handled;
         }
 
         // Interaction::handle() clears `pressed` on MouseExited, so the
