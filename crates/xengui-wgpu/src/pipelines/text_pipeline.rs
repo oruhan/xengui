@@ -33,7 +33,7 @@ use glyphon::{
     Weight as GlyphonWeight,
 };
 use std::collections::HashMap;
-use std::rc::Rc;
+use std::sync::Arc;
 
 #[derive(Clone, PartialEq, Eq, Hash)]
 struct ShapeKey {
@@ -48,7 +48,7 @@ struct ShapeKey {
 }
 
 struct PendingText {
-    buffer: Rc<GlyphonBuffer>,
+    buffer: Arc<GlyphonBuffer>,
     position: (f32, f32),
     color: GlyphonColor,
     bounds: TextBounds,
@@ -64,7 +64,7 @@ pub struct TextPipeline {
     default_family_name: Option<String>,
     pending: Vec<PendingText>,
     pending_decorations: Vec<RectCommand>,
-    shape_cache: HashMap<ShapeKey, Rc<GlyphonBuffer>>,
+    shape_cache: HashMap<ShapeKey, Arc<GlyphonBuffer>>,
 }
 
 impl TextPipeline {
@@ -220,7 +220,7 @@ impl TextPipeline {
                 self.shape_cache.clear();
             }
 
-            let buffer = Rc::new(buffer);
+            let buffer = Arc::new(buffer);
             self.shape_cache.insert(key, buffer.clone());
             buffer
         };
