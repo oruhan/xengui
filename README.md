@@ -86,7 +86,7 @@ XenGui is split across several focused crates:
 [dependencies]
 xengui = "0.2.7"
 xenframe = "0.1.1"
-xengui-wgpu = "0.1.0"
+xengui-wgpu = "0.1.1"
 ```
 
 ## Quick Start

@@ -43,7 +43,7 @@ renderer.render_frame(&mut widget_tree, theme, scale_factor);
 
 ```toml
 [dependencies]
-xengui-wgpu = "0.1.0"
+xengui-wgpu = "0.1.1"
 ```
 
 ## Documentation
