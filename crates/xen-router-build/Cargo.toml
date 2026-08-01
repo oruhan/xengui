@@ -1,0 +1,11 @@
+[package]
+name = "xen-router-build"
+version = "0.1.0"
+edition = { workspace = true }
+rust-version = { workspace = true }
+authors = ["randseas <waultbank@gmail.com>"]
+description = "build.rs codegen for xen-router's file-based routing"
+license = "Apache-2.0"
+repository = "https://github.com/randseas/xengui/tree/main/crates/xen-router-build"
+
+[dependencies]

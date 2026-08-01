@@ -1,7 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
-//use web_time::Duration;
-
 use web_time::Duration;
 
 #[cfg(not(target_arch = "wasm32"))]

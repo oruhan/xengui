@@ -1,0 +1,15 @@
+[package]
+name = "router-example"
+version = "0.1.0"
+edition = { workspace = true }
+rust-version = { workspace = true }
+
+[dependencies]
+xengui = { workspace = true }
+xenframe = { workspace = true }
+xengui-wgpu = { workspace = true }
+xen-router = { workspace = true }
+xen-router-build = { workspace = true }
+xen-clipboard = { workspace = true }
+xengui-lucide = { workspace = true }
+log = { workspace = true }
