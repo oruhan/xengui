@@ -472,9 +472,9 @@ impl IntoThemed<Background, ValueMarker> for Background {
     }
 }
 
-impl<F: FnOnce(&Theme) -> Color> IntoThemed<Background, FnMarker> for F {
+impl<T, F> IntoThemed<Background, FnMarker> for F where T: Into<Background>, F: FnOnce(&Theme) -> T {
     fn resolve_themed(self) -> Background {
-        Background::Color(CURRENT_THEME.with(|cell| self(&cell.borrow())))
+        CURRENT_THEME.with(|cell| self(&cell.borrow()).into())
     }
 }
 
