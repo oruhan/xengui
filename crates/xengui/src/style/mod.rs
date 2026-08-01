@@ -22,13 +22,7 @@ pub mod cursor;
 pub mod theme;
 pub mod system_theme;
 
-pub use background::{
-    Background,
-    GradientStop,
-    LinearGradient,
-    RadialGradient,
-    MAX_GRADIENT_STOPS,
-};
+pub use background::{ Background, GradientStop, LinearGradient, RadialGradient };
 pub use border::Border;
 pub use box_shadow::BoxShadow;
 pub use outline::Outline;

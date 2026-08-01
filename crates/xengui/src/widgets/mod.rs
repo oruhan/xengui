@@ -9,6 +9,7 @@ pub mod svg;
 pub mod context_menu;
 pub mod checkbox;
 pub mod tooltip;
+pub mod rich_text;
 
 pub use view::View;
 pub use label::Label;
@@ -27,6 +28,7 @@ pub use svg::{
 pub use context_menu::{ ContextMenu, ContextMenuHandle, ContextMenuItem };
 pub use checkbox::Checkbox;
 pub use tooltip::{ Tooltip, TooltipPlacement };
+pub use rich_text::{ RichText, TextSpan };
 
 #[cfg(not(target_arch = "wasm32"))]
 pub use image::image_source_from_path;

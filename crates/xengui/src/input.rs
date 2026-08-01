@@ -538,3 +538,16 @@ pub fn collect_selected_text_recursive(tree: &[Box<dyn Widget>], out: &mut Strin
         collect_selected_text_recursive(widget.children(), out);
     }
 }
+
+/// Forces every widget in the tree to repaint on the next frame, even
+/// when its own dirty flag and layout box are otherwise unchanged -
+/// needed for style inputs that live outside any individual widget's own
+/// props, like the active theme.
+pub fn mark_tree_dirty(tree: &mut [Box<dyn Widget>]) {
+    for widget in tree.iter_mut() {
+        widget.set_dirty(true);
+        if let Some(children) = widget.children_mut() {
+            mark_tree_dirty(children);
+        }
+    }
+}

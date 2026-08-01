@@ -1,31 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-use xengui::{ Background, RectCommand, paint };
-
-fn gradient_data(bg: Option<&Background>) -> ([f32; 4], [f32; 4], [[f32; 4]; 4]) {
-    match bg {
-        Some(Background::LinearGradient(g)) => {
-            let mut positions = [0.0f32; 4];
-            let mut colors = [[0.0f32; 4]; 4];
-            for (i, stop) in g.stops.iter().take(4).enumerate() {
-                positions[i] = stop.position;
-                colors[i] = stop.color.to_f32_array();
-            }
-            let count = g.stops.len().min(4) as f32;
-            ([1.0, g.angle_deg.to_radians(), count, 0.0], positions, colors)
-        }
-        Some(Background::RadialGradient(g)) => {
-            let mut positions = [0.0f32; 4];
-            let mut colors = [[0.0f32; 4]; 4];
-            for (i, stop) in g.stops.iter().take(4).enumerate() {
-                positions[i] = stop.position;
-                colors[i] = stop.color.to_f32_array();
-            }
-            let count = g.stops.len().min(4) as f32;
-            ([2.0, 0.0, count, 0.0], positions, colors)
-        }
-        _ => ([0.0; 4], [0.0; 4], [[0.0; 4]; 4]),
-    }
-}
+use xengui::{ Background, GradientStop, RectCommand, paint };
 
 #[repr(C)]
 #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
@@ -37,13 +11,9 @@ struct Vertex {
     border_width: f32,
     fill_color: [f32; 4],
     border_color: [f32; 4],
-    // x: kind (0 = solid, 1 = linear, 2 = radial), y: linear angle (rad), z: stop count
+    // x: kind (0 = solid, 1 = linear, 2 = radial), y: linear angle (rad),
+    // z: stop count, w: offset into the shared gradient stop buffers.
     gradient_meta: [f32; 4],
-    gradient_positions: [f32; 4],
-    gradient_color0: [f32; 4],
-    gradient_color1: [f32; 4],
-    gradient_color2: [f32; 4],
-    gradient_color3: [f32; 4],
 }
 
 impl Vertex {
@@ -92,31 +62,6 @@ impl Vertex {
                     offset: 64,
                     format: wgpu::VertexFormat::Float32x4,
                 },
-                wgpu::VertexAttribute {
-                    shader_location: 8,
-                    offset: 80,
-                    format: wgpu::VertexFormat::Float32x4,
-                },
-                wgpu::VertexAttribute {
-                    shader_location: 9,
-                    offset: 96,
-                    format: wgpu::VertexFormat::Float32x4,
-                },
-                wgpu::VertexAttribute {
-                    shader_location: 10,
-                    offset: 112,
-                    format: wgpu::VertexFormat::Float32x4,
-                },
-                wgpu::VertexAttribute {
-                    shader_location: 11,
-                    offset: 128,
-                    format: wgpu::VertexFormat::Float32x4,
-                },
-                wgpu::VertexAttribute {
-                    shader_location: 12,
-                    offset: 144,
-                    format: wgpu::VertexFormat::Float32x4,
-                },
             ],
         }
     }
@@ -127,10 +72,22 @@ pub struct RectPipeline {
     vertex_buffer: wgpu::Buffer,
     vertex_capacity: usize,
     write_offset: usize,
+
+    gradient_positions_buffer: wgpu::Buffer,
+    gradient_colors_buffer: wgpu::Buffer,
+    gradient_bind_group: wgpu::BindGroup,
+    stops_used: usize,
 }
 
 const VERTICES_PER_RECT: usize = 6;
 const DEFAULT_RECT_CAPACITY: usize = 256;
+
+// Total gradient stops shared across every gradient-filled rect drawn in
+// one frame (possibly across multiple draw_batch calls, e.g. main pass +
+// top layer) - see xengui's Background::MAX_GRADIENT_STOPS for the
+// matching per-gradient headroom within this budget.
+const MAX_GRADIENT_STOPS_TOTAL: usize = 512;
+const MAX_GRADIENT_POSITION_VEC4S: usize = MAX_GRADIENT_STOPS_TOTAL / 4;
 
 impl RectPipeline {
     pub fn new(device: &wgpu::Device, surface_format: wgpu::TextureFormat) -> Self {
@@ -139,10 +96,38 @@ impl RectPipeline {
             source: wgpu::ShaderSource::Wgsl(include_str!("shaders/rect.wgsl").into()),
         });
 
+        let gradient_bind_group_layout = device.create_bind_group_layout(
+            &(wgpu::BindGroupLayoutDescriptor {
+                label: Some("Rect Gradient Bind Group Layout"),
+                entries: &[
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 0,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Buffer {
+                            ty: wgpu::BufferBindingType::Uniform,
+                            has_dynamic_offset: false,
+                            min_binding_size: None,
+                        },
+                        count: None,
+                    },
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 1,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Buffer {
+                            ty: wgpu::BufferBindingType::Uniform,
+                            has_dynamic_offset: false,
+                            min_binding_size: None,
+                        },
+                        count: None,
+                    },
+                ],
+            })
+        );
+
         let layout = device.create_pipeline_layout(
             &(wgpu::PipelineLayoutDescriptor {
                 label: Some("Rect Pipeline Layout"),
-                bind_group_layouts: &[],
+                bind_group_layouts: &[Some(&gradient_bind_group_layout)],
                 immediate_size: 0,
             })
         );
@@ -190,19 +175,56 @@ impl RectPipeline {
             })
         );
 
+        let gradient_positions_buffer = device.create_buffer(
+            &(wgpu::BufferDescriptor {
+                label: Some("Rect Gradient Positions Buffer"),
+                size: (MAX_GRADIENT_POSITION_VEC4S * 16) as u64,
+                usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+                mapped_at_creation: false,
+            })
+        );
+
+        let gradient_colors_buffer = device.create_buffer(
+            &(wgpu::BufferDescriptor {
+                label: Some("Rect Gradient Colors Buffer"),
+                size: (MAX_GRADIENT_STOPS_TOTAL * 16) as u64,
+                usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+                mapped_at_creation: false,
+            })
+        );
+
+        let gradient_bind_group = device.create_bind_group(
+            &(wgpu::BindGroupDescriptor {
+                label: Some("Rect Gradient Bind Group"),
+                layout: &gradient_bind_group_layout,
+                entries: &[
+                    wgpu::BindGroupEntry {
+                        binding: 0,
+                        resource: gradient_positions_buffer.as_entire_binding(),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 1,
+                        resource: gradient_colors_buffer.as_entire_binding(),
+                    },
+                ],
+            })
+        );
+
         Self {
             pipeline,
             vertex_buffer,
             vertex_capacity,
             write_offset: 0,
+            gradient_positions_buffer,
+            gradient_colors_buffer,
+            gradient_bind_group,
+            stops_used: 0,
         }
     }
 
-    // Every draw_batch call this frame appends after the previous one
-    // instead of overwriting it, since all writes land in the buffer
-    // before any of the frame's render passes actually execute on the GPU.
     pub fn reset_frame(&mut self) {
         self.write_offset = 0;
+        self.stops_used = 0;
     }
 
     pub fn draw_batch(
@@ -218,21 +240,71 @@ impl RectPipeline {
             return;
         }
 
+        let mut new_positions: Vec<f32> = Vec::new();
+        let mut new_colors: Vec<[f32; 4]> = Vec::new();
+        let mut metas: Vec<[f32; 4]> = Vec::with_capacity(cmds.len());
+
+        for cmd in cmds {
+            let (kind, angle, stops): (f32, f32, &[GradientStop]) = match cmd.background.as_ref() {
+                Some(Background::LinearGradient(g)) =>
+                    (1.0, g.angle_deg.to_radians(), g.stops.as_slice()),
+                Some(Background::RadialGradient(g)) => (2.0, 0.0, g.stops.as_slice()),
+                _ => (0.0, 0.0, &[]),
+            };
+
+            if stops.is_empty() {
+                metas.push([kind, angle, 0.0, 0.0]);
+                continue;
+            }
+
+            let already_used = self.stops_used + new_colors.len();
+            let remaining = MAX_GRADIENT_STOPS_TOTAL.saturating_sub(already_used);
+            let take = stops.len().min(remaining);
+
+            if take < stops.len() {
+                log::warn!(
+                    "rect gradient stop buffer full this frame: dropping {} of {} stops",
+                    stops.len() - take,
+                    stops.len()
+                );
+            }
+
+            for stop in &stops[..take] {
+                new_positions.push(stop.position);
+                new_colors.push(stop.color.to_f32_array());
+            }
+
+            metas.push([kind, angle, take as f32, already_used as f32]);
+        }
+
+        if !new_colors.is_empty() {
+            let base_offset = self.stops_used;
+            queue.write_buffer(
+                &self.gradient_positions_buffer,
+                (base_offset * 4) as u64,
+                bytemuck::cast_slice(&new_positions)
+            );
+            queue.write_buffer(
+                &self.gradient_colors_buffer,
+                (base_offset * 16) as u64,
+                bytemuck::cast_slice(&new_colors)
+            );
+            self.stops_used += new_colors.len();
+        }
+
         let inv_w = 2.0 / (surface_width.max(1) as f32);
         let inv_h = 2.0 / (surface_height.max(1) as f32);
         let ndc = |px: f32, py: f32| -> [f32; 2] { [px * inv_w - 1.0, 1.0 - py * inv_h] };
 
         let mut vertices = Vec::with_capacity(cmds.len() * VERTICES_PER_RECT);
 
-        for cmd in cmds {
+        for (i, cmd) in cmds.iter().enumerate() {
             let fill_color = cmd.background
                 .as_ref()
                 .map(|bg| bg.representative_color().to_f32_array())
                 .unwrap_or([0.0, 0.0, 0.0, 0.0]);
 
-            let (gradient_meta, gradient_positions, gradient_colors) = gradient_data(
-                cmd.background.as_ref()
-            );
+            let gradient_meta = metas[i];
 
             let (x, y) = cmd.position;
             let (w, h) = cmd.size;
@@ -266,11 +338,6 @@ impl RectPipeline {
                 fill_color,
                 border_color,
                 gradient_meta,
-                gradient_positions,
-                gradient_color0: gradient_colors[0],
-                gradient_color1: gradient_colors[1],
-                gradient_color2: gradient_colors[2],
-                gradient_color3: gradient_colors[3],
             };
 
             vertices.extend_from_slice(
@@ -295,12 +362,10 @@ impl RectPipeline {
         self.write_offset += vertices.len();
 
         render_pass.set_pipeline(&self.pipeline);
+        render_pass.set_bind_group(0, &self.gradient_bind_group, &[]);
         render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
         render_pass.set_viewport(0.0, 0.0, surface_width as f32, surface_height as f32, 0.0, 1.0);
 
-        // Consecutive commands sharing the same clip rect are drawn in one
-        // call; the scissor rect only changes when the clip actually does,
-        // which keeps paint order intact while still clipping per-widget.
         let mut run_start = 0usize;
         let mut current_clip = cmds[0].clip_rect;
 

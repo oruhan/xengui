@@ -1,3 +1,5 @@
+use crate::MAX_GRADIENT_STOPS;
+
 // SPDX-License-Identifier: Apache-2.0
 use super::Color;
 
@@ -18,11 +20,6 @@ impl From<(Color, f32)> for GradientStop {
         Self::new(color, position)
     }
 }
-
-// Bounded by the rect pipeline's vertex-attribute budget (see
-// rect_pipeline.rs) - WebGL2's 16-location ceiling doesn't leave room
-// for more once packed alongside the existing fill/border attributes.
-pub const MAX_GRADIENT_STOPS: usize = 4;
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct LinearGradient {

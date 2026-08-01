@@ -77,3 +77,9 @@ pub const OVERSCROLL_RETURN_TRANSITION: Transition = Transition::new(
 ).easing(Easing::EaseOut);
 /// Edge-glow fade-out rate (alpha per second) for `Overscroll::Glow`.
 pub const OVERSCROLL_GLOW_DECAY_PER_SEC: f32 = 2.6;
+
+/* ---- Gradient ----- */
+// Bounded by the rect pipeline's vertex-attribute budget (see
+// rect_pipeline.rs) - WebGL2's 16-location ceiling doesn't leave room
+// for more once packed alongside the existing fill/border attributes.
+pub const MAX_GRADIENT_STOPS: usize = 512;

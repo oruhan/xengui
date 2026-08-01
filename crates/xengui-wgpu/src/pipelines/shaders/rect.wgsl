@@ -8,12 +8,18 @@ struct VertexOutput {
     @location(4) fill_color: vec4<f32>,
     @location(5) border_color: vec4<f32>,
     @location(6) gradient_meta: vec4<f32>,
-    @location(7) gradient_positions: vec4<f32>,
-    @location(8) gradient_color0: vec4<f32>,
-    @location(9) gradient_color1: vec4<f32>,
-    @location(10) gradient_color2: vec4<f32>,
-    @location(11) gradient_color3: vec4<f32>,
 };
+
+struct GradientPositions {
+    values: array<vec4<f32>, 128>,
+};
+
+struct GradientColors {
+    values: array<vec4<f32>, 512>,
+};
+
+@group(0) @binding(0) var<uniform> grad_positions: GradientPositions;
+@group(0) @binding(1) var<uniform> grad_colors: GradientColors;
 
 @vertex
 fn vs_main(
@@ -25,11 +31,6 @@ fn vs_main(
     @location(5) fill_color: vec4<f32>,
     @location(6) border_color: vec4<f32>,
     @location(7) gradient_meta: vec4<f32>,
-    @location(8) gradient_positions: vec4<f32>,
-    @location(9) gradient_color0: vec4<f32>,
-    @location(10) gradient_color1: vec4<f32>,
-    @location(11) gradient_color2: vec4<f32>,
-    @location(12) gradient_color3: vec4<f32>,
 ) -> VertexOutput {
     var out: VertexOutput;
     out.clip_position = vec4<f32>(position, 0.0, 1.0);
@@ -40,11 +41,6 @@ fn vs_main(
     out.fill_color = fill_color;
     out.border_color = border_color;
     out.gradient_meta = gradient_meta;
-    out.gradient_positions = gradient_positions;
-    out.gradient_color0 = gradient_color0;
-    out.gradient_color1 = gradient_color1;
-    out.gradient_color2 = gradient_color2;
-    out.gradient_color3 = gradient_color3;
     return out;
 }
 
@@ -53,31 +49,31 @@ fn sd_round_rect(p: vec2<f32>, half_size: vec2<f32>, r: f32) -> f32 {
     return length(max(q, vec2<f32>(0.0, 0.0))) - r + min(max(q.x, q.y), 0.0);
 }
 
-fn sample_gradient(t: f32, o: VertexOutput) -> vec4<f32> {
-    let count = i32(o.gradient_meta.z);
-    let positions = o.gradient_positions;
-    let colors = array<vec4<f32>, 4>(
-        o.gradient_color0,
-        o.gradient_color1,
-        o.gradient_color2,
-        o.gradient_color3
-    );
+// Reads stop `index`'s position out of the packed (4-per-vec4) buffer.
+fn gradient_position_at(index: i32) -> f32 {
+    return grad_positions.values[index / 4][index % 4];
+}
 
+fn sample_gradient(t: f32, offset: i32, count: i32) -> vec4<f32> {
     if (count <= 1) {
-        return colors[0];
+        return grad_colors.values[offset];
     }
 
-    let tc = clamp(t, positions[0], positions[count - 1]);
+    let first_pos = gradient_position_at(offset);
+    let last_pos = gradient_position_at(offset + count - 1);
+    let tc = clamp(t, first_pos, last_pos);
 
     for (var i = 0; i < count - 1; i = i + 1) {
-        if (tc >= positions[i] && tc <= positions[i + 1]) {
-            let span = max(positions[i + 1] - positions[i], 0.0001);
-            let local_t = (tc - positions[i]) / span;
-            return mix(colors[i], colors[i + 1], local_t);
+        let p0 = gradient_position_at(offset + i);
+        let p1 = gradient_position_at(offset + i + 1);
+        if (tc >= p0 && tc <= p1) {
+            let span = max(p1 - p0, 0.0001);
+            let local_t = (tc - p0) / span;
+            return mix(grad_colors.values[offset + i], grad_colors.values[offset + i + 1], local_t);
         }
     }
 
-    return colors[count - 1];
+    return grad_colors.values[offset + count - 1];
 }
 
 @fragment
@@ -94,6 +90,8 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let kind = in.gradient_meta.x;
 
     if (kind > 0.5) {
+        let count = i32(in.gradient_meta.z);
+        let offset = i32(in.gradient_meta.w);
         var t: f32;
         if (kind < 1.5) {
             // Linear: angle 0 points along +x, matching CSS gradient-angle convention.
@@ -104,7 +102,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
             let max_dist = length(in.half_size);
             t = length(in.local_pos) / max(max_dist, 0.0001);
         }
-        fill = sample_gradient(t, in);
+        fill = sample_gradient(t, offset, count);
     }
 
     var color = fill;
