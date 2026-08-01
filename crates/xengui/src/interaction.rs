@@ -65,7 +65,6 @@ impl Interaction {
     pub fn set_enabled(&mut self, enabled: bool) {
         self.enabled = enabled;
         if !enabled {
-            self.hovered = false;
             self.pressed = false;
         }
     }
@@ -95,6 +94,19 @@ impl Interaction {
 
     pub fn handle(&mut self, event: &InputEvent, ctx: &mut EventCtx) -> EventStatus {
         if !self.enabled {
+            // Hover must keep reflecting the real cursor position even while
+            // disabled, so a later transfer_from during reconciliation can
+            // never resurrect a stale flag from before the widget was disabled.
+            match event {
+                InputEvent::MouseEntered => {
+                    self.hovered = true;
+                }
+                InputEvent::MouseExited => {
+                    self.hovered = false;
+                    self.pressed = false;
+                }
+                _ => {}
+            }
             return EventStatus::Ignored;
         }
 

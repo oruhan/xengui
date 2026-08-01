@@ -99,6 +99,12 @@ impl Label {
         self
     }
 
+    pub fn selectable(mut self, value: bool) -> Self {
+        self.selectable = value;
+        self.base.mark_dirty();
+        self
+    }
+
     // Widget-specific extra step (hover cursor) stays local; the shared
     // style-overlay logic lives in WidgetBase::recompute_style. Note the
     // priority order changes here from `pressed > focused > hovered` to
