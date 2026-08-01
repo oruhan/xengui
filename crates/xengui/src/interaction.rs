@@ -100,10 +100,16 @@ impl Interaction {
             match event {
                 InputEvent::MouseEntered => {
                     self.hovered = true;
+                    if let Some(icon) = self.hover_cursor {
+                        ctx.set_cursor_icon(icon);
+                    }
                 }
                 InputEvent::MouseExited => {
                     self.hovered = false;
                     self.pressed = false;
+                    if self.hover_cursor.is_some() {
+                        ctx.set_cursor_icon(Cursor::Default);
+                    }
                 }
                 _ => {}
             }
