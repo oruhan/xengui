@@ -1,13 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
-use web_time::Duration;
 
 #[cfg(not(target_arch = "wasm32"))]
 use xenframe::WindowPosition;
-use xengui::{ Display::Flex, FlexDirection::{ Column, Row }, FontWeight::Medium, widgets::Link, * };
 use xenframe::{ App, AppConfig };
-/*use xengui_wgpu::{ WindowShadow };*/
-//use xen_clipboard::Clipboard;
+
+include!(concat!(env!("OUT_DIR"), "/xen_router_generated.rs"));
 
 // write debug messages directly into the screen
 #[cfg(target_arch = "wasm32")]
@@ -79,8 +77,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     let mut app = App::new(config);
-
-    include!(concat!(env!("OUT_DIR"), "/xen_router_generated.rs"));
 
     app.render(|| { build_router().build() });
 
