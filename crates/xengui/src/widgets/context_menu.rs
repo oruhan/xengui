@@ -219,6 +219,18 @@ fn lerp_color(a: Color, b: Color, t: f32) -> Color {
 fn faded_background(bg: Background, opacity: f32) -> Background {
     match bg {
         Background::Color(c) => Background::Color(c.with_alpha_f32(c.a() * opacity)),
+        Background::LinearGradient(mut g) => {
+            for stop in g.stops.iter_mut() {
+                stop.color = stop.color.with_alpha_f32(stop.color.a() * opacity);
+            }
+            Background::LinearGradient(g)
+        }
+        Background::RadialGradient(mut g) => {
+            for stop in g.stops.iter_mut() {
+                stop.color = stop.color.with_alpha_f32(stop.color.a() * opacity);
+            }
+            Background::RadialGradient(g)
+        }
     }
 }
 
@@ -1159,13 +1171,12 @@ impl ContextMenu {
 
             let t = if is_pressed { 1.0 } else { item.hover_progress.get() };
 
-            let idle_bg_color = match &self.item_background {
-                Some(Background::Color(c)) => *c,
-                None => Color::TRANSPARENT,
-            };
-            let target_bg_color = match &target_bg {
-                Background::Color(c) => *c,
-            };
+            let idle_bg_color = self.item_background
+                .as_ref()
+                .map(Background::representative_color)
+                .unwrap_or(Color::TRANSPARENT);
+
+            let target_bg_color = target_bg.representative_color();
             let blended_bg = lerp_color(idle_bg_color, target_bg_color, t);
 
             if blended_bg.a() > 0.0 {

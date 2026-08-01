@@ -283,7 +283,7 @@ impl Widget for Tooltip {
         let (x, y) = self.box_position(self.layout_box, size);
 
         let bg = self.background.clone().unwrap_or(Background::Color(theme.foreground));
-        let Background::Color(bg_color) = bg;
+        let bg_color = bg.representative_color();
         let radius = self.border_radius.unwrap_or(Length::px(4.0)).to_physical(sf);
 
         ctx.draw_rect(RectCommand {

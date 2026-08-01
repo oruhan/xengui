@@ -1,6 +1,32 @@
 // SPDX-License-Identifier: Apache-2.0
 use xengui::{ Background, RectCommand, paint };
 
+fn gradient_data(bg: Option<&Background>) -> ([f32; 4], [f32; 4], [[f32; 4]; 4]) {
+    match bg {
+        Some(Background::LinearGradient(g)) => {
+            let mut positions = [0.0f32; 4];
+            let mut colors = [[0.0f32; 4]; 4];
+            for (i, stop) in g.stops.iter().take(4).enumerate() {
+                positions[i] = stop.position;
+                colors[i] = stop.color.to_f32_array();
+            }
+            let count = g.stops.len().min(4) as f32;
+            ([1.0, g.angle_deg.to_radians(), count, 0.0], positions, colors)
+        }
+        Some(Background::RadialGradient(g)) => {
+            let mut positions = [0.0f32; 4];
+            let mut colors = [[0.0f32; 4]; 4];
+            for (i, stop) in g.stops.iter().take(4).enumerate() {
+                positions[i] = stop.position;
+                colors[i] = stop.color.to_f32_array();
+            }
+            let count = g.stops.len().min(4) as f32;
+            ([2.0, 0.0, count, 0.0], positions, colors)
+        }
+        _ => ([0.0; 4], [0.0; 4], [[0.0; 4]; 4]),
+    }
+}
+
 #[repr(C)]
 #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
 struct Vertex {
@@ -11,6 +37,13 @@ struct Vertex {
     border_width: f32,
     fill_color: [f32; 4],
     border_color: [f32; 4],
+    // x: kind (0 = solid, 1 = linear, 2 = radial), y: linear angle (rad), z: stop count
+    gradient_meta: [f32; 4],
+    gradient_positions: [f32; 4],
+    gradient_color0: [f32; 4],
+    gradient_color1: [f32; 4],
+    gradient_color2: [f32; 4],
+    gradient_color3: [f32; 4],
 }
 
 impl Vertex {
@@ -52,6 +85,36 @@ impl Vertex {
                 wgpu::VertexAttribute {
                     shader_location: 6,
                     offset: 48,
+                    format: wgpu::VertexFormat::Float32x4,
+                },
+                wgpu::VertexAttribute {
+                    shader_location: 7,
+                    offset: 64,
+                    format: wgpu::VertexFormat::Float32x4,
+                },
+                wgpu::VertexAttribute {
+                    shader_location: 8,
+                    offset: 80,
+                    format: wgpu::VertexFormat::Float32x4,
+                },
+                wgpu::VertexAttribute {
+                    shader_location: 9,
+                    offset: 96,
+                    format: wgpu::VertexFormat::Float32x4,
+                },
+                wgpu::VertexAttribute {
+                    shader_location: 10,
+                    offset: 112,
+                    format: wgpu::VertexFormat::Float32x4,
+                },
+                wgpu::VertexAttribute {
+                    shader_location: 11,
+                    offset: 128,
+                    format: wgpu::VertexFormat::Float32x4,
+                },
+                wgpu::VertexAttribute {
+                    shader_location: 12,
+                    offset: 144,
                     format: wgpu::VertexFormat::Float32x4,
                 },
             ],
@@ -162,10 +225,14 @@ impl RectPipeline {
         let mut vertices = Vec::with_capacity(cmds.len() * VERTICES_PER_RECT);
 
         for cmd in cmds {
-            let fill_color = match cmd.background.as_ref() {
-                Some(Background::Color(color)) => color.to_f32_array(),
-                None => [0.0, 0.0, 0.0, 0.0],
-            };
+            let fill_color = cmd.background
+                .as_ref()
+                .map(|bg| bg.representative_color().to_f32_array())
+                .unwrap_or([0.0, 0.0, 0.0, 0.0]);
+
+            let (gradient_meta, gradient_positions, gradient_colors) = gradient_data(
+                cmd.background.as_ref()
+            );
 
             let (x, y) = cmd.position;
             let (w, h) = cmd.size;
@@ -198,6 +265,12 @@ impl RectPipeline {
                 border_width,
                 fill_color,
                 border_color,
+                gradient_meta,
+                gradient_positions,
+                gradient_color0: gradient_colors[0],
+                gradient_color1: gradient_colors[1],
+                gradient_color2: gradient_colors[2],
+                gradient_color3: gradient_colors[3],
             };
 
             vertices.extend_from_slice(
