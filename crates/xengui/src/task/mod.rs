@@ -43,23 +43,50 @@ static READY: Mutex<Vec<TaskId>> = Mutex::new(Vec::new());
 /// Lets the executor wake its host event loop from any thread. The
 /// platform runtime (e.g. `xenframe`) implements this once over its own
 /// event loop proxy and registers it via [`set_executor_waker`].
+#[cfg(not(target_arch = "wasm32"))]
 pub trait ExecutorWaker: Send + Sync {
     fn wake(&self);
 }
 
+#[cfg(target_arch = "wasm32")]
+pub trait ExecutorWaker {
+    fn wake(&self);
+}
+
+#[cfg(not(target_arch = "wasm32"))]
 static EXECUTOR_WAKER: Mutex<Option<Arc<dyn ExecutorWaker>>> = Mutex::new(None);
 
-/// Registers the callback used to wake the host event loop whenever a
-/// task becomes ready to poll again.
+#[cfg(target_arch = "wasm32")]
+thread_local! {
+    static EXECUTOR_WAKER: RefCell<Option<Arc<dyn ExecutorWaker>>> = const { RefCell::new(None) };
+}
+
+#[cfg(not(target_arch = "wasm32"))]
 pub fn set_executor_waker(waker: Arc<dyn ExecutorWaker>) {
     *EXECUTOR_WAKER.lock().unwrap() = Some(waker);
 }
 
+#[cfg(target_arch = "wasm32")]
+pub fn set_executor_waker(waker: Arc<dyn ExecutorWaker>) {
+    EXECUTOR_WAKER.with(|cell| {
+        *cell.borrow_mut() = Some(waker);
+    });
+}
+
 fn wake_task(id: TaskId) {
     READY.lock().unwrap().push(id);
+
+    #[cfg(not(target_arch = "wasm32"))]
     if let Some(waker) = EXECUTOR_WAKER.lock().unwrap().as_ref() {
         waker.wake();
     }
+
+    #[cfg(target_arch = "wasm32")]
+    EXECUTOR_WAKER.with(|cell| {
+        if let Some(waker) = cell.borrow().as_ref() {
+            waker.wake();
+        }
+    });
 }
 
 struct TaskWaker(TaskId);

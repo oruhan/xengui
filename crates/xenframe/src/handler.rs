@@ -8,7 +8,29 @@ use winit::{
     window::{ WindowAttributes, WindowId },
 };
 use xengui::{
-    ElementState, EventCtx, EventStatus, InputEvent, Key, KeyState, MULTI_CLICK_DISTANCE_DP, MULTI_CLICK_INTERVAL, ModifiersState, MouseButton, Theme, any_wants_animation, clear_text_selection_recursive, dispatch_animation_tick, dispatch_positional, dispatch_to_path, find_widget_mut, hit_test_path, hooks::{ self, set_redraw_handle }, mark_tree_dirty, path_is_within, select_all_text_recursive, update_global_text_selection,
+    ElementState,
+    EventCtx,
+    EventStatus,
+    InputEvent,
+    Key,
+    KeyState,
+    MULTI_CLICK_DISTANCE_DP,
+    MULTI_CLICK_INTERVAL,
+    ModifiersState,
+    MouseButton,
+    Theme,
+    any_wants_animation,
+    clear_text_selection_recursive,
+    dispatch_animation_tick,
+    dispatch_positional,
+    dispatch_to_path,
+    find_widget_mut,
+    hit_test_path,
+    hooks::{ self, set_redraw_handle },
+    mark_tree_dirty,
+    path_is_within,
+    select_all_text_recursive,
+    update_global_text_selection,
 };
 use crate::{
     App,
@@ -667,10 +689,8 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
                         .as_ref()
                         .map_or(1.0, |w| w.scale_factor() as f32);
 
-                    // WindowEvent::Resized is the sole writer of swapchain size
-                    // and layout; this handler only repaints the current tree
-                    // at whatever size the renderer already has.
                     renderer.render_frame(&mut self.root, theme, scale_factor);
+                    self.recalc_hover_at_cursor();
 
                     if !self.is_visible && let Some(window) = &self.window {
                         window.set_visible(true);
@@ -705,6 +725,7 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
                         new_size.width,
                         new_size.height
                     );
+                    self.recalc_hover_at_cursor();
                     if !self.is_visible && let Some(window) = &self.window {
                         window.set_visible(true);
                         self.is_visible = true;

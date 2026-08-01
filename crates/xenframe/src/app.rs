@@ -198,6 +198,34 @@ impl App {
             }
         }
     }
+
+    // Re-hit-tests the tree at the last known cursor position and fires
+    // MouseExited/MouseEntered as needed. Must run after layout has
+    // actually applied the current scroll offset (e.g. right after
+    // render_frame), otherwise hit-testing would still see last frame's
+    // pre-scroll layout boxes.
+    pub(crate) fn recalc_hover_at_cursor(&mut self) {
+        let Some(point) = self.input.cursor_pos else {
+            return;
+        };
+
+        let new_hover = hit_test_path(&self.root, point);
+        if new_hover == self.input.hovered_path {
+            return;
+        }
+
+        if let Some(old) = self.input.hovered_path.take() {
+            let mut ctx = EventCtx::new();
+            dispatch_to_path(&mut self.root, &old, &InputEvent::MouseExited, &mut ctx);
+            self.apply_event_ctx(ctx);
+        }
+        if let Some(new) = &new_hover {
+            let mut ctx = EventCtx::new();
+            dispatch_to_path(&mut self.root, new, &InputEvent::MouseEntered, &mut ctx);
+            self.apply_event_ctx(ctx);
+        }
+        self.input.hovered_path = new_hover;
+    }
 }
 
 impl App {
@@ -604,6 +632,7 @@ impl App {
         crate::win32_chrome::flush_dwm();
         xengui::devtools::record_size("resize_synced:render_begin", width, height);
         renderer.resize(&mut self.root, theme, scale_factor, width, height);
+        self.recalc_hover_at_cursor();
         xengui::devtools::record_size("resize_synced:render_end", width, height);
 
         if !self.is_visible && let Some(window) = &self.window {
