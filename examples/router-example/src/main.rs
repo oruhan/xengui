@@ -78,6 +78,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let mut app = App::new(config);
 
+      app.with_font(
+        "Noto Sans",
+        include_bytes!(
+            concat!(env!("CARGO_MANIFEST_DIR"), "/fonts/NotoSans-VariableFont.ttf")
+        ).to_vec()
+    );
+
     app.render(|| { build_router().build() });
 
     if let Err(e) = app.run() {
