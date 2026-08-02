@@ -430,9 +430,17 @@ impl Widget for Switch {
 
     fn transfer_measured_state(&mut self, old: &dyn Widget) {
         if let Some(old) = old.as_any().downcast_ref::<Switch>() {
-            self.anim_id = old.anim_id;
             self.progress.set(old.progress.get());
             self.thumb_size.set(old.thumb_size.get());
+        }
+    }
+
+    fn transfer_interaction_state(&mut self, old: &dyn Widget) {
+        if let (Some(new), Some(old_i)) = (self.interaction_mut(), old.interaction()) {
+            new.transfer_from(old_i);
+        }
+        if let Some(old) = old.as_any().downcast_ref::<Switch>() {
+            self.anim_id = old.anim_id;
         }
     }
 

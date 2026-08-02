@@ -529,6 +529,17 @@ impl Widget for Button {
         if let Some(old) = old.as_any().downcast_ref::<Button>() {
             self.content_size.set(old.content_size.get());
             self.icon_render_size.set(old.icon_render_size.get());
+        }
+    }
+
+    fn transfer_interaction_state(&mut self, old: &dyn Widget) {
+        if let (Some(new), Some(old_i)) = (self.interaction_mut(), old.interaction()) {
+            new.transfer_from(old_i);
+        }
+        // Transferred unconditionally (not gated by content_eq) so an
+        // in-flight transition keeps animating smoothly even when the
+        // button's own content changes between rebuilds.
+        if let Some(old) = old.as_any().downcast_ref::<Button>() {
             self.anim_id = old.anim_id;
         }
     }

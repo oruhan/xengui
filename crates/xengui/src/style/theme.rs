@@ -134,7 +134,7 @@ impl Theme {
             .disabled(Color::NEUTRAL_300.with_alpha(50))
 
             .selection(Color::BLUE_500.with_alpha(80))
-            .selection_color(Color::BLUE_200)
+            .selection_color(Color::WHITE)
             .caret_color(Color::BLUE_500)
             .selection_border_color(Color::TRANSPARENT)
             .selection_border_width(Length::px(0.0))

@@ -186,7 +186,7 @@ impl Widget for Checkbox {
             .clone()
             .unwrap_or(Background::Color(theme.primary))
             .representative_color();
-        let unchecked_border = border.map(|bo| bo.color).unwrap_or(theme.border);
+        let unchecked_border = border.map(|bo| bo.color).unwrap_or(theme.foreground_muted);
         let checked_border = border.map(|bo| bo.color).unwrap_or(theme.primary);
 
         // Blends fill/border color across the toggle instead of snapping
@@ -206,7 +206,7 @@ impl Widget for Checkbox {
             border_radius: Some(Length::px(radius)),
             border_color: Some(border_color),
             border_width: Some(
-                border.map(|bo| Length::px(bo.top.to_physical(sf))).unwrap_or(Length::px(1.5 * sf))
+                border.map(|bo| Length::px(bo.top.to_physical(sf))).unwrap_or(Length::px(2.0 * sf))
             ),
             clip_rect: None,
         });
@@ -351,11 +351,18 @@ impl Widget for Checkbox {
 
     fn transfer_measured_state(&mut self, old: &dyn Widget) {
         if let Some(old) = old.as_any().downcast_ref::<Checkbox>() {
-            self.anim_id = old.anim_id;
             self.check_progress.set(old.check_progress.get());
         }
     }
 
+    fn transfer_interaction_state(&mut self, old: &dyn Widget) {
+        if let (Some(new), Some(old_i)) = (self.interaction_mut(), old.interaction()) {
+            new.transfer_from(old_i);
+        }
+        if let Some(old) = old.as_any().downcast_ref::<Checkbox>() {
+            self.anim_id = old.anim_id;
+        }
+    }
     fn anim_id(&self) -> WidgetId {
         self.anim_id
     }

@@ -500,6 +500,14 @@ impl Widget for Label {
             self.last_click_time.set(old.last_click_time.get());
             self.last_click_pos.set(old.last_click_pos.get());
             self.scale_factor.set(old.scale_factor.get());
+        }
+    }
+
+    fn transfer_interaction_state(&mut self, old: &dyn Widget) {
+        if let (Some(new), Some(old_i)) = (self.interaction_mut(), old.interaction()) {
+            new.transfer_from(old_i);
+        }
+        if let Some(old) = old.as_any().downcast_ref::<Label>() {
             self.anim_id = old.anim_id;
         }
     }

@@ -1302,6 +1302,7 @@ impl Widget for TextBox {
         }
 
         if let Some(old_tb) = old.as_any().downcast_ref::<TextBox>() {
+            self.anim_id = old_tb.anim_id;
             let new_len = self.content.chars().count();
             self.cursor_index = old_tb.cursor_index.min(new_len);
             self.selection_anchor = old_tb.selection_anchor.map(|a| a.min(new_len));
@@ -1325,7 +1326,6 @@ impl Widget for TextBox {
             self.char_offsets.replace(old.char_offsets.borrow().clone());
             self.scroll_offset.set(old.scroll_offset.get());
             self.scale_factor.set(old.scale_factor.get());
-            self.anim_id = old.anim_id;
         }
     }
 

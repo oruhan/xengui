@@ -38,9 +38,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         #[cfg(not(target_arch = "wasm32"))]
         title: "XenGui - Widgets Catalog".into(),
         #[cfg(not(target_arch = "wasm32"))]
-        width: 640,
+        width: 800,
         #[cfg(not(target_arch = "wasm32"))]
-        height: 480,
+        height: 600,
         #[cfg(not(target_arch = "wasm32"))]
         position: WindowPosition::Center,
 

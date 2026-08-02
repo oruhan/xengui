@@ -1,32 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 use crate::{
-    AnimKey,
-    AnimLayer,
-    AnimProperty,
-    AnimValue,
-    AnimationManager,
-    Background,
-    Color,
-    Constraints,
-    Easing,
-    Edges,
-    EventCtx,
-    EventStatus,
-    InputEvent,
-    LayoutBox,
-    Length,
-    MeasureContext,
-    MeasureResult,
-    PaintContext,
-    RectCommand,
-    Style,
-    StyleBuilder,
-    TextCommand,
-    Transition,
-    Widget,
-    WidgetBase,
-    WidgetId,
-    properties::DEFAULT_FONT_SIZE,
+    AnimKey, AnimLayer, AnimProperty, AnimValue, AnimationManager, Background, BoxShadow, Color, Constraints, Easing, Edges, EventCtx, EventStatus, InputEvent, LayoutBox, Length, MeasureContext, MeasureResult, PaintContext, RectCommand, Style, StyleBuilder, TextCommand, Transition, Widget, WidgetBase, WidgetId, properties::DEFAULT_FONT_SIZE,
 };
 use smol_str::SmolStr;
 use std::cell::Cell;
@@ -286,6 +260,18 @@ impl Widget for Tooltip {
         let bg_color = bg.representative_color();
         let radius = self.border_radius.unwrap_or(Length::px(4.0)).to_physical(sf);
 
+        if let Some(shadows) = &self.base.computed_style.box_shadow {
+            let popup_box = LayoutBox { x, y, width: size.0, height: size.1 };
+            for shadow in shadows
+                .iter()
+                .rev()
+                .filter(|s: &&BoxShadow| !s.inset) {
+                let mut faded = *shadow;
+                faded.color = faded.color.with_alpha_f32(faded.color.a() * opacity);
+                self.paint_shadow_layer(ctx, popup_box, radius, &faded, sf);
+            }
+        }
+
         ctx.draw_rect(RectCommand {
             position: (x, y),
             size,
@@ -318,13 +304,18 @@ impl Widget for Tooltip {
                 let hovering = self.layout_box.contains_rounded(*position, 0.0);
                 if hovering && self.hover_start.get().is_none() {
                     self.hover_start.set(Some(Instant::now()));
-                } else if !hovering && self.hover_start.get().is_some() {
-                    self.hover_start.set(None);
-                    if self.showing.get() {
-                        self.showing.set(false);
-                        self.base.dirty = true;
-                        ctx.request_redraw();
-                    }
+                }
+            }
+            // Guaranteed to fire whenever the pointer leaves this widget's
+            // whole subtree (anchor, and the popup itself while shown - see
+            // `hit_test`) - unlike MouseMoved, which stops reaching this
+            // widget the instant the cursor moves onto unrelated UI.
+            InputEvent::MouseExited => {
+                self.hover_start.set(None);
+                if self.showing.get() {
+                    self.showing.set(false);
+                    self.base.dirty = true;
+                    ctx.request_redraw();
                 }
             }
             InputEvent::AnimationTick { .. } => {
@@ -341,6 +332,21 @@ impl Widget for Tooltip {
             _ => {}
         }
         EventStatus::Ignored
+    }
+
+    fn hit_test(&self, point: (f32, f32)) -> bool {
+        if self.layout_box.contains_rounded(point, 0.0) {
+            return true;
+        }
+        // While shown, the floating popup counts as part of this widget too,
+        // so hovering it keeps the tooltip open instead of closing it the
+        // moment the cursor leaves the anchor.
+        if self.showing.get() {
+            let size = self.label_size.get();
+            let (x, y) = self.box_position(self.layout_box, size);
+            return point.0 >= x && point.0 <= x + size.0 && point.1 >= y && point.1 <= y + size.1;
+        }
+        false
     }
 
     fn content_eq(&self, other: &dyn Widget) -> bool {
@@ -370,7 +376,12 @@ impl Widget for Tooltip {
             layer: AnimLayer::Root,
             property: AnimProperty::Opacity,
         };
-        anim.set_target(key, AnimValue([target, 0.0, 0.0, 0.0]), Some(FADE_TRANSITION));
+        // Honors the standard transition/transition_opacity builder if the
+        // user set one, falling back to the built-in fade otherwise.
+        let transition = self.base.computed_style.transition_overrides.opacity
+            .or(self.base.computed_style.transition)
+            .unwrap_or(FADE_TRANSITION);
+        anim.set_target(key, AnimValue([target, 0.0, 0.0, 0.0]), Some(transition));
         self.opacity_anim.set(anim.value(key).map_or(target, |v| v.0[0]));
 
         for child in self.children.iter_mut() {
@@ -382,9 +393,17 @@ impl Widget for Tooltip {
         self.hover_start.get().is_some() && !self.showing.get()
     }
 
-    fn transfer_measured_state(&mut self, old: &dyn Widget) {
+    fn transfer_interaction_state(&mut self, old: &dyn Widget) {
+        if let (Some(new), Some(old_i)) = (self.interaction_mut(), old.interaction()) {
+            new.transfer_from(old_i);
+        }
         if let Some(old) = old.as_any().downcast_ref::<Tooltip>() {
             self.anim_id = old.anim_id;
+        }
+    }
+
+    fn transfer_measured_state(&mut self, old: &dyn Widget) {
+        if let Some(old) = old.as_any().downcast_ref::<Tooltip>() {
             self.hover_start.set(old.hover_start.get());
             self.showing.set(old.showing.get());
             self.opacity_anim.set(old.opacity_anim.get());

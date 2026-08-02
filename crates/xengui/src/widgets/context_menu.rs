@@ -1,48 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 use crate::{
-    AnimKey,
-    AnimLayer,
-    AnimProperty,
-    AnimValue,
-    AnimationManager,
-    Background,
-    Border,
-    Color,
-    Constraints,
-    Easing,
-    Edges,
-    ElementState,
-    EventCtx,
-    EventStatus,
-    FlexDirection,
-    FontStyle,
-    FontWeight,
-    InputEvent,
-    Interaction,
-    IntoThemed,
-    Key,
-    KeyState,
-    LayoutBox,
-    Length,
-    MeasureContext,
-    MeasureResult,
-    MouseButton,
-    PaintContext,
-    Point,
-    Rect,
-    RectCommand,
-    Style,
-    StyleBuilder,
-    TextCommand,
-    TextMeasurer,
-    Transition,
-    Triangle,
-    TriangleCommand,
-    Widget,
-    WidgetBase,
-    WidgetId,
-    pct,
-    properties::{ DEFAULT_FONT_SIZE, DEFAULT_LINE_HEIGHT_RATIO },
+    AnimKey, AnimLayer, AnimProperty, AnimValue, AnimationManager, Background, Border, Color, Constraints, Easing, Edges, ElementState, EventCtx, EventStatus, FlexDirection, FontStyle, FontWeight, ITEM_FONT_SIZE, InputEvent, Interaction, IntoThemed, Key, KeyState, LayoutBox, Length, MeasureContext, MeasureResult, MouseButton, PaintContext, Point, Rect, RectCommand, Style, StyleBuilder, TextCommand, TextMeasurer, Transition, Triangle, TriangleCommand, Widget, WidgetBase, WidgetId, pct, properties::{ DEFAULT_FONT_SIZE, DEFAULT_LINE_HEIGHT_RATIO },
 };
 use smol_str::SmolStr;
 use std::cell::{ Cell, RefCell };
@@ -1208,7 +1166,7 @@ impl ContextMenu {
             let alpha_scale = if item.enabled { 1.0 } else { 0.6 };
 
             let mut text_style = self.base.computed_style.clone();
-            text_style.font_size.get_or_insert(DEFAULT_FONT_SIZE);
+            text_style.font_size.get_or_insert(ITEM_FONT_SIZE);
             text_style.color = Some(
                 base_color.with_alpha_f32(base_color.a() * opacity * alpha_scale)
             );
@@ -1346,14 +1304,16 @@ impl Widget for ContextMenu {
         let font = style.font.as_deref();
         let font_size = style.font_size
             .map(|s| s.to_physical(sf))
-            .unwrap_or(DEFAULT_FONT_SIZE.to_physical(sf));
+            .unwrap_or(ITEM_FONT_SIZE.to_physical(sf));
         let weight = style.font_weight.unwrap_or_default();
         let font_style = style.font_style.unwrap_or_default();
         let letter_spacing = style.letter_spacing
             .map(|ls| ls.value().to_physical(sf))
             .unwrap_or(0.0);
         let line_height = style.line_height.map(|lh| lh.value().to_physical(sf)).unwrap_or(0.0);
-        let pad_lr = padding.left.to_physical(sf);
+        // Both sides of the item padding must be counted, or the measured
+        // natural width comes up short and labels get clipped.
+        let pad_lr = padding.left.to_physical(sf) + padding.right.to_physical(sf);
 
         let width = measure_entries_width(
             &self.entries,
@@ -1613,6 +1573,12 @@ impl Widget for ContextMenu {
         }
     }
 
+    fn transfer_interaction_state(&mut self, old: &dyn Widget) {
+        if let Some(old) = old.as_any().downcast_ref::<ContextMenu>() {
+            self.anim_id = old.anim_id;
+        }
+    }
+
     fn transfer_measured_state(&mut self, old: &dyn Widget) {
         if let Some(old) = old.as_any().downcast_ref::<ContextMenu>() {
             self.open.set(old.open.get());
@@ -1625,7 +1591,6 @@ impl Widget for ContextMenu {
             self.submenu_stack.replace(old.submenu_stack.borrow().clone());
             self.closing_submenus.replace(old.closing_submenus.borrow().clone());
             self.scale_factor.set(old.scale_factor.get());
-            self.anim_id = old.anim_id;
             transfer_entry_anim_state(&mut self.entries, &old.entries);
         }
     }

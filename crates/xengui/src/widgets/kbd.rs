@@ -176,6 +176,14 @@ impl Widget for Kbd {
     fn transfer_measured_state(&mut self, old: &dyn Widget) {
         if let Some(old) = old.as_any().downcast_ref::<Kbd>() {
             self.content_size.set(old.content_size.get());
+        }
+    }
+
+    fn transfer_interaction_state(&mut self, old: &dyn Widget) {
+        if let (Some(new), Some(old_i)) = (self.interaction_mut(), old.interaction()) {
+            new.transfer_from(old_i);
+        }
+        if let Some(old) = old.as_any().downcast_ref::<Kbd>() {
             self.anim_id = old.anim_id;
         }
     }

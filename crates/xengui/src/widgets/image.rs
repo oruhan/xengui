@@ -306,7 +306,12 @@ impl Widget for Image {
         }
     }
 
-    fn transfer_measured_state(&mut self, old: &dyn Widget) {
+    fn transfer_measured_state(&mut self, _old: &dyn Widget) {}
+
+    fn transfer_interaction_state(&mut self, old: &dyn Widget) {
+        if let (Some(new), Some(old_i)) = (self.interaction_mut(), old.interaction()) {
+            new.transfer_from(old_i);
+        }
         if let Some(old) = old.as_any().downcast_ref::<Image>() {
             self.anim_id = old.anim_id;
         }

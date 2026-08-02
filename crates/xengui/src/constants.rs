@@ -3,6 +3,8 @@ use web_time::Duration;
 
 use xen_animation::{ Easing, Transition };
 
+use crate::Length;
+
 /// Maximum distance (in logical/DP units) between two consecutive taps or
 /// clicks for them to count as part of the same multi-click sequence
 /// (double-click word select, triple-click line select, etc).
@@ -95,3 +97,6 @@ pub const OVERSCROLL_GLOW_FADE_TRANSITION: Transition = Transition::new(
 // rect_pipeline.rs) - WebGL2's 16-location ceiling doesn't leave room
 // for more once packed alongside the existing fill/border attributes.
 pub const MAX_GRADIENT_STOPS: usize = 512;
+
+/* ----- ContextMenu ----- */
+pub const ITEM_FONT_SIZE: Length = Length::px(13.0);

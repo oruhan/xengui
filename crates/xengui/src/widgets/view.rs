@@ -2036,6 +2036,17 @@ impl Widget for View {
         self.recompute_style();
     }
 
+    fn transfer_interaction_state(&mut self, old: &dyn Widget) {
+        if let (Some(new), Some(old_i)) = (self.interaction_mut(), old.interaction()) {
+            new.transfer_from(old_i);
+        }
+        if let Some(old) = old.as_any().downcast_ref::<View>() {
+            self.anim_id = old.anim_id;
+            self.arrow_anim_ids = old.arrow_anim_ids;
+            self.glow_anim_ids = old.glow_anim_ids;
+        }
+    }
+
     fn transfer_measured_state(&mut self, old: &dyn Widget) {
         if let Some(old) = old.as_any().downcast_ref::<View>() {
             self.scroll_offset.set(old.scroll_offset.get());
@@ -2046,18 +2057,13 @@ impl Widget for View {
             self.scrollbar_right_inset.set(old.scrollbar_right_inset.get());
             self.scrollbar_bottom_inset.set(old.scrollbar_bottom_inset.get());
             self.scale_factor.set(old.scale_factor.get());
-            self.anim_id = old.anim_id;
-
             self.pressed_arrow.set(old.pressed_arrow.get());
-            self.arrow_anim_ids = old.arrow_anim_ids;
             self.arrow_scale.set(old.arrow_scale.get());
-
             self.auto_scroll.set(old.auto_scroll.get());
             self.touch_pan.set(old.touch_pan.get());
             self.momentum.set(old.momentum.get());
             self.overscroll_glow.set(old.overscroll_glow.get());
             self.glow_pending_hit.set(old.glow_pending_hit.get());
-            self.glow_anim_ids = old.glow_anim_ids;
         }
     }
 

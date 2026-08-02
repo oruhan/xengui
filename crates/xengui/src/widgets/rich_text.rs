@@ -365,16 +365,24 @@ impl Widget for RichText {
         }
     }
 
-    fn after_interaction_transfer(&mut self) {
-        self.recompute_style();
-    }
-
     fn transfer_measured_state(&mut self, old: &dyn Widget) {
         if let Some(old) = old.as_any().downcast_ref::<RichText>() {
             self.content_size.set(old.content_size.get());
             self.measured_max_width.set(old.measured_max_width.get());
             self.line_height.set(old.line_height.get());
             self.placed.replace(old.placed.borrow().clone());
+        }
+    }
+
+    fn after_interaction_transfer(&mut self) {
+        self.recompute_style();
+    }
+
+    fn transfer_interaction_state(&mut self, old: &dyn Widget) {
+        if let (Some(new), Some(old_i)) = (self.interaction_mut(), old.interaction()) {
+            new.transfer_from(old_i);
+        }
+        if let Some(old) = old.as_any().downcast_ref::<RichText>() {
             self.anim_id = old.anim_id;
         }
     }

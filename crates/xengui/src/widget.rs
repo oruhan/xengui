@@ -136,14 +136,20 @@ pub trait Widget: Any {
 
         if style.background.is_some() || style.border.is_some() {
             let border = style.border.as_ref();
-
+            
             if border.is_some_and(|b| !b.is_uniform()) {
                 if style.background.is_some() {
                     ctx.draw_rect(RectCommand {
                         position: (layout.x, layout.y),
                         size: (layout.width, layout.height),
                         background: style.background.clone(),
-                        border_radius: None,
+                        // A non-uniform border (e.g. Border::bottom) can
+                        // still carry an explicit corner radius; ignoring
+                        // it here silently squared off any widget using a
+                        // partial border together with rounded corners.
+                        border_radius: border
+                            .and_then(|b| b.radius)
+                            .map(|r| Length::px(r.to_physical(sf))),
                         border_color: None,
                         border_width: None,
                         clip_rect: None,

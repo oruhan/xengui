@@ -21,6 +21,7 @@ use crate::{
     MeasureContext,
     MeasureResult,
     MouseButton,
+    Outline,
     PaintContext,
     RectCommand,
     Style,
@@ -76,6 +77,12 @@ impl RadioButton {
             on_select: None,
             select_progress: Cell::new(0.0),
         };
+
+        // RadioButton is circular; the framework's default focus outline is
+        // a plain rectangle, so it needs its own round outline instead.
+        radio = radio.outline(|theme: &crate::Theme|
+            Outline::new(2.5, theme.primary, Some(Length::px(9999.0)), 4.0)
+        );
 
         radio.recompute_style();
         radio
@@ -173,7 +180,7 @@ impl Widget for RadioButton {
         let t = self.select_progress.get();
 
         let border = style.border.as_ref();
-        let unselected_border = border.map(|bo| bo.color).unwrap_or(theme.border);
+        let unselected_border = border.map(|bo| bo.color).unwrap_or(theme.foreground_muted);
         let selected_border = border.map(|bo| bo.color).unwrap_or(theme.primary);
         let ring_color = lerp_color(unselected_border, selected_border, t);
 
@@ -189,7 +196,7 @@ impl Widget for RadioButton {
             border_radius: Some(Length::px(b.width * 0.5)),
             border_color: Some(ring_color),
             border_width: Some(
-                border.map(|bo| Length::px(bo.top.to_physical(sf))).unwrap_or(Length::px(1.5 * sf))
+                border.map(|bo| Length::px(bo.top.to_physical(sf))).unwrap_or(Length::px(2.0 * sf))
             ),
             clip_rect: None,
         });
@@ -306,8 +313,16 @@ impl Widget for RadioButton {
 
     fn transfer_measured_state(&mut self, old: &dyn Widget) {
         if let Some(old) = old.as_any().downcast_ref::<RadioButton>() {
-            self.anim_id = old.anim_id;
             self.select_progress.set(old.select_progress.get());
+        }
+    }
+
+    fn transfer_interaction_state(&mut self, old: &dyn Widget) {
+        if let (Some(new), Some(old_i)) = (self.interaction_mut(), old.interaction()) {
+            new.transfer_from(old_i);
+        }
+        if let Some(old) = old.as_any().downcast_ref::<RadioButton>() {
+            self.anim_id = old.anim_id;
         }
     }
 

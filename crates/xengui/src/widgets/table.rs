@@ -237,7 +237,9 @@ impl Render for Table {
                 .background(
                     self.header_background.clone().unwrap_or(Background::Color(theme.surface))
                 )
-                .border(Border::bottom(1.0, border_color));
+                // Rounds the header's top corners to match the table's own
+                // outer radius instead of squaring it off.
+                .border(Border::bottom(1.0, border_color).radius(theme.radius_sm));
 
             for column in &self.columns {
                 let label = Label::new()
@@ -256,6 +258,9 @@ impl Render for Table {
             root = root.child(header_row);
         }
 
+        let row_count = self.rows.len();
+        let has_header = self.show_header && !self.columns.is_empty();
+
         for (i, row) in self.rows.iter().enumerate() {
             let is_alt = i % 2 == 1;
 
@@ -265,17 +270,27 @@ impl Render for Table {
                 self.row_alt_background
                     .clone()
                     .or_else(|| self.row_background.clone())
-                    .or_else(|| self.striped.then_some(Background::Color(Color::GRAY_200)))
+                    .or_else(|| self.striped.then_some(Background::Color(theme.surface_hover)))
             } else {
                 self.row_background
                     .clone()
-                    .or_else(|| self.striped.then_some(Background::Color(Color::GRAY_50)))
+                    .or_else(|| self.striped.then_some(Background::Color(theme.surface)))
             };
+
+            let mut row_border = Border::bottom(1.0, border_color);
+            // Rounds whichever edge touches the table's own rounded corners
+            // (top of the first row when there's no header, bottom of the
+            // last row always), so row backgrounds don't square them off.
+            let is_first_visible = i == 0 && !has_header;
+            let is_last = i + 1 == row_count;
+            if is_first_visible || is_last {
+                row_border = row_border.radius(theme.radius_sm);
+            }
 
             let mut row_view = View::new()
                 .display(Display::Flex)
                 .flex_direction(FlexDirection::Row)
-                .border(Border::bottom(1.0, border_color));
+                .border(row_border);
 
             if let Some(bg) = background {
                 row_view = row_view.background(bg);
