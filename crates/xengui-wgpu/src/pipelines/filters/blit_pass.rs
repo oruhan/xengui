@@ -121,12 +121,15 @@ impl BlitPass {
             "Blit Pipeline (blend)"
         );
 
+        // The shader itself clamps sample_uv to [0,1] and returns transparent
+        // black outside that range, so the sampler's own address mode never
+        // actually samples out-of-bounds - ClampToEdge avoids depending on
+        // the optional ADDRESS_MODE_CLAMP_TO_BORDER device feature.
         let sampler = device.create_sampler(
             &(wgpu::SamplerDescriptor {
                 label: Some("xengui blit sampler"),
-                address_mode_u: wgpu::AddressMode::ClampToBorder,
-                address_mode_v: wgpu::AddressMode::ClampToBorder,
-                border_color: Some(wgpu::SamplerBorderColor::TransparentBlack),
+                address_mode_u: wgpu::AddressMode::ClampToEdge,
+                address_mode_v: wgpu::AddressMode::ClampToEdge,
                 mag_filter: wgpu::FilterMode::Linear,
                 min_filter: wgpu::FilterMode::Linear,
                 ..Default::default()
