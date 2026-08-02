@@ -1,17 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 use crate::{
-    collect_focusable_paths,
-    dispatch_positional,
-    dispatch_to_path,
-    hit_test_path,
-    ElementState,
-    EventCtx,
-    InputEvent,
-    InputState,
-    KeyboardEvent,
-    ModifiersState,
-    MouseButton,
-    Widget,
+    ElementState, EventCtx, InputEvent, InputState, KeyboardEvent, ModifiersState, MouseButton, Widget, cancel_auto_scroll_recursive, collect_focusable_paths, dispatch_positional, dispatch_to_path, hit_test_path,
 };
 
 /// High-level pointer/keyboard/focus dispatcher built on top of the
@@ -60,7 +49,6 @@ impl Dispatcher {
         ctx
     }
 
-    /// Dispatches a mouse button press/release, tracking pointer capture.
     pub fn pointer_input(
         &mut self,
         tree: &mut [Box<dyn Widget>],
@@ -70,12 +58,22 @@ impl Dispatcher {
     ) -> EventCtx {
         let mut ctx = EventCtx::new();
 
+        // A press with any button other than Middle cancels any in-progress
+        // AutoScroll gesture across the whole tree: a click landing on an
+        // interactive descendant (Button, Switch, Checkbox, TextBox, ...) is
+        // consumed there and never bubbles up to the scrollable View that
+        // started the gesture. Middle itself is excluded since View's own
+        // handler needs to see its unmodified state to toggle AutoScroll
+        // on/off correctly.
+        if input_state == ElementState::Pressed && button != MouseButton::Middle {
+            cancel_auto_scroll_recursive(tree, &mut ctx);
+        }
+
         let path = if input_state == ElementState::Released {
             self.state.pressed_path.clone()
         } else {
             self.state.hovered_path.clone().or_else(|| hit_test_path(tree, point))
         };
-
         if input_state == ElementState::Pressed {
             self.state.pressed_path = path.clone();
         }

@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 use crate::{
+    AUTO_SCROLL_DEAD_ZONE_DP,
+    AUTO_SCROLL_MAX_SPEED,
+    AUTO_SCROLL_RANGE_DP,
     AnimKey,
     AnimLayer,
     AnimProperty,
     AnimationManager,
-    AUTO_SCROLL_DEAD_ZONE_DP,
-    AUTO_SCROLL_MAX_SPEED,
-    AUTO_SCROLL_RANGE_DP,
     Background,
     Constraints,
     ContextMenuHandle,
@@ -21,18 +21,18 @@ use crate::{
     KeyState,
     LayoutBox,
     Length,
+    MOMENTUM_FRICTION,
+    MOMENTUM_MIN_SPEED,
     MeasureContext,
     MeasureResult,
     ModifiersState,
-    MOMENTUM_FRICTION,
-    MOMENTUM_MIN_SPEED,
     MouseButton,
     MouseScrollDelta,
-    Overflow,
-    Overscroll,
-    OVERSCROLL_GLOW_DECAY_PER_SEC,
+    OVERSCROLL_GLOW_FADE_TRANSITION,
     OVERSCROLL_RETURN_TRANSITION,
     OVERSCROLL_RUBBER_BAND_RANGE,
+    Overflow,
+    Overscroll,
     PaintContext,
     Point,
     Rect,
@@ -41,6 +41,8 @@ use crate::{
     SCROLL_TRANSITION,
     SCROLLBAR_ARROW_CAP_SEGMENTS,
     SCROLLBAR_ARROW_CORNER_RADIUS,
+    SCROLLBAR_ARROW_PRESS_SCALE,
+    SCROLLBAR_ARROW_PRESS_TRANSITION,
     SCROLLBAR_ARROW_SIZE,
     SCROLLBAR_DISABLED_OPACITY,
     SCROLLBAR_THICKNESS_TRANSITION,
@@ -73,6 +75,16 @@ enum ArrowDirection {
     Down,
     Left,
     Right,
+}
+
+/// Identifies which of the four scrollbar arrow buttons is pressed, used
+/// to key that button's own press-scale animation.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum ScrollbarArrow {
+    Up = 0,
+    Down = 1,
+    Left = 2,
+    Right = 3,
 }
 
 #[derive(Clone, Copy)]
@@ -126,6 +138,21 @@ fn point_in_rect(point: (f32, f32), rect: (f32, f32, f32, f32)) -> bool {
     let (px, py) = point;
     let (rx, ry, rw, rh) = rect;
     px >= rx && px <= rx + rw && py >= ry && py <= ry + rh
+}
+
+// Shrinks/grows a triangle around its arrow button rect's own center,
+// used for the scrollbar arrow's press-feedback scale.
+fn scale_arrow_triangle(tri: Triangle, rect: Rect, scale: f32) -> Triangle {
+    if (scale - 1.0).abs() < f32::EPSILON {
+        return tri;
+    }
+    let (rx, ry, rw, rh) = rect;
+    let center = (rx + rw * 0.5, ry + rh * 0.5);
+    let scale_pt = |p: Point| (
+        center.0 + (p.0 - center.0) * scale,
+        center.1 + (p.1 - center.1) * scale,
+    );
+    (scale_pt(tri.0), scale_pt(tri.1), scale_pt(tri.2))
 }
 
 // Builds a solid, filled arrow with rounded corners: three straight
@@ -264,6 +291,12 @@ pub struct View {
     scale_factor: Cell<f32>,
     context_menu: Option<ContextMenuHandle>,
 
+    // Currently-pressed scrollbar arrow (if any), and its own per-arrow
+    // animation identities/scale values, indexed by `ScrollbarArrow as usize`.
+    pressed_arrow: Cell<Option<ScrollbarArrow>>,
+    arrow_anim_ids: [WidgetId; 4],
+    arrow_scale: Cell<[f32; 4]>,
+
     auto_scroll_enabled: bool,
     auto_scroll: Cell<Option<AutoScrollState>>,
 
@@ -272,6 +305,10 @@ pub struct View {
 
     // Edge-glow intensity for `Overscroll::Glow`, indexed [top, right, bottom, left].
     overscroll_glow: Cell<[f32; 4]>,
+    // Edges hit since the last cascade, consumed by `animate_overscroll_glow`
+    // to snap that edge's animated value back up to full intensity.
+    glow_pending_hit: Cell<[bool; 4]>,
+    glow_anim_ids: [WidgetId; 4],
 }
 
 impl View {
@@ -295,6 +332,15 @@ impl View {
             scale_factor: Cell::new(1.0),
             context_menu: None,
 
+            pressed_arrow: Cell::new(None),
+            arrow_anim_ids: [
+                WidgetId::new_unique(),
+                WidgetId::new_unique(),
+                WidgetId::new_unique(),
+                WidgetId::new_unique(),
+            ],
+            arrow_scale: Cell::new([1.0; 4]),
+
             auto_scroll_enabled: true,
             auto_scroll: Cell::new(None),
 
@@ -302,8 +348,14 @@ impl View {
             momentum: Cell::new(None),
 
             overscroll_glow: Cell::new([0.0; 4]),
+            glow_pending_hit: Cell::new([false; 4]),
+            glow_anim_ids: [
+                WidgetId::new_unique(),
+                WidgetId::new_unique(),
+                WidgetId::new_unique(),
+                WidgetId::new_unique(),
+            ],
         };
-
         view = view
             .selection_background(|theme: &crate::Theme| theme.selection)
             .selection_color(|theme: &crate::Theme| theme.selection_color)
@@ -440,38 +492,93 @@ impl View {
         if self.effective_overscroll() != Overscroll::Glow {
             return;
         }
-        let mut glow = self.overscroll_glow.get();
         let idx = match side {
             EdgeSide::Top => 0,
             EdgeSide::Right => 1,
             EdgeSide::Bottom => 2,
             EdgeSide::Left => 3,
         };
-        glow[idx] = 1.0;
-        self.overscroll_glow.set(glow);
+        let mut pending = self.glow_pending_hit.get();
+        pending[idx] = true;
+        self.glow_pending_hit.set(pending);
         ctx.request_redraw();
     }
 
-    fn tick_overscroll_glow(&self, dt: f32, ctx: &mut EventCtx) {
-        let mut glow = self.overscroll_glow.get();
-        let mut any = false;
-        for v in glow.iter_mut() {
-            if *v > 0.0 {
-                *v = (*v - OVERSCROLL_GLOW_DECAY_PER_SEC * dt).max(0.0);
-                any = true;
+    // Drives every edge's glow intensity through the shared
+    // AnimationManager instead of a manual per-frame decay: a pending hit
+    // snaps that edge straight to full intensity, then every edge is
+    // (re)targeted toward 0 so the manager eases it back down on its own.
+    fn animate_overscroll_glow(&mut self, anim: &mut AnimationManager) {
+        let mut pending = self.glow_pending_hit.get();
+        let mut values = self.overscroll_glow.get();
+
+        for i in 0..4 {
+            let key = AnimKey {
+                widget: self.glow_anim_ids[i],
+                layer: AnimLayer::Root,
+                property: AnimProperty::Opacity,
+            };
+
+            if pending[i] {
+                anim.set_target(key, AnimValue([1.0, 0.0, 0.0, 0.0]), None);
+                pending[i] = false;
+            }
+
+            anim.set_target(
+                key,
+                AnimValue([0.0, 0.0, 0.0, 0.0]),
+                Some(OVERSCROLL_GLOW_FADE_TRANSITION)
+            );
+
+            match anim.value(key) {
+                Some(v) => {
+                    values[i] = v.0[0];
+                    self.base.dirty = true;
+                }
+                None => {
+                    values[i] = 0.0;
+                }
             }
         }
-        self.overscroll_glow.set(glow);
-        if any {
-            ctx.request_redraw();
-        }
+
+        self.glow_pending_hit.set(pending);
+        self.overscroll_glow.set(values);
     }
 
-    fn glow_active(&self) -> bool {
-        self.overscroll_glow
-            .get()
-            .iter()
-            .any(|v| *v > 0.0)
+    // Drives each scrollbar arrow's press-feedback scale through the
+    // shared AnimationManager, toward a small shrink while pressed and
+    // back to 1.0 once released.
+    fn animate_scrollbar_arrows(&mut self, anim: &mut AnimationManager) {
+        let pressed = self.pressed_arrow.get();
+        let mut scales = self.arrow_scale.get();
+
+        for i in 0..4 {
+            let is_pressed = pressed.map(|p| p as usize) == Some(i);
+            let target = if is_pressed { SCROLLBAR_ARROW_PRESS_SCALE } else { 1.0 };
+
+            let key = AnimKey {
+                widget: self.arrow_anim_ids[i],
+                layer: AnimLayer::Root,
+                property: AnimProperty::Scale,
+            };
+            anim.set_target(
+                key,
+                AnimValue([target, 0.0, 0.0, 0.0]),
+                Some(SCROLLBAR_ARROW_PRESS_TRANSITION)
+            );
+
+            match anim.value(key) {
+                Some(v) => {
+                    scales[i] = v.0[0];
+                    self.base.dirty = true;
+                }
+                None => {
+                    scales[i] = target;
+                }
+            }
+        }
+
+        self.arrow_scale.set(scales);
     }
 
     // A new discrete gesture (wheel, scrollbar drag, a fresh touch pan, or
@@ -947,29 +1054,37 @@ impl View {
 
                 if active_y && let Some((up, down)) = self.vertical_buttons() {
                     if point_in_rect(position, up) {
+                        self.pressed_arrow.set(Some(ScrollbarArrow::Up));
                         if target.1 > 0.0 {
                             self.nudge(0.0, -self.scroll_step, ctx);
                         }
+                        ctx.request_redraw();
                         return true;
                     }
                     if point_in_rect(position, down) {
+                        self.pressed_arrow.set(Some(ScrollbarArrow::Down));
                         if target.1 < self.max_scroll_y() {
                             self.nudge(0.0, self.scroll_step, ctx);
                         }
+                        ctx.request_redraw();
                         return true;
                     }
                 }
                 if active_x && let Some((left, right)) = self.horizontal_buttons() {
                     if point_in_rect(position, left) {
+                        self.pressed_arrow.set(Some(ScrollbarArrow::Left));
                         if target.0 > 0.0 {
                             self.nudge(-self.scroll_step, 0.0, ctx);
                         }
+                        ctx.request_redraw();
                         return true;
                     }
                     if point_in_rect(position, right) {
+                        self.pressed_arrow.set(Some(ScrollbarArrow::Right));
                         if target.0 < self.max_scroll_x() {
                             self.nudge(self.scroll_step, 0.0, ctx);
                         }
+                        ctx.request_redraw();
                         return true;
                     }
                 }
@@ -1053,8 +1168,13 @@ impl View {
             }
             ElementState::Released => {
                 self.pending_track_drag.set(None);
+                let had_pressed_arrow = self.pressed_arrow.take().is_some();
+
                 if self.scrollbar_drag.get().is_some() {
                     self.scrollbar_drag.set(None);
+                    ctx.request_redraw();
+                    true
+                } else if had_pressed_arrow {
                     ctx.request_redraw();
                     true
                 } else {
@@ -1703,16 +1823,29 @@ impl Widget for View {
         if let Some((up, down)) = self.vertical_buttons() {
             let target = self.scroll_target.get();
             let axis_dim = if active_y { 1.0 } else { SCROLLBAR_DISABLED_OPACITY };
+            let scales = self.arrow_scale.get();
 
-            for (rect, dir, edge_disabled) in [
-                (up, ArrowDirection::Up, target.1 <= 0.0),
-                (down, ArrowDirection::Down, target.1 >= self.max_scroll_y()),
+            for (rect, dir, edge_disabled, scale) in [
+                (up, ArrowDirection::Up, target.1 <= 0.0, scales[ScrollbarArrow::Up as usize]),
+                (
+                    down,
+                    ArrowDirection::Down,
+                    target.1 >= self.max_scroll_y(),
+                    scales[ScrollbarArrow::Down as usize],
+                ),
             ] {
                 let dim = axis_dim * (if edge_disabled { 0.35 } else { 1.0 });
                 let color = sb.arrow_color.with_alpha_f32(sb.arrow_color.a() * dim);
 
                 for (p0, p1, p2) in rounded_arrow_triangles(rect, dir, ctx.scale_factor) {
-                    ctx.draw_triangle(TriangleCommand { p0, p1, p2, color, clip_rect: None });
+                    let (a, b, c) = scale_arrow_triangle((p0, p1, p2), rect, scale);
+                    ctx.draw_triangle(TriangleCommand {
+                        p0: a,
+                        p1: b,
+                        p2: c,
+                        color,
+                        clip_rect: None,
+                    });
                 }
             }
         }
@@ -1720,16 +1853,34 @@ impl Widget for View {
         if let Some((left, right)) = self.horizontal_buttons() {
             let target = self.scroll_target.get();
             let axis_dim = if active_x { 1.0 } else { SCROLLBAR_DISABLED_OPACITY };
+            let scales = self.arrow_scale.get();
 
-            for (rect, dir, edge_disabled) in [
-                (left, ArrowDirection::Left, target.0 <= 0.0),
-                (right, ArrowDirection::Right, target.0 >= self.max_scroll_x()),
+            for (rect, dir, edge_disabled, scale) in [
+                (
+                    left,
+                    ArrowDirection::Left,
+                    target.0 <= 0.0,
+                    scales[ScrollbarArrow::Left as usize],
+                ),
+                (
+                    right,
+                    ArrowDirection::Right,
+                    target.0 >= self.max_scroll_x(),
+                    scales[ScrollbarArrow::Right as usize],
+                ),
             ] {
                 let dim = axis_dim * (if edge_disabled { 0.35 } else { 1.0 });
                 let color = sb.arrow_color.with_alpha_f32(sb.arrow_color.a() * dim);
 
                 for (p0, p1, p2) in rounded_arrow_triangles(rect, dir, ctx.scale_factor) {
-                    ctx.draw_triangle(TriangleCommand { p0, p1, p2, color, clip_rect: None });
+                    let (a, b, c) = scale_arrow_triangle((p0, p1, p2), rect, scale);
+                    ctx.draw_triangle(TriangleCommand {
+                        p0: a,
+                        p1: b,
+                        p2: c,
+                        color,
+                        clip_rect: None,
+                    });
                 }
             }
         }
@@ -1745,11 +1896,8 @@ impl Widget for View {
             return status;
         }
 
-        if let InputEvent::AnimationTick { dt } = event {
-            if self.momentum.get().is_some() {
-                self.tick_momentum(*dt, ctx);
-            }
-            self.tick_overscroll_glow(*dt, ctx);
+        if let InputEvent::AnimationTick { dt } = event && self.momentum.get().is_some() {
+            self.tick_momentum(*dt, ctx);
         }
 
         if
@@ -1842,7 +1990,15 @@ impl Widget for View {
     }
 
     fn wants_animation_frame(&self) -> bool {
-        self.momentum.get().is_some() || self.auto_scroll.get().is_some() || self.glow_active()
+        self.momentum.get().is_some() || self.auto_scroll.get().is_some()
+    }
+
+    fn cancel_auto_scroll(&mut self, ctx: &mut EventCtx) {
+        if self.auto_scroll.get().is_some() {
+            self.auto_scroll.set(None);
+            ctx.set_cursor_icon(Cursor::Default);
+            ctx.request_redraw();
+        }
     }
 
     fn content_eq(&self, other: &dyn Widget) -> bool {
@@ -1869,6 +2025,8 @@ impl Widget for View {
         self.apply_scrollbar_gutter();
         self.animate_scroll(anim);
         self.animate_scrollbar_thickness(anim);
+        self.animate_scrollbar_arrows(anim);
+        self.animate_overscroll_glow(anim);
 
         for child in self.children.iter_mut() {
             child.cascade_style(&self.base.computed_style, anim);
@@ -1891,10 +2049,16 @@ impl Widget for View {
             self.scale_factor.set(old.scale_factor.get());
             self.anim_id = old.anim_id;
 
+            self.pressed_arrow.set(old.pressed_arrow.get());
+            self.arrow_anim_ids = old.arrow_anim_ids;
+            self.arrow_scale.set(old.arrow_scale.get());
+
             self.auto_scroll.set(old.auto_scroll.get());
             self.touch_pan.set(old.touch_pan.get());
             self.momentum.set(old.momentum.get());
             self.overscroll_glow.set(old.overscroll_glow.get());
+            self.glow_pending_hit.set(old.glow_pending_hit.get());
+            self.glow_anim_ids = old.glow_anim_ids;
         }
     }
 

@@ -87,6 +87,9 @@ pub struct Table {
     row_background: Option<Background>,
     row_alt_background: Option<Background>,
     row_hover_background: Option<Background>,
+    // Alternates rows between a light and dark gray when no explicit
+    // `row_background`/`row_alt_background` is set. Off by default.
+    striped: bool,
     cell_padding: Option<Edges>,
 
     border_color: Option<Color>,
@@ -112,6 +115,7 @@ impl Table {
             row_background: None,
             row_alt_background: None,
             row_hover_background: None,
+            striped: false,
             cell_padding: None,
 
             border_color: None,
@@ -171,6 +175,15 @@ impl Table {
 
     pub fn row_hover_background(mut self, background: impl Into<Background>) -> Self {
         self.row_hover_background = Some(background.into());
+        self
+    }
+
+    /// Alternates each row's background between a light and dark gray,
+    /// like a classic "zebra striped" table. Disabled by default; an
+    /// explicit `row_background`/`row_alt_background` always takes
+    /// priority over this default striping.
+    pub fn striped(mut self, value: bool) -> Self {
+        self.striped = value;
         self
     }
 
@@ -245,10 +258,18 @@ impl Render for Table {
 
         for (i, row) in self.rows.iter().enumerate() {
             let is_alt = i % 2 == 1;
+
+            // Explicit row_background/row_alt_background always win; the
+            // striped default only fills the gap when nothing else was set.
             let background = if is_alt {
-                self.row_alt_background.clone().or_else(|| self.row_background.clone())
+                self.row_alt_background
+                    .clone()
+                    .or_else(|| self.row_background.clone())
+                    .or_else(|| self.striped.then_some(Background::Color(Color::GRAY_200)))
             } else {
-                self.row_background.clone()
+                self.row_background
+                    .clone()
+                    .or_else(|| self.striped.then_some(Background::Color(Color::GRAY_50)))
             };
 
             let mut row_view = View::new()

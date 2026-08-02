@@ -471,6 +471,14 @@ pub trait Widget: Any {
         self.set_text_selection(None);
     }
 
+    /// Cancels any in-progress AutoScroll (middle-click pan) gesture on
+    /// this widget. Default no-op; only scrollable containers like
+    /// `View` override it. Called globally before dispatching a
+    /// non-middle mouse press, since a press that lands on an
+    /// interactive descendant (e.g. a `Button`) is consumed there and
+    /// never bubbles up to the scrollable ancestor's own event handler.
+    fn cancel_auto_scroll(&mut self, _ctx: &mut EventCtx) {}
+
     /// Nearest character index to an absolute screen point, used by
     /// cross-widget drag selection to know where a widget's own
     /// selection should start or end.

@@ -394,6 +394,21 @@ impl Widget for Link {
             return EventStatus::Ignored;
         }
 
+        // Consumed on Pressed so a scrollable ancestor's View doesn't read
+        // this as the start of a middle-click AutoScroll gesture; the
+        // actual navigation still happens on Released, below.
+        if
+            let InputEvent::MouseInput {
+                state: ElementState::Pressed,
+                button: MouseButton::Middle,
+                ..
+            } = event &&
+            self.base.interaction.hovered &&
+            self.href.is_some()
+        {
+            return EventStatus::Handled;
+        }
+
         // Middle-click opens the link in a new tab, matching browser convention.
         if
             let InputEvent::MouseInput {

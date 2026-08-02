@@ -551,3 +551,14 @@ pub fn mark_tree_dirty(tree: &mut [Box<dyn Widget>]) {
         }
     }
 }
+
+/// Cancels any in-progress AutoScroll gesture across the whole tree. See
+/// `Widget::cancel_auto_scroll`.
+pub fn cancel_auto_scroll_recursive(tree: &mut [Box<dyn Widget>], ctx: &mut EventCtx) {
+    for widget in tree.iter_mut() {
+        widget.cancel_auto_scroll(ctx);
+        if let Some(children) = widget.children_mut() {
+            cancel_auto_scroll_recursive(children, ctx);
+        }
+    }
+}
