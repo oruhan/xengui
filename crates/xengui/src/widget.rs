@@ -405,6 +405,14 @@ pub trait Widget: Any {
         }
     }
 
+    /// Called during reconciliation for every widget matched against its
+    /// predecessor, with mutable access to that predecessor - lets a
+    /// composite widget reconcile its freshly re-rendered content against
+    /// whatever the predecessor already had committed, so a descendant's
+    /// interaction/hook state survives a parent prop update. Every other
+    /// widget can ignore this; the default does nothing.
+    fn transfer_composite_children(&mut self, _old: &mut dyn Widget) {}
+
     fn event(&mut self, event: &InputEvent, ctx: &mut EventCtx) -> EventStatus {
         let status = match self.interaction_mut() {
             Some(interaction) if interaction.is_active() => interaction.handle(event, ctx),

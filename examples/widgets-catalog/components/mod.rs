@@ -1,3 +1,3 @@
 pub mod testbutton;
 
-pub use TestButton::*;
+pub use testbutton::*;

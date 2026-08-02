@@ -93,32 +93,7 @@ pub use style::{
     Overflow,
     Overscroll,
 };
-pub use widgets::{
-    image_source_from_bytes,
-    Button,
-    IconPosition,
-    Checkbox,
-    ContextMenu,
-    ContextMenuHandle,
-    ContextMenuItem,
-    Image,
-    ImageSource,
-    Label,
-    ObjectFit,
-    RichText,
-    Svg,
-    SvgCircleBuilder,
-    SvgGroupBuilder,
-    SvgLineBuilder,
-    SvgPathBuilder,
-    SvgRectBuilder,
-    TextSpan,
-    View,
-    TextBox,
-    Tooltip,
-    TooltipPlacement,
-    Portal,
-};
+pub use widgets::*;
 pub use redraw::RedrawRequester;
 pub use task::spawn;
 pub use xen_svg::{ SvgColor, SvgDocument, SvgElement, Transform2D };

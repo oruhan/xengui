@@ -292,6 +292,10 @@ macro_rules! impl_composite_widget {
                 self.base.inherited_style = parent.clone();
                 self.base.recompute_style();
 
+                // First mount only - there was no predecessor for
+                // `transfer_composite_children` to reconcile against, so
+                // this is the sole place content ever gets built from an
+                // empty `inner`.
                 if self.inner.is_empty() {
                     let key = format!("{}#{}", stringify!($ty), self.hooks_id.get());
                     let built = $crate::component(key, || $crate::composite::Render::render(self));
@@ -309,6 +313,22 @@ macro_rules! impl_composite_widget {
                 }
                 if let Some(old) = old.as_any().downcast_ref::<$ty>() {
                     self.hooks_id = old.hooks_id;
+                }
+            }
+
+            fn transfer_composite_children(&mut self, old: &mut dyn $crate::Widget) {
+                // Re-renders against current props, then reconciles the
+                // result against the predecessor's already-committed
+                // content, so descendant interaction/hook state survives
+                // a parent prop update instead of rebuilding from scratch.
+                let key = format!("{}#{}", stringify!($ty), self.hooks_id.get());
+                let rendered = $crate::component(key, || $crate::composite::Render::render(self));
+
+                if let Some(old) = old.as_any_mut().downcast_mut::<$ty>() {
+                    let mut old_inner = std::mem::take(&mut old.inner);
+                    self.inner = $crate::reconciler::reconcile_now(vec![rendered], &mut old_inner);
+                } else {
+                    self.inner = vec![rendered];
                 }
             }
         }

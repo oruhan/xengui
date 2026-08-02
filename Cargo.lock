@@ -2918,6 +2918,7 @@ dependencies = [
  "console_log",
  "env_logger",
  "log",
+ "smol_str 0.3.6",
  "web-time",
  "xen-clipboard",
  "xenframe",

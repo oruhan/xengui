@@ -1234,16 +1234,17 @@ impl View {
         let range = AUTO_SCROLL_RANGE_DP * sf;
         let max_speed = AUTO_SCROLL_MAX_SPEED * sf;
 
-        // Cubic ease-in: speed stays close to zero just past the activation
-        // radius for fine-grained control, then ramps up smoothly toward
-        // max_speed with no abrupt jump anywhere along the curve.
+        // Linear ramp from the dead zone to max_speed, matching the
+        // middle-click autoscroll curve used by Chromium/WebView-based
+        // browsers (speed scales directly with distance past the
+        // activation radius, no easing).
         let speed_along = |delta: f32| -> f32 {
             let mag = delta.abs();
             if mag <= dead_zone {
                 return 0.0;
             }
             let t = ((mag - dead_zone) / range).min(1.0);
-            delta.signum() * max_speed * t * t * t
+            delta.signum() * max_speed * t
         };
 
         let dx = state.current.0 - state.origin.0;

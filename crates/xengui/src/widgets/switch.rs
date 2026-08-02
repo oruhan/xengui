@@ -37,7 +37,14 @@ use web_time::Duration;
 
 type ChangeCallback = Box<dyn FnMut(bool, &mut EventCtx)>;
 
-const CHECK_TRANSITION: Transition = Transition::new(Duration::from_millis(180)).easing(
+const TRACK_WIDTH: f32 = 56.0;
+const TRACK_HEIGHT: f32 = 32.0;
+const THUMB_UNSELECTED: f32 = 16.0;
+const THUMB_SELECTED: f32 = 24.0;
+const THUMB_PRESSED: f32 = 26.0;
+const TRACK_PADDING: f32 = 4.0;
+
+const TOGGLE_TRANSITION: Transition = Transition::new(Duration::from_millis(200)).easing(
     Easing::EaseOut
 );
 
@@ -46,58 +53,93 @@ fn lerp_color(a: Color, b: Color, t: f32) -> Color {
     Color::rgba_f32(blended.0[0], blended.0[1], blended.0[2], blended.0[3])
 }
 
-/// A toggleable square box with a checkmark, styled and animated the same
-/// way as [`crate::Button`]. `checked` is a controlled prop - the caller
-/// owns the state (e.g. via `use_state`) and updates it from `on_change`.
-pub struct Checkbox {
+fn lerp(a: f32, b: f32, t: f32) -> f32 {
+    a + (b - a) * t
+}
+
+/// A Material Design 3-style toggle switch: a pill-shaped track with a
+/// sliding thumb that grows and moves as it turns on, playing the same
+/// controlled-prop role as [`crate::Checkbox`] for on/off settings.
+pub struct Switch {
     base: WidgetBase,
     anim_id: WidgetId,
     layout_box: LayoutBox,
     checked: bool,
     size: f32,
-    check_color: Option<Color>,
+    track_on_color: Option<Color>,
+    track_off_color: Option<Color>,
+    thumb_on_color: Option<Color>,
+    thumb_off_color: Option<Color>,
+    border_color: Option<Color>,
+    progress: Cell<f32>,
     on_change: Option<ChangeCallback>,
-    // 0.0 (unchecked) -> 1.0 (checked), animated on every toggle and
-    // driving both the fill/border color blend and the checkmark draw-in.
-    check_progress: Cell<f32>,
 }
 
-impl Checkbox {
+impl Switch {
     pub fn new() -> Self {
         let mut interaction = Interaction::new();
         interaction.focusable = true;
         interaction.hover_cursor = Some(DEFAULT_POINTER_CURSOR_ICON);
 
-        let mut checkbox = Self {
+        let mut switch = Self {
             base: WidgetBase::new(interaction),
             anim_id: WidgetId::new_unique(),
             layout_box: LayoutBox::default(),
             checked: false,
-            size: 18.0,
-            check_color: None,
+            size: 1.0,
+            track_on_color: None,
+            track_off_color: None,
+            thumb_on_color: None,
+            thumb_off_color: None,
+            border_color: None,
+            progress: Cell::new(0.0),
             on_change: None,
-            check_progress: Cell::new(0.0),
         };
 
-        checkbox.recompute_style();
-        checkbox
+        switch.recompute_style();
+        switch
     }
 
     pub fn checked(mut self, checked: bool) -> Self {
         self.checked = checked;
-        self.check_progress.set(if checked { 1.0 } else { 0.0 });
+        self.progress.set(if checked { 1.0 } else { 0.0 });
         self.mark_dirty();
         self
     }
 
+    /// Scales the whole switch; `1.0` matches Material's default 52x32 track.
     pub fn size(mut self, size: f32) -> Self {
         self.size = size;
         self.mark_dirty();
         self
     }
 
-    pub fn check_color(mut self, color: Color) -> Self {
-        self.check_color = Some(color);
+    pub fn track_on_color(mut self, color: Color) -> Self {
+        self.track_on_color = Some(color);
+        self.mark_dirty();
+        self
+    }
+
+    pub fn track_off_color(mut self, color: Color) -> Self {
+        self.track_off_color = Some(color);
+        self.mark_dirty();
+        self
+    }
+
+    pub fn thumb_on_color(mut self, color: Color) -> Self {
+        self.thumb_on_color = Some(color);
+        self.mark_dirty();
+        self
+    }
+
+    pub fn thumb_off_color(mut self, color: Color) -> Self {
+        self.thumb_off_color = Some(color);
+        self.mark_dirty();
+        self
+    }
+
+    pub fn border_color(mut self, color: Color) -> Self {
+        self.border_color = Some(color);
         self.mark_dirty();
         self
     }
@@ -130,13 +172,13 @@ impl Checkbox {
     }
 }
 
-impl Default for Checkbox {
+impl Default for Switch {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl StyleBuilder for Checkbox {
+impl StyleBuilder for Switch {
     fn style_mut(&mut self) -> &mut Style {
         &mut self.base.style
     }
@@ -147,91 +189,95 @@ impl StyleBuilder for Checkbox {
     }
 }
 
-crate::impl_interaction_builders!(base Checkbox);
-crate::impl_common_style_builders!(base Checkbox);
-crate::impl_themed_style_builders!(base Checkbox; hover_style => hover_style, pressed_style => pressed_style, disabled_style => disabled_style, focus_style => focus_style, focused_hover_style => focused_hover_style, focused_pressed_style => focused_pressed_style);
+crate::impl_interaction_builders!(base Switch);
+crate::impl_common_style_builders!(base Switch);
 
-impl Widget for Checkbox {
+impl Widget for Switch {
     crate::impl_widget_boilerplate!();
 
     fn debug_name(&self) -> &'static str {
-        "Widget#Checkbox"
+        "Widget#Switch"
     }
 
     fn measure(&self, ctx: &mut MeasureContext, constraints: Constraints) -> MeasureResult {
-        let px = self.size * ctx.scale_factor;
-        let (w, h) = constraints.constrain_size(px, px);
+        let w = TRACK_WIDTH * self.size * ctx.scale_factor;
+        let h = TRACK_HEIGHT * self.size * ctx.scale_factor;
+        let (w, h) = constraints.constrain_size(w, h);
         MeasureResult::new(w, h)
     }
 
     fn paint(&self, ctx: &mut PaintContext) {
-        let style = &self.base.computed_style;
-        let sf = ctx.scale_factor;
+        let sf = ctx.scale_factor * self.size;
         let b = self.layout_box;
         let theme = crate::current_theme();
-        let t = self.check_progress.get();
+        let t = self.progress.get();
 
-        let radius = style.border
-            .as_ref()
-            .and_then(|bo| bo.radius)
-            .map(|r| r.to_physical(sf))
-            .unwrap_or(4.0 * sf);
-        let border = style.border.as_ref();
+        let track_off = self.track_off_color.unwrap_or(theme.surface_hover);
+        let track_on = self.track_on_color.unwrap_or(theme.primary);
+        let thumb_off = self.thumb_off_color.unwrap_or(
+            self.border_color.unwrap_or(theme.foreground_muted)
+        );
+        let thumb_on = self.thumb_on_color.unwrap_or(theme.background);
+        let border_color = self.border_color.unwrap_or(theme.border_hover);
 
-        let unchecked_fill = style.background
-            .clone()
-            .unwrap_or(Background::Color(Color::TRANSPARENT))
-            .representative_color();
-        let checked_fill = style.background
-            .clone()
-            .unwrap_or(Background::Color(theme.primary))
-            .representative_color();
-        let unchecked_border = border.map(|bo| bo.color).unwrap_or(theme.border);
-        let checked_border = border.map(|bo| bo.color).unwrap_or(theme.primary);
+        let track_color = lerp_color(track_off, track_on, t);
+        let thumb_color = lerp_color(thumb_off, thumb_on, t);
 
-        // Blends fill/border color across the toggle instead of snapping
-        // instantly the moment `checked` flips.
-        let fill = lerp_color(unchecked_fill, checked_fill, t);
-        let border_color = lerp_color(unchecked_border, checked_border, t);
-
-        // A brief overshoot as the box fills in, peaking mid-transition -
-        // gives the toggle a little bounce instead of a flat cross-fade.
-        let box_scale = 1.0 + t * (1.0 - t) * 0.12;
-        let scaled_box = crate::scaled_layout_box(b, box_scale);
-
+        // Track: a full pill, border fades out as the switch turns on -
+        // matches M3's outlined-when-off, filled-when-on track.
         ctx.draw_rect(RectCommand {
-            position: (scaled_box.x, scaled_box.y),
-            size: (scaled_box.width, scaled_box.height),
-            background: Some(Background::Color(fill)),
-            border_radius: Some(Length::px(radius)),
+            position: (b.x, b.y),
+            size: (b.width, b.height),
+            background: Some(Background::Color(track_color)),
+            border_radius: Some(Length::px(b.height * 0.5)),
+            border_width: Some(Length::px(2.0 * sf * (1.0 - t))),
             border_color: Some(border_color),
-            border_width: Some(
-                border.map(|bo| Length::px(bo.top.to_physical(sf))).unwrap_or(Length::px(1.5 * sf))
-            ),
             clip_rect: None,
         });
 
-        if t > 0.001 {
-            let check_color = self.check_color.unwrap_or(theme.background);
-            let stroke = (b.width * 0.12).max(1.5 * sf);
+        // Thumb grows from the small "off" dot to the large "on" dot and
+        // slides across the track, both driven by the same progress value.
+        let pressed = self.base.interaction.pressed;
+        let target_thumb = if pressed {
+            THUMB_PRESSED
+        } else {
+            lerp(THUMB_UNSELECTED, THUMB_SELECTED, t)
+        };
+        let thumb_d = target_thumb * sf;
+        let pad = TRACK_PADDING * sf;
 
-            // The checkmark scales in from the box's own center as `t`
-            // grows, rather than only ever appearing at full size.
-            let cx = b.x + b.width * 0.5;
-            let cy = b.y + b.height * 0.5;
-            let scale_pt = |p: (f32, f32)| -> (f32, f32) {
-                (cx + (p.0 - cx) * t, cy + (p.1 - cy) * t)
-            };
+        let min_cx = b.x + pad + thumb_d * 0.5;
+        let max_cx = b.x + b.width - pad - thumb_d * 0.5;
+        let cx = lerp(min_cx, max_cx, t);
+        let cy = b.y + b.height * 0.5;
 
-            let p0 = scale_pt((b.x + b.width * 0.22, b.y + b.height * 0.52));
-            let p1 = scale_pt((b.x + b.width * 0.42, b.y + b.height * 0.72));
-            let p2 = scale_pt((b.x + b.width * 0.8, b.y + b.height * 0.28));
+        ctx.draw_rect(RectCommand {
+            position: (cx - thumb_d * 0.5, cy - thumb_d * 0.5),
+            size: (thumb_d, thumb_d),
+            background: Some(Background::Color(thumb_color)),
+            border_radius: Some(Length::px(thumb_d * 0.5)),
+            border_width: None,
+            border_color: None,
+            clip_rect: None,
+        });
 
-            let color = check_color.with_alpha_f32(check_color.a() * t);
+        // A small checkmark fades into the thumb once fully toggled on,
+        // echoing Checkbox's own mark instead of leaving the thumb bare.
+        if t > 0.6 {
+            let mark_alpha = ((t - 0.6) / 0.4).clamp(0.0, 1.0);
+            let stroke = (thumb_d * 0.12).max(1.2 * sf);
+            let scale = thumb_d * 0.32;
+
+            let raw = [
+                (cx - scale * 0.6, cy + scale * 0.05),
+                (cx - scale * 0.15, cy + scale * 0.5),
+                (cx + scale * 0.7, cy - scale * 0.45),
+            ];
+            let color = track_on.with_alpha_f32(track_on.a() * mark_alpha);
 
             for (a, bnd) in [
-                (p0, p1),
-                (p1, p2),
+                (raw[0], raw[1]),
+                (raw[1], raw[2]),
             ] {
                 let (dx, dy) = (bnd.0 - a.0, bnd.1 - a.1);
                 let len = (dx * dx + dy * dy).sqrt().max(0.0001);
@@ -261,6 +307,10 @@ impl Widget for Checkbox {
         self.paint_outline(ctx);
     }
 
+    fn hit_test(&self, point: (f32, f32)) -> bool {
+        self.layout_box.contains_rounded(point, self.layout_box.height * 0.5)
+    }
+
     fn event(&mut self, event: &InputEvent, ctx: &mut EventCtx) -> EventStatus {
         if !self.base.interaction.is_active() {
             return EventStatus::Ignored;
@@ -282,6 +332,7 @@ impl Widget for Checkbox {
 
         let before_style = self.base.computed_style.clone();
         let before_focus_visible = self.base.interaction.focus_visible;
+        let before_pressed = self.base.interaction.pressed;
 
         let status = self.base.interaction.handle(event, ctx);
 
@@ -289,12 +340,16 @@ impl Widget for Checkbox {
             self.toggle(ctx);
         }
 
-        if matches!(status, EventStatus::Handled) {
+        if
+            matches!(status, EventStatus::Handled) ||
+            before_pressed != self.base.interaction.pressed
+        {
             self.recompute_style();
 
             if
                 self.base.computed_style != before_style ||
-                self.base.interaction.focus_visible != before_focus_visible
+                self.base.interaction.focus_visible != before_focus_visible ||
+                before_pressed != self.base.interaction.pressed
             {
                 self.base.dirty = true;
                 ctx.request_redraw();
@@ -305,43 +360,37 @@ impl Widget for Checkbox {
     }
 
     fn content_eq(&self, other: &dyn Widget) -> bool {
-        let Some(other) = other.as_any().downcast_ref::<Checkbox>() else {
+        let Some(other) = other.as_any().downcast_ref::<Switch>() else {
             return false;
         };
 
         self.checked == other.checked &&
             self.size == other.size &&
-            self.check_color == other.check_color &&
-            self.base.style == other.base.style &&
-            self.base.hover_style == other.base.hover_style &&
-            self.base.pressed_style == other.base.pressed_style &&
-            self.base.disabled_style == other.base.disabled_style &&
-            self.base.focus_style == other.base.focus_style &&
-            self.base.focused_hover_style == other.base.focused_hover_style
+            self.track_on_color == other.track_on_color &&
+            self.track_off_color == other.track_off_color &&
+            self.thumb_on_color == other.thumb_on_color &&
+            self.thumb_off_color == other.thumb_off_color &&
+            self.border_color == other.border_color &&
+            self.base.style == other.base.style
     }
 
     fn cascade_style(&mut self, parent: &Style, anim: &mut AnimationManager) {
         self.base.inherited_style = parent.clone();
         self.recompute_style();
-        if crate::animate_computed_style(self.anim_id, &mut self.base.computed_style, anim) {
-            self.base.dirty = true;
-        }
 
-        // Drives the fill/border blend and checkmark draw-in toward the
-        // current `checked` state every frame.
         let target = if self.checked { 1.0 } else { 0.0 };
         let key = AnimKey {
             widget: self.anim_id,
             layer: AnimLayer::Content,
             property: AnimProperty::Opacity,
         };
-        anim.set_target(key, AnimValue([target, 0.0, 0.0, 0.0]), Some(CHECK_TRANSITION));
+        anim.set_target(key, AnimValue([target, 0.0, 0.0, 0.0]), Some(TOGGLE_TRANSITION));
         match anim.value(key) {
             Some(v) => {
-                self.check_progress.set(v.0[0]);
+                self.progress.set(v.0[0]);
                 self.base.dirty = true;
             }
-            None => self.check_progress.set(target),
+            None => self.progress.set(target),
         }
     }
 
@@ -350,9 +399,9 @@ impl Widget for Checkbox {
     }
 
     fn transfer_measured_state(&mut self, old: &dyn Widget) {
-        if let Some(old) = old.as_any().downcast_ref::<Checkbox>() {
+        if let Some(old) = old.as_any().downcast_ref::<Switch>() {
             self.anim_id = old.anim_id;
-            self.check_progress.set(old.check_progress.get());
+            self.progress.set(old.progress.get());
         }
     }
 

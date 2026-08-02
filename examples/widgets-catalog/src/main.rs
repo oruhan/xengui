@@ -8,6 +8,10 @@ use xenframe::{ App, AppConfig };
 use xenframe::WindowPosition;
 use xengui::{ properties::StyleValue, widgets::Link, * };
 
+#[path = "../components/mod.rs"]
+mod components;
+use components::*;
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     #[cfg(target_arch = "wasm32")]
     {
@@ -34,6 +38,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         height: 700,
         #[cfg(not(target_arch = "wasm32"))]
         position: WindowPosition::Center,
+
+        theme_mode: xenframe::AppThemeMode::System,
+
         ..Default::default()
     };
 
@@ -48,6 +55,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     app.render(|| {
         let (text, set_text) = use_state(String::from("Ferris"));
+        let (switch_on, set_switch_on) = use_state(false);
 
         Box::new(
             View::new()
@@ -70,9 +78,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         .flex_direction(FlexDirection::Column)
                         .overflow_x(Overflow::Auto)
                         .overflow_y(Overflow::Auto)
-                        .scrollbar_track_color(Color::NEUTRAL_100)
-                        .scrollbar_thumb_color(Color::NEUTRAL_400)
-                        .scrollbar_arrow_color(Color::NEUTRAL_400)
+                        .scrollbar_track_color(|theme: &Theme| theme.border)
+                        .scrollbar_thumb_color(|theme: &Theme| theme.foreground_muted)
+                        .scrollbar_arrow_color(|theme: &Theme| theme.foreground_muted)
                         .gap(0, 4)
                         .child(TestButton::new().label("Test button").color(Color::BLUE_500))
                         .child(
@@ -80,6 +88,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 .label("label1")
                                 .color(|theme: &Theme| theme.foreground)
                         )
+                        .child(
+                            Switch::new()
+                                .checked(switch_on)
+                                .on_change(move |checked, _ctx| set_switch_on.set(checked))
+                        )
+                        .child(Checkbox::new())
                         .child(
                             Link::new()
                                 .label("https://github.com/randseas")
@@ -115,29 +129,31 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             Button::new()
                                 .label("button1")
                                 .font_size(14)
-                                .color(Color::NEUTRAL_500)
-                                .background(Color::NEUTRAL_100)
-                                .border(Border::new(1, Color::NEUTRAL_200, Length::px(8.0)))
+                                .color(|theme: &Theme| theme.foreground_muted)
+                                .background(|theme: &Theme| theme.surface)
+                                .border(|theme: &Theme|
+                                    Border::new(1, theme.border, Length::px(8.0))
+                                )
                                 .padding(Edges::only(9, 5, 9, 6))
                                 .transition_all(
                                     Transition::new(Duration::from_millis(200)).easing(
                                         Easing::EaseInOut
                                     )
                                 )
-                                .hover_style(|s, _theme: &Theme|
+                                .hover_style(|s, theme: &Theme|
                                     s
-                                        .background(Color::NEUTRAL_200)
-                                        .border(Border::new(1, Color::NEUTRAL_300, Length::px(8.0)))
-                                        .color(Color::NEUTRAL_600)
+                                        .background(theme.surface_hover)
+                                        .border(Border::new(1, theme.border_hover, Length::px(8.0)))
+                                        .color(theme.foreground)
                                 )
-                                .pressed_style(|s, _theme: &Theme|
+                                .pressed_style(|s, theme: &Theme|
                                     s
-                                        .background(Color::NEUTRAL_200)
-                                        .border(Border::new(1, Color::NEUTRAL_400, Length::px(8.0)))
-                                        .color(Color::NEUTRAL_700)
+                                        .background(theme.pressed)
+                                        .border(Border::new(1, theme.border_hover, Length::px(8.0)))
+                                        .color(theme.foreground)
                                 )
-                                .disabled_style(|s, _theme: &Theme|
-                                    s.background(Color::NEUTRAL_100).color(Color::NEUTRAL_400)
+                                .disabled_style(|s, theme: &Theme|
+                                    s.background(theme.surface).color(theme.foreground_muted)
                                 )
                         )
                         .child(
@@ -216,25 +232,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 .label("disabled_button1")
                                 .enabled(false)
                                 .font_size(13)
-                                .color(Color::NEUTRAL_500)
-                                .background(Color::NEUTRAL_100)
-                                .border(Border::new(1, Color::NEUTRAL_200, Length::px(8.0)))
+                                .color(|theme: &Theme| theme.foreground_muted)
+                                .background(|theme: &Theme| theme.surface)
+                                .border(|theme: &Theme|
+                                    Border::new(1, theme.border, Length::px(8.0))
+                                )
                                 .padding(Edges::only(9, 5, 9, 6))
-                                .hover_style(|s, _theme: &Theme|
-                                    s
-                                        .background(Color::NEUTRAL_200)
-                                        .border(Border::new(1, Color::NEUTRAL_300, Length::px(8.0)))
-                                        .color(Color::NEUTRAL_600)
-                                )
-                                .pressed_style(|s, _theme: &Theme|
-                                    s
-                                        .background(Color::NEUTRAL_200)
-                                        .border(Border::new(1, Color::NEUTRAL_400, Length::px(8.0)))
-                                        .color(Color::NEUTRAL_700)
-                                )
-                                .disabled_style(|s, _theme: &Theme|
-                                    s.background(Color::NEUTRAL_100).color(Color::NEUTRAL_400)
-                                )
                         )
                         .child(
                             Image::new()
@@ -249,7 +252,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         )
                         .child(
                             View::new()
-                                .color(Color::NEUTRAL_400) // icon bu rengi otomatik alır (currentColor)
+                                .color(|theme: &Theme| theme.foreground_muted)
                                 .child(
                                     Svg::from_string(
                                         r#"<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-wand-sparkles-icon lucide-wand-sparkles"><path d="m21.64 3.64-1.28-1.28a1.21 1.21 0 0 0-1.72 0L2.36 18.64a1.21 1.21 0 0 0 0 1.72l1.28 1.28a1.2 1.2 0 0 0 1.72 0L21.64 5.36a1.2 1.2 0 0 0 0-1.72"/><path d="m14 7 3 3"/><path d="M5 6v4"/><path d="M19 14v4"/><path d="M10 2v2"/><path d="M7 8H3"/><path d="M21 16h-4"/><path d="M11 3H9"/></svg>"#
@@ -260,7 +263,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         )
                         .child(
                             View::new()
-                                .color(Color::NEUTRAL_400) // icon bu rengi otomatik alır (currentColor)
+                                .color(|theme: &Theme| theme.foreground_muted)
                                 .child(
                                     Svg::from_string(
                                         r#" <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-qr-code-icon lucide-qr-code"><rect width="5" height="5" x="3" y="3" rx="1"/><rect width="5" height="5" x="16" y="3" rx="1"/><rect width="5" height="5" x="3" y="16" rx="1"/><path d="M21 16h-3a2 2 0 0 0-2 2v3"/><path d="M21 21v.01"/><path d="M12 7v3a2 2 0 0 1-2 2H7"/><path d="M3 12h.01"/><path d="M12 3h.01"/><path d="M12 16v.01"/><path d="M16 12h1"/><path d="M21 12v.01"/><path d="M12 21v-1"/></svg>"#

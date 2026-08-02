@@ -63,7 +63,12 @@ impl FrameRenderer {
         self.last_tick = now;
         self.anim.tick(dt);
 
+        // Keeps Theme::auto() resolving against the OS's real light/dark
+        // state, which the render backend already tracks and passes in
+        // here as `theme`.
+        crate::style::theme::set_system_is_dark(matches!(theme, SystemTheme::Dark));
         let app_background = crate::current_theme().background;
+
         if !backend.begin_frame(app_background, width, height) {
             return;
         }

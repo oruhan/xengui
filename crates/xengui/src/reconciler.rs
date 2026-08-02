@@ -25,7 +25,7 @@
 use crate::Widget;
 use smol_str::SmolStr;
 use std::collections::HashMap;
-use web_time::Instant;
+use web_time::{ Duration, Instant };
 
 struct Frame {
     new_siblings: Vec<Box<dyn Widget>>,
@@ -43,7 +43,7 @@ impl Frame {
         old_path: Vec<usize>
     ) -> Self {
         let mut keyed_old = HashMap::new();
-        
+
         for (i, old) in old_siblings.iter().enumerate() {
             if let Some(key) = old.get_key() {
                 keyed_old.entry(key.clone()).or_insert(i);
@@ -192,6 +192,7 @@ impl WorkLoop {
         new_node.transfer_interaction_state(old_node.as_ref());
         let content_equal = new_node.content_eq(old_node.as_ref());
         new_node.after_interaction_transfer();
+        new_node.transfer_composite_children(old_node.as_mut());
 
         if content_equal {
             new_node.transfer_measured_state(old_node.as_ref());
@@ -247,6 +248,28 @@ fn unmount_subtree(widget: &mut dyn Widget) {
     if let Some(children) = widget.children_mut() {
         for child in children.iter_mut() {
             unmount_subtree(child.as_mut());
+        }
+    }
+}
+
+/// Fully reconciles a single-child new tree against `old_root`
+/// synchronously, with no time budget - used by composite widgets, where
+/// the tree being diffed is small enough that yielding mid-reconcile
+/// isn't worth the added complexity.
+pub fn reconcile_now(
+    new_root: Vec<Box<dyn Widget>>,
+    old_root: &mut [Box<dyn Widget>]
+) -> Vec<Box<dyn Widget>> {
+    let mut work = WorkLoop::new(new_root, old_root);
+    let far_future = Instant::now() + Duration::from_secs(3600);
+    loop {
+        match work.perform_work(old_root, far_future) {
+            WorkLoopStatus::Complete(tree) => {
+                return tree;
+            }
+            WorkLoopStatus::Yielded => {
+                continue;
+            }
         }
     }
 }

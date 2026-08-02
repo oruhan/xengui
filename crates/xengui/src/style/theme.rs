@@ -2,7 +2,7 @@ use crate::{ Border, Outline, properties::StyleValue };
 
 // SPDX-License-Identifier: Apache-2.0
 use super::{ Background, Color, Edges, Length };
-use std::cell::RefCell;
+use std::cell::{ Cell, RefCell };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ThemeMode {
@@ -407,6 +407,11 @@ pub enum ThemeSwitch {
 thread_local! {
     static CURRENT_THEME: RefCell<Theme> = RefCell::new(Theme::default());
     static THEME_SWITCH: RefCell<Option<ThemeSwitch>> = const { RefCell::new(None) };
+    // Reflects the OS light/dark preference, refreshed once per painted
+    // frame from the `SystemTheme` the render backend receives (see
+    // `FrameRenderer::render_frame`). Only consulted for `Theme::auto()`
+    // themes - a theme with an explicit Light/Dark mode ignores it.
+    static SYSTEM_IS_DARK: Cell<bool> = const { Cell::new(true) };
 }
 
 pub fn set_current_theme(theme: Theme) {
@@ -415,12 +420,26 @@ pub fn set_current_theme(theme: Theme) {
     });
 }
 
+/// Updates the OS light/dark flag used to resolve `Theme::auto()` themes.
+/// Called once per frame by the render pipeline - not meant to be called
+/// directly by application code.
+pub fn set_system_is_dark(is_dark: bool) {
+    SYSTEM_IS_DARK.with(|cell| cell.set(is_dark));
+}
+
 pub fn take_theme_switch() -> Option<ThemeSwitch> {
     THEME_SWITCH.with(|cell| cell.borrow_mut().take())
 }
 
 pub fn current_theme() -> Theme {
-    CURRENT_THEME.with(|cell| cell.borrow().clone())
+    CURRENT_THEME.with(|cell| {
+        let theme = cell.borrow().clone();
+        if theme.is_auto() {
+            theme.resolved_for_system(SYSTEM_IS_DARK.with(Cell::get))
+        } else {
+            theme
+        }
+    })
 }
 
 /// Switches the app's active theme by index into `AppConfig::themes`,

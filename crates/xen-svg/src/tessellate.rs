@@ -39,6 +39,16 @@ pub struct SvgTriangle {
     pub opacity: f32,
 }
 
+/// Antialiasing fringe width, in the element's own local (viewBox) units.
+const AA_WIDTH: f32 = 0.8;
+/// Number of stepped opacity bands the fringe is built from - more bands
+/// approximate a smooth gradient more closely at the cost of more
+/// triangles.
+const AA_BANDS: u32 = 4;
+/// Curve flattening granularity used only for the antialiasing fringe
+/// (the fill/stroke tessellation itself still goes through lyon).
+const AA_CURVE_SEGMENTS: u32 = 16;
+
 /// Flattens an entire document into a triangle list, ready to be scaled
 /// into a widget's layout box and handed to the triangle pipeline.
 pub fn tessellate_document(doc: &SvgDocument) -> Vec<SvgTriangle> {
@@ -71,16 +81,31 @@ fn tessellate_element(
         SvgElement::Path { commands, attrs } => {
             let path = build_path_from_commands(commands, transform);
             emit_shape(&path, attrs, opacity, scale, out);
+
+            if !matches!(attrs.fill, SvgColor::None) {
+                let loops = map_loops(&flatten_path_commands(commands), transform);
+                add_fill_aa_fringe(&loops, attrs.fill, opacity, out);
+            }
         }
         SvgElement::Rect { x, y, width, height, rx, attrs } => {
             let polygon = rect_polygon(*x, *y, *width, *height, *rx);
             let path = build_polygon_path(&polygon, true, transform);
             emit_shape(&path, attrs, opacity, scale, out);
+
+            if !matches!(attrs.fill, SvgColor::None) {
+                let mapped = map_points(&polygon, transform);
+                add_fill_aa_fringe(&[mapped], attrs.fill, opacity, out);
+            }
         }
         SvgElement::Circle { cx, cy, r, attrs } => {
             let polygon = circle_polygon(*cx, *cy, *r);
             let path = build_polygon_path(&polygon, true, transform);
             emit_shape(&path, attrs, opacity, scale, out);
+
+            if !matches!(attrs.fill, SvgColor::None) {
+                let mapped = map_points(&polygon, transform);
+                add_fill_aa_fringe(&[mapped], attrs.fill, opacity, out);
+            }
         }
         SvgElement::Line { x1, y1, x2, y2, attrs } => {
             let path = build_polygon_path(
@@ -104,13 +129,169 @@ fn transform_scale(t: Transform2D) -> f32 {
     (sx + sy) * 0.5
 }
 
-// Maps a local-space point through the element's accumulated transform.
-// Baking the transform in before tessellation (rather than after) keeps
-// fills correct under rotation/skew, and applies stroke width in already
-// transformed space, matching the previous renderer's behavior.
 fn map_point(transform: Transform2D, x: f32, y: f32) -> Point {
     let (tx, ty) = transform.apply(x, y);
     point(tx, ty)
+}
+
+fn map_points(points: &[(f32, f32)], transform: Transform2D) -> Vec<(f32, f32)> {
+    points
+        .iter()
+        .map(|&(x, y)| transform.apply(x, y))
+        .collect()
+}
+
+fn map_loops(loops: &[Vec<(f32, f32)>], transform: Transform2D) -> Vec<Vec<(f32, f32)>> {
+    loops
+        .iter()
+        .map(|points| map_points(points, transform))
+        .collect()
+}
+
+// Flattens a path's commands (bezier segments included) into closed point
+// loops, in the element's own local (untransformed) coordinate space -
+// used only to build the antialiasing fringe, independent of lyon's own
+// internal flattening so this stays self-contained.
+fn flatten_path_commands(commands: &[PathCommand]) -> Vec<Vec<(f32, f32)>> {
+    let mut loops = Vec::new();
+    let mut current: Vec<(f32, f32)> = Vec::new();
+    let mut cursor = (0.0, 0.0);
+
+    fn push_point(current: &mut Vec<(f32, f32)>, p: (f32, f32)) {
+        if current.last() != Some(&p) {
+            current.push(p);
+        }
+    }
+
+    for command in commands {
+        match *command {
+            PathCommand::MoveTo(x, y) => {
+                if current.len() > 1 {
+                    loops.push(std::mem::take(&mut current));
+                } else {
+                    current.clear();
+                }
+                cursor = (x, y);
+                current.push(cursor);
+            }
+            PathCommand::LineTo(x, y) => {
+                cursor = (x, y);
+                push_point(&mut current, cursor);
+            }
+            PathCommand::QuadTo(cx, cy, x, y) => {
+                let p0 = cursor;
+                for i in 1..=AA_CURVE_SEGMENTS {
+                    let t = (i as f32) / (AA_CURVE_SEGMENTS as f32);
+                    let mt = 1.0 - t;
+                    let px = mt * mt * p0.0 + 2.0 * mt * t * cx + t * t * x;
+                    let py = mt * mt * p0.1 + 2.0 * mt * t * cy + t * t * y;
+                    push_point(&mut current, (px, py));
+                }
+                cursor = (x, y);
+            }
+            PathCommand::CubicTo(c1x, c1y, c2x, c2y, x, y) => {
+                let p0 = cursor;
+                for i in 1..=AA_CURVE_SEGMENTS {
+                    let t = (i as f32) / (AA_CURVE_SEGMENTS as f32);
+                    let mt = 1.0 - t;
+                    let px =
+                        mt * mt * mt * p0.0 +
+                        3.0 * mt * mt * t * c1x +
+                        3.0 * mt * t * t * c2x +
+                        t * t * t * x;
+                    let py =
+                        mt * mt * mt * p0.1 +
+                        3.0 * mt * mt * t * c1y +
+                        3.0 * mt * t * t * c2y +
+                        t * t * t * y;
+                    push_point(&mut current, (px, py));
+                }
+                cursor = (x, y);
+            }
+            PathCommand::Close => {
+                if current.len() > 1 {
+                    loops.push(std::mem::take(&mut current));
+                } else {
+                    current.clear();
+                }
+            }
+        }
+    }
+    if current.len() > 1 {
+        loops.push(current);
+    }
+
+    loops
+}
+
+// Extrudes a thin, opacity-stepped quad along one edge's normal - the
+// basic building block of the antialiasing fringe.
+#[allow(clippy::too_many_arguments)]
+fn push_quad_band(
+    a: (f32, f32),
+    b: (f32, f32),
+    normal: (f32, f32),
+    w0: f32,
+    w1: f32,
+    paint: SvgColor,
+    opacity: f32,
+    out: &mut Vec<SvgTriangle>
+) {
+    let ext = |p: (f32, f32), w: f32| (p.0 + normal.0 * w, p.1 + normal.1 * w);
+    let a0 = ext(a, w0);
+    let a1 = ext(a, w1);
+    let b0 = ext(b, w0);
+    let b1 = ext(b, w1);
+
+    out.push(SvgTriangle { p0: a0, p1: a1, p2: b1, paint, opacity });
+    out.push(SvgTriangle { p0: a0, p1: b1, p2: b0, paint, opacity });
+}
+
+// Builds a soft edge around every polygon loop by extruding thin,
+// progressively more transparent quads along each edge, symmetrically on
+// both sides of it. The half extruded inward lands on top of the
+// already-opaque fill of the same color, so its translucency is
+// invisible there - alpha-blending translucent color C over opaque C
+// leaves C unchanged. Only the outward half is a visible fringe, which is
+// what lets this skip figuring out the polygon's winding/outward
+// direction entirely.
+fn add_fill_aa_fringe(
+    loops: &[Vec<(f32, f32)>],
+    paint: SvgColor,
+    opacity: f32,
+    out: &mut Vec<SvgTriangle>
+) {
+    if matches!(paint, SvgColor::None) {
+        return;
+    }
+
+    for points in loops {
+        if points.len() < 2 {
+            continue;
+        }
+
+        for i in 0..points.len() {
+            let a = points[i];
+            let b = points[(i + 1) % points.len()];
+            let (dx, dy) = (b.0 - a.0, b.1 - a.1);
+            let len = (dx * dx + dy * dy).sqrt();
+            if len < 0.0001 {
+                continue;
+            }
+            let normal = (-dy / len, dx / len);
+
+            for band in 0..AA_BANDS {
+                let t0 = (band as f32) / (AA_BANDS as f32);
+                let t1 = ((band + 1) as f32) / (AA_BANDS as f32);
+                let w0 = AA_WIDTH * t0;
+                let w1 = AA_WIDTH * t1;
+                let band_opacity = opacity * (1.0 - (t0 + t1) * 0.5);
+
+                push_quad_band(a, b, normal, w0, w1, paint, band_opacity, out);
+                push_quad_band(a, b, (-normal.0, -normal.1), w0, w1, paint, band_opacity, out);
+            }
+        }
+    }
 }
 
 fn build_path_from_commands(commands: &[PathCommand], transform: Transform2D) -> Path {
