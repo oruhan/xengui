@@ -15,6 +15,7 @@ pub mod devtools;
 pub mod animation;
 pub mod constants;
 pub mod dispatcher;
+pub mod context;
 pub mod reconciler;
 pub mod redraw;
 pub mod task;
@@ -67,6 +68,7 @@ pub use input::{
 };
 pub use constants::*;
 pub use dispatcher::Dispatcher;
+pub use context::{ provide_context, use_context, with_context, ContextGuard };
 pub use style::{
     current_theme,
     set_active_theme,
@@ -113,6 +115,7 @@ pub use widgets::{
     TextBox,
     Tooltip,
     TooltipPlacement,
+    Portal,
 };
 pub use redraw::RedrawRequester;
 pub use task::spawn;
