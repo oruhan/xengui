@@ -357,9 +357,24 @@ fn paint_recursive(
 
     for (i, child) in widget.children().iter().enumerate() {
         let segment = crate::path_segment(child.as_ref(), i);
+        let child_path = format!("{path}.{segment}");
+
+        if child.is_portal() {
+            paint_portal_subtree(
+                child.as_ref(),
+                &child_path,
+                cache,
+                top_commands,
+                focus_commands,
+                live_keys,
+                scale_factor
+            );
+            continue;
+        }
+
         paint_recursive(
             child.as_ref(),
-            &format!("{path}.{segment}"),
+            &child_path,
             cache,
             commands,
             focus_commands,
@@ -435,6 +450,72 @@ fn apply_clip(command: &mut DrawCommand, clip_rect: Option<(f32, f32, f32, f32)>
         DrawCommand::BoxShadow(cmd) => &mut cmd.clip_rect,
     };
     *target = Some(clip_intersect(*target, ancestor_clip));
+}
+
+#[allow(clippy::too_many_arguments)]
+fn paint_portal_subtree(
+    widget: &dyn Widget,
+    path: &str,
+    cache: &mut RenderCache,
+    top_commands: &mut Vec<DrawCommand>,
+    focus_commands: &mut Vec<RectCommand>,
+    live_keys: &mut HashSet<String>,
+    scale_factor: f32
+) {
+    let layout_box = *widget.layout_box();
+    live_keys.insert(path.to_string());
+
+    let own_commands: Vec<DrawCommand> = match cache.try_reuse(path, layout_box, widget.is_dirty()) {
+        Some(cached) => cached.to_vec(),
+        None => {
+            let mut local = Vec::new();
+            {
+                let mut paint_ctx = PaintContext::new(&mut local, scale_factor);
+                widget.paint(&mut paint_ctx);
+            }
+            cache.store(path, layout_box, local.clone());
+            local
+        }
+    };
+    top_commands.extend(own_commands);
+
+    for (i, child) in widget.children().iter().enumerate() {
+        let segment = crate::path_segment(child.as_ref(), i);
+        paint_portal_subtree(
+            child.as_ref(),
+            &format!("{path}.{segment}"),
+            cache,
+            top_commands,
+            focus_commands,
+            live_keys,
+            scale_factor
+        );
+    }
+
+    let mut overlay = Vec::new();
+    {
+        let mut paint_ctx = PaintContext::new(&mut overlay, scale_factor);
+        widget.paint_overlay(&mut paint_ctx);
+    }
+    top_commands.extend(overlay);
+
+    let mut top_local = Vec::new();
+    {
+        let mut paint_ctx = PaintContext::new(&mut top_local, scale_factor);
+        widget.paint_top(&mut paint_ctx);
+    }
+    top_commands.extend(top_local);
+
+    let mut focus_local = Vec::new();
+    {
+        let mut paint_ctx = PaintContext::new(&mut focus_local, scale_factor);
+        widget.paint_focus(&mut paint_ctx);
+    }
+    for command in focus_local {
+        if let DrawCommand::Rect(rect_cmd) = command {
+            focus_commands.push(rect_cmd);
+        }
+    }
 }
 
 fn reset_dirty_recursive(widget: &mut dyn Widget) {
