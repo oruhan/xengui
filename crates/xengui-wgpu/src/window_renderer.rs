@@ -135,13 +135,19 @@ impl WgpuWindowRenderer {
             );
         };
 
+        // MSAA's resolve target (WgpuPipelines::resize_msaa) is currently
+        // never wired into an actual render pass - every draw call targets
+        // a sample_count:1 attachment (the swapchain view, or a filtered
+        // subtree's offscreen texture). Requesting a higher sample count
+        // here would build shape pipelines that mismatch those attachments,
+        // so X1 is the only value that's actually consistent right now.
         let pipelines = WgpuPipelines::new(
             &device,
             &queue,
             adapter,
             surface_format,
             user_fonts,
-            SampleCount::X4
+            SampleCount::X1
         )?;
 
         let alpha_mode = if surface_caps.alpha_modes.contains(&wgpu::CompositeAlphaMode::Opaque) {

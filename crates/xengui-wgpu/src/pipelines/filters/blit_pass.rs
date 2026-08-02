@@ -1,13 +1,20 @@
 // SPDX-License-Identifier: Apache-2.0
 use xengui::{ Color, paint };
 
+// Explicit padding mirrors WGSL's std140-style alignment rules (vec4
+// aligns to 16 bytes, vec2 to 8 bytes, and the whole struct rounds up to
+// its largest member's alignment) - Rust's own repr(C) layout only uses
+// each field's natural 4-byte alignment, so without this padding the
+// uniform buffer ends up smaller than what the shader's BlitParams expects.
 #[repr(C)]
 #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
 struct GpuBlitParams {
     tint: [f32; 4],
     tint_mix: f32,
+    _pad0: f32,
     offset: [f32; 2],
-    _pad: f32,
+    _pad1: f32,
+    _pad2: [f32; 3],
 }
 
 /// A fullscreen-triangle "copy with optional offset/tint" pass, the
@@ -239,8 +246,10 @@ impl BlitPass {
         let params = GpuBlitParams {
             tint: tint_rgba,
             tint_mix,
+            _pad0: 0.0,
             offset: [offset_uv.0, offset_uv.1],
-            _pad: 0.0,
+            _pad1: 0.0,
+            _pad2: [0.0; 3],
         };
         queue.write_buffer(&self.uniform_buffer, 0, bytemuck::bytes_of(&params));
 
