@@ -189,6 +189,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                             View::new()
                                                 .display(Flex)
                                                 .flex_direction(Row)
+                                                .background(Color::TRANSPARENT)
                                                 .gap(20, 0)
                                                 .child(
                                                     xen_router::router_link("/docs").label("Docs")

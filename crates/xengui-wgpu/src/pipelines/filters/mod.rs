@@ -80,7 +80,15 @@ impl FilterEngine {
 
         // Composites `source` centered into a padded working texture so
         // every subsequent pass has headroom for blur without clipping.
+        // Source (src_w x src_h) and target (out_w x out_h) differ in
+        // physical size, so mapping target UV onto source UV needs a
+        // scale factor in addition to the offset - offset alone would
+        // only correctly place a source the same size as the target.
         let mut current = self.pool.acquire(device, out_w, out_h);
+        let scale_u = (out_w as f32) / (src_w as f32);
+        let scale_v = (out_h as f32) / (src_h as f32);
+        let offset_u = -padding_px / (src_w as f32);
+        let offset_v = -padding_px / (src_h as f32);
         self.blit.run(
             device,
             queue,
@@ -89,8 +97,8 @@ impl FilterEngine {
             &current.view,
             out_w,
             out_h,
-            (padding_px / (out_w as f32), padding_px / (out_h as f32)),
-            (src_w, src_h),
+            (offset_u, offset_v),
+            (scale_u, scale_v),
             None
         );
 
@@ -165,7 +173,9 @@ impl FilterEngine {
     /// Composites a filtered subtree's output onto `target` at `dest_rect`
     /// (physical px), blending over whatever `target` already contains.
     /// `clip_rect`, if given, restricts the composite to an ancestor's
-    /// own clip region.
+    /// own clip region. `source_uv_rect` (offset_u, offset_v, scale_u,
+    /// scale_v) crops the sampled region of `source` - pass `(0.0, 0.0,
+    /// 1.0, 1.0)` to use the whole texture unmodified.
     #[allow(clippy::too_many_arguments)]
     pub fn composite(
         &self,
@@ -177,7 +187,8 @@ impl FilterEngine {
         dest_rect: (f32, f32, f32, f32),
         clip_rect: Option<(f32, f32, f32, f32)>,
         target_width: u32,
-        target_height: u32
+        target_height: u32,
+        source_uv_rect: (f32, f32, f32, f32)
     ) {
         self.blit.run_over(
             device,
@@ -188,7 +199,8 @@ impl FilterEngine {
             dest_rect,
             clip_rect,
             target_width,
-            target_height
+            target_height,
+            source_uv_rect
         );
     }
 
@@ -216,7 +228,7 @@ impl FilterEngine {
             target_width,
             target_height,
             (0.0, 0.0),
-            (target_width, target_height),
+            (1.0, 1.0),
             None
         );
     }
@@ -260,7 +272,7 @@ impl FilterEngine {
             w,
             h,
             (0.0, 0.0),
-            (w, h),
+            (1.0, 1.0),
             Some(shadow.color)
         );
 
@@ -291,7 +303,7 @@ impl FilterEngine {
             w,
             h,
             offset_uv,
-            (w, h),
+            (1.0, 1.0),
             None
         );
         self.blit.run_over(
@@ -303,7 +315,8 @@ impl FilterEngine {
             (0.0, 0.0, w as f32, h as f32),
             None,
             w,
-            h
+            h,
+            (0.0, 0.0, 1.0, 1.0)
         );
 
         composited

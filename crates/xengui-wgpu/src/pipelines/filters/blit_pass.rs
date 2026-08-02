@@ -13,8 +13,8 @@ struct GpuBlitParams {
     tint_mix: f32,
     _pad0: f32,
     offset: [f32; 2],
-    _pad1: f32,
-    _pad2: [f32; 3],
+    scale: [f32; 2],
+    _pad1: [f32; 2],
 }
 
 /// A fullscreen-triangle "copy with optional offset/tint" pass, the
@@ -155,11 +155,12 @@ impl BlitPass {
         Self { pipeline, bind_group_layout, sampler, uniform_buffer, pipeline_blend }
     }
 
-    /// Copies `source` into `target`, filling the whole `target_width` x
-    /// `target_height` texture, offset by `offset_uv` (fractional UV
-    /// units) and optionally tinted into a solid-color alpha silhouette
-    /// when `tint` is `Some` (used to build the shadow shape for
-    /// [`xengui::Filter::DropShadow`] before it's blurred).
+    /// `scale_uv` lets the caller map a smaller/larger source texture onto
+    /// `target`'s own UV space - e.g. centering a `src_w x src_h` source
+    /// inside a bigger, padded target requires both an offset *and* a
+    /// scale, since a straight offset alone can't account for the size
+    /// mismatch between the two textures. Pass `(1.0, 1.0)` when source
+    /// and target share the same physical size.
     #[allow(clippy::too_many_arguments)]
     pub fn run(
         &self,
@@ -171,7 +172,7 @@ impl BlitPass {
         target_width: u32,
         target_height: u32,
         offset_uv: (f32, f32),
-        _source_size: (u32, u32),
+        scale_uv: (f32, f32),
         tint: Option<Color>
     ) {
         self.dispatch(
@@ -185,6 +186,7 @@ impl BlitPass {
             target_width,
             target_height,
             offset_uv,
+            scale_uv,
             tint,
             false
         );
@@ -194,6 +196,12 @@ impl BlitPass {
     /// at `dest_rect` (physical px), using standard alpha-over blending
     /// instead of overwriting it. `clip_rect` (if given) restricts the
     /// composite to an ancestor's own clip region via a scissor rect.
+    ///
+    /// `source_uv_rect` is `(offset_u, offset_v, scale_u, scale_v)`: lets
+    /// the caller sample only a sub-rectangle of `source` instead of the
+    /// whole texture - used to crop off padding that would otherwise fall
+    /// outside the render target (e.g. a blurred widget flush against the
+    /// screen's own edge) without distorting the visible portion.
     #[allow(clippy::too_many_arguments)]
     pub fn run_over(
         &self,
@@ -205,8 +213,10 @@ impl BlitPass {
         dest_rect: (f32, f32, f32, f32),
         clip_rect: Option<(f32, f32, f32, f32)>,
         target_width: u32,
-        target_height: u32
+        target_height: u32,
+        source_uv_rect: (f32, f32, f32, f32)
     ) {
+        let (offset_u, offset_v, scale_u, scale_v) = source_uv_rect;
         self.dispatch(
             device,
             queue,
@@ -217,7 +227,8 @@ impl BlitPass {
             clip_rect,
             target_width,
             target_height,
-            (0.0, 0.0),
+            (offset_u, offset_v),
+            (scale_u, scale_v),
             None,
             true
         );
@@ -236,6 +247,7 @@ impl BlitPass {
         target_width: u32,
         target_height: u32,
         offset_uv: (f32, f32),
+        scale_uv: (f32, f32),
         tint: Option<Color>,
         blend_over: bool
     ) {
@@ -248,8 +260,8 @@ impl BlitPass {
             tint_mix,
             _pad0: 0.0,
             offset: [offset_uv.0, offset_uv.1],
-            _pad1: 0.0,
-            _pad2: [0.0; 3],
+            scale: [scale_uv.0, scale_uv.1],
+            _pad1: [0.0; 2],
         };
         queue.write_buffer(&self.uniform_buffer, 0, bytemuck::bytes_of(&params));
 

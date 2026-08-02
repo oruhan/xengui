@@ -402,13 +402,19 @@ fn paint_recursive(
 
     if let Some(backdrop_chain) = widget.backdrop_filter().filter(|c| !c.is_empty()) {
         let b = layout_box;
+        let own_bounds = (b.x, b.y, b.width, b.height);
+        // Backdrop-filtered output must stay confined to the widget's own
+        // box - without intersecting with its own bounds here, the blur
+        // padding added during compositing bleeds into whatever sits
+        // above/below the widget instead of stopping at its edges.
+        let backdrop_clip = Some(clip_intersect(clip_rect, own_bounds));
         commands.push((
             z_index,
             DrawCommand::BackdropFilter(
                 Box::new(BackdropFilterCommand {
                     chain: backdrop_chain.clone(),
-                    bounds: (b.x, b.y, b.width, b.height),
-                    clip_rect,
+                    bounds: own_bounds,
+                    clip_rect: backdrop_clip,
                 })
             ),
         ));

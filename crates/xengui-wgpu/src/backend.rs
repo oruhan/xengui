@@ -778,7 +778,8 @@ impl<'a> RenderBackend for WgpuFrame<'a> {
             dest_rect,
             None,
             self.width,
-            self.height
+            self.height,
+            (0.0, 0.0, 1.0, 1.0)
         );
     }
 
@@ -859,11 +860,27 @@ impl<'a> RenderBackend for WgpuFrame<'a> {
             self.scale_factor
         );
 
-        let dest_rect = (
-            (src_x as f32) - filtered.padding,
-            (src_y as f32) - filtered.padding,
-            filtered.width as f32,
-            filtered.height as f32,
+        // Backdrop-filter must stay exactly clipped to the widget's own
+        // box - unlike a foreground filter, blurred backdrop content must
+        // never bleed beyond the element it belongs to (matching CSS
+        // `backdrop-filter` semantics). The padding FilterEngine::apply
+        // added around the source exists only so the blur convolution has
+        // enough neighboring pixels to sample correctly at the edges; the
+        // unpadded source always sits centered at (pad, pad) within the
+        // filtered texture regardless of where the widget sits on screen,
+        // so cropping exactly that inner (src_w x src_h) region back out
+        // and compositing it at the widget's real position/size recovers
+        // the correct result without any screen-edge-relative math.
+        let pad = filtered.padding;
+        let filtered_w = filtered.width as f32;
+        let filtered_h = filtered.height as f32;
+
+        let dest_rect = (src_x as f32, src_y as f32, src_w as f32, src_h as f32);
+        let source_uv_rect = (
+            pad / filtered_w.max(1.0),
+            pad / filtered_h.max(1.0),
+            (src_w as f32) / filtered_w.max(1.0),
+            (src_h as f32) / filtered_h.max(1.0),
         );
 
         self.pipelines.filters.composite(
@@ -875,7 +892,8 @@ impl<'a> RenderBackend for WgpuFrame<'a> {
             dest_rect,
             clip_rect,
             self.width,
-            self.height
+            self.height,
+            source_uv_rect
         );
     }
 
