@@ -11,7 +11,9 @@ use crate::{ platform, ClipboardError };
 ///
 /// let clipboard = Clipboard::new();
 ///
-/// clipboard.set_text("Hello, World!").unwrap();
+/// clipboard.set_text("Hello, World!", |result| {
+///     println!("{result:?}");
+/// });
 ///
 /// clipboard.get_text(|result| {
 ///     println!("{result:?}");

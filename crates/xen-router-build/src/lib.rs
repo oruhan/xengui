@@ -103,9 +103,20 @@ fn walk(dir: &Path, name: &str) -> DirNode {
 }
 
 fn sanitize(path: &str) -> String {
-    path.chars()
-        .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
-        .collect()
+    let mut out = String::new();
+    let mut last_was_underscore = false;
+
+    for c in path.chars() {
+        if c.is_ascii_alphanumeric() {
+            out.push(c);
+            last_was_underscore = false;
+        } else if !last_was_underscore {
+            out.push('_');
+            last_was_underscore = true;
+        }
+    }
+
+    out.trim_matches('_').to_string()
 }
 
 #[derive(Clone)]

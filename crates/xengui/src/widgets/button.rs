@@ -51,7 +51,7 @@ pub enum IconPosition {
 /// ## Example
 ///
 /// ```no_run
-/// use xengui::prelude::*;
+/// use xengui::Button;
 ///
 /// let button = Button::new()
 ///     .label("Click me");

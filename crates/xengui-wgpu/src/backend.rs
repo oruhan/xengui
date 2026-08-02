@@ -421,6 +421,8 @@ impl<'a> WgpuFrame<'a> {
         if !cleared {
             let _ = shape_pass!();
         }
+
+        let _ = cleared;
     }
 }
 
