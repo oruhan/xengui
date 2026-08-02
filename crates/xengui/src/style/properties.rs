@@ -100,6 +100,12 @@ pub struct Style {
     /// Non-inherited, like `box_shadow`.
     pub filter: Option<FilterChain>,
 
+    /// GPU filter chain applied to whatever has already been painted
+    /// behind this widget's own bounds (a live snapshot of the frame so
+    /// far), before this widget paints its own background/content on top -
+    /// matches CSS `backdrop-filter`. Non-inherited, like `filter`.
+    pub backdrop_filter: Option<FilterChain>,
+
     // Sizing
     pub size: Option<Size>,
     pub min_size: Option<Size>,
@@ -196,6 +202,7 @@ impl Style {
             box_shadow: patch.box_shadow.clone().or_else(|| self.box_shadow.clone()),
 
             filter: patch.filter.clone().or_else(|| self.filter.clone()),
+            backdrop_filter: patch.backdrop_filter.clone().or_else(|| self.backdrop_filter.clone()),
 
             size: patch.size.or_else(|| self.size),
             min_size: patch.min_size.or_else(|| self.min_size),

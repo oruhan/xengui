@@ -192,6 +192,35 @@ impl FilterEngine {
         );
     }
 
+    /// Copies `source` into `target`, overwriting it entirely - a plain
+    /// full-frame blit rather than an alpha-blended composite. Used to
+    /// present the accumulated scene target onto the real swapchain view
+    /// once a frame is done.
+    #[allow(clippy::too_many_arguments)]
+    pub fn blit_full(
+        &self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        encoder: &mut wgpu::CommandEncoder,
+        source: &wgpu::TextureView,
+        target: &wgpu::TextureView,
+        target_width: u32,
+        target_height: u32
+    ) {
+        self.blit.run(
+            device,
+            queue,
+            encoder,
+            source,
+            target,
+            target_width,
+            target_height,
+            (0.0, 0.0),
+            (target_width, target_height),
+            None
+        );
+    }
+
     #[allow(clippy::too_many_arguments)]
     fn run_color_segment(
         &mut self,

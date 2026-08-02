@@ -298,7 +298,6 @@ impl WgpuWindowRenderer {
             format!("config={}x{}", self.config.width, self.config.height)
         );
 
-        let view = frame.texture.create_view(&Default::default());
         let mut encoder = self.device.create_command_encoder(&Default::default());
 
         {
@@ -306,7 +305,6 @@ impl WgpuWindowRenderer {
                 &self.device,
                 &self.queue,
                 &mut encoder,
-                &view,
                 frame_width,
                 frame_height
             );
@@ -319,6 +317,20 @@ impl WgpuWindowRenderer {
                 frame_height
             );
         }
+
+        // Everything above painted into an offscreen scene target instead
+        // of the swapchain directly, so a backdrop-blur widget could read
+        // back already-painted content mid-frame - this final blit is what
+        // actually presents that scene onto the real surface.
+        let surface_view = frame.texture.create_view(&Default::default());
+        self.pipelines.present_scene(
+            &self.device,
+            &self.queue,
+            &mut encoder,
+            &surface_view,
+            frame_width,
+            frame_height
+        );
 
         xengui::devtools::record("frame:submit");
         self.queue.submit(Some(encoder.finish()));

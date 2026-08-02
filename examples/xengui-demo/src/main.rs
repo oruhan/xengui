@@ -154,7 +154,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 .scrollbar_gutter(ScrollbarGutter::Stable)
                                 .scrollbar_track_color(Color::NEUTRAL_800)
                                 .overscroll(Overscroll::Stretch)
-                                /* Navbar */
+                                /* Header */
                                 .child(
                                     View::new()
                                         .position(Position::Sticky)
@@ -166,7 +166,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                         .justify_content(JustifyContent::SpaceBetween)
                                         .width(pct!(100))
                                         .height(px!(55))
-                                        .background(|theme: &Theme| theme.surface)
+                                        .backdrop_filter(Filter::Blur(Length::px(16.0)))
+                                        .background(Color::rgba(20, 20, 20, 140))
                                         .box_shadow(
                                             BoxShadow::new(
                                                 0.0,

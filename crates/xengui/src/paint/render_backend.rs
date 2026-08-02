@@ -38,6 +38,20 @@ pub trait RenderBackend {
         bounds: (f32, f32, f32, f32)
     );
 
+    /// Captures whatever has already been painted within `bounds` at this
+    /// point in the frame, runs `chain` over that live snapshot, and
+    /// composites the blurred result back in place - matches CSS
+    /// `backdrop-filter`. Backends that can't read back the frame in
+    /// progress may implement this as a no-op; the widget's own
+    /// background/content still paints normally afterward, it just won't
+    /// show a blurred backdrop underneath.
+    fn draw_backdrop_filtered(
+        &mut self,
+        _chain: &crate::FilterChain,
+        _bounds: (f32, f32, f32, f32),
+        _clip_rect: Option<(f32, f32, f32, f32)>
+    ) {}
+
     /// Drains underline/strike/overline rects queued by `draw_text` calls
     /// since the last call to this method.
     fn take_text_decorations(&mut self) -> Vec<RectCommand>;

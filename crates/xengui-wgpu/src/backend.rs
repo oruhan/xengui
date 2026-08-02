@@ -39,6 +39,14 @@ pub struct WgpuPipelines {
     /// Recreated on resize.
     msaa_texture: Option<wgpu::Texture>,
     msaa_view: Option<wgpu::TextureView>,
+    // Everything is painted into this offscreen target instead of the
+    // swapchain directly, so a backdrop-filter widget can read back
+    // already-painted content mid-frame - not possible against a
+    // swapchain image on most backends.
+    scene_texture: wgpu::Texture,
+    scene_view: wgpu::TextureView,
+    scene_width: u32,
+    scene_height: u32,
 }
 
 impl WgpuPipelines {
@@ -52,6 +60,25 @@ impl WgpuPipelines {
     ) -> Result<Self, String> {
         let sample_count = requested_samples.clamp_to_adapter(adapter, surface_format).as_u32();
 
+        // Placeholder 1x1 target; the real size is (re)created lazily by
+        // `ensure_scene_target` on the first `begin_frame` call, once the
+        // actual surface dimensions are known.
+        let scene_texture = device.create_texture(
+            &(wgpu::TextureDescriptor {
+                label: Some("xengui scene target"),
+                size: wgpu::Extent3d { width: 1, height: 1, depth_or_array_layers: 1 },
+                mip_level_count: 1,
+                sample_count: 1,
+                dimension: wgpu::TextureDimension::D2,
+                format: surface_format,
+                usage: wgpu::TextureUsages::RENDER_ATTACHMENT |
+                wgpu::TextureUsages::TEXTURE_BINDING |
+                wgpu::TextureUsages::COPY_SRC,
+                view_formats: &[],
+            })
+        );
+        let scene_view = scene_texture.create_view(&Default::default());
+
         Ok(Self {
             rect: RectPipeline::new(device, surface_format, sample_count),
             triangle: TrianglePipeline::new(device, surface_format, sample_count),
@@ -63,7 +90,55 @@ impl WgpuPipelines {
             sample_count,
             msaa_texture: None,
             msaa_view: None,
+            scene_texture,
+            scene_view,
+            scene_width: 0,
+            scene_height: 0,
         })
+    }
+
+    // (Re)creates the scene target when the surface size changes. `new()`
+    // seeds scene_width/height at 0 so the very first begin_frame call
+    // always recreates it at the real size.
+    fn ensure_scene_target(&mut self, device: &wgpu::Device, width: u32, height: u32) {
+        let width = width.max(1);
+        let height = height.max(1);
+        if self.scene_width == width && self.scene_height == height {
+            return;
+        }
+        let texture = device.create_texture(
+            &(wgpu::TextureDescriptor {
+                label: Some("xengui scene target"),
+                size: wgpu::Extent3d { width, height, depth_or_array_layers: 1 },
+                mip_level_count: 1,
+                sample_count: 1,
+                dimension: wgpu::TextureDimension::D2,
+                format: self.surface_format,
+                usage: wgpu::TextureUsages::RENDER_ATTACHMENT |
+                wgpu::TextureUsages::TEXTURE_BINDING |
+                wgpu::TextureUsages::COPY_SRC,
+                view_formats: &[],
+            })
+        );
+        self.scene_view = texture.create_view(&Default::default());
+        self.scene_texture = texture;
+        self.scene_width = width;
+        self.scene_height = height;
+    }
+
+    /// Composites the accumulated scene target onto `target` (the real
+    /// swapchain view), overwriting it entirely - the final step of every
+    /// frame.
+    pub fn present_scene(
+        &self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        encoder: &mut wgpu::CommandEncoder,
+        target: &wgpu::TextureView,
+        width: u32,
+        height: u32
+    ) {
+        self.filters.blit_full(device, queue, encoder, &self.scene_view, target, width, height);
     }
 
     /// The format every pipeline (including the filter engine's own
@@ -115,15 +190,17 @@ impl WgpuPipelines {
         device: &'a wgpu::Device,
         queue: &'a wgpu::Queue,
         encoder: &'a mut wgpu::CommandEncoder,
-        view: &'a wgpu::TextureView,
         width: u32,
         height: u32
     ) -> WgpuFrame<'a> {
+        self.ensure_scene_target(device, width, height);
         self.rect.reset_frame();
         self.triangle.reset_frame();
         self.image.reset_frame();
         self.box_shadow.reset_frame();
         self.filters.reset_frame();
+
+        let view = self.scene_view.clone();
 
         WgpuFrame {
             pipelines: self,
@@ -149,7 +226,7 @@ pub struct WgpuFrame<'a> {
     device: &'a wgpu::Device,
     queue: &'a wgpu::Queue,
     encoder: &'a mut wgpu::CommandEncoder,
-    view: &'a wgpu::TextureView,
+    view: wgpu::TextureView,
     width: u32,
     height: u32,
     background: Color,
@@ -172,7 +249,7 @@ impl<'a> WgpuFrame<'a> {
                 label: Some("xengui clear pass"),
                 color_attachments: &[
                     Some(wgpu::RenderPassColorAttachment {
-                        view: self.view,
+                        view: &self.view,
                         resolve_target: None,
                         ops: wgpu::Operations {
                             load: wgpu::LoadOp::Clear(wgpu::Color {
@@ -414,6 +491,10 @@ impl<'a> WgpuFrame<'a> {
                         target_height
                     );
                 }
+                // An isolated filtered subtree has no "behind" content of
+                // its own to snapshot, so a nested backdrop-filter inside
+                // it is skipped - its own background/children still paint.
+                DrawCommand::BackdropFilter(_) => {}
             }
         }
         flush_run!();
@@ -449,7 +530,7 @@ impl<'a> RenderBackend for WgpuFrame<'a> {
                 label: Some("xengui shape pass"),
                 color_attachments: &[
                     Some(wgpu::RenderPassColorAttachment {
-                        view: self.view,
+                        view: &self.view,
                         resolve_target: None,
                         ops: wgpu::Operations { load, store: wgpu::StoreOp::Store },
                         depth_slice: None,
@@ -481,7 +562,7 @@ impl<'a> RenderBackend for WgpuFrame<'a> {
                 label: Some("xengui shape pass"),
                 color_attachments: &[
                     Some(wgpu::RenderPassColorAttachment {
-                        view: self.view,
+                        view: &self.view,
                         resolve_target: None,
                         ops: wgpu::Operations { load, store: wgpu::StoreOp::Store },
                         depth_slice: None,
@@ -513,7 +594,7 @@ impl<'a> RenderBackend for WgpuFrame<'a> {
                 label: Some("xengui shape pass"),
                 color_attachments: &[
                     Some(wgpu::RenderPassColorAttachment {
-                        view: self.view,
+                        view: &self.view,
                         resolve_target: None,
                         ops: wgpu::Operations { load, store: wgpu::StoreOp::Store },
                         depth_slice: None,
@@ -545,7 +626,7 @@ impl<'a> RenderBackend for WgpuFrame<'a> {
                 label: Some("xengui shape pass"),
                 color_attachments: &[
                     Some(wgpu::RenderPassColorAttachment {
-                        view: self.view,
+                        view: &self.view,
                         resolve_target: None,
                         ops: wgpu::Operations { load, store: wgpu::StoreOp::Store },
                         depth_slice: None,
@@ -586,7 +667,7 @@ impl<'a> RenderBackend for WgpuFrame<'a> {
                     self.device,
                     self.queue,
                     self.encoder,
-                    self.view,
+                    &self.view,
                     self.width,
                     self.height
                 )
@@ -693,9 +774,106 @@ impl<'a> RenderBackend for WgpuFrame<'a> {
             self.queue,
             self.encoder,
             &filtered.view,
-            self.view,
+            &self.view,
             dest_rect,
             None,
+            self.width,
+            self.height
+        );
+    }
+
+    fn draw_backdrop_filtered(
+        &mut self,
+        chain: &FilterChain,
+        bounds: (f32, f32, f32, f32),
+        clip_rect: Option<(f32, f32, f32, f32)>
+    ) {
+        let (bx, by, bw, bh) = bounds;
+
+        // Clamps the capture rect to the scene's own bounds and to any
+        // ancestor clip, so a widget straddling the edge (or scrolled
+        // partly out of view) never asks the GPU to copy outside the
+        // texture.
+        let (cx, cy, cw, ch) = clip_rect.unwrap_or((
+            0.0,
+            0.0,
+            self.width as f32,
+            self.height as f32,
+        ));
+        let left = bx.max(cx).max(0.0);
+        let top = by.max(cy).max(0.0);
+        let right = (bx + bw).min(cx + cw).min(self.width as f32);
+        let bottom = (by + bh).min(cy + ch).min(self.height as f32);
+
+        let src_x = left.round() as u32;
+        let src_y = top.round() as u32;
+        let src_w = (right - left).round().max(0.0) as u32;
+        let src_h = (bottom - top).round().max(0.0) as u32;
+
+        if src_w == 0 || src_h == 0 {
+            return;
+        }
+
+        // Live snapshot of the scene as painted so far, taken into its own
+        // texture since the scene target can't be bound as a shader
+        // resource while it's still the active render target.
+        let snapshot = self.device.create_texture(
+            &(wgpu::TextureDescriptor {
+                label: Some("xengui backdrop snapshot"),
+                size: wgpu::Extent3d { width: src_w, height: src_h, depth_or_array_layers: 1 },
+                mip_level_count: 1,
+                sample_count: 1,
+                dimension: wgpu::TextureDimension::D2,
+                format: self.pipelines.surface_format(),
+                usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+                view_formats: &[],
+            })
+        );
+
+        self.encoder.copy_texture_to_texture(
+            wgpu::TexelCopyTextureInfo {
+                texture: &self.pipelines.scene_texture,
+                mip_level: 0,
+                origin: wgpu::Origin3d { x: src_x, y: src_y, z: 0 },
+                aspect: wgpu::TextureAspect::All,
+            },
+            wgpu::TexelCopyTextureInfo {
+                texture: &snapshot,
+                mip_level: 0,
+                origin: wgpu::Origin3d::ZERO,
+                aspect: wgpu::TextureAspect::All,
+            },
+            wgpu::Extent3d { width: src_w, height: src_h, depth_or_array_layers: 1 }
+        );
+
+        let snapshot_view = snapshot.create_view(&Default::default());
+
+        let filtered = self.pipelines.filters.apply(
+            self.device,
+            self.queue,
+            self.encoder,
+            &snapshot_view,
+            src_w,
+            src_h,
+            chain,
+            self.scale_factor
+        );
+
+        let dest_rect = (
+            (src_x as f32) - filtered.padding,
+            (src_y as f32) - filtered.padding,
+            filtered.width as f32,
+            filtered.height as f32,
+        );
+
+        self.pipelines.filters.composite(
+            self.device,
+            self.queue,
+            self.encoder,
+            &filtered.view,
+            &self.view,
+            dest_rect,
+            clip_rect,
             self.width,
             self.height
         );
@@ -764,6 +942,13 @@ fn translate_draw_command(command: &DrawCommand, ox: f32, oy: f32) -> DrawComman
                 .map(|c| translate_draw_command(c, ox, oy))
                 .collect();
             DrawCommand::Filtered(nested)
+        }
+        DrawCommand::BackdropFilter(cmd) => {
+            let mut cmd = cmd.clone();
+            cmd.bounds.0 -= ox;
+            cmd.bounds.1 -= oy;
+            cmd.clip_rect = shift_clip(cmd.clip_rect);
+            DrawCommand::BackdropFilter(cmd)
         }
     }
 }

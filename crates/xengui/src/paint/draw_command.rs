@@ -83,6 +83,20 @@ pub struct FilteredCommand {
     pub clip_rect: Option<(f32, f32, f32, f32)>,
 }
 
+/// A live snapshot-and-filter pass: captures whatever has already been
+/// painted within `bounds` so far this frame, runs `chain` (typically a
+/// blur) over that snapshot, and composites the result back at the same
+/// spot - matches CSS `backdrop-filter`. Unlike `FilteredCommand`, this
+/// carries no commands of its own; it only reads the frame as it stands
+/// at this point in paint order. Produced by `FrameRenderer` for any
+/// widget whose `computed_style().backdrop_filter` is set.
+#[derive(Clone, Debug)]
+pub struct BackdropFilterCommand {
+    pub chain: crate::FilterChain,
+    pub bounds: (f32, f32, f32, f32),
+    pub clip_rect: Option<(f32, f32, f32, f32)>,
+}
+
 #[derive(Clone, Debug)]
 pub enum DrawCommand {
     Rect(RectCommand),
@@ -91,6 +105,7 @@ pub enum DrawCommand {
     Image(Box<ImageCommand>),
     BoxShadow(BoxShadowCommand),
     Filtered(Box<FilteredCommand>),
+    BackdropFilter(Box<BackdropFilterCommand>),
 }
 
 // Converts a logical clip rect (top-left origin) into a physical scissor

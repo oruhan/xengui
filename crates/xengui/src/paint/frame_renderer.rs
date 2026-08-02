@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 use crate::{
     AnimationManager,
+    BackdropFilterCommand,
     BoxShadowCommand,
     DrawCommand,
     FilteredCommand,
@@ -139,6 +140,7 @@ impl FrameRenderer {
             Text,
             BoxShadow,
             Filtered,
+            BackdropFilter,
         }
 
         let mut current_kind: Option<RunKind> = None;
@@ -162,6 +164,7 @@ impl FrameRenderer {
                         }
                     }
                     Some(RunKind::Filtered) => {}
+                    Some(RunKind::BackdropFilter) => {}
                     None => {}
                 }
                 rect_buf.clear();
@@ -222,6 +225,14 @@ impl FrameRenderer {
                     backend.flush_text();
                     backend.draw_filtered(&filtered.commands, &filtered.chain, filtered.bounds);
                 }
+                DrawCommand::BackdropFilter(cmd) => {
+                    if current_kind != Some(RunKind::BackdropFilter) {
+                        flush_run!();
+                        current_kind = Some(RunKind::BackdropFilter);
+                    }
+                    backend.flush_text();
+                    backend.draw_backdrop_filtered(&cmd.chain, cmd.bounds, cmd.clip_rect);
+                }
             }
         }
         flush_run!();
@@ -252,6 +263,7 @@ impl FrameRenderer {
                         }
                         Some(RunKind::BoxShadow) => backend.draw_box_shadows(&top_shadow_buf),
                         Some(RunKind::Filtered) => {}
+                        Some(RunKind::BackdropFilter) => {}
                         None => {}
                     }
                     top_rect_buf.clear();
@@ -298,6 +310,10 @@ impl FrameRenderer {
                         top_shadow_buf.push(cmd);
                     }
                     DrawCommand::Filtered(_) => {}
+                    // Overlay/top-layer content never produces a backdrop
+                    // filter today - paint_recursive only emits it for the
+                    // main tree walk.
+                    DrawCommand::BackdropFilter(_) => {}
                 }
             }
             flush_top_run!();
@@ -382,6 +398,20 @@ fn paint_recursive(
         commands.push((z_index, DrawCommand::Filtered(Box::new(filtered_cmd))));
         paint_chrome_layers_inline(widget, clip_rect, scale_factor, top_commands, focus_commands);
         return;
+    }
+
+    if let Some(backdrop_chain) = widget.backdrop_filter().filter(|c| !c.is_empty()) {
+        let b = layout_box;
+        commands.push((
+            z_index,
+            DrawCommand::BackdropFilter(
+                Box::new(BackdropFilterCommand {
+                    chain: backdrop_chain.clone(),
+                    bounds: (b.x, b.y, b.width, b.height),
+                    clip_rect,
+                })
+            ),
+        ));
     }
 
     let own_commands: Vec<DrawCommand> = match cache.try_reuse(path, layout_box, widget.is_dirty()) {
@@ -569,6 +599,7 @@ fn apply_clip(command: &mut DrawCommand, clip_rect: Option<(f32, f32, f32, f32)>
         DrawCommand::Triangle(cmd) => &mut cmd.clip_rect,
         DrawCommand::BoxShadow(cmd) => &mut cmd.clip_rect,
         DrawCommand::Filtered(cmd) => &mut cmd.clip_rect,
+        DrawCommand::BackdropFilter(cmd) => &mut cmd.clip_rect,
     };
     *target = Some(clip_intersect(*target, ancestor_clip));
 }

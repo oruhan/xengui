@@ -372,7 +372,7 @@ pub trait Widget: Any {
         let Some(border) = &self.style().border else {
             return true;
         };
-        
+
         let radius = border.radius.map(|r| r.max_value()).unwrap_or(0.0);
 
         if radius <= 0.0 {
@@ -517,6 +517,14 @@ pub trait Widget: Any {
     /// paint path.
     fn filter(&self) -> Option<&crate::FilterChain> {
         self.computed_style().filter.as_ref()
+    }
+
+    /// GPU filter chain applied to the already-painted frame content
+    /// behind this widget's own bounds, before this widget paints its own
+    /// background/children on top. `None` (the default) skips the
+    /// backdrop-capture pass entirely.
+    fn backdrop_filter(&self) -> Option<&crate::FilterChain> {
+        self.computed_style().backdrop_filter.as_ref()
     }
 
     /// `Some(...)` marks this widget as backed by a real DOM `<input>` on

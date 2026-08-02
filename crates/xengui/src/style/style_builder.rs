@@ -260,6 +260,25 @@ pub trait StyleBuilder: Sized {
         self
     }
 
+    /// Applies a GPU-accelerated filter chain (e.g. blur) to whatever has
+    /// already been painted directly behind this widget, before this
+    /// widget's own background/children are painted on top — matches CSS
+    /// `backdrop-filter`. Distinct from `filter`, which filters this
+    /// widget's own rendered content instead of what's behind it. Pair
+    /// this with a semi-transparent `background` for the usual frosted-
+    /// glass look; backends without live-frame support simply skip it.
+    fn backdrop_filter(mut self, chain: impl Into<crate::FilterChain>) -> Self {
+        self.style_mut().backdrop_filter = Some(chain.into());
+        self.mark_dirty();
+        self
+    }
+
+    fn backdrop_filter_none(mut self) -> Self {
+        self.style_mut().backdrop_filter = None;
+        self.mark_dirty();
+        self
+    }
+
     fn min_width<M>(mut self, width: impl IntoThemed<Length, M>) -> Self {
         self.style_mut().min_size.get_or_insert_with(Default::default).width = Some(
             width.resolve_themed()
