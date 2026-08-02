@@ -14,6 +14,7 @@ pub mod rich_text;
 pub mod portal;
 pub mod kbd;
 pub mod switch;
+pub mod table;
 
 pub use view::View;
 pub use layout_sugar::{ Column, Row };
@@ -37,6 +38,7 @@ pub use rich_text::{ RichText, TextSpan };
 pub use portal::Portal;
 pub use kbd::Kbd;
 pub use switch::Switch;
+pub use table::{ Table, TableColumn, TableRow };
 
 #[cfg(not(target_arch = "wasm32"))]
 pub use image::image_source_from_path;

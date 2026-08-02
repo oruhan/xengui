@@ -1,15 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
-//! Prebuilt icon widgets. Each function returns a fresh `xengui::Svg` using
+//! Prebuilt icon widgets. Each constant is raw SVG markup using
 //! `currentColor`, so it automatically follows the parent widget's text
-//! color without any manual styling.
+//! color without any manual styling. No dependency on xengui itself -
+//! consumers parse/render the string however their own GUI stack does.
 //!
-//! Adding a new icon: open the icon on lucide.dev, click "Copy SVG", paste
-//! it as a `const &str` below, then add a one-line wrapper function - no
-//! extra dependency is needed since this crate only ever parses raw SVG
-//! markup through `xen-svg`.
+//! Adding a new icon: open it on lucide.dev, click "Copy SVG", save it as
+//! `icons/<name>.svg`, then add one `include_str!` line below.
 
-pub const CHECK_SVG: &str =
-    r#"<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>"#;
-
-pub const X_SVG: &str =
-    r#"<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>"#;
+pub const X_SVG: &str = include_str!("../icons/x.svg");
+pub const CHECK_SVG: &str = include_str!("../icons/check.svg");
+pub const SEARCH_SVG: &str = include_str!("../icons/search.svg");
+pub const PLUS_SVG: &str = include_str!("../icons/plus.svg");
+pub const MINUS_SVG: &str = include_str!("../icons/minus.svg");

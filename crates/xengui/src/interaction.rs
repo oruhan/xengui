@@ -158,7 +158,6 @@ impl Interaction {
                     match state {
                         ElementState::Pressed => {
                             self.pressed = true;
-                            // a pointer press dismisses the ring, even if the widget already has keyboard focus.
                             self.focus_visible = false;
                             if let Some(icon) = self.hover_cursor {
                                 ctx.set_cursor_icon(icon);
@@ -175,7 +174,14 @@ impl Interaction {
                             }
                         }
                     }
-                    handled = true;
+
+                    // Only claim the event when something actually reacts to clicks;
+                    // a widget that merely tracks pressed/hover state for its own
+                    // cursor shouldn't swallow the press from an ancestor with real
+                    // click handling (e.g. a Label nested inside a clickable View).
+                    if self.on_click.is_some() || self.focusable {
+                        handled = true;
+                    }
                 }
 
                 if handled {

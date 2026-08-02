@@ -79,7 +79,7 @@ fn sample_gradient(t: f32, offset: i32, count: i32) -> vec4<f32> {
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let d = sd_round_rect(in.local_pos, in.half_size, in.radius);
-    let aa = max(fwidth(d) * 0.75, 0.0001);
+    let aa = max(fwidth(d) * 0.5, 0.0001);
 
     let outer_alpha = 1.0 - smoothstep(-aa, aa, d);
     if (outer_alpha <= 0.0) {

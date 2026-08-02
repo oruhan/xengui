@@ -8,6 +8,7 @@ use crate::{ Display, FlexDirection, StyleBuilder, View };
 pub struct Row;
 
 impl Row {
+    #[allow(clippy::new_ret_no_self)]
     pub fn new() -> View {
         View::new().display(Display::Flex).flex_direction(FlexDirection::Row)
     }
@@ -20,6 +21,7 @@ impl Row {
 pub struct Column;
 
 impl Column {
+    #[allow(clippy::new_ret_no_self)]
     pub fn new() -> View {
         View::new().display(Display::Flex).flex_direction(FlexDirection::Column)
     }

@@ -41,10 +41,20 @@ const TRACK_WIDTH: f32 = 56.0;
 const TRACK_HEIGHT: f32 = 32.0;
 const THUMB_UNSELECTED: f32 = 16.0;
 const THUMB_SELECTED: f32 = 24.0;
-const THUMB_PRESSED: f32 = 26.0;
-const TRACK_PADDING: f32 = 4.0;
+// Pressed thumb size is interpolated between these two by the same
+// checked-progress `t` the idle thumb uses, so "off, pressed" and
+// "on, pressed" no longer share one fixed size.
+const THUMB_PRESSED_UNCHECKED: f32 = 20.0;
+const THUMB_PRESSED_CHECKED: f32 = 28.0;
+// Track is visually off-center otherwise: the unchecked thumb sits much
+// closer to the left edge than the checked thumb does to the right.
+const TRACK_PADDING_LEFT: f32 = 6.0;
+const TRACK_PADDING_RIGHT: f32 = 4.0;
 
 const TOGGLE_TRANSITION: Transition = Transition::new(Duration::from_millis(200)).easing(
+    Easing::EaseOut
+);
+const THUMB_SIZE_TRANSITION: Transition = Transition::new(Duration::from_millis(120)).easing(
     Easing::EaseOut
 );
 
@@ -72,6 +82,7 @@ pub struct Switch {
     thumb_off_color: Option<Color>,
     border_color: Option<Color>,
     progress: Cell<f32>,
+    thumb_size: Cell<f32>,
     on_change: Option<ChangeCallback>,
 }
 
@@ -93,6 +104,7 @@ impl Switch {
             thumb_off_color: None,
             border_color: None,
             progress: Cell::new(0.0),
+            thumb_size: Cell::new(THUMB_UNSELECTED),
             on_change: None,
         };
 
@@ -223,8 +235,6 @@ impl Widget for Switch {
         let track_color = lerp_color(track_off, track_on, t);
         let thumb_color = lerp_color(thumb_off, thumb_on, t);
 
-        // Track: a full pill, border fades out as the switch turns on -
-        // matches M3's outlined-when-off, filled-when-on track.
         ctx.draw_rect(RectCommand {
             position: (b.x, b.y),
             size: (b.width, b.height),
@@ -235,19 +245,14 @@ impl Widget for Switch {
             clip_rect: None,
         });
 
-        // Thumb grows from the small "off" dot to the large "on" dot and
-        // slides across the track, both driven by the same progress value.
-        let pressed = self.base.interaction.pressed;
-        let target_thumb = if pressed {
-            THUMB_PRESSED
-        } else {
-            lerp(THUMB_UNSELECTED, THUMB_SELECTED, t)
-        };
-        let thumb_d = target_thumb * sf;
-        let pad = TRACK_PADDING * sf;
+        // Animated thumb diameter, driven from cascade_style instead of
+        // snapping instantly between idle/pressed sizes.
+        let thumb_d = self.thumb_size.get() * sf;
+        let pad_left = TRACK_PADDING_LEFT * sf;
+        let pad_right = TRACK_PADDING_RIGHT * sf;
 
-        let min_cx = b.x + pad + thumb_d * 0.5;
-        let max_cx = b.x + b.width - pad - thumb_d * 0.5;
+        let min_cx = b.x + pad_left + thumb_d * 0.5;
+        let max_cx = b.x + b.width - pad_right - thumb_d * 0.5;
         let cx = lerp(min_cx, max_cx, t);
         let cy = b.y + b.height * 0.5;
 
@@ -261,8 +266,6 @@ impl Widget for Switch {
             clip_rect: None,
         });
 
-        // A small checkmark fades into the thumb once fully toggled on,
-        // echoing Checkbox's own mark instead of leaving the thumb bare.
         if t > 0.6 {
             let mark_alpha = ((t - 0.6) / 0.4).clamp(0.0, 1.0);
             let stroke = (thumb_d * 0.12).max(1.2 * sf);
@@ -392,6 +395,33 @@ impl Widget for Switch {
             }
             None => self.progress.set(target),
         }
+
+        // Thumb size target depends on both checked progress and pressed
+        // state, so "pressed while off" and "pressed while on" grow to
+        // different sizes instead of sharing one fixed pressed diameter.
+        let t = self.progress.get();
+        let pressed = self.base.interaction.pressed;
+        let idle_thumb = lerp(THUMB_UNSELECTED, THUMB_SELECTED, t);
+        let pressed_thumb = lerp(THUMB_PRESSED_UNCHECKED, THUMB_PRESSED_CHECKED, t);
+        let thumb_target = if pressed { pressed_thumb } else { idle_thumb };
+
+        let thumb_key = AnimKey {
+            widget: self.anim_id,
+            layer: AnimLayer::Root,
+            property: AnimProperty::ContentScale,
+        };
+        anim.set_target(
+            thumb_key,
+            AnimValue([thumb_target, 0.0, 0.0, 0.0]),
+            Some(THUMB_SIZE_TRANSITION)
+        );
+        match anim.value(thumb_key) {
+            Some(v) => {
+                self.thumb_size.set(v.0[0]);
+                self.base.dirty = true;
+            }
+            None => self.thumb_size.set(thumb_target),
+        }
     }
 
     fn after_interaction_transfer(&mut self) {
@@ -402,6 +432,7 @@ impl Widget for Switch {
         if let Some(old) = old.as_any().downcast_ref::<Switch>() {
             self.anim_id = old.anim_id;
             self.progress.set(old.progress.get());
+            self.thumb_size.set(old.thumb_size.get());
         }
     }
 

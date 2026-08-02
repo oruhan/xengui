@@ -40,11 +40,11 @@ pub struct SvgTriangle {
 }
 
 /// Antialiasing fringe width, in the element's own local (viewBox) units.
-const AA_WIDTH: f32 = 0.8;
+const AA_WIDTH: f32 = 1.1;
 /// Number of stepped opacity bands the fringe is built from - more bands
 /// approximate a smooth gradient more closely at the cost of more
 /// triangles.
-const AA_BANDS: u32 = 4;
+const AA_BANDS: u32 = 8;
 /// Curve flattening granularity used only for the antialiasing fringe
 /// (the fill/stroke tessellation itself still goes through lyon).
 const AA_CURVE_SEGMENTS: u32 = 16;

@@ -256,8 +256,8 @@ impl Widget for Label {
         let padding = style.padding.unwrap_or_default();
         let sf = ctx.scale_factor;
 
-        let text_x = self.layout_box.x + padding.left.to_physical(sf);
-        let text_y = self.layout_box.y + padding.top.to_physical(sf);
+        let text_x = (self.layout_box.x + padding.left.to_physical(sf)).round();
+        let text_y = (self.layout_box.y + padding.top.to_physical(sf)).round();
 
         let mut text_style = style.clone();
         text_style.font_size.get_or_insert(DEFAULT_FONT_SIZE);
