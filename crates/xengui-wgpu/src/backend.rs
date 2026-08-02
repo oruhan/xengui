@@ -26,22 +26,77 @@ pub struct WgpuPipelines {
     image: ImagePipeline,
     text: TextPipeline,
     pub(crate) box_shadow: BoxShadowPipeline,
+    filters: FilterEngine,
+    /// Resolved, adapter-clamped MSAA sample count every pipeline above
+    /// was built with. `1` means MSAA is disabled entirely (either
+    /// requested that way, or the adapter didn't support anything higher).
+    sample_count: u32,
+    /// Owned multisampled color target, `None` when `sample_count == 1`.
+    /// Recreated on resize.
+    msaa_texture: Option<wgpu::Texture>,
+    msaa_view: Option<wgpu::TextureView>,
 }
 
 impl WgpuPipelines {
     pub fn new(
         device: &wgpu::Device,
         queue: &wgpu::Queue,
+        adapter: &wgpu::Adapter,
         surface_format: wgpu::TextureFormat,
-        user_fonts: Vec<(String, Vec<u8>)>
+        user_fonts: Vec<(String, Vec<u8>)>,
+        requested_samples: crate::SampleCount
     ) -> Result<Self, String> {
+        let sample_count = requested_samples.clamp_to_adapter(adapter, surface_format).as_u32();
+
         Ok(Self {
-            rect: RectPipeline::new(device, surface_format),
-            triangle: TrianglePipeline::new(device, surface_format),
-            image: ImagePipeline::new(device, surface_format),
-            text: TextPipeline::new(device, queue, surface_format, user_fonts)?,
-            box_shadow: BoxShadowPipeline::new(device, surface_format),
+            rect: RectPipeline::new(device, surface_format, sample_count),
+            triangle: TrianglePipeline::new(device, surface_format, sample_count),
+            image: ImagePipeline::new(device, surface_format, sample_count),
+            text: TextPipeline::new(device, queue, surface_format, user_fonts, sample_count)?,
+            box_shadow: BoxShadowPipeline::new(device, surface_format, sample_count),
+            filters: FilterEngine::new(device, surface_format),
+            sample_count,
+            msaa_texture: None,
+            msaa_view: None,
         })
+    }
+
+    /// (Re)allocates the MSAA color target for the given surface size.
+    /// A no-op when MSAA is disabled (`sample_count == 1`).
+    pub fn resize_msaa(
+        &mut self,
+        device: &wgpu::Device,
+        format: wgpu::TextureFormat,
+        width: u32,
+        height: u32
+    ) {
+        if self.sample_count <= 1 {
+            self.msaa_texture = None;
+            self.msaa_view = None;
+            return;
+        }
+        let texture = device.create_texture(
+            &(wgpu::TextureDescriptor {
+                label: Some("xengui msaa color target"),
+                size: wgpu::Extent3d {
+                    width: width.max(1),
+                    height: height.max(1),
+                    depth_or_array_layers: 1,
+                },
+                mip_level_count: 1,
+                sample_count: self.sample_count,
+                dimension: wgpu::TextureDimension::D2,
+                format,
+                usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+                view_formats: &[],
+            })
+        );
+        self.msaa_view = Some(texture.create_view(&Default::default()));
+        self.msaa_texture = Some(texture);
+    }
+
+    pub fn sample_count(&self) -> u32 {
+        self.sample_count
     }
 
     pub fn begin_frame<'a>(

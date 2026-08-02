@@ -3,13 +3,13 @@ struct VertexOutput {
     @builtin(position) clip_position: vec4<f32>,
     @location(0) local_pos: vec2<f32>,
     @location(1) half_size: vec2<f32>,
-    @location(2) radius: f32,
+    @location(2) radius: vec4<f32>,
     @location(3) blur: f32,
     @location(4) color: vec4<f32>,
     @location(5) inset: f32,
     @location(6) box_local_pos: vec2<f32>,
     @location(7) box_half_size: vec2<f32>,
-    @location(8) box_radius: f32,
+    @location(8) box_radius: vec4<f32>,
 };
 
 @vertex
@@ -17,13 +17,13 @@ fn vs_main(
     @location(0) position: vec2<f32>,
     @location(1) local_pos: vec2<f32>,
     @location(2) half_size: vec2<f32>,
-    @location(3) radius: f32,
+    @location(3) radius: vec4<f32>,
     @location(4) blur: f32,
     @location(5) color: vec4<f32>,
     @location(6) inset: f32,
     @location(7) box_local_pos: vec2<f32>,
     @location(8) box_half_size: vec2<f32>,
-    @location(9) box_radius: f32,
+    @location(9) box_radius: vec4<f32>,
 ) -> VertexOutput {
     var out: VertexOutput;
     out.clip_position = vec4<f32>(position, 0.0, 1.0);
@@ -39,8 +39,19 @@ fn vs_main(
     return out;
 }
 
-// Abramowitz-Stegun erf approximation, used for the closed-form Gaussian
-// coverage of a blurred axis-aligned rectangle (Evan Wallace's technique).
+fn corner_radius(p: vec2<f32>, radii: vec4<f32>) -> f32 {
+    if (p.x < 0.0) {
+        if (p.y < 0.0) {
+            return radii.x;
+        }
+        return radii.w;
+    }
+    if (p.y < 0.0) {
+        return radii.y;
+    }
+    return radii.z;
+}
+
 fn erf(x: vec2<f32>) -> vec2<f32> {
     let s = sign(x);
     let a = abs(x);
@@ -65,19 +76,21 @@ fn sd_round_rect(p: vec2<f32>, half_size: vec2<f32>, r: f32) -> f32 {
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let sigma = max(in.blur * 0.5, 0.001);
+    let r = corner_radius(in.local_pos, in.radius);
 
     var alpha: f32;
-    if (in.radius <= 0.5) {
+    if (r <= 0.5) {
         alpha = gaussian_box_shadow(in.local_pos, sigma, in.half_size);
     } else {
-        let d = sd_round_rect(in.local_pos, in.half_size, in.radius);
+        let d = sd_round_rect(in.local_pos, in.half_size, r);
         let sharp = gaussian_box_shadow(in.local_pos, sigma, in.half_size);
         let rounded = 1.0 - smoothstep(-sigma, sigma, d);
         alpha = clamp(mix(sharp, rounded, 0.6), 0.0, 1.0);
     }
 
     if (in.inset > 0.5) {
-        let box_d = sd_round_rect(in.box_local_pos, in.box_half_size, in.box_radius);
+        let box_r = corner_radius(in.box_local_pos, in.box_radius);
+        let box_d = sd_round_rect(in.box_local_pos, in.box_half_size, box_r);
         let box_mask = 1.0 - smoothstep(-1.0, 1.0, box_d);
         alpha = (1.0 - alpha) * box_mask;
     }

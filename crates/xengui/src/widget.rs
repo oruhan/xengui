@@ -5,6 +5,7 @@ use crate::{
     AnimationManager,
     Background,
     Border,
+    BorderRadius,
     BoxShadow,
     BoxShadowCommand,
     Color,
@@ -122,8 +123,11 @@ pub trait Widget: Any {
         let radius = style.border
             .as_ref()
             .and_then(|b| b.radius)
-            .map(|r| r.to_physical(sf))
-            .unwrap_or(0.0);
+            .map(|r| r.to_physical_array(sf, layout.width, layout.height))
+            .unwrap_or([0.0; 4]);
+        // `radius[0]` (top-left) still stands in for "does this box have
+        // any rounding at all" in the non-uniform-border branch below.
+        let has_radius = radius.iter().any(|r| *r > 0.0);
 
         if let Some(shadows) = &style.box_shadow {
             for shadow in shadows
@@ -136,20 +140,14 @@ pub trait Widget: Any {
 
         if style.background.is_some() || style.border.is_some() {
             let border = style.border.as_ref();
-            
+
             if border.is_some_and(|b| !b.is_uniform()) {
                 if style.background.is_some() {
                     ctx.draw_rect(RectCommand {
                         position: (layout.x, layout.y),
                         size: (layout.width, layout.height),
                         background: style.background.clone(),
-                        // A non-uniform border (e.g. Border::bottom) can
-                        // still carry an explicit corner radius; ignoring
-                        // it here silently squared off any widget using a
-                        // partial border together with rounded corners.
-                        border_radius: border
-                            .and_then(|b| b.radius)
-                            .map(|r| Length::px(r.to_physical(sf))),
+                        border_radius: has_radius.then_some(border_radius_from_physical(radius)),
                         border_color: None,
                         border_width: None,
                         clip_rect: None,
@@ -161,9 +159,7 @@ pub trait Widget: Any {
                     position: (layout.x, layout.y),
                     size: (layout.width, layout.height),
                     background: style.background.clone(),
-                    border_radius: border
-                        .and_then(|b| b.radius)
-                        .map(|r| Length::px(r.to_physical(sf))),
+                    border_radius: has_radius.then_some(border_radius_from_physical(radius)),
                     border_color: border.map(|b| b.color),
                     border_width: border.map(|b| Length::px(b.top.to_physical(sf))),
                     clip_rect: None,
@@ -217,7 +213,7 @@ pub trait Widget: Any {
         &self,
         ctx: &mut PaintContext,
         layout: LayoutBox,
-        radius: f32,
+        radius: [f32; 4],
         shadow: &BoxShadow,
         sf: f32
     ) {
@@ -229,13 +225,16 @@ pub trait Widget: Any {
         let cx = layout.x + layout.width * 0.5;
         let cy = layout.y + layout.height * 0.5;
 
+        let grow = |r: f32, by: f32| (r + by).max(0.0);
+        let shrink = |r: f32, by: f32| (r - by).max(0.0);
+
         let (shadow_position, shadow_size, shadow_radius) = if shadow.inset {
             let half_w = (layout.width * 0.5 - spread).max(0.0);
             let half_h = (layout.height * 0.5 - spread).max(0.0);
             (
                 (cx + ox - half_w, cy + oy - half_h),
                 (half_w * 2.0, half_h * 2.0),
-                (radius - spread).max(0.0),
+                radius.map(|r| shrink(r, spread)),
             )
         } else {
             let half_w = layout.width * 0.5 + spread;
@@ -243,7 +242,7 @@ pub trait Widget: Any {
             (
                 (cx + ox - half_w, cy + oy - half_h),
                 (half_w * 2.0, half_h * 2.0),
-                (radius + spread).max(0.0),
+                radius.map(|r| grow(r, spread)),
             )
         };
 
@@ -262,22 +261,16 @@ pub trait Widget: Any {
     }
 
     fn paint_outline(&self, ctx: &mut PaintContext) {
-        // Skipped while the focus ring is visible - paint_focus draws the
-        // same outline field on top, in its own always-last render pass.
         if self.interaction().is_some_and(|i| i.focused && i.focus_visible) {
             return;
         }
 
         let style = self.computed_style();
-
         let outline = match &style.outline {
-            StyleValue::None => {
+            StyleValue::None | StyleValue::Default => {
                 return;
             }
             StyleValue::Value(outline) => outline,
-            StyleValue::Default => {
-                return;
-            }
         };
 
         let sf = ctx.scale_factor;
@@ -285,13 +278,19 @@ pub trait Widget: Any {
         let offset = outline.offset.to_physical(sf);
         let radius = outline.radius
             .or_else(|| style.border.as_ref().and_then(|b| b.radius))
-            .map(|r| Length::px(r.to_physical(sf)));
+            .map(|r|
+                r.to_physical_array(sf, layout.width + offset * 2.0, layout.height + offset * 2.0)
+            )
+            .unwrap_or([0.0; 4]);
 
         ctx.draw_rect(RectCommand {
             position: (layout.x - offset, layout.y - offset),
             size: (layout.width + offset * 2.0, layout.height + offset * 2.0),
             background: None,
-            border_radius: radius,
+            border_radius: radius
+                .iter()
+                .any(|r| *r > 0.0)
+                .then_some(border_radius_from_physical(radius)),
             border_color: Some(outline.color),
             border_width: Some(Length::px(outline.width.to_physical(sf))),
             clip_rect: None,
@@ -302,7 +301,6 @@ pub trait Widget: Any {
         let Some(interaction) = self.interaction() else {
             return;
         };
-
         if !interaction.focused || !interaction.focus_visible {
             return;
         }
@@ -322,7 +320,14 @@ pub trait Widget: Any {
                     radius: style.border
                         .as_ref()
                         .and_then(|b| b.radius)
-                        .map(|r| r.add_px(4.0)),
+                        .map(|r|
+                            BorderRadius::only(
+                                r.top_left.add_px(4.0),
+                                r.top_right.add_px(4.0),
+                                r.bottom_right.add_px(4.0),
+                                r.bottom_left.add_px(4.0)
+                            )
+                        ),
                     offset: Length::px(4.0),
                 },
         };
@@ -331,13 +336,19 @@ pub trait Widget: Any {
         let offset = outline.offset.to_physical(sf);
         let radius = outline.radius
             .or_else(|| style.border.as_ref().and_then(|b| b.radius))
-            .map(|r| Length::px(r.to_physical(sf)));
+            .map(|r|
+                r.to_physical_array(sf, layout.width + offset * 2.0, layout.height + offset * 2.0)
+            )
+            .unwrap_or([0.0; 4]);
 
         ctx.draw_rect(RectCommand {
             position: (layout.x - offset, layout.y - offset),
             size: (layout.width + offset * 2.0, layout.height + offset * 2.0),
             background: None,
-            border_radius: radius,
+            border_radius: radius
+                .iter()
+                .any(|r| *r > 0.0)
+                .then_some(border_radius_from_physical(radius)),
             border_width: Some(Length::px(outline.width.to_physical(sf))),
             border_color: Some(outline.color),
             clip_rect: None,
@@ -362,7 +373,7 @@ pub trait Widget: Any {
             return true;
         };
 
-        let radius: f32 = border.radius.unwrap_or(Length::Px(0.0)).value();
+        let radius = border.radius.unwrap_or(BorderRadius::default());
 
         if radius <= 0.0 {
             return true;
@@ -501,6 +512,13 @@ pub trait Widget: Any {
         WidgetId::default()
     }
 
+    /// GPU filter chain applied to this widget's own rendered subtree.
+    /// `None` (the default) keeps this widget on the fast, unfiltered
+    /// paint path.
+    fn filter(&self) -> Option<&crate::FilterChain> {
+        self.computed_style().filter.as_ref()
+    }
+
     /// `Some(...)` marks this widget as backed by a real DOM `<input>` on
     /// web targets. `None` (the default) means it has no native counterpart.
     fn native_text_input(&self) -> Option<NativeTextInputSnapshot> {
@@ -532,4 +550,16 @@ pub fn scaled_layout_box(rect: LayoutBox, scale: f32) -> LayoutBox {
         width: w,
         height: h,
     }
+}
+
+/// Wraps four already-physical-px corner radii back into a [`BorderRadius`]
+/// so `RectCommand::border_radius` (which stores physical values, unlike
+/// `Style`'s logical `BorderRadius`) has a single documented type.
+fn border_radius_from_physical(radii: [f32; 4]) -> BorderRadius {
+    BorderRadius::only(
+        Length::px(radii[0]),
+        Length::px(radii[1]),
+        Length::px(radii[2]),
+        Length::px(radii[3])
+    )
 }

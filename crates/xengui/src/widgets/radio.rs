@@ -6,6 +6,7 @@ use crate::{
     AnimValue,
     AnimationManager,
     Background,
+    BorderRadius,
     Color,
     Constraints,
     Easing,
@@ -81,7 +82,7 @@ impl RadioButton {
         // RadioButton is circular; the framework's default focus outline is
         // a plain rectangle, so it needs its own round outline instead.
         radio = radio.outline(|theme: &crate::Theme|
-            Outline::new(2.5, theme.primary, Some(Length::px(9999.0)), 4.0)
+            Outline::new(2.5, theme.primary, Some(BorderRadius::all(9999.0)), 4.0)
         );
 
         radio.recompute_style();
@@ -193,7 +194,7 @@ impl Widget for RadioButton {
             position: (b.x, b.y),
             size: (b.width, b.height),
             background: Some(Background::Color(fill)),
-            border_radius: Some(Length::px(b.width * 0.5)),
+            border_radius: Some(BorderRadius::all(Length::px(b.width * 0.5))),
             border_color: Some(ring_color),
             border_width: Some(
                 border.map(|bo| Length::px(bo.top.to_physical(sf))).unwrap_or(Length::px(2.0 * sf))
@@ -211,7 +212,7 @@ impl Widget for RadioButton {
                 position: (cx - dot_d * 0.5, cy - dot_d * 0.5),
                 size: (dot_d, dot_d),
                 background: Some(Background::Color(dot_color.with_alpha_f32(dot_color.a() * t))),
-                border_radius: Some(Length::px(dot_d * 0.5)),
+                border_radius: Some(BorderRadius::all(Length::px(dot_d * 0.5))),
                 border_width: None,
                 border_color: None,
                 clip_rect: None,

@@ -7,7 +7,7 @@ struct Vertex {
     position: [f32; 2],
     local_pos: [f32; 2],
     half_size: [f32; 2],
-    radius: f32,
+    radius: [f32; 4],
     border_width: f32,
     fill_color: [f32; 4],
     border_color: [f32; 4],
@@ -40,28 +40,28 @@ impl Vertex {
                 wgpu::VertexAttribute {
                     shader_location: 3,
                     offset: 24,
-                    format: wgpu::VertexFormat::Float32,
-                },
+                    format: wgpu::VertexFormat::Float32x4,
+                }, // radius
                 wgpu::VertexAttribute {
                     shader_location: 4,
-                    offset: 28,
+                    offset: 40,
                     format: wgpu::VertexFormat::Float32,
-                },
+                }, // border_width
                 wgpu::VertexAttribute {
                     shader_location: 5,
-                    offset: 32,
+                    offset: 44,
                     format: wgpu::VertexFormat::Float32x4,
-                },
+                }, // fill_color
                 wgpu::VertexAttribute {
                     shader_location: 6,
-                    offset: 48,
+                    offset: 60,
                     format: wgpu::VertexFormat::Float32x4,
-                },
+                }, // border_color
                 wgpu::VertexAttribute {
                     shader_location: 7,
-                    offset: 64,
+                    offset: 76,
                     format: wgpu::VertexFormat::Float32x4,
-                },
+                }, // gradient_meta
             ],
         }
     }
@@ -147,7 +147,11 @@ impl RectPipeline {
                     ..Default::default()
                 },
                 depth_stencil: None,
-                multisample: Default::default(),
+                multisample: wgpu::MultisampleState {
+                    count: sample_count,
+                    mask: !0,
+                    alpha_to_coverage_enabled: false,
+                },
                 fragment: Some(wgpu::FragmentState {
                     module: &shader,
                     entry_point: Some("fs_main"),
@@ -311,10 +315,13 @@ impl RectPipeline {
             let half_w = w * 0.5;
             let half_h = h * 0.5;
 
+            // Per-corner radii, clamped by BorderRadius::to_physical_array
+            // against overlap the same way CSS does - scale_factor is
+            // already baked into `w`/`h` (physical px) at this point, so
+            // pass 1.0 here instead of re-scaling.
             let radius = cmd.border_radius
-                .map(|r| r.value())
-                .unwrap_or(0.0)
-                .clamp(0.0, half_w.min(half_h));
+                .map(|r| r.to_physical_array(1.0, w, h))
+                .unwrap_or([0.0; 4]);
 
             let border_width = cmd.border_width.map(|bw| bw.value()).unwrap_or(0.0);
             let border_color = cmd.border_color

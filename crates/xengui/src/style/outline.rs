@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
-use crate::{ Color, Length };
+use crate::{ BorderRadius, Color, Length };
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Outline {
     pub width: Length,
     pub color: Color,
-    pub radius: Option<Length>,
+    pub radius: Option<BorderRadius>,
     pub offset: Length,
 }
 
@@ -24,14 +24,9 @@ impl Outline {
     pub fn new(
         width: impl Into<Length>,
         color: Color,
-        radius: Option<Length>,
+        radius: Option<BorderRadius>,
         offset: impl Into<Length>
     ) -> Self {
-        Self {
-            width: width.into(),
-            color,
-            radius,
-            offset: offset.into(),
-        }
+        Self { width: width.into(), color, radius, offset: offset.into() }
     }
 }

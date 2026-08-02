@@ -1,36 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 use crate::{
-    AnimKey,
-    AnimLayer,
-    AnimProperty,
-    AnimValue,
-    AnimationManager,
-    Background,
-    Color,
-    Constraints,
-    Easing,
-    ElementState,
-    EventCtx,
-    EventStatus,
-    InputEvent,
-    Interaction,
-    Key,
-    KeyState,
-    LayoutBox,
-    Length,
-    MeasureContext,
-    MeasureResult,
-    MouseButton,
-    PaintContext,
-    RectCommand,
-    Style,
-    StyleBuilder,
-    Transition,
-    TriangleCommand,
-    Widget,
-    WidgetBase,
-    WidgetId,
-    properties::{ DEFAULT_CURSOR_ICON, DEFAULT_POINTER_CURSOR_ICON },
+    AnimKey, AnimLayer, AnimProperty, AnimValue, AnimationManager, Background, BorderRadius, Color, Constraints, Easing, ElementState, EventCtx, EventStatus, InputEvent, Interaction, Key, KeyState, LayoutBox, Length, MeasureContext, MeasureResult, MouseButton, PaintContext, RectCommand, Style, StyleBuilder, Transition, TriangleCommand, Widget, WidgetBase, WidgetId, properties::{ DEFAULT_CURSOR_ICON, DEFAULT_POINTER_CURSOR_ICON },
 };
 use std::cell::Cell;
 use web_time::Duration;
@@ -203,7 +173,7 @@ impl Widget for Checkbox {
             position: (scaled_box.x, scaled_box.y),
             size: (scaled_box.width, scaled_box.height),
             background: Some(Background::Color(fill)),
-            border_radius: Some(Length::px(radius)),
+            border_radius: Some(BorderRadius::all(Length::px(radius))),
             border_color: Some(border_color),
             border_width: Some(
                 border.map(|bo| Length::px(bo.top.to_physical(sf))).unwrap_or(Length::px(2.0 * sf))

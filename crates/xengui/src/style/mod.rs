@@ -18,9 +18,11 @@ pub mod scrollbar_gutter;
 pub mod size;
 pub mod style_builder;
 pub mod typography;
+pub mod filter;
 pub mod cursor;
 pub mod theme;
 pub mod system_theme;
+pub mod border_radius;
 
 pub use background::{ Background, GradientStop, LinearGradient, RadialGradient };
 pub use border::Border;
@@ -47,8 +49,10 @@ pub use style_builder::*;
 pub use text_align::TextAlign;
 pub use text_decoration::TextDecoration;
 pub use typography::*;
+pub use filter::{ DropShadow, Filter, FilterChain };
 pub use cursor::Cursor;
 pub use system_theme::SystemTheme;
+pub use border_radius::BorderRadius;
 pub use theme::{
     current_theme,
     set_active_theme,

@@ -637,6 +637,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "filters-example"
+version = "0.1.0"
+dependencies = [
+ "console_error_panic_hook",
+ "console_log",
+ "env_logger",
+ "log",
+ "web-sys",
+ "web-time",
+ "xen-clipboard",
+ "xen-router",
+ "xen-router-build",
+ "xenframe",
+ "xengui",
+ "xengui-lucide",
+ "xengui-wgpu",
+]
+
+[[package]]
 name = "find-msvc-tools"
 version = "0.1.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"

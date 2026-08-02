@@ -3,7 +3,7 @@ struct VertexOutput {
     @builtin(position) clip_position: vec4<f32>,
     @location(0) local_pos: vec2<f32>,
     @location(1) half_size: vec2<f32>,
-    @location(2) radius: f32,
+    @location(2) radius: vec4<f32>, // top-left, top-right, bottom-right, bottom-left
     @location(3) border_width: f32,
     @location(4) fill_color: vec4<f32>,
     @location(5) border_color: vec4<f32>,
@@ -26,7 +26,7 @@ fn vs_main(
     @location(0) position: vec2<f32>,
     @location(1) local_pos: vec2<f32>,
     @location(2) half_size: vec2<f32>,
-    @location(3) radius: f32,
+    @location(3) radius: vec4<f32>,
     @location(4) border_width: f32,
     @location(5) fill_color: vec4<f32>,
     @location(6) border_color: vec4<f32>,
@@ -44,12 +44,27 @@ fn vs_main(
     return out;
 }
 
+// Selects the correct corner radius for `p` (in box-local, center-origin
+// space) out of the four independent corner radii, matching CSS
+// border-radius's per-quadrant selection.
+fn corner_radius(p: vec2<f32>, radii: vec4<f32>) -> f32 {
+    if (p.x < 0.0) {
+        if (p.y < 0.0) {
+            return radii.x; // top-left
+        }
+        return radii.w; // bottom-left
+    }
+    if (p.y < 0.0) {
+        return radii.y; // top-right
+    }
+    return radii.z; // bottom-right
+}
+
 fn sd_round_rect(p: vec2<f32>, half_size: vec2<f32>, r: f32) -> f32 {
     let q = abs(p) - half_size + vec2<f32>(r, r);
     return length(max(q, vec2<f32>(0.0, 0.0))) - r + min(max(q.x, q.y), 0.0);
 }
 
-// Reads stop `index`'s position out of the packed (4-per-vec4) buffer.
 fn gradient_position_at(index: i32) -> f32 {
     return grad_positions.values[index / 4][index % 4];
 }
@@ -78,7 +93,8 @@ fn sample_gradient(t: f32, offset: i32, count: i32) -> vec4<f32> {
 
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-    let d = sd_round_rect(in.local_pos, in.half_size, in.radius);
+    let r = corner_radius(in.local_pos, in.radius);
+    let d = sd_round_rect(in.local_pos, in.half_size, r);
     let aa = max(fwidth(d) * 0.5, 0.0001);
 
     let outer_alpha = 1.0 - smoothstep(-aa, aa, d);
@@ -94,7 +110,6 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         let offset = i32(in.gradient_meta.w);
         var t: f32;
         if (kind < 1.5) {
-            // Linear: angle 0 points along +x, matching CSS gradient-angle convention.
             let dir = vec2<f32>(cos(in.gradient_meta.y), sin(in.gradient_meta.y));
             let extent = abs(dir.x) * in.half_size.x + abs(dir.y) * in.half_size.y;
             t = (dot(in.local_pos, dir) / max(extent * 2.0, 0.0001)) + 0.5;

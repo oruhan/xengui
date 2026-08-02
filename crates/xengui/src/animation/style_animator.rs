@@ -252,12 +252,35 @@ pub fn animate_computed_style(
             );
             if let Some(radius) = border.radius {
                 border.radius = Some(
-                    animate_length(
-                        anim,
-                        key(AnimProperty::BorderRadius),
-                        transition,
-                        radius,
-                        &mut animating
+                    BorderRadius::only(
+                        animate_length(
+                            anim,
+                            key(AnimProperty::BorderRadiusTL),
+                            transition,
+                            radius.top_left,
+                            &mut animating
+                        ),
+                        animate_length(
+                            anim,
+                            key(AnimProperty::BorderRadiusTR),
+                            transition,
+                            radius.top_right,
+                            &mut animating
+                        ),
+                        animate_length(
+                            anim,
+                            key(AnimProperty::BorderRadiusBR),
+                            transition,
+                            radius.bottom_right,
+                            &mut animating
+                        ),
+                        animate_length(
+                            anim,
+                            key(AnimProperty::BorderRadiusBL),
+                            transition,
+                            radius.bottom_left,
+                            &mut animating
+                        )
                     )
                 );
             }

@@ -4,7 +4,7 @@ struct VertexInput {
     @location(1) uv: vec2<f32>,
     @location(2) local_pos: vec2<f32>,
     @location(3) half_size: vec2<f32>,
-    @location(4) radius: f32,
+    @location(4) radius: vec4<f32>,
     @location(5) tint: vec4<f32>,
 };
 
@@ -13,7 +13,7 @@ struct VertexOutput {
     @location(0) uv: vec2<f32>,
     @location(1) local_pos: vec2<f32>,
     @location(2) half_size: vec2<f32>,
-    @location(3) radius: f32,
+    @location(3) radius: vec4<f32>,
     @location(4) tint: vec4<f32>,
 };
 
@@ -32,6 +32,19 @@ fn vs_main(in: VertexInput) -> VertexOutput {
     return out;
 }
 
+fn corner_radius(p: vec2<f32>, radii: vec4<f32>) -> f32 {
+    if (p.x < 0.0) {
+        if (p.y < 0.0) {
+            return radii.x;
+        }
+        return radii.w;
+    }
+    if (p.y < 0.0) {
+        return radii.y;
+    }
+    return radii.z;
+}
+
 fn rounded_rect_sdf(p: vec2<f32>, half_size: vec2<f32>, radius: f32) -> f32 {
     let q = abs(p) - (half_size - vec2<f32>(radius, radius));
     return length(max(q, vec2<f32>(0.0, 0.0))) - radius;
@@ -41,8 +54,9 @@ fn rounded_rect_sdf(p: vec2<f32>, half_size: vec2<f32>, radius: f32) -> f32 {
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     var color = textureSample(t_image, s_image, in.uv) * in.tint;
 
-    if (in.radius > 0.0) {
-        let dist = rounded_rect_sdf(in.local_pos, in.half_size, in.radius);
+    let r = corner_radius(in.local_pos, in.radius);
+    if (r > 0.0) {
+        let dist = rounded_rect_sdf(in.local_pos, in.half_size, r);
         let alpha_mask = 1.0 - smoothstep(-1.0, 1.0, dist);
         color.a = color.a * alpha_mask;
     }

@@ -1,7 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
-    BoxShadow, Overflow, Overscroll, ScrollbarGutter, TransitionProperty, properties::StyleValue, style::{ FontStyle, FontWeight, IntoThemed, LetterSpacing },
+    BoxShadow,
+    Overflow,
+    Overscroll,
+    ScrollbarGutter,
+    TransitionProperty,
+    properties::StyleValue,
+    style::{ FontStyle, FontWeight, IntoThemed, LetterSpacing },
 };
 
 use super::{
@@ -231,6 +237,25 @@ pub trait StyleBuilder: Sized {
 
     fn box_shadow_none(mut self) -> Self {
         self.style_mut().box_shadow = None;
+        self.mark_dirty();
+        self
+    }
+
+    /// Applies a GPU-accelerated visual filter chain to this widget's
+    /// rendered output (content, background, children — everything this
+    /// widget paints). Matches CSS `filter` semantics; see [`Filter`].
+    ///
+    /// Widgets without a filter set are unaffected and keep using the
+    /// existing direct-to-frame rendering path — no offscreen texture is
+    /// allocated unless a filter is actually present.
+    fn filter(mut self, chain: impl Into<crate::FilterChain>) -> Self {
+        self.style_mut().filter = Some(chain.into());
+        self.mark_dirty();
+        self
+    }
+
+    fn filter_none(mut self) -> Self {
+        self.style_mut().filter = None;
         self.mark_dirty();
         self
     }

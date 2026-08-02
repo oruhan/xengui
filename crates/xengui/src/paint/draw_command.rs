@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-use crate::{ Background, Color, Length, Style };
+use crate::{ Background, BorderRadius, Color, Length, Style };
 use smol_str::SmolStr;
 use std::sync::Arc;
 
@@ -8,7 +8,7 @@ pub struct RectCommand {
     pub position: (f32, f32),
     pub size: (f32, f32),
     pub background: Option<Background>,
-    pub border_radius: Option<Length>,
+    pub border_radius: Option<BorderRadius>,
     pub border_width: Option<Length>,
     pub border_color: Option<Color>,
     pub clip_rect: Option<(f32, f32, f32, f32)>,
@@ -36,7 +36,7 @@ pub struct ImageCommand {
     pub position: (f32, f32),
     pub size: (f32, f32),
     pub image: Arc<ImageData>,
-    pub border_radius: Option<Length>,
+    pub border_radius: Option<BorderRadius>,
     pub tint: Option<Color>,
     pub clip_rect: Option<(f32, f32, f32, f32)>,
 }
@@ -58,7 +58,7 @@ pub struct BoxShadowCommand {
     /// rect the inner shadow appears to be cast from.
     pub shadow_position: (f32, f32),
     pub shadow_size: (f32, f32),
-    pub shadow_radius: f32,
+    pub shadow_radius: [f32; 4],
     pub blur: f32,
     pub color: Color,
     pub inset: bool,
@@ -69,6 +69,20 @@ pub struct BoxShadowCommand {
     pub clip_rect: Option<(f32, f32, f32, f32)>,
 }
 
+/// A subtree's own draw commands, rendered in isolation to an offscreen
+/// texture and processed through `chain` before being composited back
+/// into the frame. Produced by `FrameRenderer` for any widget whose
+/// `computed_style().filter` is set; consumed by `RenderBackend::draw_filtered`.
+#[derive(Clone, Debug)]
+pub struct FilteredCommand {
+    pub commands: Vec<DrawCommand>,
+    pub chain: crate::FilterChain,
+    /// The widget's own layout box, in the *unfiltered* subtree's local
+    /// paint coordinates (same space `commands` was recorded in).
+    pub bounds: (f32, f32, f32, f32),
+    pub clip_rect: Option<(f32, f32, f32, f32)>,
+}
+
 #[derive(Clone, Debug)]
 pub enum DrawCommand {
     Rect(RectCommand),
@@ -76,6 +90,7 @@ pub enum DrawCommand {
     Text(Box<TextCommand>),
     Image(Box<ImageCommand>),
     BoxShadow(BoxShadowCommand),
+    Filtered(Box<FilteredCommand>),
 }
 
 // Converts a logical clip rect (top-left origin) into a physical scissor

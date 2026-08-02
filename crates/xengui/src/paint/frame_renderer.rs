@@ -3,6 +3,7 @@ use crate::{
     AnimationManager,
     BoxShadowCommand,
     DrawCommand,
+    FilteredCommand,
     ImageCommand,
     LayoutContext,
     LayoutEngine,
@@ -137,6 +138,7 @@ impl FrameRenderer {
             Image,
             Text,
             BoxShadow,
+            Filtered,
         }
 
         let mut current_kind: Option<RunKind> = None;
@@ -159,6 +161,7 @@ impl FrameRenderer {
                             backend.draw_rects(&decorations);
                         }
                     }
+                    Some(RunKind::Filtered) => {}
                     None => {}
                 }
                 rect_buf.clear();
@@ -207,6 +210,17 @@ impl FrameRenderer {
                         current_kind = Some(RunKind::BoxShadow);
                     }
                     shadow_buf.push(cmd);
+                }
+                DrawCommand::Filtered(filtered) => {
+                    if current_kind != Some(RunKind::Filtered) {
+                        flush_run!();
+                        current_kind = Some(RunKind::Filtered);
+                    }
+                    // Filtered subtrees don't batch with anything else -
+                    // each is its own isolated offscreen pass, so it's
+                    // dispatched immediately rather than buffered.
+                    backend.flush_text();
+                    backend.draw_filtered(&filtered.commands, &filtered.chain, filtered.bounds);
                 }
             }
         }
@@ -332,10 +346,41 @@ fn paint_recursive(
 
     live_keys.insert(path.to_string());
 
-    // Inherits the nearest ancestor's z_index when this widget doesn't set
-    // its own, so a header's children stack above/below other siblings the
-    // same way the header itself does, instead of resetting to 0.
     let z_index = widget.computed_style().z_index.unwrap_or(parent_z_index);
+
+    // A filtered widget's own subtree (paint + descendants, but not its
+    // overlay/top/focus layers - those stay outside the filter so a
+    // scrollbar or focus ring is never blurred/discolored along with the
+    // content it belongs to) is recorded in isolation and wrapped in a
+    // single `DrawCommand::Filtered`, instead of being interleaved into
+    // the normal z-sorted command stream.
+    if let Some(chain) = widget.filter().filter(|c| !c.is_empty()) {
+        let mut subtree: Vec<(i32, DrawCommand)> = Vec::new();
+        paint_subtree_for_filter(
+            widget,
+            path,
+            cache,
+            &mut subtree,
+            live_keys,
+            scale_factor,
+            z_index
+        );
+        subtree.sort_by_key(|(z, _)| *z);
+
+        let b = layout_box;
+        let filtered_cmd = FilteredCommand {
+            commands: subtree
+                .into_iter()
+                .map(|(_, c)| c)
+                .collect(),
+            chain: chain.clone(),
+            bounds: (b.x, b.y, b.width, b.height),
+            clip_rect,
+        };
+        commands.push((z_index, DrawCommand::Filtered(Box::new(filtered_cmd))));
+        paint_chrome_layers_inline(widget, clip_rect, scale_factor, top_commands, focus_commands);
+        return;
+    }
 
     let own_commands: Vec<DrawCommand> = match cache.try_reuse(path, layout_box, widget.is_dirty()) {
         Some(cached) => cached.to_vec(),
@@ -391,6 +436,78 @@ fn paint_recursive(
         );
     }
 
+    paint_chrome_layers_inline(widget, clip_rect, scale_factor, top_commands, focus_commands);
+}
+
+/// Records a widget's own `paint()` output plus every descendant's,
+/// z-sorted the same way the main tree would be, but into a standalone
+/// buffer instead of the shared `commands` stream - the input a
+/// `RenderBackend::draw_filtered` call is built from.
+///
+/// Portal children are skipped: a portal already escapes to the top
+/// layer regardless of an ancestor's filter, and running it through the
+/// filter here would double-count it once more when the top layer paints.
+#[allow(clippy::too_many_arguments)]
+fn paint_subtree_for_filter(
+    widget: &dyn Widget,
+    path: &str,
+    cache: &mut RenderCache,
+    out: &mut Vec<(i32, DrawCommand)>,
+    live_keys: &mut HashSet<String>,
+    scale_factor: f32,
+    z_index: i32
+) {
+    live_keys.insert(path.to_string());
+
+    let own_commands: Vec<DrawCommand> = match
+        cache.try_reuse(path, *widget.layout_box(), widget.is_dirty())
+    {
+        Some(cached) => cached.to_vec(),
+        None => {
+            let mut local = Vec::new();
+            {
+                let mut paint_ctx = PaintContext::new(&mut local, scale_factor);
+                widget.paint(&mut paint_ctx);
+            }
+            cache.store(path, *widget.layout_box(), local.clone());
+            local
+        }
+    };
+    for command in own_commands {
+        out.push((z_index, command));
+    }
+
+    for (i, child) in widget.children().iter().enumerate() {
+        if child.is_portal() {
+            continue;
+        }
+        let segment = crate::path_segment(child.as_ref(), i);
+        let child_path = format!("{path}.{segment}");
+        let child_z = child.computed_style().z_index.unwrap_or(z_index);
+        paint_subtree_for_filter(
+            child.as_ref(),
+            &child_path,
+            cache,
+            out,
+            live_keys,
+            scale_factor,
+            child_z
+        );
+    }
+}
+
+/// Paints a widget's overlay/top/focus chrome - the parts of
+/// `paint_recursive`'s normal flow that must run on the real widget even
+/// when its main content went through the filtered path, since chrome
+/// (scrollbars, popups, focus rings) is explicitly meant to stay crisp
+/// and unfiltered.
+fn paint_chrome_layers_inline(
+    widget: &dyn Widget,
+    clip_rect: Option<(f32, f32, f32, f32)>,
+    scale_factor: f32,
+    top_commands: &mut Vec<DrawCommand>,
+    focus_commands: &mut Vec<RectCommand>
+) {
     let mut overlay = Vec::new();
     {
         let mut paint_ctx = PaintContext::new(&mut overlay, scale_factor);
@@ -398,10 +515,6 @@ fn paint_recursive(
     }
     for mut command in overlay {
         apply_clip(&mut command, clip_rect);
-        // Overlay content (e.g. a View's scrollbar) is UI chrome for
-        // interacting with this widget's own children, so it must stay
-        // reachable above them regardless of any child's own z_index -
-        // pushed into top_commands instead of the sortable z_index stream.
         top_commands.push(command);
     }
 
@@ -453,6 +566,7 @@ fn apply_clip(command: &mut DrawCommand, clip_rect: Option<(f32, f32, f32, f32)>
         DrawCommand::Text(cmd) => &mut cmd.clip_rect,
         DrawCommand::Triangle(cmd) => &mut cmd.clip_rect,
         DrawCommand::BoxShadow(cmd) => &mut cmd.clip_rect,
+        DrawCommand::Filtered(cmd) => &mut cmd.clip_rect,
     };
     *target = Some(clip_intersect(*target, ancestor_clip));
 }

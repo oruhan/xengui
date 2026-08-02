@@ -8,6 +8,7 @@ use crate::{
     AnimProperty,
     AnimationManager,
     Background,
+    BorderRadius,
     Constraints,
     ContextMenuHandle,
     Cursor,
@@ -1777,7 +1778,7 @@ impl Widget for View {
                 background: Some(
                     Background::Color(sb.thumb_color.with_alpha_f32(sb.thumb_color.a() * dim))
                 ),
-                border_radius: Some(Length::px(sb.thumb_radius)),
+                border_radius: Some(BorderRadius::all(Length::px(sb.thumb_radius))),
                 border_width: thumb_border_width,
                 border_color: Some(
                     sb.thumb_border_color.with_alpha_f32(sb.thumb_border_color.a() * dim)
@@ -1810,7 +1811,7 @@ impl Widget for View {
                 background: Some(
                     Background::Color(sb.thumb_color.with_alpha_f32(sb.thumb_color.a() * dim))
                 ),
-                border_radius: Some(Length::px(sb.thumb_radius)),
+                border_radius: Some(BorderRadius::all(Length::px(sb.thumb_radius))),
                 border_width: thumb_border_width,
                 border_color: Some(
                     sb.thumb_border_color.with_alpha_f32(sb.thumb_border_color.a() * dim)

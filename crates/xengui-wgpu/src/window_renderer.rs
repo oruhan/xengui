@@ -135,6 +135,33 @@ impl WgpuWindowRenderer {
             );
         };
 
+        let sample_count = SampleCount::X4.clamp_to_adapter(adapter, surface_format).as_u32();
+
+        let msaa_view = if sample_count > 1 {
+            Some(
+                device
+                    .create_texture(
+                        &(wgpu::TextureDescriptor {
+                            label: Some("xengui msaa target"),
+                            size: wgpu::Extent3d {
+                                width: width.max(1),
+                                height: height.max(1),
+                                depth_or_array_layers: 1,
+                            },
+                            mip_level_count: 1,
+                            sample_count,
+                            dimension: wgpu::TextureDimension::D2,
+                            format: surface_format,
+                            usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+                            view_formats: &[],
+                        })
+                    )
+                    .create_view(&Default::default())
+            )
+        } else {
+            None
+        };
+
         let pipelines = WgpuPipelines::new(&device, &queue, surface_format, user_fonts)?;
 
         let alpha_mode = if surface_caps.alpha_modes.contains(&wgpu::CompositeAlphaMode::Opaque) {

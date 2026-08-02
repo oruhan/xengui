@@ -1,6 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 use crate::{
-    BoxShadowCommand, Color, ImageCommand, RectCommand, SystemTheme, TextCommand, TextMeasurer, TriangleCommand,
+    BoxShadowCommand,
+    Color,
+    ImageCommand,
+    RectCommand,
+    SystemTheme,
+    TextCommand,
+    TextMeasurer,
+    TriangleCommand,
 };
 
 /// Abstracts the GPU backend so xengui's core (layout, widgets,
@@ -19,6 +26,17 @@ pub trait RenderBackend {
     fn draw_images(&mut self, cmds: &[ImageCommand]);
     fn draw_box_shadows(&mut self, cmds: &[BoxShadowCommand]);
     fn draw_text(&mut self, theme: SystemTheme, scale_factor: f32, cmd: &TextCommand);
+
+    /// Renders `cmds` in isolation, runs `chain` over the result, and
+    /// composites the filtered output at `bounds`. Backends without
+    /// filter support may implement this as a no-op fallback that paints
+    /// `cmds` directly (unfiltered) - correctness over a hard failure.
+    fn draw_filtered(
+        &mut self,
+        cmds: &[crate::DrawCommand],
+        chain: &crate::FilterChain,
+        bounds: (f32, f32, f32, f32)
+    );
 
     /// Drains underline/strike/overline rects queued by `draw_text` calls
     /// since the last call to this method.

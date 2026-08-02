@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-use crate::{ Color, Length };
+use crate::{ BorderRadius, Color, Length };
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Border {
@@ -8,7 +8,7 @@ pub struct Border {
     pub bottom: Length,
     pub left: Length,
     pub color: Color,
-    pub radius: Option<Length>,
+    pub radius: Option<BorderRadius>,
 }
 
 impl Default for Border {
@@ -25,7 +25,7 @@ impl Default for Border {
 }
 
 impl Border {
-    pub fn new(width: impl Into<Length>, color: Color, radius: impl Into<Length>) -> Self {
+    pub fn new(width: impl Into<Length>, color: Color, radius: impl Into<BorderRadius>) -> Self {
         let width = width.into();
         Self {
             top: width,
@@ -85,7 +85,10 @@ impl Border {
         Self { top: width, bottom: width, color, ..Self::default() }
     }
 
-    pub fn radius(mut self, radius: impl Into<Length>) -> Self {
+    /// Sets this border's corner radii. Accepts a single `Length`/`f32`
+    /// (applied to all four corners) or an explicit [`BorderRadius`] for
+    /// per-corner control, e.g. `border.radius(BorderRadius::top(8.0))`.
+    pub fn radius(mut self, radius: impl Into<BorderRadius>) -> Self {
         self.radius = Some(radius.into());
         self
     }
