@@ -105,6 +105,12 @@ pub trait Widget: Any {
 
     fn paint(&self, ctx: &mut PaintContext);
 
+    /// Marks this widget's entire subtree as rendered by the top layer
+    /// instead of inline - see [`crate::widgets::Portal`].
+    fn is_portal(&self) -> bool {
+        false
+    }
+
     /// Painted after every descendant, on top of them, and never cached -
     /// used for overlays like a scrollbar thumb that depend on live state.
     fn paint_overlay(&self, _ctx: &mut PaintContext) {}
