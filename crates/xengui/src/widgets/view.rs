@@ -552,12 +552,12 @@ impl View {
         let pressed = self.pressed_arrow.get();
         let mut scales = self.arrow_scale.get();
 
-        for i in 0..4 {
+        for (i, (anim_id, scale)) in self.arrow_anim_ids.iter().zip(scales.iter_mut()).enumerate() {
             let is_pressed = pressed.map(|p| p as usize) == Some(i);
             let target = if is_pressed { SCROLLBAR_ARROW_PRESS_SCALE } else { 1.0 };
 
             let key = AnimKey {
-                widget: self.arrow_anim_ids[i],
+                widget: *anim_id,
                 layer: AnimLayer::Root,
                 property: AnimProperty::Scale,
             };
@@ -569,11 +569,11 @@ impl View {
 
             match anim.value(key) {
                 Some(v) => {
-                    scales[i] = v.0[0];
+                    *scale = v.0[0];
                     self.base.dirty = true;
                 }
                 None => {
-                    scales[i] = target;
+                    *scale = target;
                 }
             }
         }
@@ -1286,11 +1286,10 @@ impl View {
                     return Some(EventStatus::Handled);
                 }
 
-                if
-                    self.auto_scroll_enabled &&
-                    self.hit_test(*position) &&
-                    (self.is_scrollable_x() || self.is_scrollable_y())
-                {
+                // Only real overflow (not just an overflow:scroll/auto
+                // *mode* with nothing to scroll) should activate AutoScroll.
+                let (active_x, active_y) = self.scrollbar_active();
+                if self.auto_scroll_enabled && self.hit_test(*position) && (active_x || active_y) {
                     self.cancel_conflicting_gestures();
                     let cursor = self.autoscroll_cursor();
                     self.auto_scroll.set(

@@ -111,9 +111,11 @@ impl Label {
     // WidgetBase's canonical `pressed > hovered > focused`.
     fn recompute_style(&mut self) {
         self.base.recompute_style();
-        // Only shows the I-beam when text selection is actually enabled.
+        // Only claims a hover cursor when it actually needs one (text
+        // selection); a plain label wrapped by a clickable ancestor must
+        // not shadow that ancestor's own cursor.
         self.base.interaction.hover_cursor = self.base.computed_style.cursor.or(
-            Some(if self.selectable { Cursor::Text } else { Cursor::Default })
+            self.selectable.then_some(Cursor::Text)
         );
     }
 

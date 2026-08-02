@@ -1,6 +1,18 @@
 // SPDX-License-Identifier: Apache-2.0
 use crate::{
-    ElementState, EventCtx, InputEvent, InputState, KeyboardEvent, ModifiersState, MouseButton, Widget, cancel_auto_scroll_recursive, collect_focusable_paths, dispatch_positional, dispatch_to_path, hit_test_path,
+    ElementState,
+    EventCtx,
+    InputEvent,
+    InputState,
+    KeyboardEvent,
+    ModifiersState,
+    MouseButton,
+    Widget,
+    cancel_auto_scroll_recursive,
+    collect_focusable_paths,
+    dispatch_positional,
+    dispatch_to_path,
+    hit_test_path,
 };
 
 /// High-level pointer/keyboard/focus dispatcher built on top of the
@@ -25,12 +37,29 @@ impl Dispatcher {
 
         let new_hover = hit_test_path(tree, point);
         if new_hover != self.state.hovered_path {
-            if let Some(old) = self.state.hovered_path.take() {
-                dispatch_to_path(tree, &old, &InputEvent::MouseExited, &mut ctx);
+            // Compares full ancestor chains (not just the leaf) so a
+            // wrapping widget (e.g. a View around a Label) still gets its
+            // own MouseEntered/MouseExited and can react to hover.
+            let old_chain: Vec<String> = self.state.hovered_path
+                .as_deref()
+                .map(crate::input::ancestor_paths)
+                .unwrap_or_default();
+            let new_chain: Vec<String> = new_hover
+                .as_deref()
+                .map(crate::input::ancestor_paths)
+                .unwrap_or_default();
+
+            for path in &old_chain {
+                if !new_chain.contains(path) {
+                    dispatch_to_path(tree, path, &InputEvent::MouseExited, &mut ctx);
+                }
             }
-            if let Some(new) = &new_hover {
-                dispatch_to_path(tree, new, &InputEvent::MouseEntered, &mut ctx);
+            for path in &new_chain {
+                if !old_chain.contains(path) {
+                    dispatch_to_path(tree, path, &InputEvent::MouseEntered, &mut ctx);
+                }
             }
+
             self.state.hovered_path = new_hover.clone();
         }
 

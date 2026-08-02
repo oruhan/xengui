@@ -259,7 +259,7 @@ impl EventCtx {
     }
 }
 
-fn ancestor_paths(path: &str) -> Vec<String> {
+pub(crate) fn ancestor_paths(path: &str) -> Vec<String> {
     let parts: Vec<&str> = path.split('.').collect();
     (1..=parts.len()).map(|n| parts[..n].join(".")).collect()
 }

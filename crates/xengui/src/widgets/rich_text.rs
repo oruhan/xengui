@@ -171,9 +171,7 @@ impl RichText {
 
     fn recompute_style(&mut self) {
         self.base.recompute_style();
-        self.base.interaction.hover_cursor = self.base.computed_style.cursor.or(
-            Some(Cursor::Default)
-        );
+        self.base.interaction.hover_cursor = self.base.computed_style.cursor;
     }
 }
 
