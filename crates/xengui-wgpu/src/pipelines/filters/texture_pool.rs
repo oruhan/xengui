@@ -5,7 +5,7 @@
 //! the next `reset_frame`.
 
 pub struct PooledTexture {
-    pub texture: std::rc::Rc<wgpu::Texture>,
+    pub texture: std::sync::Arc<wgpu::Texture>,
     pub view: wgpu::TextureView,
     pub width: u32,
     pub height: u32,
@@ -34,7 +34,7 @@ impl TexturePool {
     }
 
     pub fn reset_frame(&mut self) {
-        self.free.extend(self.used_this_frame.drain(..));
+        self.free.append(&mut self.used_this_frame);
     }
 
     pub fn acquire(&mut self, device: &wgpu::Device, width: u32, height: u32) -> PooledTexture {
@@ -62,7 +62,7 @@ impl TexturePool {
             })
         );
         let view = texture.create_view(&Default::default());
-        let pooled = PooledTexture { texture: std::rc::Rc::new(texture), view, width, height };
+        let pooled = PooledTexture { texture: std::sync::Arc::new(texture), view, width, height };
         self.used_this_frame.push(pooled.clone());
         pooled
     }

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-use xengui::Color;
+use xengui::{ Color, paint };
 
 #[repr(C)]
 #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
@@ -15,7 +15,7 @@ struct GpuBlitParams {
 /// texture into a differently-sized/positioned target - centering a
 /// source into a padded working texture, extracting a tinted alpha
 /// silhouette for [`xengui::Filter::DropShadow`], and compositing one
-/// texture over another.
+/// texture over another at an arbitrary screen position.
 pub struct BlitPass {
     pipeline: wgpu::RenderPipeline,
     bind_group_layout: wgpu::BindGroupLayout,
@@ -145,14 +145,11 @@ impl BlitPass {
         Self { pipeline, bind_group_layout, sampler, uniform_buffer, pipeline_blend }
     }
 
-    /// Copies `source` into `target`, offset by `offset_uv` (fractional
-    /// UV units) and optionally tinted into a solid-color alpha
-    /// silhouette when `tint` is `Some` (used to build the shadow shape
-    /// for [`xengui::Filter::DropShadow`] before it's blurred).
-    ///
-    /// `source_size` is informational only (kept for call-site clarity);
-    /// the shader itself only needs `target`'s own dimensions for the
-    /// fullscreen triangle's viewport.
+    /// Copies `source` into `target`, filling the whole `target_width` x
+    /// `target_height` texture, offset by `offset_uv` (fractional UV
+    /// units) and optionally tinted into a solid-color alpha silhouette
+    /// when `tint` is `Some` (used to build the shadow shape for
+    /// [`xengui::Filter::DropShadow`] before it's blurred).
     #[allow(clippy::too_many_arguments)]
     pub fn run(
         &self,
@@ -173,6 +170,8 @@ impl BlitPass {
             encoder,
             source,
             target,
+            (0.0, 0.0, target_width as f32, target_height as f32),
+            None,
             target_width,
             target_height,
             offset_uv,
@@ -182,9 +181,10 @@ impl BlitPass {
     }
 
     /// Composites `source` on top of whatever `target` already contains,
-    /// using standard alpha-over blending instead of overwriting it.
-    /// Used to layer the original (unblurred) content back over a
-    /// drop-shadow's blurred silhouette.
+    /// at `dest_rect` (physical px), using standard alpha-over blending
+    /// instead of overwriting it. `clip_rect` (if given) restricts the
+    /// composite to an ancestor's own clip region via a scissor rect.
+    #[allow(clippy::too_many_arguments)]
     pub fn run_over(
         &self,
         device: &wgpu::Device,
@@ -192,6 +192,8 @@ impl BlitPass {
         encoder: &mut wgpu::CommandEncoder,
         source: &wgpu::TextureView,
         target: &wgpu::TextureView,
+        dest_rect: (f32, f32, f32, f32),
+        clip_rect: Option<(f32, f32, f32, f32)>,
         target_width: u32,
         target_height: u32
     ) {
@@ -201,6 +203,8 @@ impl BlitPass {
             encoder,
             source,
             target,
+            dest_rect,
+            clip_rect,
             target_width,
             target_height,
             (0.0, 0.0),
@@ -217,8 +221,10 @@ impl BlitPass {
         encoder: &mut wgpu::CommandEncoder,
         source: &wgpu::TextureView,
         target: &wgpu::TextureView,
-        width: u32,
-        height: u32,
+        dest_rect: (f32, f32, f32, f32),
+        clip_rect: Option<(f32, f32, f32, f32)>,
+        target_width: u32,
+        target_height: u32,
         offset_uv: (f32, f32),
         tint: Option<Color>,
         blend_over: bool
@@ -284,7 +290,25 @@ impl BlitPass {
         );
         pass.set_pipeline(pipeline);
         pass.set_bind_group(0, &bind_group, &[]);
-        pass.set_viewport(0.0, 0.0, width as f32, height as f32, 0.0, 1.0);
+        pass.set_viewport(
+            dest_rect.0,
+            dest_rect.1,
+            dest_rect.2.max(1.0),
+            dest_rect.3.max(1.0),
+            0.0,
+            1.0
+        );
+
+        let (sx, sy, sw, sh) = paint::draw_command::scissor_for_clip(
+            clip_rect,
+            target_width,
+            target_height
+        );
+        if sw == 0 || sh == 0 {
+            return;
+        }
+        pass.set_scissor_rect(sx, sy, sw, sh);
+
         pass.draw(0..3, 0..1);
     }
 }

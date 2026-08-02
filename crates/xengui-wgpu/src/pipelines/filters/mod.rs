@@ -162,6 +162,37 @@ impl FilterEngine {
         }
     }
 
+    /// Composites a filtered subtree's output onto `target` at `dest_rect`
+    /// (physical px), blending over whatever `target` already contains.
+    /// `clip_rect`, if given, restricts the composite to an ancestor's
+    /// own clip region.
+    #[allow(clippy::too_many_arguments)]
+    pub fn composite(
+        &self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        encoder: &mut wgpu::CommandEncoder,
+        source: &wgpu::TextureView,
+        target: &wgpu::TextureView,
+        dest_rect: (f32, f32, f32, f32),
+        clip_rect: Option<(f32, f32, f32, f32)>,
+        target_width: u32,
+        target_height: u32
+    ) {
+        self.blit.run_over(
+            device,
+            queue,
+            encoder,
+            source,
+            target,
+            dest_rect,
+            clip_rect,
+            target_width,
+            target_height
+        );
+    }
+
+    #[allow(clippy::too_many_arguments)]
     fn run_color_segment(
         &mut self,
         device: &wgpu::Device,
@@ -234,7 +265,17 @@ impl FilterEngine {
             (w, h),
             None
         );
-        self.blit.run_over(device, queue, encoder, &source.view, &composited.view, w, h);
+        self.blit.run_over(
+            device,
+            queue,
+            encoder,
+            &source.view,
+            &composited.view,
+            (0.0, 0.0, w as f32, h as f32),
+            None,
+            w,
+            h
+        );
 
         composited
     }

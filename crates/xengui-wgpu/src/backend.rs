@@ -30,6 +30,7 @@ pub struct WgpuPipelines {
     text: TextPipeline,
     pub(crate) box_shadow: BoxShadowPipeline,
     filters: FilterEngine,
+    surface_format: wgpu::TextureFormat,
     /// Resolved, adapter-clamped MSAA sample count every pipeline above
     /// was built with. `1` means MSAA is disabled entirely (either
     /// requested that way, or the adapter didn't support anything higher).
@@ -58,10 +59,17 @@ impl WgpuPipelines {
             text: TextPipeline::new(device, queue, surface_format, user_fonts, sample_count)?,
             box_shadow: BoxShadowPipeline::new(device, surface_format, sample_count),
             filters: FilterEngine::new(device, surface_format),
+            surface_format,
             sample_count,
             msaa_texture: None,
             msaa_view: None,
         })
+    }
+
+    /// The format every pipeline (including the filter engine's own
+    /// offscreen textures) was built against.
+    pub fn surface_format(&self) -> wgpu::TextureFormat {
+        self.surface_format
     }
 
     /// (Re)allocates the MSAA color target for the given surface size.
@@ -115,6 +123,7 @@ impl WgpuPipelines {
         self.triangle.reset_frame();
         self.image.reset_frame();
         self.box_shadow.reset_frame();
+        self.filters.reset_frame();
 
         WgpuFrame {
             pipelines: self,
@@ -205,6 +214,213 @@ impl<'a> WgpuFrame<'a> {
     /// first shape draw call loads instead of clearing it away.
     pub fn preserve_existing_content(&mut self) {
         self.shape_pass_open = true;
+    }
+
+    /// Renders `cmds` (already translated into the subtree's own local
+    /// coordinate space, i.e. as if the widget's own top-left sat at the
+    /// origin) into a freshly cleared `target_view`, batching same-type
+    /// draw calls into runs the same way the main frame loop batches
+    /// commands against `self.view` - only the destination texture and
+    /// its dimensions differ.
+    fn paint_subtree_to_offscreen(
+        &mut self,
+        cmds: &[DrawCommand],
+        target_view: &wgpu::TextureView,
+        target_width: u32,
+        target_height: u32
+    ) {
+        #[derive(PartialEq, Clone, Copy)]
+        enum RunKind {
+            Rect,
+            Triangle,
+            Image,
+            Text,
+            BoxShadow,
+        }
+
+        let mut current_kind: Option<RunKind> = None;
+        let mut rect_buf: Vec<RectCommand> = Vec::new();
+        let mut tri_buf: Vec<TriangleCommand> = Vec::new();
+        let mut img_buf: Vec<ImageCommand> = Vec::new();
+        let mut shadow_buf: Vec<BoxShadowCommand> = Vec::new();
+        // Whether the offscreen texture has already been cleared, so
+        // every following pass loads instead of wiping earlier layers.
+        let mut cleared = false;
+
+        macro_rules! shape_pass {
+            () => {
+        {
+                let load = if cleared {
+                    wgpu::LoadOp::Load
+                } else {
+                    cleared = true;
+                    wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT)
+                };
+                self.encoder.begin_render_pass(
+                    &(wgpu::RenderPassDescriptor {
+                        label: Some("xengui filtered subtree shape pass"),
+                        color_attachments: &[
+                            Some(wgpu::RenderPassColorAttachment {
+                                view: target_view,
+                                resolve_target: None,
+                                ops: wgpu::Operations { load, store: wgpu::StoreOp::Store },
+                                depth_slice: None,
+                            }),
+                        ],
+                        depth_stencil_attachment: None,
+                        timestamp_writes: None,
+                        occlusion_query_set: None,
+                        multiview_mask: None,
+                    })
+                )
+        }
+            };
+        }
+
+        macro_rules! flush_run {
+            () => {
+                match current_kind {
+                    Some(RunKind::Rect) => {
+                        let mut pass = shape_pass!();
+                        self.pipelines.rect.draw_batch(
+                            self.device,
+                            self.queue,
+                            &mut pass,
+                            target_width,
+                            target_height,
+                            &rect_buf
+                        );
+                    }
+                    Some(RunKind::Triangle) => {
+                        let mut pass = shape_pass!();
+                        self.pipelines.triangle.draw_batch(
+                            self.device,
+                            self.queue,
+                            &mut pass,
+                            target_width,
+                            target_height,
+                            &tri_buf
+                        );
+                    }
+                    Some(RunKind::Image) => {
+                        let mut pass = shape_pass!();
+                        self.pipelines.image.draw_batch(
+                            self.device,
+                            self.queue,
+                            &mut pass,
+                            target_width,
+                            target_height,
+                            &img_buf
+                        );
+                    }
+                    Some(RunKind::BoxShadow) => {
+                        let mut pass = shape_pass!();
+                        self.pipelines.box_shadow.draw_batch(
+                            self.device,
+                            self.queue,
+                            &mut pass,
+                            target_width,
+                            target_height,
+                            &shadow_buf
+                        );
+                    }
+                    Some(RunKind::Text) => {
+                        if !cleared {
+                            let _ = shape_pass!();
+                        }
+                        if
+                            let Err(err) = self.pipelines.text.flush(
+                                self.device,
+                                self.queue,
+                                self.encoder,
+                                target_view,
+                                target_width,
+                                target_height
+                            )
+                        {
+                            log::warn!("xengui-wgpu: filtered subtree text flush failed: {err}");
+                        }
+                        let decorations = self.pipelines.text.take_decorations();
+                        if !decorations.is_empty() {
+                            let mut pass = shape_pass!();
+                            self.pipelines.rect.draw_batch(
+                                self.device,
+                                self.queue,
+                                &mut pass,
+                                target_width,
+                                target_height,
+                                &decorations
+                            );
+                        }
+                    }
+                    None => {}
+                }
+                rect_buf.clear();
+                tri_buf.clear();
+                img_buf.clear();
+                shadow_buf.clear();
+            };
+        }
+
+        for command in cmds {
+            match command {
+                DrawCommand::Text(cmd) => {
+                    if current_kind != Some(RunKind::Text) {
+                        flush_run!();
+                        current_kind = Some(RunKind::Text);
+                    }
+                    self.pipelines.text.draw(self.scale_factor, SystemTheme::Dark, cmd);
+                }
+                DrawCommand::Rect(cmd) => {
+                    if current_kind != Some(RunKind::Rect) {
+                        flush_run!();
+                        current_kind = Some(RunKind::Rect);
+                    }
+                    rect_buf.push(cmd.clone());
+                }
+                DrawCommand::Triangle(cmd) => {
+                    if current_kind != Some(RunKind::Triangle) {
+                        flush_run!();
+                        current_kind = Some(RunKind::Triangle);
+                    }
+                    tri_buf.push(cmd.clone());
+                }
+                DrawCommand::Image(cmd) => {
+                    if current_kind != Some(RunKind::Image) {
+                        flush_run!();
+                        current_kind = Some(RunKind::Image);
+                    }
+                    img_buf.push((**cmd).clone());
+                }
+                DrawCommand::BoxShadow(cmd) => {
+                    if current_kind != Some(RunKind::BoxShadow) {
+                        flush_run!();
+                        current_kind = Some(RunKind::BoxShadow);
+                    }
+                    shadow_buf.push(cmd.clone());
+                }
+                // paint_subtree_for_filter (xengui core) never records a
+                // nested Filtered command - it inlines every descendant's
+                // own paint() call directly. This arm only guards against
+                // that changing later; it inlines the nested subtree
+                // unfiltered rather than silently dropping its content.
+                DrawCommand::Filtered(nested) => {
+                    flush_run!();
+                    current_kind = None;
+                    self.paint_subtree_to_offscreen(
+                        &nested.commands,
+                        target_view,
+                        target_width,
+                        target_height
+                    );
+                }
+            }
+        }
+        flush_run!();
+
+        if !cleared {
+            let _ = shape_pass!();
+        }
     }
 }
 
@@ -418,47 +634,134 @@ impl<'a> RenderBackend for WgpuFrame<'a> {
     fn draw_filtered(
         &mut self,
         cmds: &[DrawCommand],
-        _chain: &FilterChain,
-        _bounds: (f32, f32, f32, f32)
+        chain: &FilterChain,
+        bounds: (f32, f32, f32, f32)
     ) {
-        // Unfiltered fallback, explicitly allowed by RenderBackend::draw_filtered's
-        // own contract: paints the subtree directly instead of running the GPU
-        // filter chain, so a filtered widget still renders rather than vanishing.
-        let mut rect_buf = Vec::new();
-        let mut tri_buf = Vec::new();
-        let mut img_buf = Vec::new();
-        let mut shadow_buf = Vec::new();
+        let (bx, by, bw, bh) = bounds;
+        let width = bw.round().max(1.0) as u32;
+        let height = bh.round().max(1.0) as u32;
 
-        for cmd in cmds {
-            match cmd {
-                DrawCommand::Rect(c) => rect_buf.push(c.clone()),
-                DrawCommand::Triangle(c) => tri_buf.push(c.clone()),
-                DrawCommand::Image(c) => img_buf.push((**c).clone()),
-                DrawCommand::BoxShadow(c) => shadow_buf.push(c.clone()),
-                DrawCommand::Text(c) => {
-                    let scale_factor = self.scale_factor;
-                    self.draw_text(SystemTheme::Dark, scale_factor, c);
-                }
-                DrawCommand::Filtered(nested) => {
-                    self.draw_filtered(&nested.commands, &nested.chain, nested.bounds);
-                }
-            }
-        }
+        let translated: Vec<DrawCommand> = cmds
+            .iter()
+            .map(|c| translate_draw_command(c, bx, by))
+            .collect();
 
-        if !rect_buf.is_empty() {
-            self.draw_rects(&rect_buf);
-        }
-        if !tri_buf.is_empty() {
-            self.draw_triangles(&tri_buf);
-        }
-        if !img_buf.is_empty() {
-            self.draw_images(&img_buf);
-        }
-        if !shadow_buf.is_empty() {
-            self.draw_box_shadows(&shadow_buf);
-        }
-        self.flush_text();
+        let format = self.pipelines.surface_format();
+        let source_texture = self.device.create_texture(
+            &(wgpu::TextureDescriptor {
+                label: Some("xengui filtered subtree source"),
+                size: wgpu::Extent3d { width, height, depth_or_array_layers: 1 },
+                mip_level_count: 1,
+                sample_count: 1,
+                dimension: wgpu::TextureDimension::D2,
+                format,
+                usage: wgpu::TextureUsages::RENDER_ATTACHMENT |
+                wgpu::TextureUsages::TEXTURE_BINDING,
+                view_formats: &[],
+            })
+        );
+        let source_view = source_texture.create_view(&Default::default());
+
+        self.paint_subtree_to_offscreen(&translated, &source_view, width, height);
+
+        let filtered = self.pipelines.filters.apply(
+            self.device,
+            self.queue,
+            self.encoder,
+            &source_view,
+            width,
+            height,
+            chain,
+            self.scale_factor
+        );
+
+        // Clamped to the frame's own top-left: a large blur/drop-shadow
+        // padding on a widget sitting right at the edge would otherwise
+        // push the destination viewport into negative territory, which
+        // wgpu rejects.
+        let dest_rect = (
+            (bx - filtered.padding).max(0.0),
+            (by - filtered.padding).max(0.0),
+            filtered.width as f32,
+            filtered.height as f32,
+        );
+
+        self.pipelines.filters.composite(
+            self.device,
+            self.queue,
+            self.encoder,
+            &filtered.view,
+            self.view,
+            dest_rect,
+            None,
+            self.width,
+            self.height
+        );
     }
 
     fn resize(&mut self, _width: u32, _height: u32) {}
+}
+
+/// Shifts a draw command by `(-ox, -oy)`, converting it from the main
+/// frame's absolute paint coordinates into a filtered subtree's own local
+/// space, where the widget's own top-left lands at the texture origin.
+fn translate_draw_command(command: &DrawCommand, ox: f32, oy: f32) -> DrawCommand {
+    let shift_clip = |clip: Option<(f32, f32, f32, f32)>| {
+        clip.map(|(x, y, w, h)| (x - ox, y - oy, w, h))
+    };
+
+    match command {
+        DrawCommand::Rect(c) => {
+            let mut c = c.clone();
+            c.position.0 -= ox;
+            c.position.1 -= oy;
+            c.clip_rect = shift_clip(c.clip_rect);
+            DrawCommand::Rect(c)
+        }
+        DrawCommand::Triangle(c) => {
+            let mut c = c.clone();
+            c.p0.0 -= ox;
+            c.p0.1 -= oy;
+            c.p1.0 -= ox;
+            c.p1.1 -= oy;
+            c.p2.0 -= ox;
+            c.p2.1 -= oy;
+            c.clip_rect = shift_clip(c.clip_rect);
+            DrawCommand::Triangle(c)
+        }
+        DrawCommand::Text(c) => {
+            let mut c = c.clone();
+            c.position.0 -= ox;
+            c.position.1 -= oy;
+            c.clip_rect = shift_clip(c.clip_rect);
+            DrawCommand::Text(c)
+        }
+        DrawCommand::Image(c) => {
+            let mut c = c.clone();
+            c.position.0 -= ox;
+            c.position.1 -= oy;
+            c.clip_rect = shift_clip(c.clip_rect);
+            DrawCommand::Image(c)
+        }
+        DrawCommand::BoxShadow(c) => {
+            let mut c = c.clone();
+            c.shadow_position.0 -= ox;
+            c.shadow_position.1 -= oy;
+            c.box_position.0 -= ox;
+            c.box_position.1 -= oy;
+            c.clip_rect = shift_clip(c.clip_rect);
+            DrawCommand::BoxShadow(c)
+        }
+        DrawCommand::Filtered(nested) => {
+            let mut nested = nested.clone();
+            nested.bounds.0 -= ox;
+            nested.bounds.1 -= oy;
+            nested.clip_rect = shift_clip(nested.clip_rect);
+            nested.commands = nested.commands
+                .iter()
+                .map(|c| translate_draw_command(c, ox, oy))
+                .collect();
+            DrawCommand::Filtered(nested)
+        }
+    }
 }

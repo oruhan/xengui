@@ -32,7 +32,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .flex_direction(FlexDirection::Row)
                 .flex_wrap(FlexWrap::Wrap)
                 .gap(16, 16)
-                .padding(24)
+                .padding(Edges::all(24))
                 .child(filter_card("Blur", Filter::Blur((6.0).into()).into()))
                 .child(filter_card("Brightness 1.5", Filter::Brightness(1.5).into()))
                 .child(filter_card("Contrast 1.8", Filter::Contrast(1.8).into()))
