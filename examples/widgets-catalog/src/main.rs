@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
+// hide console window on windows subsystem
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
-use web_time::Duration;
 
+use web_time::Duration;
 use xenframe::{ App, AppConfig };
 #[cfg(not(target_arch = "wasm32"))]
 use xenframe::WindowPosition;
-// hides console window on windows subsystem
 use xengui::{ properties::StyleValue, widgets::Link, * };
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -74,6 +74,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         .scrollbar_thumb_color(Color::NEUTRAL_400)
                         .scrollbar_arrow_color(Color::NEUTRAL_400)
                         .gap(0, 4)
+                        .child(TestButton::new().label("Test button").color(Color::BLUE_500))
                         .child(
                             Label::new()
                                 .label("label1")

@@ -250,3 +250,67 @@ macro_rules! impl_widget_boilerplate {
         }
     };
 }
+
+/// Generates the `Widget` implementation for a user-defined composite
+/// widget. The target type must have these fields:
+/// `base: WidgetBase`, `layout_box: LayoutBox`,
+/// `inner: Vec<Box<dyn Widget>>`, `hooks_id: WidgetId`,
+/// and must implement `Render`.
+#[macro_export]
+macro_rules! impl_composite_widget {
+    ($ty:ty) => {
+        impl $crate::Widget for $ty {
+            $crate::impl_widget_boilerplate!();
+
+            fn debug_name(&self) -> &'static str {
+                stringify!($ty)
+            }
+
+            fn children(&self) -> &[Box<dyn $crate::Widget>] {
+                &self.inner
+            }
+
+            fn children_mut(&mut self) -> Option<&mut Vec<Box<dyn $crate::Widget>>> {
+                Some(&mut self.inner)
+            }
+
+            fn measure(
+                &self,
+                _ctx: &mut $crate::MeasureContext,
+                _constraints: $crate::Constraints
+            ) -> $crate::MeasureResult {
+                $crate::MeasureResult::new(0.0, 0.0)
+            }
+
+            fn paint(&self, _ctx: &mut $crate::PaintContext) {}
+
+            fn cascade_style(
+                &mut self,
+                parent: &$crate::Style,
+                anim: &mut $crate::AnimationManager
+            ) {
+                self.base.inherited_style = parent.clone();
+                self.base.recompute_style();
+
+                if self.inner.is_empty() {
+                    let key = format!("{}#{}", stringify!($ty), self.hooks_id.get());
+                    let built = $crate::component(key, || $crate::composite::Render::render(self));
+                    self.inner = vec![built];
+                }
+
+                for child in self.inner.iter_mut() {
+                    child.cascade_style(&self.base.computed_style, anim);
+                }
+            }
+
+            fn transfer_interaction_state(&mut self, old: &dyn $crate::Widget) {
+                if let (Some(new), Some(old_i)) = (self.interaction_mut(), old.interaction()) {
+                    new.transfer_from(old_i);
+                }
+                if let Some(old) = old.as_any().downcast_ref::<$ty>() {
+                    self.hooks_id = old.hooks_id;
+                }
+            }
+        }
+    };
+}

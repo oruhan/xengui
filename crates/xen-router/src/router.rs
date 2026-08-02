@@ -6,7 +6,7 @@ use xengui::{ component, Widget };
 type RouteBuilder = Box<dyn Fn(&RouteParams) -> Box<dyn Widget>>;
 
 /// Picks one child widget tree to render based on the current route path
-/// (see [`crate::navigate`]), re-evaluated every time the app's render
+/// (see [`crate::push`]), re-evaluated every time the app's render
 /// closure runs.
 ///
 /// Routes are checked in the order they were added; the first matching

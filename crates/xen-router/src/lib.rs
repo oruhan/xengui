@@ -17,7 +17,7 @@ mod route_match;
 mod router;
 mod link;
 
-pub use state::{ current_path, navigate, replace };
+pub use state::{ back, current_path, forward, push, replace, search_params };
 pub use route_match::{ match_route, RouteParams };
 pub use router::Router;
 pub use link::router_link;

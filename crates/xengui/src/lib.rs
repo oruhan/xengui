@@ -12,6 +12,7 @@ pub mod hooks;
 pub mod widget;
 pub mod widget_base;
 pub mod devtools;
+pub mod composite;
 pub mod animation;
 pub mod constants;
 pub mod dispatcher;
@@ -28,6 +29,7 @@ pub use style::*;
 pub use style::system_theme::SystemTheme;
 pub use widget::{ Widget, scaled_layout_box };
 pub use widget_base::WidgetBase;
+pub use composite::Render;
 pub use animation::{
     AnimKey,
     AnimLayer,
