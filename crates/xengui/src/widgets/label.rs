@@ -279,7 +279,7 @@ impl Widget for Label {
                             style.selection_background.unwrap_or(Color::rgba(90, 140, 230, 100))
                         )
                     ),
-                    border_radius: style.selection_border_radius,
+                    border_radius: style.selection_border_radius.map(Into::into),
                     border_width: style.selection_border_width,
                     border_color: style.selection_border_color,
                     clip_rect: None,

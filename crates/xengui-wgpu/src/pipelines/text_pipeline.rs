@@ -72,7 +72,8 @@ impl TextPipeline {
         device: &wgpu::Device,
         queue: &wgpu::Queue,
         surface_format: wgpu::TextureFormat,
-        user_fonts: Vec<(String, Vec<u8>)>
+        user_fonts: Vec<(String, Vec<u8>)>,
+        sample_count: u32
     ) -> Result<Self, String> {
         #[cfg(target_arch = "wasm32")]
         if user_fonts.is_empty() {
@@ -115,7 +116,11 @@ impl TextPipeline {
         let renderer = TextRenderer::new(
             &mut atlas,
             device,
-            wgpu::MultisampleState::default(),
+            wgpu::MultisampleState {
+                count: sample_count,
+                mask: !0,
+                alpha_to_coverage_enabled: false,
+            },
             None
         );
         let viewport = Viewport::new(device, &cache);

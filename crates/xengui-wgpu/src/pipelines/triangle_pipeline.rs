@@ -40,7 +40,11 @@ const VERTICES_PER_TRIANGLE: usize = 3;
 const DEFAULT_TRIANGLE_CAPACITY: usize = 64;
 
 impl TrianglePipeline {
-    pub fn new(device: &wgpu::Device, surface_format: wgpu::TextureFormat) -> Self {
+    pub fn new(
+        device: &wgpu::Device,
+        surface_format: wgpu::TextureFormat,
+        sample_count: u32
+    ) -> Self {
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("Triangle Shader"),
             source: wgpu::ShaderSource::Wgsl(include_str!("shaders/triangle.wgsl").into()),
@@ -69,7 +73,11 @@ impl TrianglePipeline {
                     ..Default::default()
                 },
                 depth_stencil: None,
-                multisample: Default::default(),
+                multisample: wgpu::MultisampleState {
+                    count: sample_count,
+                    mask: !0,
+                    alpha_to_coverage_enabled: false,
+                },
                 fragment: Some(wgpu::FragmentState {
                     module: &shader,
                     entry_point: Some("fs_main"),

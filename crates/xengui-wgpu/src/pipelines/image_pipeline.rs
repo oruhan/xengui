@@ -75,7 +75,11 @@ const VERTICES_PER_IMAGE: usize = 6;
 const DEFAULT_IMAGE_CAPACITY: usize = 64;
 
 impl ImagePipeline {
-    pub fn new(device: &wgpu::Device, surface_format: wgpu::TextureFormat) -> Self {
+    pub fn new(
+        device: &wgpu::Device,
+        surface_format: wgpu::TextureFormat,
+        sample_count: u32
+    ) -> Self {
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("Image Shader"),
             source: wgpu::ShaderSource::Wgsl(include_str!("shaders/image.wgsl").into()),
@@ -128,7 +132,11 @@ impl ImagePipeline {
                     ..Default::default()
                 },
                 depth_stencil: None,
-                multisample: Default::default(),
+                multisample: wgpu::MultisampleState {
+                    count: sample_count,
+                    mask: !0,
+                    alpha_to_coverage_enabled: false,
+                },
                 fragment: Some(wgpu::FragmentState {
                     module: &shader,
                     entry_point: Some("fs_main"),
@@ -291,7 +299,7 @@ impl ImagePipeline {
             let half_h = h * 0.5;
 
             let radius = cmd.border_radius
-                .map(|r| r.value())
+                .map(|r| r.max_value())
                 .unwrap_or(0.0)
                 .clamp(0.0, half_w.min(half_h));
 

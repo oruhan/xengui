@@ -1020,7 +1020,7 @@ impl Widget for TextBox {
                         position: (sel_left, line_y),
                         size: (sel_right - sel_left, line_h),
                         background: Some(Background::Color(sel_bg)),
-                        border_radius: style.selection_border_radius,
+                        border_radius: style.selection_border_radius.map(Into::into),
                         border_width: style.selection_border_width,
                         border_color: style.selection_border_color,
                         clip_rect: None,

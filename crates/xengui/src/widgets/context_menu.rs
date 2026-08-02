@@ -1,6 +1,50 @@
 // SPDX-License-Identifier: Apache-2.0
 use crate::{
-    AnimKey, AnimLayer, AnimProperty, AnimValue, AnimationManager, Background, Border, Color, Constraints, Easing, Edges, ElementState, EventCtx, EventStatus, FlexDirection, FontStyle, FontWeight, ITEM_FONT_SIZE, InputEvent, Interaction, IntoThemed, Key, KeyState, LayoutBox, Length, MeasureContext, MeasureResult, MouseButton, PaintContext, Point, Rect, RectCommand, Style, StyleBuilder, TextCommand, TextMeasurer, Transition, Triangle, TriangleCommand, Widget, WidgetBase, WidgetId, pct, properties::{ DEFAULT_FONT_SIZE, DEFAULT_LINE_HEIGHT_RATIO },
+    AnimKey,
+    AnimLayer,
+    AnimProperty,
+    AnimValue,
+    AnimationManager,
+    Background,
+    Border,
+    BorderRadius,
+    Color,
+    Constraints,
+    Easing,
+    Edges,
+    ElementState,
+    EventCtx,
+    EventStatus,
+    FlexDirection,
+    FontStyle,
+    FontWeight,
+    ITEM_FONT_SIZE,
+    InputEvent,
+    Interaction,
+    IntoThemed,
+    Key,
+    KeyState,
+    LayoutBox,
+    Length,
+    MeasureContext,
+    MeasureResult,
+    MouseButton,
+    PaintContext,
+    Point,
+    Rect,
+    RectCommand,
+    Style,
+    StyleBuilder,
+    TextCommand,
+    TextMeasurer,
+    Transition,
+    Triangle,
+    TriangleCommand,
+    Widget,
+    WidgetBase,
+    WidgetId,
+    pct,
+    properties::{ DEFAULT_FONT_SIZE, DEFAULT_LINE_HEIGHT_RATIO },
 };
 use smol_str::SmolStr;
 use std::cell::{ Cell, RefCell };
@@ -1050,7 +1094,9 @@ impl ContextMenu {
             position: (mx, my),
             size: (mw, mh),
             background: Some(faded_background(bg, opacity)),
-            border_radius: border.and_then(|b| b.radius).map(|r| Length::px(r.to_physical(sf))),
+            border_radius: border
+                .and_then(|b| b.radius)
+                .map(|r| Length::px(Length::px(r.max_value()).to_physical(sf)).into()),
             border_width: border.map(|b| Length::px(b.top.to_physical(sf))),
             border_color: Some(border_color.with_alpha_f32(border_color.a() * opacity)),
             clip_rect: None,
@@ -1144,8 +1190,8 @@ impl ContextMenu {
                     background: Some(faded_background(Background::Color(blended_bg), opacity)),
                     border_radius: border
                         .and_then(|b| b.radius)
-                        .map(|r| Length::px(r.to_physical(sf)))
-                        .or(Some(Length::px(4.0 * sf))),
+                        .map(|r| Length::px(Length::px(r.max_value()).to_physical(sf)).into())
+                        .or(Some(BorderRadius::all(Length::px(4.0 * sf)))),
                     border_width: border.map(|b| Length::px(b.top.to_physical(sf))),
                     border_color: border.map(|b| b.color.with_alpha_f32(b.color.a() * opacity)),
                     clip_rect: None,

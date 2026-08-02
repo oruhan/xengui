@@ -19,7 +19,10 @@ pub enum AnimProperty {
     ContentScale,
     ShadowColor,
     BorderWidth,
-    BorderRadius,
+    BorderRadiusTL,
+    BorderRadiusTR,
+    BorderRadiusBR,
+    BorderRadiusBL,
     Width,
     Height,
     PaddingLeft,
@@ -45,7 +48,10 @@ impl AnimProperty {
         matches!(
             self,
             Self::BorderWidth |
-                Self::BorderRadius |
+                Self::BorderRadiusTL |
+                Self::BorderRadiusTR |
+                Self::BorderRadiusBR |
+                Self::BorderRadiusBL |
                 Self::Width |
                 Self::Height |
                 Self::PaddingLeft |

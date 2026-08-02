@@ -1,6 +1,37 @@
 // SPDX-License-Identifier: Apache-2.0
 use crate::{
-    AnimKey, AnimLayer, AnimProperty, AnimValue, AnimationManager, Background, BorderRadius, Color, Constraints, Easing, ElementState, EventCtx, EventStatus, InputEvent, Interaction, Key, KeyState, LayoutBox, Length, MeasureContext, MeasureResult, MouseButton, PaintContext, RectCommand, Style, StyleBuilder, Transition, TriangleCommand, Widget, WidgetBase, WidgetId, properties::{ DEFAULT_CURSOR_ICON, DEFAULT_POINTER_CURSOR_ICON },
+    AnimKey,
+    AnimLayer,
+    AnimProperty,
+    AnimValue,
+    AnimationManager,
+    Background,
+    BorderRadius,
+    Color,
+    Constraints,
+    Easing,
+    ElementState,
+    EventCtx,
+    EventStatus,
+    InputEvent,
+    Interaction,
+    Key,
+    KeyState,
+    LayoutBox,
+    Length,
+    MeasureContext,
+    MeasureResult,
+    MouseButton,
+    PaintContext,
+    RectCommand,
+    Style,
+    StyleBuilder,
+    Transition,
+    TriangleCommand,
+    Widget,
+    WidgetBase,
+    WidgetId,
+    properties::{ DEFAULT_CURSOR_ICON, DEFAULT_POINTER_CURSOR_ICON },
 };
 use std::cell::Cell;
 use web_time::Duration;
@@ -144,8 +175,9 @@ impl Widget for Checkbox {
         let radius = style.border
             .as_ref()
             .and_then(|bo| bo.radius)
-            .map(|r| r.to_physical(sf))
+            .map(|r| Length::px(r.max_value()).to_physical(sf))
             .unwrap_or(4.0 * sf);
+
         let border = style.border.as_ref();
 
         let unchecked_fill = style.background

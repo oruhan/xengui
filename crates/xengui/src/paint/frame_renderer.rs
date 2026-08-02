@@ -251,6 +251,7 @@ impl FrameRenderer {
                             }
                         }
                         Some(RunKind::BoxShadow) => backend.draw_box_shadows(&top_shadow_buf),
+                        Some(RunKind::Filtered) => {}
                         None => {}
                     }
                     top_rect_buf.clear();
@@ -296,6 +297,7 @@ impl FrameRenderer {
                         }
                         top_shadow_buf.push(cmd);
                     }
+                    DrawCommand::Filtered(_) => {}
                 }
             }
             flush_top_run!();

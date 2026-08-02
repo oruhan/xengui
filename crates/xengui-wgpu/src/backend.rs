@@ -5,10 +5,13 @@ use crate::pipelines::{
     RectPipeline,
     TextPipeline,
     TrianglePipeline,
+    FilterEngine,
 };
 use xengui::{
     BoxShadowCommand,
     Color,
+    DrawCommand,
+    FilterChain,
     ImageCommand,
     RectCommand,
     RenderBackend,
@@ -410,6 +413,51 @@ impl<'a> RenderBackend for WgpuFrame<'a> {
 
     fn end_frame(&mut self) {
         self.pipelines.text.trim_atlas();
+    }
+
+    fn draw_filtered(
+        &mut self,
+        cmds: &[DrawCommand],
+        _chain: &FilterChain,
+        _bounds: (f32, f32, f32, f32)
+    ) {
+        // Unfiltered fallback, explicitly allowed by RenderBackend::draw_filtered's
+        // own contract: paints the subtree directly instead of running the GPU
+        // filter chain, so a filtered widget still renders rather than vanishing.
+        let mut rect_buf = Vec::new();
+        let mut tri_buf = Vec::new();
+        let mut img_buf = Vec::new();
+        let mut shadow_buf = Vec::new();
+
+        for cmd in cmds {
+            match cmd {
+                DrawCommand::Rect(c) => rect_buf.push(c.clone()),
+                DrawCommand::Triangle(c) => tri_buf.push(c.clone()),
+                DrawCommand::Image(c) => img_buf.push((**c).clone()),
+                DrawCommand::BoxShadow(c) => shadow_buf.push(c.clone()),
+                DrawCommand::Text(c) => {
+                    let scale_factor = self.scale_factor;
+                    self.draw_text(SystemTheme::Dark, scale_factor, c);
+                }
+                DrawCommand::Filtered(nested) => {
+                    self.draw_filtered(&nested.commands, &nested.chain, nested.bounds);
+                }
+            }
+        }
+
+        if !rect_buf.is_empty() {
+            self.draw_rects(&rect_buf);
+        }
+        if !tri_buf.is_empty() {
+            self.draw_triangles(&tri_buf);
+        }
+        if !img_buf.is_empty() {
+            self.draw_images(&img_buf);
+        }
+        if !shadow_buf.is_empty() {
+            self.draw_box_shadows(&shadow_buf);
+        }
+        self.flush_text();
     }
 
     fn resize(&mut self, _width: u32, _height: u32) {}

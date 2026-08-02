@@ -255,7 +255,7 @@ pub trait Widget: Any {
             inset: shadow.inset,
             box_position: (layout.x, layout.y),
             box_size: (layout.width, layout.height),
-            box_radius: radius,
+            box_radius: radius.iter().copied().fold(0.0_f32, f32::max),
             clip_rect: None,
         });
     }
@@ -372,8 +372,8 @@ pub trait Widget: Any {
         let Some(border) = &self.style().border else {
             return true;
         };
-
-        let radius = border.radius.unwrap_or(BorderRadius::default());
+        
+        let radius = border.radius.map(|r| r.max_value()).unwrap_or(0.0);
 
         if radius <= 0.0 {
             return true;
@@ -555,7 +555,7 @@ pub fn scaled_layout_box(rect: LayoutBox, scale: f32) -> LayoutBox {
 /// Wraps four already-physical-px corner radii back into a [`BorderRadius`]
 /// so `RectCommand::border_radius` (which stores physical values, unlike
 /// `Style`'s logical `BorderRadius`) has a single documented type.
-fn border_radius_from_physical(radii: [f32; 4]) -> BorderRadius {
+pub(crate) fn border_radius_from_physical(radii: [f32; 4]) -> BorderRadius {
     BorderRadius::only(
         Length::px(radii[0]),
         Length::px(radii[1]),

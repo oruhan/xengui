@@ -8,7 +8,7 @@ use super::{
     Transition,
     TransitionProperty,
 };
-use crate::{ Background, Color, Edges, Length, Style, WidgetId };
+use crate::{ Background, BorderRadius, Color, Edges, Length, Style, WidgetId };
 
 fn animate_length(
     anim: &mut AnimationManager,

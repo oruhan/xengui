@@ -244,7 +244,9 @@ impl Widget for Image {
             size,
             image: source,
             border_radius: border.map(|b|
-                Length::px(b.radius.unwrap_or(Length::Px(0.0)).to_physical(sf))
+                Length::px(
+                    Length::px(b.radius.unwrap_or_default().max_value()).to_physical(sf)
+                ).into()
             ),
             tint: self.tint,
             clip_rect: None,

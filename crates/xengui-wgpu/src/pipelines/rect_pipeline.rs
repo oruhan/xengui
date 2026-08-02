@@ -90,7 +90,11 @@ const MAX_GRADIENT_STOPS_TOTAL: usize = 512;
 const MAX_GRADIENT_POSITION_VEC4S: usize = MAX_GRADIENT_STOPS_TOTAL / 4;
 
 impl RectPipeline {
-    pub fn new(device: &wgpu::Device, surface_format: wgpu::TextureFormat) -> Self {
+    pub fn new(
+        device: &wgpu::Device,
+        surface_format: wgpu::TextureFormat,
+        sample_count: u32
+    ) -> Self {
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("Rect Shader"),
             source: wgpu::ShaderSource::Wgsl(include_str!("shaders/rect.wgsl").into()),

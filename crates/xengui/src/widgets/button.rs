@@ -311,8 +311,8 @@ impl Widget for Button {
         let radius = style.border
             .as_ref()
             .and_then(|b| b.radius)
-            .map(|r| r.to_physical(sf))
-            .unwrap_or(0.0);
+            .map(|r| r.to_physical_array(sf, background_box.width, background_box.height))
+            .unwrap_or([0.0; 4]);
 
         if let Some(shadows) = &style.box_shadow {
             for shadow in shadows
@@ -329,7 +329,10 @@ impl Widget for Button {
                 position: (background_box.x, background_box.y),
                 size: (background_box.width, background_box.height),
                 background: style.background.clone(),
-                border_radius: border.and_then(|b| b.radius).map(|r| Length::px(r.to_physical(sf))),
+                border_radius: radius
+                    .iter()
+                    .any(|r| *r > 0.0)
+                    .then_some(crate::widget::border_radius_from_physical(radius)),
                 border_color: border.map(|b| b.color),
                 border_width: border.map(|b| Length::px(b.top.to_physical(sf))),
                 clip_rect: None,

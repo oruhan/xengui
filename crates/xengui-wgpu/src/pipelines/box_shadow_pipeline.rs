@@ -7,7 +7,7 @@ struct Vertex {
     position: [f32; 2],
     local_pos: [f32; 2],
     half_size: [f32; 2],
-    radius: f32,
+    radius: [f32; 4],
     blur: f32,
     color: [f32; 4],
     inset: f32,
@@ -40,36 +40,36 @@ impl Vertex {
                 wgpu::VertexAttribute {
                     shader_location: 3,
                     offset: 24,
-                    format: wgpu::VertexFormat::Float32,
+                    format: wgpu::VertexFormat::Float32x4,
                 },
                 wgpu::VertexAttribute {
                     shader_location: 4,
-                    offset: 28,
+                    offset: 40,
                     format: wgpu::VertexFormat::Float32,
                 },
                 wgpu::VertexAttribute {
                     shader_location: 5,
-                    offset: 32,
+                    offset: 44,
                     format: wgpu::VertexFormat::Float32x4,
                 },
                 wgpu::VertexAttribute {
                     shader_location: 6,
-                    offset: 48,
+                    offset: 60,
                     format: wgpu::VertexFormat::Float32,
                 },
                 wgpu::VertexAttribute {
                     shader_location: 7,
-                    offset: 52,
+                    offset: 64,
                     format: wgpu::VertexFormat::Float32x2,
                 },
                 wgpu::VertexAttribute {
                     shader_location: 8,
-                    offset: 60,
+                    offset: 72,
                     format: wgpu::VertexFormat::Float32x2,
                 },
                 wgpu::VertexAttribute {
                     shader_location: 9,
-                    offset: 68,
+                    offset: 80,
                     format: wgpu::VertexFormat::Float32,
                 },
             ],
@@ -88,7 +88,11 @@ const VERTICES_PER_SHADOW: usize = 6;
 const DEFAULT_SHADOW_CAPACITY: usize = 64;
 
 impl BoxShadowPipeline {
-    pub fn new(device: &wgpu::Device, surface_format: wgpu::TextureFormat) -> Self {
+    pub fn new(
+        device: &wgpu::Device,
+        surface_format: wgpu::TextureFormat,
+        sample_count: u32
+    ) -> Self {
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("Box Shadow Shader"),
             source: wgpu::ShaderSource::Wgsl(include_str!("shaders/box_shadow.wgsl").into()),
@@ -117,7 +121,11 @@ impl BoxShadowPipeline {
                     ..Default::default()
                 },
                 depth_stencil: None,
-                multisample: Default::default(),
+                multisample: wgpu::MultisampleState {
+                    count: sample_count,
+                    mask: !0,
+                    alpha_to_coverage_enabled: false,
+                },
                 fragment: Some(wgpu::FragmentState {
                     module: &shader,
                     entry_point: Some("fs_main"),

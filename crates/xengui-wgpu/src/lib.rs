@@ -10,6 +10,8 @@
 mod pipelines;
 mod backend;
 mod window_renderer;
+mod msaa;
 
 pub use backend::{ WgpuFrame, WgpuPipelines };
 pub use window_renderer::WgpuWindowRenderer;
+pub use msaa::SampleCount;

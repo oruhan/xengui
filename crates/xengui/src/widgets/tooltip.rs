@@ -296,7 +296,7 @@ impl Widget for Tooltip {
                 .filter(|s: &&BoxShadow| !s.inset) {
                 let mut faded = *shadow;
                 faded.color = faded.color.with_alpha_f32(faded.color.a() * opacity);
-                self.paint_shadow_layer(ctx, popup_box, radius, &faded, sf);
+                self.paint_shadow_layer(ctx, popup_box, [radius; 4], &faded, sf);
             }
         }
 
