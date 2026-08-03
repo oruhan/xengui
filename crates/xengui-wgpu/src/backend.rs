@@ -1008,22 +1008,38 @@ fn backdrop_capture_rect(
     let cap_right = (bound_right + padding_px).min(screen_w);
     let cap_bottom = (bound_bottom + padding_px).min(screen_h);
 
-    let cap_w = (cap_right - cap_left).max(0.0);
-    let cap_h = (cap_bottom - cap_top).max(0.0);
+    if cap_right <= cap_left || cap_bottom <= cap_top {
+        return None;
+    }
+
+    // Edges are rounded to whole texels first, and every derived value
+    // (capture size, padding) comes from those same rounded edges instead
+    // of mixing rounded and unrounded numbers - otherwise dst_w/dst_h in
+    // the caller drift by up to a texel from the widget's real size
+    // whenever sub-pixel scroll offsets nudge rounding across a boundary,
+    // which reads as the blurred content behind a scrolling sticky
+    // element subtly growing/shrinking frame to frame.
+    let cap_left_px = cap_left.round();
+    let cap_top_px = cap_top.round();
+    let cap_right_px = cap_right.round();
+    let cap_bottom_px = cap_bottom.round();
+
+    let cap_w = cap_right_px - cap_left_px;
+    let cap_h = cap_bottom_px - cap_top_px;
     if cap_w <= 0.0 || cap_h <= 0.0 {
         return None;
     }
 
-    let left_pad = bound_left - cap_left;
-    let top_pad = bound_top - cap_top;
-    let right_pad = cap_right - bound_right;
-    let bottom_pad = cap_bottom - bound_bottom;
+    let left_pad = bound_left - cap_left_px;
+    let top_pad = bound_top - cap_top_px;
+    let right_pad = cap_right_px - bound_right;
+    let bottom_pad = cap_bottom_px - bound_bottom;
 
     Some((
-        cap_left.round() as u32,
-        cap_top.round() as u32,
-        cap_w.round() as u32,
-        cap_h.round() as u32,
+        cap_left_px as u32,
+        cap_top_px as u32,
+        cap_w as u32,
+        cap_h as u32,
         left_pad,
         top_pad,
         right_pad,
