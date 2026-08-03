@@ -209,10 +209,21 @@ fn apply_layout(
     let mut snapped_y = abs_y.round();
     let snapped_right = abs_right.round();
     let snapped_bottom = abs_bottom.round();
-    let width = snapped_right - snapped_x;
-    let height = snapped_bottom - snapped_y;
+    let mut width = snapped_right - snapped_x;
+    let mut height = snapped_bottom - snapped_y;
 
     let position = widget.computed_style().position.unwrap_or_default();
+
+    // Fixed/Sticky override snapped_x/snapped_y below, independent of
+    // wherever this widget would otherwise sit in the flow - so its own
+    // size must come straight from taffy's position-independent result
+    // instead of the corner-subtraction above, whose rounding otherwise
+    // drifts by a pixel every frame as a scrolled ancestor shifts this
+    // widget's unclamped flow position through different fractional offsets.
+    if matches!(position, Position::Fixed | Position::Sticky) {
+        width = layout.size.width.round();
+        height = layout.size.height.round();
+    }
 
     // Fixed is anchored to the viewport itself rather than the flow
     // position taffy computed, matching CSS's `position: fixed`.
