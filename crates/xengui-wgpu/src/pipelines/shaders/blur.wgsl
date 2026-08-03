@@ -23,11 +23,19 @@ fn fs_main(@location(0) uv: vec2<f32>) -> @location(0) vec4<f32> {
     var weight_sum = 0.0;
 
     for (var i = -taps; i <= taps; i = i + 1) {
+        let sample_uv = uv + texel * f32(i);
+        // Skips taps landing outside the real captured texture instead of
+        // letting the sampler repeat the edge pixel - edge repetition
+        // smears/stretches content sitting right at a hard boundary (e.g.
+        // a header's top edge, which has zero real padding above it).
+        if (sample_uv.x < 0.0 || sample_uv.x > 1.0 || sample_uv.y < 0.0 || sample_uv.y > 1.0) {
+            continue;
+        }
         let fi = f32(i);
         let w = exp(-(fi * fi) / (2.0 * sigma * sigma));
-        sum = sum + textureSample(src_tex, src_sampler, uv + texel * fi) * w;
+        sum = sum + textureSample(src_tex, src_sampler, sample_uv) * w;
         weight_sum = weight_sum + w;
     }
 
-    return sum / weight_sum;
+    return sum / max(weight_sum, 0.0001);
 }
