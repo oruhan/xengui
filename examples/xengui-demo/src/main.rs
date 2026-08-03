@@ -166,7 +166,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                         .justify_content(JustifyContent::SpaceBetween)
                                         .width(pct!(100))
                                         .height(px!(55))
-                                        .backdrop_filter(Filter::Blur(Length::px(16.0)))
+                                        .backdrop_filter(Filter::Blur(Length::px(24.0)))
                                         .background(Color::rgba(20, 20, 20, 140))
                                         /*.box_shadow(
                                             BoxShadow::new(
