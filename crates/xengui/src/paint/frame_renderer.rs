@@ -433,9 +433,49 @@ fn paint_recursive(
         }
     };
 
-    for mut command in own_commands {
-        apply_clip(&mut command, clip_rect);
-        commands.push((z_index, command));
+    if let Some(backdrop_chain) = widget.backdrop_filter().filter(|c| !c.is_empty()) {
+        let b = layout_box;
+        let own_bounds = (b.x, b.y, b.width, b.height);
+        // Backdrop-filtered output must stay confined to the widget's own
+        // box - without intersecting with its own bounds here, the blur
+        // padding added during compositing bleeds into whatever sits
+        // above/below the widget instead of stopping at its edges.
+        let backdrop_clip = Some(clip_intersect(clip_rect, own_bounds));
+        let mut backdrop_cmd = Some(
+            DrawCommand::BackdropFilter(
+                Box::new(BackdropFilterCommand {
+                    chain: backdrop_chain.clone(),
+                    bounds: own_bounds,
+                    clip_rect: backdrop_clip,
+                })
+            )
+        );
+
+        // paint_box emits an outset box-shadow before its background rect;
+        // capturing right before that rect keeps the shadow's own halo
+        // outside the box unblurred, while the background and everything
+        // after it composites on top of the blurred result instead of the
+        // shadow's near-opaque fill hiding it.
+        let insert_at = own_commands
+            .iter()
+            .position(|c| matches!(c, DrawCommand::Rect(_)))
+            .unwrap_or(0);
+
+        for (i, mut command) in own_commands.into_iter().enumerate() {
+            if i == insert_at && let Some(cmd) = backdrop_cmd.take() {
+                commands.push((z_index, cmd));
+            }
+            apply_clip(&mut command, clip_rect);
+            commands.push((z_index, command));
+        }
+        if let Some(cmd) = backdrop_cmd.take() {
+            commands.push((z_index, cmd));
+        }
+    } else {
+        for mut command in own_commands {
+            apply_clip(&mut command, clip_rect);
+            commands.push((z_index, command));
+        }
     }
 
     let child_clip = match widget.clip_children() {
