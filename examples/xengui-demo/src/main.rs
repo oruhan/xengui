@@ -192,7 +192,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                                 .background(Color::TRANSPARENT)
                                                 .gap(20, 0)
                                                 .child(
-                                                    xen_router::router_link("/docs").label("Docs")
+                                                    xen_router
+                                                        ::router_link("/docs")
+                                                        .label("Docs")
+                                                        .padding(Edges::all(4))
+                                                        .hover_style(|patch, theme|
+                                                            patch.background(theme.hover)
+                                                        )
                                                 )
                                                 .child(
                                                     xen_router

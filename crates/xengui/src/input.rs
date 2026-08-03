@@ -302,28 +302,53 @@ pub fn find_widget_mut<'a>(
 }
 
 pub fn hit_test_path(tree: &[Box<dyn Widget>], point: (f32, f32)) -> Option<String> {
-    for (i, node) in tree.iter().enumerate().rev() {
-        let segment = path_segment(node.as_ref(), i);
-        if let Some(path) = hit_test_recursive(node.as_ref(), &segment, point) {
-            return Some(path);
+    hit_test_children(tree, point, 0, "")
+}
+
+// Tests widgets in the same stacking order FrameRenderer paints them: sorted
+// by z_index (inherited from `parent_z` when unset), highest first - so a
+// widget with a higher z_index (e.g. a sticky header) can intercept a hit
+// even when it's earlier in the sibling list than overlapping content.
+fn hit_test_children(
+    widgets: &[Box<dyn Widget>],
+    point: (f32, f32),
+    parent_z: i32,
+    parent_path: &str
+) -> Option<String> {
+    let mut order: Vec<usize> = (0..widgets.len()).collect();
+    order.sort_by_key(|&i| widgets[i].computed_style().z_index.unwrap_or(parent_z));
+
+    for &i in order.iter().rev() {
+        let widget = &widgets[i];
+        let segment = path_segment(widget.as_ref(), i);
+        let path = if parent_path.is_empty() {
+            segment
+        } else {
+            format!("{parent_path}.{segment}")
+        };
+        let z = widget.computed_style().z_index.unwrap_or(parent_z);
+        if let Some(hit) = hit_test_recursive(widget.as_ref(), &path, point, z) {
+            return Some(hit);
         }
     }
     None
 }
 
-fn hit_test_recursive(widget: &dyn Widget, path: &str, point: (f32, f32)) -> Option<String> {
+fn hit_test_recursive(
+    widget: &dyn Widget,
+    path: &str,
+    point: (f32, f32),
+    z: i32
+) -> Option<String> {
     if !widget.hit_test(point) {
         return None;
     }
 
-    if !widget.blocks_children_hit_test(point) {
-        for (i, child) in widget.children().iter().enumerate().rev() {
-            let segment = path_segment(child.as_ref(), i);
-            let child_path = format!("{path}.{segment}");
-            if let Some(hit) = hit_test_recursive(child.as_ref(), &child_path, point) {
-                return Some(hit);
-            }
-        }
+    if
+        !widget.blocks_children_hit_test(point) &&
+        let Some(hit) = hit_test_children(widget.children(), point, z, path)
+    {
+        return Some(hit);
     }
 
     Some(path.to_string())

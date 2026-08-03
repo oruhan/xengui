@@ -7,6 +7,7 @@ use crate::pipelines::{
     TrianglePipeline,
     FilterEngine,
 };
+use crate::pipelines::filters::padding_for_chain;
 use xengui::{
     BoxShadowCommand,
     Color,
@@ -191,8 +192,11 @@ impl WgpuPipelines {
         queue: &'a wgpu::Queue,
         encoder: &'a mut wgpu::CommandEncoder,
         width: u32,
-        height: u32
+        height: u32,
+        scale_factor: f32
     ) -> WgpuFrame<'a> {
+        log::trace!("WgpuPipelines::begin_frame size={width}x{height} scale_factor={scale_factor}");
+
         self.ensure_scene_target(device, width, height);
         self.rect.reset_frame();
         self.triangle.reset_frame();
@@ -211,7 +215,7 @@ impl WgpuPipelines {
             width,
             height,
             background: Color::TRANSPARENT,
-            scale_factor: 1.0,
+            scale_factor,
             shape_pass_open: false,
             text_cmds: Vec::new(),
         }
@@ -724,6 +728,11 @@ impl<'a> RenderBackend for WgpuFrame<'a> {
         let width = bw.round().max(1.0) as u32;
         let height = bh.round().max(1.0) as u32;
 
+        log::trace!(
+            "draw_filtered bounds={bounds:?} scale_factor={} size={width}x{height}",
+            self.scale_factor
+        );
+
         let translated: Vec<DrawCommand> = cmds
             .iter()
             .map(|c| translate_draw_command(c, bx, by))
@@ -758,16 +767,14 @@ impl<'a> RenderBackend for WgpuFrame<'a> {
             self.scale_factor
         );
 
-        // Clamped to the frame's own top-left: a large blur/drop-shadow
-        // padding on a widget sitting right at the edge would otherwise
-        // push the destination viewport into negative territory, which
-        // wgpu rejects.
         let dest_rect = (
             (bx - filtered.padding).max(0.0),
             (by - filtered.padding).max(0.0),
             filtered.width as f32,
             filtered.height as f32,
         );
+
+        log::trace!("draw_filtered dest_rect={dest_rect:?} filtered_padding={}", filtered.padding);
 
         self.pipelines.filters.composite(
             self.device,
@@ -789,39 +796,45 @@ impl<'a> RenderBackend for WgpuFrame<'a> {
         bounds: (f32, f32, f32, f32),
         clip_rect: Option<(f32, f32, f32, f32)>
     ) {
-        let (bx, by, bw, bh) = bounds;
+        let padding_px = padding_for_chain(chain, self.scale_factor);
+        let screen_w = self.width as f32;
+        let screen_h = self.height as f32;
 
-        // Clamps the capture rect to the scene's own bounds and to any
-        // ancestor clip, so a widget straddling the edge (or scrolled
-        // partly out of view) never asks the GPU to copy outside the
-        // texture.
-        let (cx, cy, cw, ch) = clip_rect.unwrap_or((
-            0.0,
-            0.0,
-            self.width as f32,
-            self.height as f32,
-        ));
-        let left = bx.max(cx).max(0.0);
-        let top = by.max(cy).max(0.0);
-        let right = (bx + bw).min(cx + cw).min(self.width as f32);
-        let bottom = (by + bh).min(cy + ch).min(self.height as f32);
+        let Some((cap_x, cap_y, cap_w, cap_h, left_pad, top_pad, right_pad, bottom_pad)) =
+            backdrop_capture_rect(bounds, clip_rect, padding_px, screen_w, screen_h) else {
+            log::trace!(
+                "draw_backdrop_filtered: empty capture rect, skipping bounds={bounds:?} clip={clip_rect:?}"
+            );
+            return;
+        };
 
-        let src_x = left.round() as u32;
-        let src_y = top.round() as u32;
-        let src_w = (right - left).round().max(0.0) as u32;
-        let src_h = (bottom - top).round().max(0.0) as u32;
+        // The widget's own visible rect, recovered from the capture rect
+        // and whatever padding actually survived clamping - this (not
+        // the padded capture) is where the filtered result gets
+        // composited back, keeping the effect confined to the widget.
+        let dst_x = (cap_x as f32) + left_pad;
+        let dst_y = (cap_y as f32) + top_pad;
+        let dst_w = (cap_w as f32) - left_pad - right_pad;
+        let dst_h = (cap_h as f32) - top_pad - bottom_pad;
 
-        if src_w == 0 || src_h == 0 {
+        log::trace!(
+            "draw_backdrop_filtered bounds={bounds:?} clip={clip_rect:?} scale_factor={} \
+             padding_px={padding_px} capture=({cap_x},{cap_y},{cap_w},{cap_h}) \
+             pad(l,t,r,b)=({left_pad},{top_pad},{right_pad},{bottom_pad}) dst=({dst_x},{dst_y},{dst_w},{dst_h})",
+            self.scale_factor
+        );
+
+        if dst_w <= 0.0 || dst_h <= 0.0 {
             return;
         }
 
-        // Live snapshot of the scene as painted so far, taken into its own
-        // texture since the scene target can't be bound as a shader
-        // resource while it's still the active render target.
+        // Live snapshot of the padded capture area (not just the widget's
+        // own box), so blur has real surrounding scene content to sample
+        // instead of fading into synthetic transparency at the edges.
         let snapshot = self.device.create_texture(
             &(wgpu::TextureDescriptor {
                 label: Some("xengui backdrop snapshot"),
-                size: wgpu::Extent3d { width: src_w, height: src_h, depth_or_array_layers: 1 },
+                size: wgpu::Extent3d { width: cap_w, height: cap_h, depth_or_array_layers: 1 },
                 mip_level_count: 1,
                 sample_count: 1,
                 dimension: wgpu::TextureDimension::D2,
@@ -835,7 +848,7 @@ impl<'a> RenderBackend for WgpuFrame<'a> {
             wgpu::TexelCopyTextureInfo {
                 texture: &self.pipelines.scene_texture,
                 mip_level: 0,
-                origin: wgpu::Origin3d { x: src_x, y: src_y, z: 0 },
+                origin: wgpu::Origin3d { x: cap_x, y: cap_y, z: 0 },
                 aspect: wgpu::TextureAspect::All,
             },
             wgpu::TexelCopyTextureInfo {
@@ -844,43 +857,34 @@ impl<'a> RenderBackend for WgpuFrame<'a> {
                 origin: wgpu::Origin3d::ZERO,
                 aspect: wgpu::TextureAspect::All,
             },
-            wgpu::Extent3d { width: src_w, height: src_h, depth_or_array_layers: 1 }
+            wgpu::Extent3d { width: cap_w, height: cap_h, depth_or_array_layers: 1 }
         );
 
         let snapshot_view = snapshot.create_view(&Default::default());
 
-        let filtered = self.pipelines.filters.apply(
+        let filtered = self.pipelines.filters.apply_prepadded(
             self.device,
             self.queue,
             self.encoder,
             &snapshot_view,
-            src_w,
-            src_h,
+            cap_w,
+            cap_h,
             chain,
             self.scale_factor
         );
 
-        // Backdrop-filter must stay exactly clipped to the widget's own
-        // box - unlike a foreground filter, blurred backdrop content must
-        // never bleed beyond the element it belongs to (matching CSS
-        // `backdrop-filter` semantics). The padding FilterEngine::apply
-        // added around the source exists only so the blur convolution has
-        // enough neighboring pixels to sample correctly at the edges; the
-        // unpadded source always sits centered at (pad, pad) within the
-        // filtered texture regardless of where the widget sits on screen,
-        // so cropping exactly that inner (src_w x src_h) region back out
-        // and compositing it at the widget's real position/size recovers
-        // the correct result without any screen-edge-relative math.
-        let pad = filtered.padding;
-        let filtered_w = filtered.width as f32;
-        let filtered_h = filtered.height as f32;
+        let dest_rect = (dst_x, dst_y, dst_w, dst_h);
+        let source_uv_rect = backdrop_crop_uv_rect(
+            left_pad,
+            top_pad,
+            dst_w,
+            dst_h,
+            cap_w as f32,
+            cap_h as f32
+        );
 
-        let dest_rect = (src_x as f32, src_y as f32, src_w as f32, src_h as f32);
-        let source_uv_rect = (
-            pad / filtered_w.max(1.0),
-            pad / filtered_h.max(1.0),
-            (src_w as f32) / filtered_w.max(1.0),
-            (src_h as f32) / filtered_h.max(1.0),
+        log::trace!(
+            "draw_backdrop_filtered dest_rect={dest_rect:?} source_uv_rect={source_uv_rect:?}"
         );
 
         self.pipelines.filters.composite(
@@ -968,5 +972,150 @@ fn translate_draw_command(command: &DrawCommand, ox: f32, oy: f32) -> DrawComman
             cmd.clip_rect = shift_clip(cmd.clip_rect);
             DrawCommand::BackdropFilter(cmd)
         }
+    }
+}
+
+// Computes the physical-pixel rect to snapshot for a backdrop-filter
+// pass: `bounds` (intersected with `clip_rect` first, i.e. the widget's
+// real visible box) expanded by `padding_px` on every side, then clamped
+// to the `0..screen_w x 0..screen_h` surface - there's no real scene
+// content to sample past the screen's own edges either way. Also returns
+// how much padding actually survived clamping on each edge (left, top,
+// right, bottom), since a widget flush against the clip/screen edge
+// won't have the full padding available on that side.
+#[allow(clippy::too_many_arguments, clippy::type_complexity)]
+fn backdrop_capture_rect(
+    bounds: (f32, f32, f32, f32),
+    clip_rect: Option<(f32, f32, f32, f32)>,
+    padding_px: f32,
+    screen_w: f32,
+    screen_h: f32
+) -> Option<(u32, u32, u32, u32, f32, f32, f32, f32)> {
+    let (bx, by, bw, bh) = bounds;
+    let (cx, cy, cw, ch) = clip_rect.unwrap_or((0.0, 0.0, screen_w, screen_h));
+
+    let bound_left = bx.max(cx).max(0.0);
+    let bound_top = by.max(cy).max(0.0);
+    let bound_right = (bx + bw).min(cx + cw).min(screen_w);
+    let bound_bottom = (by + bh).min(cy + ch).min(screen_h);
+
+    if bound_right <= bound_left || bound_bottom <= bound_top {
+        return None;
+    }
+
+    let cap_left = (bound_left - padding_px).max(0.0);
+    let cap_top = (bound_top - padding_px).max(0.0);
+    let cap_right = (bound_right + padding_px).min(screen_w);
+    let cap_bottom = (bound_bottom + padding_px).min(screen_h);
+
+    let cap_w = (cap_right - cap_left).max(0.0);
+    let cap_h = (cap_bottom - cap_top).max(0.0);
+    if cap_w <= 0.0 || cap_h <= 0.0 {
+        return None;
+    }
+
+    let left_pad = bound_left - cap_left;
+    let top_pad = bound_top - cap_top;
+    let right_pad = cap_right - bound_right;
+    let bottom_pad = cap_bottom - bound_bottom;
+
+    Some((
+        cap_left.round() as u32,
+        cap_top.round() as u32,
+        cap_w.round() as u32,
+        cap_h.round() as u32,
+        left_pad,
+        top_pad,
+        right_pad,
+        bottom_pad,
+    ))
+}
+
+fn backdrop_crop_uv_rect(
+    left_pad: f32,
+    top_pad: f32,
+    dst_w: f32,
+    dst_h: f32,
+    cap_w: f32,
+    cap_h: f32
+) -> (f32, f32, f32, f32) {
+    (
+        left_pad / cap_w.max(1.0),
+        top_pad / cap_h.max(1.0),
+        dst_w / cap_w.max(1.0),
+        dst_h / cap_h.max(1.0),
+    )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn capture_rect_pads_evenly_when_far_from_every_edge() {
+        let bounds = (100.0, 100.0, 200.0, 50.0);
+        let (cx, cy, cw, ch, l, t, r, b) = backdrop_capture_rect(
+            bounds,
+            None,
+            16.0,
+            1000.0,
+            1000.0
+        ).expect("capture rect should exist");
+        assert_eq!((cx, cy, cw, ch), (84, 84, 232, 82));
+        assert_eq!((l, t, r, b), (16.0, 16.0, 16.0, 16.0));
+    }
+
+    #[test]
+    fn capture_rect_clamps_padding_against_screen_top() {
+        // A sticky header pinned at y=0 has no real content above it to
+        // pad into - the top padding must be clamped to whatever room is
+        // actually available (zero here), not silently assumed.
+        let bounds = (50.0, 0.0, 500.0, 55.0);
+        let (_cx, cy, cw, ch, l, t, r, _b) = backdrop_capture_rect(
+            bounds,
+            None,
+            16.0,
+            1000.0,
+            1000.0
+        ).expect("capture rect should exist");
+        assert_eq!(cy, 0);
+        assert_eq!(t, 0.0);
+        assert_eq!(ch, 55 + 16);
+        assert_eq!(l, 16.0);
+        assert_eq!(r, 16.0);
+        assert_eq!(cw, 500 + 16 + 16);
+    }
+
+    #[test]
+    fn capture_rect_shrinks_to_ancestor_clip_before_padding() {
+        let bounds = (50.0, 0.0, 400.0, 55.0);
+        let clip = Some((0.0, 0.0, 500.0, 40.0));
+        let (_cx, cy, _cw, ch, _l, t, _r, b) = backdrop_capture_rect(
+            bounds,
+            clip,
+            16.0,
+            1000.0,
+            1000.0
+        ).expect("capture rect should exist");
+        assert_eq!(cy, 0);
+        assert_eq!(t, 0.0);
+        assert_eq!(ch, 40 + 16);
+        assert_eq!(b, 16.0);
+    }
+
+    #[test]
+    fn capture_rect_is_none_when_fully_clipped_away() {
+        let bounds = (0.0, 0.0, 500.0, 55.0);
+        let clip = Some((0.0, 200.0, 500.0, 40.0));
+        assert!(backdrop_capture_rect(bounds, clip, 16.0, 1000.0, 1000.0).is_none());
+    }
+
+    #[test]
+    fn crop_uv_rect_recovers_the_original_destination_size() {
+        let uv = backdrop_crop_uv_rect(16.0, 16.0, 200.0, 50.0, 232.0, 82.0);
+        assert!((uv.0 - 16.0 / 232.0).abs() < 1e-5);
+        assert!((uv.1 - 16.0 / 82.0).abs() < 1e-5);
+        assert!((uv.2 - 200.0 / 232.0).abs() < 1e-5);
+        assert!((uv.3 - 50.0 / 82.0).abs() < 1e-5);
     }
 }

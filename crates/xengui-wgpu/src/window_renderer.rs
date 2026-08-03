@@ -306,7 +306,8 @@ impl WgpuWindowRenderer {
                 &self.queue,
                 &mut encoder,
                 frame_width,
-                frame_height
+                frame_height,
+                scale_factor
             );
             self.frame.render_frame(
                 tree,
