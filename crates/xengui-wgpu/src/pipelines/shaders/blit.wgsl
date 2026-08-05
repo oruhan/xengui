@@ -14,14 +14,15 @@ struct BlitParams {
 
 @fragment
 fn fs_main(@location(0) uv: vec2<f32>) -> @location(0) vec4<f32> {
-    // scale/offset let a caller sample only a sub-rectangle of the source
-    // texture (used to crop off padding that would otherwise land outside
-    // the screen) instead of always mapping the whole texture 1:1.
     let sample_uv = uv * params.scale + params.offset;
-    var src = vec4<f32>(0.0);
-    if (sample_uv.x >= 0.0 && sample_uv.x <= 1.0 && sample_uv.y >= 0.0 && sample_uv.y <= 1.0) {
-        src = textureSample(src_tex, src_sampler, sample_uv);
-    }
+    // Same fix: sample unconditionally, then mask the result instead of
+    // branching around textureSample.
+    let in_bounds = select(
+        0.0,
+        1.0,
+        sample_uv.x >= 0.0 && sample_uv.x <= 1.0 && sample_uv.y >= 0.0 && sample_uv.y <= 1.0
+    );
+    let src = textureSample(src_tex, src_sampler, sample_uv) * in_bounds;
     let silhouette = vec4<f32>(params.tint.rgb * src.a * params.tint.a, src.a * params.tint.a);
     return mix(src, silhouette, params.tint_mix);
 }
