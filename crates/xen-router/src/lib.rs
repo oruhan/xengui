@@ -20,4 +20,4 @@ mod link;
 pub use state::{ back, current_path, forward, push, replace, search_params };
 pub use route_match::{ match_route, RouteParams };
 pub use router::Router;
-pub use link::router_link;
+pub use link::link;

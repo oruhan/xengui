@@ -8,7 +8,7 @@ use xengui::Button;
 ///
 /// Returns a plain `Button`, so every other builder method (`.label`,
 /// `.padding`, hover/pressed styles, ...) still applies normally.
-pub fn router_link(path: impl Into<SmolStr>) -> Button {
+pub fn link(path: impl Into<SmolStr>) -> Button {
     let path = path.into();
     Button::new().on_click(move |_ctx| crate::push(path.to_string()))
 }

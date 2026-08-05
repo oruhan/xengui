@@ -180,7 +180,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                         .padding(Edges::symmetric(120, 0))
                                         .child(
                                             xen_router
-                                                ::router_link("/")
+                                                ::link("/")
                                                 .font_size(18)
                                                 .font_weight(FontWeight::Medium)
                                                 .label("XenGui")
@@ -193,7 +193,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                                 .gap(20, 0)
                                                 .child(
                                                     xen_router
-                                                        ::router_link("/docs")
+                                                        ::link("/docs")
                                                         .label("Docs")
                                                         .padding(Edges::all(4))
                                                         .hover_style(|patch, theme|
@@ -202,12 +202,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                                 )
                                                 .child(
                                                     xen_router
-                                                        ::router_link("/examples")
+                                                        ::link("/examples")
                                                         .label("Examples")
                                                 )
                                                 .child(
                                                     xen_router
-                                                        ::router_link("/playground")
+                                                        ::link("/playground")
                                                         .label("Playground")
                                                 )
                                                 .child(
@@ -454,12 +454,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         .flex_direction(Column)
                         .gap(0, 4)
                         .child(Label::new().label("Current page: /docs (docs)"))
-                        .child(xen_router::router_link("/").label("Home"))
-                        .child(xen_router::router_link("/docs").label("Docs"))
-                        .child(xen_router::router_link("/docs/xenframe").label("Docs (xenframe)"))
-                        .child(xen_router::router_link("/users/42").label("Users :42"))
+                        .child(xen_router::link("/").label("Home"))
+                        .child(xen_router::link("/docs").label("Docs"))
+                        .child(xen_router::link("/docs/xenframe").label("Docs (xenframe)"))
+                        .child(xen_router::link("/users/42").label("Users :42"))
                         .child(
-                            xen_router::router_link("/test/string_test").label("Test :string_test")
+                            xen_router::link("/test/string_test").label("Test :string_test")
                         )
                 )
             )
@@ -471,12 +471,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         .flex_direction(Column)
                         .gap(0, 4)
                         .child(Label::new().label("Current page: /docs/xenframe (xenframe docs)"))
-                        .child(xen_router::router_link("/").label("Home"))
-                        .child(xen_router::router_link("/docs").label("Docs"))
-                        .child(xen_router::router_link("/docs/xenframe").label("Docs (xenframe)"))
-                        .child(xen_router::router_link("/users/42").label("Users :42"))
+                        .child(xen_router::link("/").label("Home"))
+                        .child(xen_router::link("/docs").label("Docs"))
+                        .child(xen_router::link("/docs/xenframe").label("Docs (xenframe)"))
+                        .child(xen_router::link("/users/42").label("Users :42"))
                         .child(
-                            xen_router::router_link("/test/string_test").label("Test :string_test")
+                            xen_router::link("/test/string_test").label("Test :string_test")
                         )
                 )
             )
