@@ -436,8 +436,11 @@ fn paint_recursive(
         // outside the box unblurred, while the background and everything
         // after it composites on top of the blurred result instead of the
         // shadow's near-opaque fill hiding it.
-        let insert_at = 0;
-        
+        let insert_at = own_commands
+            .iter()
+            .take_while(|c| matches!(c, DrawCommand::BoxShadow(_)))
+            .count();
+
         for (i, mut command) in own_commands.into_iter().enumerate() {
             if i == insert_at && let Some(cmd) = backdrop_cmd.take() {
                 commands.push((z_index, cmd));
