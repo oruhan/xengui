@@ -168,14 +168,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                         .height(px!(55))
                                         .backdrop_filter(Filter::Blur(Length::px(24.0)))
                                         .background(Color::rgba(20, 20, 20, 140))
-                                        /*.box_shadow(
+                                        .box_shadow(
                                             BoxShadow::new(
                                                 0.0,
                                                 4.0,
                                                 16.0,
                                                 Color::NEUTRAL_900
                                             ).spread(1.0)
-                                        )*/
+                                        )
                                         .border(|theme: &Theme| Border::bottom(1, theme.border))
                                         .padding(Edges::symmetric(120, 0))
                                         .child(
