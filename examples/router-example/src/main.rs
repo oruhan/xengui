@@ -61,7 +61,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     let config = AppConfig {
-        title: "XenGui – One codebase. Any platform".into(),
+        title: "XenGui | Cross-platform UI in Rust".into(),
         reload_shortcut: true,
 
         #[cfg(not(target_arch = "wasm32"))]

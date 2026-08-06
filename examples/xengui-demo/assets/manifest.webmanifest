@@ -1,7 +1,7 @@
 {
   "name": "XenGui",
   "short_name": "XenGui",
-  "description": "XenGui – One codebase. Any platform",
+  "description": "XenGui | Cross-platform UI in Rust",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
