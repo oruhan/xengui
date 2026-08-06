@@ -48,25 +48,28 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let in_bounds = select(
         0.0,
         1.0,
-        in.mask_uv.x >= 0.0 && in.mask_uv.x <= 1.0 && in.mask_uv.y >= 0.0 && in.mask_uv.y <= 1.0
+        in.mask_uv.x >= 0.0 &&
+        in.mask_uv.x <= 1.0 &&
+        in.mask_uv.y >= 0.0 &&
+        in.mask_uv.y <= 1.0
     );
+
     let mask_alpha = textureSample(mask_tex, mask_sampler, in.mask_uv).a * in_bounds;
 
-    var alpha: f32;
-    if in.inset > 0.5 {
-        let d = sd_round_rect(in.local_pos, in.half_size, in.box_radius);
-        let aa = max(fwidth(d) * 0.5, 0.0001);
-        let box_alpha = 1.0 - smoothstep(-aa, aa, d);
-        alpha = box_alpha * (1.0 - mask_alpha);
-    } else {
-        alpha = mask_alpha;
-    }
+    // Compute derivatives outside of any control flow.
+    let d = sd_round_rect(in.local_pos, in.half_size, in.box_radius);
+    let aa = max(fwidth(d) * 0.5, 0.0001);
+    let box_alpha = 1.0 - smoothstep(-aa, aa, d);
+
+    let outset_alpha = mask_alpha;
+    let inset_alpha = box_alpha * (1.0 - mask_alpha);
+
+    let alpha = select(outset_alpha, inset_alpha, in.inset > 0.5);
 
     if alpha <= 0.0 {
         discard;
     }
 
-    var color = in.color;
-    color.a = color.a * alpha;
-    return vec4<f32>(color.rgb * color.a, color.a);
+    let out_alpha = in.color.a * alpha;
+    return vec4<f32>(in.color.rgb * out_alpha, out_alpha);
 }
