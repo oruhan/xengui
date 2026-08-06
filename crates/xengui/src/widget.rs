@@ -257,6 +257,7 @@ pub trait Widget: Any {
             box_size: (layout.width, layout.height),
             box_radius: radius.iter().copied().fold(0.0_f32, f32::max),
             clip_rect: None,
+            direction: shadow.direction,
         });
     }
 

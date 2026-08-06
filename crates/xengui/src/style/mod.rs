@@ -26,7 +26,7 @@ pub mod border_radius;
 
 pub use background::{ Background, GradientStop, LinearGradient, RadialGradient };
 pub use border::Border;
-pub use box_shadow::BoxShadow;
+pub use box_shadow::{ BoxShadow, ShadowDirection };
 pub use outline::Outline;
 pub use overflow::Overflow;
 pub use overscroll::Overscroll;

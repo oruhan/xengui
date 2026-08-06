@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-use crate::{ Background, BorderRadius, Color, Length, Style };
+use crate::{ Background, BorderRadius, Color, Length, ShadowDirection, Style };
 use smol_str::SmolStr;
 use std::sync::Arc;
 
@@ -67,6 +67,7 @@ pub struct BoxShadowCommand {
     pub box_size: (f32, f32),
     pub box_radius: f32,
     pub clip_rect: Option<(f32, f32, f32, f32)>,
+    pub direction: ShadowDirection,
 }
 
 /// A subtree's own draw commands, rendered in isolation to an offscreen

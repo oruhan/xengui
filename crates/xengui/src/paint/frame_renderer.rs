@@ -385,6 +385,25 @@ fn paint_recursive(
         );
         subtree.sort_by_key(|(z, _)| *z);
 
+        // Outset shadows are pulled out of the offscreen-filtered bitmap
+        // entirely and pushed onto the main command stream instead, so
+        // they paint straight onto the scene as a crisp background layer
+        // before the (possibly blurred) content composites on top of them.
+        let mut shadow_layer: Vec<(i32, DrawCommand)> = Vec::new();
+        subtree.retain(|(z, cmd)| {
+            if let DrawCommand::BoxShadow(sc) = cmd
+                && !sc.inset {
+                    shadow_layer.push((*z, cmd.clone()));
+                    return false;
+                }
+            true
+        });
+
+        for (shadow_z, mut shadow_cmd) in shadow_layer {
+            apply_clip(&mut shadow_cmd, clip_rect);
+            commands.push((shadow_z, shadow_cmd));
+        }
+
         let b = layout_box;
         let filtered_cmd = FilteredCommand {
             commands: subtree

@@ -1,6 +1,22 @@
 // SPDX-License-Identifier: Apache-2.0
 use crate::{ Color, Length };
 
+/// Restricts which side(s) of the box an outset shadow is visible on.
+/// `All` (the default) matches plain CSS box-shadow behavior.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum ShadowDirection {
+    #[default]
+    All,
+    Top,
+    Bottom,
+    Left,
+    Right,
+    TopLeft,
+    TopRight,
+    BottomLeft,
+    BottomRight,
+}
+
 /// A single CSS-style box shadow layer. Widgets accept a `Vec<BoxShadow>`
 /// via `StyleBuilder::box_shadow`, painted in list order like CSS's
 /// comma-separated `box-shadow` - the first shadow ends up on top.
@@ -12,6 +28,7 @@ pub struct BoxShadow {
     pub spread_radius: Length,
     pub color: Color,
     pub inset: bool,
+    pub direction: ShadowDirection,
 }
 
 impl BoxShadow {
@@ -28,6 +45,7 @@ impl BoxShadow {
             spread_radius: Length::px(0.0),
             color,
             inset: false,
+            direction: ShadowDirection::All,
         }
     }
 
@@ -38,6 +56,11 @@ impl BoxShadow {
 
     pub fn inset(mut self, inset: bool) -> Self {
         self.inset = inset;
+        self
+    }
+
+    pub fn direction(mut self, direction: ShadowDirection) -> Self {
+        self.direction = direction;
         self
     }
 }
