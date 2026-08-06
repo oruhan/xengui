@@ -4,7 +4,7 @@
 //! `Filter::Blur`, instead of an analytic single-pass approximation.
 use super::kawase_pass::KawasePass;
 use super::texture_pool::{ PooledTexture, TexturePool };
-use xengui::{ BoxShadowCommand, paint };
+use xengui::{ BoxShadowCommand, ShadowDirection, paint };
 
 #[repr(C)]
 #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
@@ -426,11 +426,30 @@ impl BoxShadowEngine {
         if quad_size.0 <= 0.0 || quad_size.1 <= 0.0 {
             return;
         }
+
+        // Inset shadows already stay confined to the box via the shader's
+        // own SDF mask, so direction only needs to gate the outset case.
+        let effective_clip = if cmd.inset {
+            cmd.clip_rect
+        } else {
+            intersect_rects(
+                cmd.clip_rect,
+                direction_clip_rect(
+                    cmd.direction,
+                    cmd.box_position,
+                    cmd.box_size,
+                    target_width,
+                    target_height
+                )
+            )
+        };
+
         let (sx, sy, sw, sh) = paint::draw_command::scissor_for_clip(
-            cmd.clip_rect,
+            effective_clip,
             target_width,
             target_height
         );
+
         if sw == 0 || sh == 0 {
             return;
         }
@@ -526,5 +545,73 @@ impl BoxShadowEngine {
         pass.set_viewport(0.0, 0.0, target_width as f32, target_height as f32, 0.0, 1.0);
         pass.set_scissor_rect(sx, sy, sw, sh);
         pass.draw(0..VERTICES_PER_QUAD as u32, 0..1);
+    }
+}
+
+// Padding available on each side (left, top, right, bottom) for the
+// blur reach of an outset shadow, given the requested direction. `All`
+// keeps the usual symmetric halo; every other value zeroes the side(s)
+// the shadow shouldn't extend into, so capture bounds stay tight to
+// what's actually visible after the composite-time scissor clip below.
+pub(crate) fn directional_shadow_padding(
+    direction: ShadowDirection,
+    full: f32
+) -> (f32, f32, f32, f32) {
+    use ShadowDirection::*;
+    match direction {
+        All => (full, full, full, full),
+        Top => (full, full, full, 0.0),
+        Bottom => (full, 0.0, full, full),
+        Left => (full, full, 0.0, full),
+        Right => (0.0, full, full, full),
+        TopLeft => (full, full, 0.0, 0.0),
+        TopRight => (0.0, full, full, 0.0),
+        BottomLeft => (full, 0.0, 0.0, full),
+        BottomRight => (0.0, 0.0, full, full),
+    }
+}
+
+// Restricts an outset shadow's visible composite region to one side (or
+// corner quadrant) of the box it belongs to - e.g. `Top` never paints
+// below the box's own top edge, regardless of how far the blurred mask
+// itself extends.
+fn direction_clip_rect(
+    direction: ShadowDirection,
+    box_position: (f32, f32),
+    box_size: (f32, f32),
+    target_width: u32,
+    target_height: u32
+) -> Option<(f32, f32, f32, f32)> {
+    use ShadowDirection::*;
+    let (bx, by) = box_position;
+    let (bw, bh) = box_size;
+    let (tw, th) = (target_width as f32, target_height as f32);
+    match direction {
+        All => None,
+        Top => Some((0.0, 0.0, tw, by)),
+        Bottom => Some((0.0, by + bh, tw, th - (by + bh))),
+        Left => Some((0.0, 0.0, bx, th)),
+        Right => Some((bx + bw, 0.0, tw - (bx + bw), th)),
+        TopLeft => Some((0.0, 0.0, bx, by)),
+        TopRight => Some((bx + bw, 0.0, tw - (bx + bw), by)),
+        BottomLeft => Some((0.0, by + bh, bx, th - (by + bh))),
+        BottomRight => Some((bx + bw, by + bh, tw - (bx + bw), th - (by + bh))),
+    }
+}
+
+fn intersect_rects(
+    a: Option<(f32, f32, f32, f32)>,
+    b: Option<(f32, f32, f32, f32)>
+) -> Option<(f32, f32, f32, f32)> {
+    match (a, b) {
+        (None, None) => None,
+        (Some(r), None) | (None, Some(r)) => Some(r),
+        (Some((ax, ay, aw, ah)), Some((bx, by, bw, bh))) => {
+            let x0 = ax.max(bx);
+            let y0 = ay.max(by);
+            let x1 = (ax + aw).min(bx + bw);
+            let y1 = (ay + ah).min(by + bh);
+            Some((x0, y0, (x1 - x0).max(0.0), (y1 - y0).max(0.0)))
+        }
     }
 }

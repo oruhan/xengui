@@ -20,6 +20,7 @@ pub use color_pass::ColorFilterPass;
 pub use kawase_pass::KawasePass;
 pub use blit_pass::BlitPass;
 pub use box_shadow_pass::BoxShadowEngine;
+pub(crate) use box_shadow_pass::directional_shadow_padding;
 use texture_pool::TexturePool;
 
 use xengui::{ BoxShadowCommand, Filter, FilterChain };

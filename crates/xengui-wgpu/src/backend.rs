@@ -6,7 +6,7 @@ use crate::pipelines::{
     TrianglePipeline,
     PostProcessEngine,
 };
-use crate::pipelines::postprocess::padding_for_chain;
+use crate::pipelines::postprocess::{ padding_for_chain, directional_shadow_padding };
 use xengui::{
     BoxShadowCommand,
     Color,
@@ -913,11 +913,12 @@ fn box_shadow_overflow(cmds: &[DrawCommand], bounds: (f32, f32, f32, f32)) -> (f
         for cmd in cmds {
             match cmd {
                 DrawCommand::BoxShadow(c) if !c.inset => {
-                    let padding = c.blur * 3.0 + 4.0;
-                    let sx0 = c.shadow_position.0 - padding;
-                    let sy0 = c.shadow_position.1 - padding;
-                    let sx1 = c.shadow_position.0 + c.shadow_size.0 + padding;
-                    let sy1 = c.shadow_position.1 + c.shadow_size.1 + padding;
+                    let full = c.blur * 3.0 + 4.0;
+                    let (pl, pt, pr, pb) = directional_shadow_padding(c.direction, full);
+                    let sx0 = c.shadow_position.0 - pl;
+                    let sy0 = c.shadow_position.1 - pt;
+                    let sx1 = c.shadow_position.0 + c.shadow_size.0 + pr;
+                    let sy1 = c.shadow_position.1 + c.shadow_size.1 + pb;
                     overflow.0 = overflow.0.max(bx - sx0);
                     overflow.1 = overflow.1.max(by - sy0);
                     overflow.2 = overflow.2.max(sx1 - (bx + bw));
