@@ -43,7 +43,7 @@ impl Kbd {
         base.style.padding = Some(Edges::symmetric(6.0, 2.0));
         base.style.font_size = Some(Length::px(13.0));
         base.style.background = Some(Background::Color(Color::NEUTRAL_100));
-        base.style.border = Some(Border::new(1.0, Color::NEUTRAL_300, Length::px(5.0)));
+        base.style.border = Some(Border::new().width(1.0).color(Color::NEUTRAL_300).radius(5));
         base.style.color = Some(Color::NEUTRAL_600);
 
         let mut kbd = Self {

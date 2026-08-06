@@ -25,16 +25,8 @@ impl Default for Border {
 }
 
 impl Border {
-    pub fn new(width: impl Into<Length>, color: Color, radius: impl Into<BorderRadius>) -> Self {
-        let width = width.into();
-        Self {
-            top: width,
-            right: width,
-            bottom: width,
-            left: width,
-            color,
-            radius: Some(radius.into()),
-        }
+    pub fn new() -> Self {
+        Self::default()
     }
 
     pub fn all(width: impl Into<Length>, color: Color) -> Self {
@@ -90,6 +82,68 @@ impl Border {
     /// per-corner control, e.g. `border.radius(BorderRadius::top(8.0))`.
     pub fn radius(mut self, radius: impl Into<BorderRadius>) -> Self {
         self.radius = Some(radius.into());
+        self
+    }
+
+    pub fn width(mut self, width: impl Into<Length>) -> Self {
+        let width = width.into();
+        self.top = width;
+        self.right = width;
+        self.bottom = width;
+        self.left = width;
+        self
+    }
+
+    pub fn sides_width(
+        mut self,
+        top: impl Into<Length>,
+        right: impl Into<Length>,
+        bottom: impl Into<Length>,
+        left: impl Into<Length>
+    ) -> Self {
+        self.top = top.into();
+        self.right = right.into();
+        self.bottom = bottom.into();
+        self.left = left.into();
+        self
+    }
+
+    pub fn top_width(mut self, width: impl Into<Length>) -> Self {
+        self.top = width.into();
+        self
+    }
+
+    pub fn right_width(mut self, width: impl Into<Length>) -> Self {
+        self.right = width.into();
+        self
+    }
+
+    pub fn bottom_width(mut self, width: impl Into<Length>) -> Self {
+        self.bottom = width.into();
+        self
+    }
+
+    pub fn left_width(mut self, width: impl Into<Length>) -> Self {
+        self.left = width.into();
+        self
+    }
+
+    pub fn horizontal_width(mut self, width: impl Into<Length>) -> Self {
+        let width = width.into();
+        self.left = width;
+        self.right = width;
+        self
+    }
+
+    pub fn vertical_width(mut self, width: impl Into<Length>) -> Self {
+        let width = width.into();
+        self.top = width;
+        self.bottom = width;
+        self
+    }
+
+    pub fn color(mut self, color: Color) -> Self {
+        self.color = color;
         self
     }
 

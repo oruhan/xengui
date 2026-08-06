@@ -63,7 +63,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         .font_size(15)
                         .background(Color::BLUE_500)
                         .padding(Edges::only(16, 10, 16, 10))
-                        .border(Border::new(1, Color::BLUE_500, Length::px(10.0)))
+                        .border(Border::all(1, Color::BLUE_500).radius(10))
                         .transition_colors(
                             Transition::new(Duration::from_millis(500)).easing(Easing::EaseInOut)
                         )
@@ -73,14 +73,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         .hover_style(|s, _theme: &Theme|
                             s
                                 .background(Color::BLUE_600)
-                                .border(Border::new(1, Color::BLUE_600, Length::px(10.0)))
+                                .border(Border::all(1, Color::BLUE_600).radius(10))
                         )
                         .pressed_style(|s, _theme: &Theme|
                             s
                                 .background(Color::BLUE_800)
                                 .scale(0.9)
                                 .content_scale(1.0)
-                                .border(Border::new(1, Color::BLUE_800, Length::px(10.0)))
+                                .border(Border::all(1, Color::BLUE_800).radius(10))
                         )
                 )
                 .child(
@@ -89,10 +89,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         .font_size(15)
                         .background(Color::NEUTRAL_800)
                         .padding(Edges::only(16, 10, 16, 10))
-                        .border(Border::new(1, Color::NEUTRAL_700, Length::px(8.0)))
+                        .border(Border::all(1, Color::NEUTRAL_700).radius(8))
                         .transition_all(Transition::new(Duration::from_millis(250)))
                         .hover_style(|s, _theme: &Theme|
-                            s.border(Border::new(1, Color::NEUTRAL_700, Length::px(24.0)))
+                            s.border(Border::all(1, Color::NEUTRAL_700).radius(24))
                         )
                 )
         )

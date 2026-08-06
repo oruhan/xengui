@@ -137,12 +137,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             })
                         )
                         .font("Noto_Sans")
-                        .item_border(Border::new(0, Color::TRANSPARENT, 6))
+                        .item_border(Border::all(0, Color::TRANSPARENT).radius(6))
                         .padding(4.0)
                         .font_size(12)
                         .menu_min_width(200.0)
                         .menu_background(|theme: &Theme| theme.surface)
-                        .border(|theme: &Theme| Border::new(1, theme.border, px!(10.0)))
+                        .border(|theme: &Theme| Border::all(1, theme.border).radius(10))
                         .child(
                             View::new()
                                 .font("Inter")
@@ -196,6 +196,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                                         ::link("/docs")
                                                         .label("Docs")
                                                         .padding(Edges::all(4))
+                                                        .border(Border::new().radius(5))
                                                         .hover_style(|patch, theme|
                                                             patch.background(theme.hover)
                                                         )
@@ -230,17 +231,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                                                 Duration::from_millis(200)
                                                             ).easing(Easing::EaseInOut)
                                                         )
-                                                        .border(Border::new(1, Color::BLUE_400, 99))
+                                                        .border(
+                                                            Border::all(1, Color::BLUE_400).radius(
+                                                                64
+                                                            )
+                                                        )
                                                         .hover_style(
                                                             |ctx: StylePatch, _theme: &Theme|
                                                                 ctx
                                                                     .background(Color::BLUE_600)
                                                                     .border(
-                                                                        Border::new(
+                                                                        Border::all(
                                                                             1,
-                                                                            Color::BLUE_500,
-                                                                            99
-                                                                        )
+                                                                            Color::BLUE_500
+                                                                        ).radius(64)
                                                                     )
                                                         )
                                                         .pressed_style(
@@ -248,11 +252,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                                                 ctx
                                                                     .background(Color::BLUE_700)
                                                                     .border(
-                                                                        Border::new(
+                                                                        Border::all(
                                                                             1,
-                                                                            Color::BLUE_600,
-                                                                            99
-                                                                        )
+                                                                            Color::BLUE_600
+                                                                        ).radius(64)
                                                                     )
                                                                     .scale(0.97)
                                                         )
@@ -268,7 +271,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                         .flex_direction(Column)
                                         .align_items(AlignItems::Start)
                                         .justify_content(JustifyContent::Center)
-                                        //.min_height(pct!(100.0))
+                                        .min_height(pct!(100.0))
                                         .padding(Edges::only(120, 160, 120, 0))
                                         .child(
                                             View::new()
@@ -286,7 +289,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                                         .letter_spacing(px!(-2.25))
                                                         .color(|theme: &Theme| theme.foreground)
                                                         .child(
-                                                            Label::new().label("The Reactive GUI")
+                                                            Label::new().label(
+                                                                "The Reactive GUI library"
+                                                            )
                                                         )
                                                         .child(Label::new().label("for Rust"))
                                                         .child(
@@ -321,11 +326,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                                                     ).easing(Easing::EaseInOut)
                                                                 )
                                                                 .border(
-                                                                    Border::new(
-                                                                        1,
-                                                                        Color::BLUE_400,
-                                                                        10
-                                                                    )
+                                                                    Border::all(1, Color::BLUE_400)
                                                                 )
                                                                 .hover_style(
                                                                     |
@@ -337,10 +338,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                                                                 Color::BLUE_600
                                                                             )
                                                                             .border(
-                                                                                Border::new(
+                                                                                Border::all(
                                                                                     1,
-                                                                                    Color::BLUE_500,
-                                                                                    10
+                                                                                    Color::BLUE_500
                                                                                 )
                                                                             )
                                                                 )
@@ -354,11 +354,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                                                                 Color::BLUE_700
                                                                             )
                                                                             .border(
-                                                                                Border::new(
+                                                                                Border::all(
                                                                                     1,
-                                                                                    Color::BLUE_600,
-                                                                                    10
-                                                                                )
+                                                                                    Color::BLUE_600
+                                                                                ).radius(10)
                                                                             )
                                                                             .scale(0.97)
                                                                 )
@@ -375,11 +374,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                                                     ).easing(Easing::EaseInOut)
                                                                 )
                                                                 .border(
-                                                                    Border::new(
+                                                                    Border::all(
                                                                         1,
-                                                                        Color::hex("#3d444d"),
-                                                                        10
-                                                                    )
+                                                                        Color::hex("#3d444d")
+                                                                    ).radius(10)
                                                                 )
                                                                 .hover_style(
                                                                     |
@@ -393,13 +391,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                                                                 )
                                                                             )
                                                                             .border(
-                                                                                Border::new(
+                                                                                Border::all(
                                                                                     1,
                                                                                     Color::hex(
                                                                                         "#4b5561"
-                                                                                    ),
-                                                                                    10
-                                                                                )
+                                                                                    )
+                                                                                ).radius(10)
                                                                             )
                                                                 )
                                                                 .pressed_style(
@@ -424,7 +421,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                             View::new()
                                                 .background(|theme: &Theme| theme.surface)
                                                 .border(|theme: &Theme|
-                                                    Border::new(1, theme.border, 12)
+                                                    Border::all(1, theme.border).radius(12)
                                                 )
                                                 .width(pct!(100))
                                                 .height(px!(640))
@@ -532,12 +529,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     })
                 )
                 .font("Noto_Sans")
-                .item_border(Border::new(0, Color::TRANSPARENT, 6))
+                .item_border(Border::all(0, Color::TRANSPARENT, 6))
                 .padding(6.0)
                 .font_size(13)
                 .menu_min_width(240.0)
                 .menu_background(|theme: &Theme| theme.surface)
-                .border(|theme: &Theme| Border::new(1, theme.border, px!(10.0)))
+                .border(|theme: &Theme| Border::all(1, theme.border, px!(10.0)))
                 .child(
                     View::new()
                         .font("Noto_Sans")
@@ -579,15 +576,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                         )
                                         .background(|theme: &Theme| theme.surface)
                                         .border(|theme: &Theme|
-                                            Border::new(1, theme.border, px!(8.0))
+                                            Border::all(1, theme.border, px!(8.0))
                                         )
                                         .hover_style(|s, theme|
                                             s.border(
-                                                Border::new(1, theme.border_hover, px!(8.0))
+                                                Border::all(1, theme.border_hover, px!(8.0))
                                             )
                                         )
                                         .focus_style(|s, theme|
-                                            s.border(Border::new(2, theme.primary, px!(8.0)))
+                                            s.border(Border::all(2, theme.primary, px!(8.0)))
                                         )
                                         .on_change(move |value, _ctx|
                                             set_text.set(value.to_string())
@@ -620,7 +617,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                                 .color(|theme: &Theme| theme.foreground)
                                                 .background(|theme: &Theme| theme.surface)
                                                 .border(|theme: &Theme|
-                                                    Border::new(1, theme.border, px!(8.0))
+                                                    Border::all(1, theme.border, px!(8.0))
                                                 )
                                                 .padding(Edges::only(8, 5, 8, 5))
                                                 .margin(Edges::only(0, 10, 0, 0))
@@ -638,7 +635,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                                     s
                                                         .background(theme.hover)
                                                         .border(
-                                                            Border::new(
+                                                            Border::all(
                                                                 1,
                                                                 theme.border,
                                                                 px!(8.0)
@@ -650,7 +647,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                                     s
                                                         .background(theme.pressed)
                                                         .border(
-                                                            Border::new(
+                                                            Border::all(
                                                                 1,
                                                                 theme.pressed,
                                                                 px!(8.0)
@@ -666,7 +663,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                                 .color(|theme: &Theme| theme.foreground)
                                                 .background(|theme: &Theme| theme.surface)
                                                 .border(|theme: &Theme|
-                                                    Border::new(1, theme.border, px!(8.0))
+                                                    Border::all(1, theme.border, px!(8.0))
                                                 )
                                                 .padding(Edges::only(8, 5, 8, 5))
                                                 .margin(Edges::only(0, 10, 0, 0))
@@ -684,7 +681,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                                     s
                                                         .background(theme.hover)
                                                         .border(
-                                                            Border::new(
+                                                            Border::all(
                                                                 1,
                                                                 theme.border,
                                                                 px!(8.0)
@@ -696,7 +693,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                                     s
                                                         .background(theme.pressed)
                                                         .border(
-                                                            Border::new(
+                                                            Border::all(
                                                                 1,
                                                                 theme.pressed,
                                                                 px!(8.0)
