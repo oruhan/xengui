@@ -358,7 +358,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                                         .color(|theme: &Theme| theme.foreground)
                                                         .child(
                                                             Label::new().label(
-                                                                "The Reactive GUI Library"
+                                                                "The Retained GUI Library"
                                                             )
                                                         )
                                                         .child(Label::new().label("for Rust"))
