@@ -1,21 +1,21 @@
 // SPDX-License-Identifier: Apache-2.0
-//! GPU filter engine: turns a [`xengui::FilterChain`] into a sequence of
-//! offscreen render passes over pooled intermediate textures.
+//! GPU post-process engine: turns a [`xengui::FilterChain`] into a
+//! sequence of offscreen render passes over pooled intermediate textures.
 //!
 //! Architecture: the chain is split into contiguous segments — a run of
 //! pointwise color ops becomes one [`ColorFilterPass`], and each
 //! [`xengui::Filter::Blur`]/[`xengui::Filter::DropShadow`] becomes its own
-//! two-pass [`BlurPass`] (plus, for drop shadow, a composite via
-//! [`BlitPass`]). Segments ping-pong through a small pool of reusable
-//! textures sized to the source, so a filtered widget never allocates a
-//! new GPU texture on frames where its size hasn't changed.
+//! [`KawasePass`] (a Dual Kawase down/up chain, plus for drop shadow a
+//! composite via [`BlitPass`]). Segments ping-pong through a small pool of
+//! reusable textures sized to the source, so a filtered widget never
+//! allocates a new GPU texture on frames where its size hasn't changed.
 mod color_pass;
-mod blur_pass;
+mod kawase_pass;
 mod blit_pass;
 mod texture_pool;
 
 pub use color_pass::ColorFilterPass;
-pub use blur_pass::BlurPass;
+pub use kawase_pass::KawasePass;
 pub use blit_pass::BlitPass;
 use texture_pool::TexturePool;
 
@@ -23,9 +23,8 @@ use xengui::{ Filter, FilterChain };
 
 /// Physical-pixel padding needed around a filtered subtree so blur can
 /// sample past its own edges without clipping. `chain.max_blur_radius()`
-/// already represents the kernel's full reach (blur.wgsl uses
-/// `sigma = radius / 3`, and the kernel loop only goes out to `radius`
-/// texels), so no extra multiplier belongs here.
+/// already represents the kernel's full reach, so no extra multiplier
+/// belongs here.
 pub(crate) fn padding_for_chain(chain: &FilterChain, scale_factor: f32) -> f32 {
     (chain.max_blur_radius() * scale_factor).ceil()
 }
@@ -47,9 +46,10 @@ fn centered_uv_offset_scale(src_w: u32, src_h: u32, padding_px: f32) -> ((f32, f
     ((offset_u, offset_v), (scale_u, scale_v))
 }
 
-/// Result of running a [`FilterEngine`] over a source texture: the final
-/// filtered texture plus how far its content extends past the widget's
-/// own logical bounds (blur/drop-shadow grow the visible footprint).
+/// Result of running a [`PostProcessEngine`] over a source texture: the
+/// final filtered texture plus how far its content extends past the
+/// widget's own logical bounds (blur/drop-shadow grow the visible
+/// footprint).
 pub struct FilterOutput {
     pub view: wgpu::TextureView,
     pub width: u32,
@@ -61,20 +61,20 @@ pub struct FilterOutput {
 
 /// Owns every GPU resource a [`FilterChain`] needs and orchestrates
 /// running one over a source texture. Created once per [`crate::WgpuPipelines`]
-/// and reused across frames; call [`FilterEngine::reset_frame`] once per
-/// frame to release textures that weren't reused.
-pub struct FilterEngine {
+/// and reused across frames; call [`PostProcessEngine::reset_frame`] once
+/// per frame to release textures that weren't reused.
+pub struct PostProcessEngine {
     color: ColorFilterPass,
-    blur: BlurPass,
+    kawase: KawasePass,
     blit: BlitPass,
     pool: TexturePool,
 }
 
-impl FilterEngine {
+impl PostProcessEngine {
     pub fn new(device: &wgpu::Device, format: wgpu::TextureFormat) -> Self {
         Self {
             color: ColorFilterPass::new(device, format),
-            blur: BlurPass::new(device, format),
+            kawase: KawasePass::new(device, format),
             blit: BlitPass::new(device, format),
             pool: TexturePool::new(format),
         }
@@ -104,7 +104,7 @@ impl FilterEngine {
         let (out_w, out_h) = padded_dims(src_w, src_h, padding_px);
 
         log::trace!(
-            "FilterEngine::apply src={src_w}x{src_h} scale_factor={scale_factor} padding_px={padding_px} out={out_w}x{out_h}"
+            "PostProcessEngine::apply src={src_w}x{src_h} scale_factor={scale_factor} padding_px={padding_px} out={out_w}x{out_h}"
         );
 
         // Composites `source` centered into a padded working texture so
@@ -163,7 +163,7 @@ impl FilterEngine {
         scale_factor: f32
     ) -> FilterOutput {
         log::trace!(
-            "FilterEngine::apply_prepadded size={width}x{height} scale_factor={scale_factor}"
+            "PostProcessEngine::apply_prepadded size={width}x{height} scale_factor={scale_factor}"
         );
 
         let mut current = self.pool.acquire(device, width, height);
@@ -234,9 +234,9 @@ impl FilterEngine {
                     Filter::Blur(radius) => {
                         let physical_radius = radius.value() * scale_factor;
                         log::trace!(
-                            "FilterEngine::run_chain blur radius_physical={physical_radius}"
+                            "PostProcessEngine::run_chain blur radius_physical={physical_radius}"
                         );
-                        self.blur.run(
+                        self.kawase.run(
                             device,
                             queue,
                             encoder,
@@ -275,10 +275,6 @@ impl FilterEngine {
 
     /// Composites a filtered subtree's output onto `target` at `dest_rect`
     /// (physical px), blending over whatever `target` already contains.
-    /// `clip_rect`, if given, restricts the composite to an ancestor's
-    /// own clip region. `source_uv_rect` (offset_u, offset_v, scale_u,
-    /// scale_v) crops the sampled region of `source` - pass `(0.0, 0.0,
-    /// 1.0, 1.0)` to use the whole texture unmodified.
     #[allow(clippy::too_many_arguments)]
     pub fn composite(
         &self,
@@ -307,8 +303,7 @@ impl FilterEngine {
         );
     }
 
-    /// Copies `source` into `target`, overwriting it entirely - a plain
-    /// full-frame blit rather than an alpha-blended composite. Used to
+    /// Copies `source` into `target`, overwriting it entirely - used to
     /// present the accumulated scene target onto the real swapchain view
     /// once a frame is done.
     #[allow(clippy::too_many_arguments)]
@@ -380,7 +375,7 @@ impl FilterEngine {
         );
 
         // 2. Blur the silhouette.
-        let blurred = self.blur.run(
+        let blurred = self.kawase.run(
             device,
             queue,
             encoder,

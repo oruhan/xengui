@@ -5,9 +5,9 @@ use crate::pipelines::{
     RectPipeline,
     TextPipeline,
     TrianglePipeline,
-    FilterEngine,
+    PostProcessEngine,
 };
-use crate::pipelines::filters::padding_for_chain;
+use crate::pipelines::postprocess::padding_for_chain;
 use xengui::{
     BoxShadowCommand,
     Color,
@@ -30,7 +30,7 @@ pub struct WgpuPipelines {
     image: ImagePipeline,
     text: TextPipeline,
     pub(crate) box_shadow: BoxShadowPipeline,
-    filters: FilterEngine,
+    postprocess: PostProcessEngine,
     surface_format: wgpu::TextureFormat,
     /// Resolved, adapter-clamped MSAA sample count every pipeline above
     /// was built with. `1` means MSAA is disabled entirely (either
@@ -86,7 +86,7 @@ impl WgpuPipelines {
             image: ImagePipeline::new(device, surface_format, sample_count),
             text: TextPipeline::new(device, queue, surface_format, user_fonts, sample_count)?,
             box_shadow: BoxShadowPipeline::new(device, surface_format, sample_count),
-            filters: FilterEngine::new(device, surface_format),
+            postprocess: PostProcessEngine::new(device, surface_format),
             surface_format,
             sample_count,
             msaa_texture: None,
@@ -139,7 +139,7 @@ impl WgpuPipelines {
         width: u32,
         height: u32
     ) {
-        self.filters.blit_full(device, queue, encoder, &self.scene_view, target, width, height);
+        self.postprocess.blit_full(device, queue, encoder, &self.scene_view, target, width, height);
     }
 
     /// The format every pipeline (including the filter engine's own
@@ -202,7 +202,7 @@ impl WgpuPipelines {
         self.triangle.reset_frame();
         self.image.reset_frame();
         self.box_shadow.reset_frame();
-        self.filters.reset_frame();
+        self.postprocess.reset_frame();
 
         let view = self.scene_view.clone();
 
@@ -756,7 +756,7 @@ impl<'a> RenderBackend for WgpuFrame<'a> {
 
         self.paint_subtree_to_offscreen(&translated, &source_view, width, height);
 
-        let filtered = self.pipelines.filters.apply(
+        let filtered = self.pipelines.postprocess.apply(
             self.device,
             self.queue,
             self.encoder,
@@ -776,7 +776,7 @@ impl<'a> RenderBackend for WgpuFrame<'a> {
 
         log::trace!("draw_filtered dest_rect={dest_rect:?} filtered_padding={}", filtered.padding);
 
-        self.pipelines.filters.composite(
+        self.pipelines.postprocess.composite(
             self.device,
             self.queue,
             self.encoder,
@@ -862,7 +862,7 @@ impl<'a> RenderBackend for WgpuFrame<'a> {
 
         let snapshot_view = snapshot.create_view(&Default::default());
 
-        let filtered = self.pipelines.filters.apply_prepadded(
+        let filtered = self.pipelines.postprocess.apply_prepadded(
             self.device,
             self.queue,
             self.encoder,
@@ -887,7 +887,7 @@ impl<'a> RenderBackend for WgpuFrame<'a> {
             "draw_backdrop_filtered dest_rect={dest_rect:?} source_uv_rect={source_uv_rect:?}"
         );
 
-        self.pipelines.filters.composite(
+        self.pipelines.postprocess.composite(
             self.device,
             self.queue,
             self.encoder,
