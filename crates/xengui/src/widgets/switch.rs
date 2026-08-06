@@ -46,7 +46,7 @@ const THUMB_SELECTED: f32 = 24.0;
 // checked-progress `t` the idle thumb uses, so "off, pressed" and
 // "on, pressed" no longer share one fixed size.
 const THUMB_PRESSED_UNCHECKED: f32 = 20.0;
-const THUMB_PRESSED_CHECKED: f32 = 28.0;
+const THUMB_PRESSED_CHECKED: f32 = 24.0;
 // Track is visually off-center otherwise: the unchecked thumb sits much
 // closer to the left edge than the checked thumb does to the right.
 const TRACK_PADDING_LEFT: f32 = 6.0;
