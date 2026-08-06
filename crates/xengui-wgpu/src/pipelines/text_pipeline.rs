@@ -651,8 +651,15 @@ impl TextMeasurer for TextPipeline {
         style: FontStyle,
         letter_spacing: f32,
         line_height: f32,
-        max_width: Option<f32>
+        max_width: Option<f32>,
+        scale_factor: f32
     ) -> MeasureResult {
+        // The only place logical metrics become physical, so no caller
+        // has to scale them itself.
+        let font_size = font_size * scale_factor;
+        let letter_spacing = letter_spacing * scale_factor;
+        let line_height = line_height * scale_factor;
+
         let (width, height, baseline) = self.measure_raw(
             text,
             font,
@@ -684,8 +691,13 @@ impl TextMeasurer for TextPipeline {
         font_weight: FontWeight,
         font_style: FontStyle,
         letter_spacing: f32,
-        line_height: f32
+        line_height: f32,
+        scale_factor: f32
     ) -> Vec<f32> {
+        let font_size = font_size * scale_factor;
+        let letter_spacing = letter_spacing * scale_factor;
+        let line_height = line_height * scale_factor;
+
         let chars: Vec<char> = text.chars().collect();
         let mut offsets = Vec::with_capacity(chars.len() + 1);
         offsets.push(0.0);
@@ -718,23 +730,20 @@ impl TextMeasurer for TextPipeline {
         offsets
     }
 
-    // Ascent/descent/line-height are all read off the same shaped-line data
-    // `measure()` and `draw()` use, so a widget combining these (e.g. for
-    // custom baseline alignment) sees numbers consistent with what actually
-    // gets painted, instead of a fixed ratio of the font size.
     fn ascent(
         &mut self,
         font: Option<&str>,
         font_size: f32,
         font_weight: FontWeight,
-        font_style: FontStyle
+        font_style: FontStyle,
+        scale_factor: f32
     ) -> f32 {
         let (_, _, baseline) = self.measure_raw(
             " ",
             font,
             font_weight,
             font_style,
-            font_size,
+            font_size * scale_factor,
             0.0,
             None
         );
@@ -746,14 +755,15 @@ impl TextMeasurer for TextPipeline {
         font: Option<&str>,
         font_size: f32,
         font_weight: FontWeight,
-        font_style: FontStyle
+        font_style: FontStyle,
+        scale_factor: f32
     ) -> f32 {
         let (_, height, baseline) = self.measure_raw(
             " ",
             font,
             font_weight,
             font_style,
-            font_size,
+            font_size * scale_factor,
             0.0,
             None
         );
@@ -765,14 +775,15 @@ impl TextMeasurer for TextPipeline {
         font: Option<&str>,
         font_size: f32,
         font_weight: FontWeight,
-        font_style: FontStyle
+        font_style: FontStyle,
+        scale_factor: f32
     ) -> f32 {
         let (_, height, _) = self.measure_raw(
             " ",
             font,
             font_weight,
             font_style,
-            font_size,
+            font_size * scale_factor,
             0.0,
             None
         );

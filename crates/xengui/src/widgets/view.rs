@@ -849,6 +849,11 @@ impl View {
     }
 
     fn vertical_thumb_rect(&self) -> Option<(f32, f32, f32, f32)> {
+        // No real overflow: the track still gets painted (see
+        // paint_overlay), but no thumb is drawn on top of it.
+        if self.max_scroll_y() <= 0.0 {
+            return None;
+        }
         let (track_y, track_h) = self.vertical_track_bounds()?;
         let b = self.layout_box;
         let sb = self.active_scrollbar();
@@ -868,6 +873,11 @@ impl View {
     }
 
     fn horizontal_thumb_rect(&self) -> Option<(f32, f32, f32, f32)> {
+        // No real overflow: the track still gets painted (see
+        // paint_overlay), but no thumb is drawn on top of it.
+        if self.max_scroll_x() <= 0.0 {
+            return None;
+        }
         let (track_x, track_w) = self.horizontal_track_bounds()?;
         let b = self.layout_box;
         let sb = self.active_scrollbar();
@@ -1746,6 +1756,7 @@ impl Widget for View {
         let b = self.layout_box;
         let t = sb.thickness;
         let (active_x, active_y) = self.scrollbar_active();
+        let (shows_x, shows_y) = self.scrollbar_visibility();
 
         let thumb_border_width = (sb.thumb_border_width > 0.0).then(||
             Length::px(sb.thumb_border_width)
@@ -1754,7 +1765,7 @@ impl Widget for View {
             Length::px(sb.track_border_width)
         );
 
-        if let Some((x, y, w, h)) = self.vertical_thumb_rect() {
+        if shows_y {
             let dim = if active_y { 1.0 } else { SCROLLBAR_DISABLED_OPACITY };
 
             if sb.track_color.a() > 0.0 || track_border_width.is_some() {
@@ -1772,22 +1783,25 @@ impl Widget for View {
                     clip_rect: None,
                 });
             }
-            ctx.draw_rect(RectCommand {
-                position: (x, y),
-                size: (w, h),
-                background: Some(
-                    Background::Color(sb.thumb_color.with_alpha_f32(sb.thumb_color.a() * dim))
-                ),
-                border_radius: Some(BorderRadius::all(Length::px(sb.thumb_radius))),
-                border_width: thumb_border_width,
-                border_color: Some(
-                    sb.thumb_border_color.with_alpha_f32(sb.thumb_border_color.a() * dim)
-                ),
-                clip_rect: None,
-            });
+
+            if let Some((x, y, w, h)) = self.vertical_thumb_rect() {
+                ctx.draw_rect(RectCommand {
+                    position: (x, y),
+                    size: (w, h),
+                    background: Some(
+                        Background::Color(sb.thumb_color.with_alpha_f32(sb.thumb_color.a() * dim))
+                    ),
+                    border_radius: Some(BorderRadius::all(Length::px(sb.thumb_radius))),
+                    border_width: thumb_border_width,
+                    border_color: Some(
+                        sb.thumb_border_color.with_alpha_f32(sb.thumb_border_color.a() * dim)
+                    ),
+                    clip_rect: None,
+                });
+            }
         }
 
-        if let Some((x, y, w, h)) = self.horizontal_thumb_rect() {
+        if shows_x {
             let dim = if active_x { 1.0 } else { SCROLLBAR_DISABLED_OPACITY };
 
             if sb.track_color.a() > 0.0 || track_border_width.is_some() {
@@ -1805,19 +1819,22 @@ impl Widget for View {
                     clip_rect: None,
                 });
             }
-            ctx.draw_rect(RectCommand {
-                position: (x, y),
-                size: (w, h),
-                background: Some(
-                    Background::Color(sb.thumb_color.with_alpha_f32(sb.thumb_color.a() * dim))
-                ),
-                border_radius: Some(BorderRadius::all(Length::px(sb.thumb_radius))),
-                border_width: thumb_border_width,
-                border_color: Some(
-                    sb.thumb_border_color.with_alpha_f32(sb.thumb_border_color.a() * dim)
-                ),
-                clip_rect: None,
-            });
+
+            if let Some((x, y, w, h)) = self.horizontal_thumb_rect() {
+                ctx.draw_rect(RectCommand {
+                    position: (x, y),
+                    size: (w, h),
+                    background: Some(
+                        Background::Color(sb.thumb_color.with_alpha_f32(sb.thumb_color.a() * dim))
+                    ),
+                    border_radius: Some(BorderRadius::all(Length::px(sb.thumb_radius))),
+                    border_width: thumb_border_width,
+                    border_color: Some(
+                        sb.thumb_border_color.with_alpha_f32(sb.thumb_border_color.a() * dim)
+                    ),
+                    clip_rect: None,
+                });
+            }
         }
 
         if let Some((up, down)) = self.vertical_buttons() {

@@ -242,9 +242,8 @@ impl Widget for Tooltip {
     fn on_layout_pass(&self, ctx: &mut MeasureContext) {
         let sf = ctx.scale_factor;
         let style = &self.base.computed_style;
-        let font_size = self.font_size
-            .map(|s| s.to_physical(sf))
-            .unwrap_or(DEFAULT_FONT_SIZE.to_physical(sf));
+        // Logical font size; TextMeasurer converts to physical internally.
+        let font_size = self.font_size.unwrap_or(DEFAULT_FONT_SIZE).value();
 
         let result = ctx.text.measure(
             &self.text,
@@ -254,7 +253,8 @@ impl Widget for Tooltip {
             style.font_style.unwrap_or_default(),
             0.0,
             0.0,
-            None
+            None,
+            sf
         );
 
         let padding = self.effective_padding();

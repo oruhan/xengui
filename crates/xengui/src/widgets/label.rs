@@ -192,17 +192,10 @@ impl Widget for Label {
         self.scale_factor.set(scale_factor);
         let style = &self.base.computed_style;
 
-        let font_size = style.font_size
-            .map(|s| s.to_physical(scale_factor))
-            .unwrap_or(DEFAULT_FONT_SIZE.to_physical(scale_factor));
-
-        let letter_spacing = style.letter_spacing
-            .map(|ls| ls.value().to_physical(scale_factor))
-            .unwrap_or(0.0);
-
-        let line_height = style.line_height
-            .map(|lh| lh.value().to_physical(scale_factor))
-            .unwrap_or(0.0);
+        // Logical metrics; TextMeasurer converts to physical internally.
+        let font_size = style.font_size.unwrap_or(DEFAULT_FONT_SIZE).value();
+        let letter_spacing = style.letter_spacing.map(|ls| ls.value().value()).unwrap_or(0.0);
+        let line_height = style.line_height.map(|lh| lh.value().value()).unwrap_or(0.0);
 
         self.measured_max_width.set(constraints.max_width);
 
@@ -214,7 +207,8 @@ impl Widget for Label {
             style.font_style.unwrap_or_default(),
             letter_spacing,
             line_height,
-            constraints.max_width
+            constraints.max_width,
+            scale_factor
         );
 
         self.content_size.set((result.width, result.height));
@@ -227,7 +221,8 @@ impl Widget for Label {
                 style.font_weight.unwrap_or_default(),
                 style.font_style.unwrap_or_default(),
                 letter_spacing,
-                line_height
+                line_height,
+                scale_factor
             );
         }
 

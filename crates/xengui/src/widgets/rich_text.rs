@@ -212,21 +212,28 @@ impl Widget for RichText {
         let scale_factor = ctx.scale_factor;
         let style = &self.base.computed_style;
 
-        let font_size = style.font_size
-            .map(|s| s.to_physical(scale_factor))
-            .unwrap_or(DEFAULT_FONT_SIZE.to_physical(scale_factor));
-        let letter_spacing = style.letter_spacing
-            .map(|ls| ls.value().to_physical(scale_factor))
-            .unwrap_or(0.0);
+        // Logical metrics; TextMeasurer converts to physical internally.
+        let font_size = style.font_size.unwrap_or(DEFAULT_FONT_SIZE).value();
+        let letter_spacing = style.letter_spacing.map(|ls| ls.value().value()).unwrap_or(0.0);
         let base_weight = style.font_weight.unwrap_or_default();
         let base_style = style.font_style.unwrap_or_default();
 
-        let line_height = style.line_height
-            .map(|lh| lh.value().to_physical(scale_factor))
-            .filter(|lh| *lh > 0.0)
-            .unwrap_or_else(||
-                ctx.text.line_height(style.font.as_deref(), font_size, base_weight, base_style)
-            );
+        // Kept logical (0.0 lets measure() auto-resolve the default ratio
+        // internally); resolved to a concrete physical value separately
+        // below, since this widget needs the real number for its own
+        // line-stepping math in paint().
+        let line_height_logical = style.line_height.map(|lh| lh.value().value()).unwrap_or(0.0);
+        let line_height = if line_height_logical > 0.0 {
+            line_height_logical * scale_factor
+        } else {
+            ctx.text.line_height(
+                style.font.as_deref(),
+                font_size,
+                base_weight,
+                base_style,
+                scale_factor
+            )
+        };
 
         self.measured_max_width.set(constraints.max_width);
 
@@ -253,8 +260,9 @@ impl Widget for RichText {
                 weight,
                 font_style,
                 letter_spacing,
-                line_height,
-                None
+                line_height_logical,
+                None,
+                scale_factor
             ).width;
 
             if

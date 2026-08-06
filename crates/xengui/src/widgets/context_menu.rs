@@ -286,7 +286,8 @@ fn measure_entries_width(
             font_style,
             letter_spacing,
             line_height,
-            None
+            None,
+            sf
         ).width;
         item.label_width.set(label_w);
 
@@ -301,7 +302,8 @@ fn measure_entries_width(
                     font_style,
                     letter_spacing,
                     line_height,
-                    None
+                    None,
+                    sf
                 ).width
             });
         item.shortcut_width.set(shortcut_w);
@@ -1348,15 +1350,12 @@ impl Widget for ContextMenu {
         let style = &self.base.computed_style;
         let padding = self.effective_item_padding();
         let font = style.font.as_deref();
-        let font_size = style.font_size
-            .map(|s| s.to_physical(sf))
-            .unwrap_or(ITEM_FONT_SIZE.to_physical(sf));
+        // Logical metrics; TextMeasurer converts to physical internally.
+        let font_size = style.font_size.unwrap_or(ITEM_FONT_SIZE).value();
         let weight = style.font_weight.unwrap_or_default();
         let font_style = style.font_style.unwrap_or_default();
-        let letter_spacing = style.letter_spacing
-            .map(|ls| ls.value().to_physical(sf))
-            .unwrap_or(0.0);
-        let line_height = style.line_height.map(|lh| lh.value().to_physical(sf)).unwrap_or(0.0);
+        let letter_spacing = style.letter_spacing.map(|ls| ls.value().value()).unwrap_or(0.0);
+        let line_height = style.line_height.map(|lh| lh.value().value()).unwrap_or(0.0);
         // Both sides of the item padding must be counted, or the measured
         // natural width comes up short and labels get clipped.
         let pad_lr = padding.left.to_physical(sf) + padding.right.to_physical(sf);

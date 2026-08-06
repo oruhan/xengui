@@ -104,9 +104,8 @@ impl Widget for Kbd {
         let scale_factor = ctx.scale_factor;
         let style = &self.base.computed_style;
 
-        let font_size = style.font_size
-            .map(|s| s.to_physical(scale_factor))
-            .unwrap_or(DEFAULT_FONT_SIZE.to_physical(scale_factor));
+        // Logical font size; TextMeasurer converts to physical internally.
+        let font_size = style.font_size.unwrap_or(DEFAULT_FONT_SIZE).value();
 
         let result = ctx.text.measure(
             &self.content,
@@ -116,7 +115,8 @@ impl Widget for Kbd {
             style.font_style.unwrap_or_default(),
             0.0,
             0.0,
-            None
+            None,
+            scale_factor
         );
 
         self.content_size.set((result.width, result.height));
