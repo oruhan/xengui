@@ -9,6 +9,7 @@ use crate::{
     LayoutContext,
     LayoutEngine,
     PaintContext,
+    Position,
     RectCommand,
     RenderBackend,
     RenderCache,
@@ -336,6 +337,24 @@ impl Default for FrameRenderer {
     }
 }
 
+// Positioned widgets (relative/sticky/absolute/fixed) paint above static
+// in-flow siblings sharing the same explicit z-index, matching CSS's
+// default z-index:auto stacking order.
+fn effective_z_index(widget: &dyn Widget, parent_z_index: i32) -> i32 {
+    if let Some(z) = widget.computed_style().z_index {
+        return z;
+    }
+    let positioned = !matches!(
+        widget.computed_style().position.unwrap_or_default(),
+        Position::Static
+    );
+    if positioned {
+        parent_z_index + 1
+    } else {
+        parent_z_index
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 fn paint_recursive(
     widget: &dyn Widget,
@@ -364,7 +383,7 @@ fn paint_recursive(
 
     live_keys.insert(path.to_string());
 
-    let z_index = widget.computed_style().z_index.unwrap_or(parent_z_index);
+    let z_index = effective_z_index(widget, parent_z_index);
 
     // A filtered widget's own subtree (paint + descendants, but not its
     // overlay/top/focus layers - those stay outside the filter so a
@@ -391,11 +410,10 @@ fn paint_recursive(
         // before the (possibly blurred) content composites on top of them.
         let mut shadow_layer: Vec<(i32, DrawCommand)> = Vec::new();
         subtree.retain(|(z, cmd)| {
-            if let DrawCommand::BoxShadow(sc) = cmd
-                && !sc.inset {
-                    shadow_layer.push((*z, cmd.clone()));
-                    return false;
-                }
+            if let DrawCommand::BoxShadow(sc) = cmd && !sc.inset {
+                shadow_layer.push((*z, cmd.clone()));
+                return false;
+            }
             true
         });
 
@@ -560,7 +578,7 @@ fn paint_subtree_for_filter(
         }
         let segment = crate::path_segment(child.as_ref(), i);
         let child_path = format!("{path}.{segment}");
-        let child_z = child.computed_style().z_index.unwrap_or(z_index);
+        let child_z = effective_z_index(child.as_ref(), z_index);
         paint_subtree_for_filter(
             child.as_ref(),
             &child_path,
