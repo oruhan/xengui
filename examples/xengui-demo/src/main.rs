@@ -110,10 +110,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 })
                         )
                         .item(
-                            ContextMenuItem::new("Reload")
+                            ContextMenuItem::new("Refresh")
                                 .shortcut("Ctrl+R")
                                 .on_click(|_ctx| {
-                                    log::info!("context menu -> reload");
+                                    log::info!("context menu -> refresh");
                                     xenframe::request_reload();
                                 })
                         )
@@ -179,41 +179,109 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                         .border(|theme: &Theme| Border::bottom(1, theme.border))
                                         .padding(Edges::symmetric(120, 0))
                                         .child(
-                                            xen_router
-                                                ::link("/")
-                                                .font_size(18)
-                                                .font_weight(FontWeight::Medium)
-                                                .label("XenGui")
+                                            Svg::from_bytes(
+                                                include_bytes!(
+                                                    concat!(
+                                                        env!("CARGO_MANIFEST_DIR"),
+                                                        "/assets/XenGui_header.svg"
+                                                    )
+                                                )
+                                            )
+                                                .width(100)
+                                                .height(100)
+                                                .background(Color::TRANSPARENT)
+                                                .on_click(|_f| xen_router::push("/"))
                                         )
                                         .child(
                                             View::new()
                                                 .display(Flex)
                                                 .flex_direction(Row)
                                                 .background(Color::TRANSPARENT)
-                                                .gap(20, 0)
+                                                .gap(8, 0)
                                                 .child(
                                                     xen_router
                                                         ::link("/docs")
                                                         .label("Docs")
-                                                        .padding(Edges::all(4))
-                                                        .border(Border::new().radius(5))
-                                                        .hover_style(|patch, theme|
-                                                            patch.background(theme.hover)
+                                                        .background(Color::TRANSPARENT)
+                                                        .transition_all(
+                                                            Transition::new(
+                                                                Duration::from_millis(200)
+                                                            ).easing(Easing::EaseInOut)
+                                                        )
+                                                        .padding(Edges::only(10, 6, 10, 6))
+                                                        .border(
+                                                            Border::new()
+                                                                .width(1)
+                                                                .color(Color::NEUTRAL_800)
+                                                                .radius(64)
+                                                        )
+                                                        .hover_style(|ctx, theme|
+                                                            ctx.background(theme.hover)
                                                         )
                                                 )
                                                 .child(
-                                                    xen_router::link("/examples").label("Examples")
+                                                    xen_router
+                                                        ::link("/examples")
+                                                        .label("Examples")
+                                                        .background(Color::TRANSPARENT)
+                                                        .transition_all(
+                                                            Transition::new(
+                                                                Duration::from_millis(200)
+                                                            ).easing(Easing::EaseInOut)
+                                                        )
+                                                        .padding(Edges::only(10, 6, 10, 6))
+                                                        .border(
+                                                            Border::new()
+                                                                .width(1)
+                                                                .color(Color::NEUTRAL_800)
+                                                                .radius(64)
+                                                        )
+                                                        .hover_style(|ctx, theme|
+                                                            ctx.background(theme.hover)
+                                                        )
                                                 )
                                                 .child(
                                                     xen_router
                                                         ::link("/playground")
                                                         .label("Playground")
+                                                        .background(Color::TRANSPARENT)
+                                                        .transition_all(
+                                                            Transition::new(
+                                                                Duration::from_millis(200)
+                                                            ).easing(Easing::EaseInOut)
+                                                        )
+                                                        .padding(Edges::only(10, 6, 10, 6))
+                                                        .border(
+                                                            Border::new()
+                                                                .width(1)
+                                                                .color(Color::NEUTRAL_800)
+                                                                .radius(64)
+                                                        )
+                                                        .hover_style(|ctx, theme|
+                                                            ctx.background(theme.hover)
+                                                        )
                                                 )
                                                 .child(
                                                     Link::new()
                                                         .href("https://github.com/randseas/xengui")
                                                         .target_blank(true)
                                                         .label("GitHub")
+                                                        .background(Color::TRANSPARENT)
+                                                        .transition_all(
+                                                            Transition::new(
+                                                                Duration::from_millis(200)
+                                                            ).easing(Easing::EaseInOut)
+                                                        )
+                                                        .padding(Edges::only(10, 6, 10, 6))
+                                                        .border(
+                                                            Border::new()
+                                                                .width(1)
+                                                                .color(Color::NEUTRAL_800)
+                                                                .radius(64)
+                                                        )
+                                                        .hover_style(|ctx, theme|
+                                                            ctx.background(theme.hover)
+                                                        )
                                                 )
                                         )
                                         .child(
@@ -290,7 +358,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                                         .color(|theme: &Theme| theme.foreground)
                                                         .child(
                                                             Label::new().label(
-                                                                "The Reactive GUI library"
+                                                                "The Reactive GUI Library"
                                                             )
                                                         )
                                                         .child(Label::new().label("for Rust"))
@@ -326,7 +394,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                                                     ).easing(Easing::EaseInOut)
                                                                 )
                                                                 .border(
-                                                                    Border::all(1, Color::BLUE_400)
+                                                                    Border::all(
+                                                                        1,
+                                                                        Color::BLUE_400
+                                                                    ).radius(10)
                                                                 )
                                                                 .hover_style(
                                                                     |
@@ -341,7 +412,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                                                                 Border::all(
                                                                                     1,
                                                                                     Color::BLUE_500
-                                                                                )
+                                                                                ).radius(10)
                                                                             )
                                                                 )
                                                                 .pressed_style(
