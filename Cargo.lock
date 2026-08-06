@@ -3347,6 +3347,7 @@ dependencies = [
  "web-time",
  "xen-clipboard",
  "xen-router",
+ "xen-router-build",
  "xenframe",
  "xengui",
  "xengui-lucide",

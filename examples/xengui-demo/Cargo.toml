@@ -27,3 +27,6 @@ web-sys = { version = "0.3", features = [
     "HtmlElement",
     "Node",
 ] }
+
+[build-dependencies]
+xen-router-build = { workspace = true }

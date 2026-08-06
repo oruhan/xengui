@@ -55,7 +55,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .filter_module("xenframe", log::LevelFilter::Info)
             .filter_module("xengui", log::LevelFilter::Debug)
             .filter_module("xengui_wgpu", log::LevelFilter::Trace)
-            .filter_level(log::LevelFilter::Warn) // diğer tüm crate'ler için varsayılan
+            .filter_level(log::LevelFilter::Warn) 
             .format_timestamp(None)
             .try_init();
     }
@@ -78,7 +78,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let mut app = App::new(config);
 
-      app.with_font(
+    app.with_font(
         "Noto Sans",
         include_bytes!(
             concat!(env!("CARGO_MANIFEST_DIR"), "/fonts/NotoSans-VariableFont.ttf")
