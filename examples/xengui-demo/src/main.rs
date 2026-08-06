@@ -166,15 +166,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                         .justify_content(JustifyContent::SpaceBetween)
                                         .width(pct!(100))
                                         .height(px!(55))
-                                        .backdrop_filter(Filter::Blur(Length::px(8.0)))
+                                        .backdrop_filter(Filter::Blur(Length::px(1.0)))
                                         .background(Color::rgba(20, 20, 20, 140))
                                         .box_shadow(
                                             BoxShadow::new(
                                                 0.0,
-                                                16.0,
-                                                8.0,
-                                                Color::NEUTRAL_900
-                                            ).spread(1.0)
+                                                48.0,
+                                                1.0,
+                                                Color::RED_600
+                                            ).spread(0.1)
                                         )
                                         .border(|theme: &Theme| Border::bottom(1, theme.border))
                                         .padding(Edges::symmetric(120, 0))

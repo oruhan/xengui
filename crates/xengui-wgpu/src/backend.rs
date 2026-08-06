@@ -713,17 +713,23 @@ impl<'a> RenderBackend for WgpuFrame<'a> {
         bounds: (f32, f32, f32, f32)
     ) {
         let (bx, by, bw, bh) = bounds;
-        let width = bw.round().max(1.0) as u32;
-        let height = bh.round().max(1.0) as u32;
+        let (pad_left, pad_top, pad_right, pad_bottom) = box_shadow_overflow(cmds, bounds);
+        let cap_x = bx - pad_left;
+        let cap_y = by - pad_top;
+        let cap_w = bw + pad_left + pad_right;
+        let cap_h = bh + pad_top + pad_bottom;
+
+        let width = cap_w.round().max(1.0) as u32;
+        let height = cap_h.round().max(1.0) as u32;
 
         log::trace!(
-            "draw_filtered bounds={bounds:?} scale_factor={} size={width}x{height}",
+            "draw_filtered bounds={bounds:?} shadow_overflow=({pad_left},{pad_top},{pad_right},{pad_bottom}) scale_factor={} size={width}x{height}",
             self.scale_factor
         );
 
         let translated: Vec<DrawCommand> = cmds
             .iter()
-            .map(|c| translate_draw_command(c, bx, by))
+            .map(|c| translate_draw_command(c, cap_x, cap_y))
             .collect();
 
         let format = self.pipelines.surface_format();
@@ -756,8 +762,8 @@ impl<'a> RenderBackend for WgpuFrame<'a> {
         );
 
         let dest_rect = (
-            (bx - filtered.padding).max(0.0),
-            (by - filtered.padding).max(0.0),
+            (cap_x - filtered.padding).max(0.0),
+            (cap_y - filtered.padding).max(0.0),
             filtered.width as f32,
             filtered.height as f32,
         );
@@ -890,6 +896,43 @@ impl<'a> RenderBackend for WgpuFrame<'a> {
     }
 
     fn resize(&mut self, _width: u32, _height: u32) {}
+}
+
+fn box_shadow_overflow(cmds: &[DrawCommand], bounds: (f32, f32, f32, f32)) -> (f32, f32, f32, f32) {
+    let (bx, by, bw, bh) = bounds;
+    let mut overflow = (0.0f32, 0.0f32, 0.0f32, 0.0f32); // left, top, right, bottom
+
+    fn visit(
+        cmds: &[DrawCommand],
+        bx: f32,
+        by: f32,
+        bw: f32,
+        bh: f32,
+        overflow: &mut (f32, f32, f32, f32)
+    ) {
+        for cmd in cmds {
+            match cmd {
+                DrawCommand::BoxShadow(c) if !c.inset => {
+                    let padding = c.blur * 3.0 + 4.0;
+                    let sx0 = c.shadow_position.0 - padding;
+                    let sy0 = c.shadow_position.1 - padding;
+                    let sx1 = c.shadow_position.0 + c.shadow_size.0 + padding;
+                    let sy1 = c.shadow_position.1 + c.shadow_size.1 + padding;
+                    overflow.0 = overflow.0.max(bx - sx0);
+                    overflow.1 = overflow.1.max(by - sy0);
+                    overflow.2 = overflow.2.max(sx1 - (bx + bw));
+                    overflow.3 = overflow.3.max(sy1 - (by + bh));
+                }
+                DrawCommand::Filtered(nested) => {
+                    visit(&nested.commands, bx, by, bw, bh, overflow);
+                }
+                _ => {}
+            }
+        }
+    }
+
+    visit(cmds, bx, by, bw, bh, &mut overflow);
+    (overflow.0.max(0.0), overflow.1.max(0.0), overflow.2.max(0.0), overflow.3.max(0.0))
 }
 
 /// Shifts a draw command by `(-ox, -oy)`, converting it from the main
