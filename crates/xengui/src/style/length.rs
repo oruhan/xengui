@@ -75,6 +75,12 @@ impl Length {
     }
 }
 
+/// Converts a numeric literal into a pixel unit.
+///
+/// # Example
+/// ```rust
+/// let width = px!(100);
+/// ```
 #[macro_export]
 macro_rules! px {
     ($v:expr) => {
@@ -82,6 +88,12 @@ macro_rules! px {
     };
 }
 
+/// Converts a numeric literal into a percent unit.
+///
+/// # Example
+/// ```rust
+/// let width = pct!(100);
+/// ```
 #[macro_export]
 macro_rules! pct {
     ($v:expr) => {
