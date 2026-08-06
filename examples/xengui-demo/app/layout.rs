@@ -10,7 +10,7 @@ pub fn layout(_params: &RouteParams, child: Box<dyn Widget>) -> Box<dyn Widget> 
             .flex_direction(FlexDirection::Column)
             .gap(0, 4)
             .background(|theme: &Theme| theme.background)
-            .overflow_y(Overflow::Auto)
+            .overflow_y(Overflow::Scroll)
             .scrollbar_gutter(ScrollbarGutter::Stable)
             .scrollbar_track_color(Color::NEUTRAL_800)
             .overscroll(Overscroll::Stretch)
