@@ -166,15 +166,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                         .justify_content(JustifyContent::SpaceBetween)
                                         .width(pct!(100))
                                         .height(px!(55))
-                                        .backdrop_filter(Filter::Blur(Length::px(1.0)))
+                                        .backdrop_filter(Filter::Blur(Length::px(8.0)))
                                         .background(Color::rgba(20, 20, 20, 140))
                                         .box_shadow(
                                             BoxShadow::new(
                                                 0.0,
-                                                48.0,
-                                                1.0,
-                                                Color::RED_600
-                                            ).spread(0.1)
+                                                4.0,
+                                                12.0,
+                                                Color::BLACK.with_alpha(30)
+                                            ).direction(ShadowDirection::Bottom)
                                         )
                                         .border(|theme: &Theme| Border::bottom(1, theme.border))
                                         .padding(Edges::symmetric(120, 0))
@@ -201,9 +201,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                                         )
                                                 )
                                                 .child(
-                                                    xen_router
-                                                        ::link("/examples")
-                                                        .label("Examples")
+                                                    xen_router::link("/examples").label("Examples")
                                                 )
                                                 .child(
                                                     xen_router
@@ -458,9 +456,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         .child(xen_router::link("/docs").label("Docs"))
                         .child(xen_router::link("/docs/xenframe").label("Docs (xenframe)"))
                         .child(xen_router::link("/users/42").label("Users :42"))
-                        .child(
-                            xen_router::link("/test/string_test").label("Test :string_test")
-                        )
+                        .child(xen_router::link("/test/string_test").label("Test :string_test"))
                 )
             )
             .route("/docs/xenframe", |_|
@@ -475,9 +471,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         .child(xen_router::link("/docs").label("Docs"))
                         .child(xen_router::link("/docs/xenframe").label("Docs (xenframe)"))
                         .child(xen_router::link("/users/42").label("Users :42"))
-                        .child(
-                            xen_router::link("/test/string_test").label("Test :string_test")
-                        )
+                        .child(xen_router::link("/test/string_test").label("Test :string_test"))
                 )
             )
             .not_found(|| Box::new(Label::new().label("404")))
