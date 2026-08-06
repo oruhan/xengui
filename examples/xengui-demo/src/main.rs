@@ -286,9 +286,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                                         .letter_spacing(px!(-2.25))
                                                         .color(|theme: &Theme| theme.foreground)
                                                         .child(
-                                                            Label::new().label("The GUI framework")
+                                                            Label::new().label("The Reactive GUI")
                                                         )
-                                                        .child(Label::new().label("Rust deserves"))
+                                                        .child(Label::new().label("for Rust"))
                                                         .child(
                                                             Label::new()
                                                                 .color(
