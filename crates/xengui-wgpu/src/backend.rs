@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
 use crate::pipelines::{
-    BoxShadowPipeline,
     ImagePipeline,
     RectPipeline,
     TextPipeline,
@@ -29,7 +28,6 @@ pub struct WgpuPipelines {
     triangle: TrianglePipeline,
     image: ImagePipeline,
     text: TextPipeline,
-    pub(crate) box_shadow: BoxShadowPipeline,
     postprocess: PostProcessEngine,
     surface_format: wgpu::TextureFormat,
     /// Resolved, adapter-clamped MSAA sample count every pipeline above
@@ -85,7 +83,6 @@ impl WgpuPipelines {
             triangle: TrianglePipeline::new(device, surface_format, sample_count),
             image: ImagePipeline::new(device, surface_format, sample_count),
             text: TextPipeline::new(device, queue, surface_format, user_fonts, sample_count)?,
-            box_shadow: BoxShadowPipeline::new(device, surface_format, sample_count),
             postprocess: PostProcessEngine::new(device, surface_format),
             surface_format,
             sample_count,
@@ -201,7 +198,6 @@ impl WgpuPipelines {
         self.rect.reset_frame();
         self.triangle.reset_frame();
         self.image.reset_frame();
-        self.box_shadow.reset_frame();
         self.postprocess.reset_frame();
 
         let view = self.scene_view.clone();
@@ -395,11 +391,14 @@ impl<'a> WgpuFrame<'a> {
                         );
                     }
                     Some(RunKind::BoxShadow) => {
-                        let mut pass = shape_pass!();
-                        self.pipelines.box_shadow.draw_batch(
+                        if !cleared {
+                            let _ = shape_pass!();
+                        }
+                        self.pipelines.postprocess.draw_box_shadows(
                             self.device,
                             self.queue,
-                            &mut pass,
+                            self.encoder,
+                            target_view,
                             target_width,
                             target_height,
                             &shadow_buf
@@ -624,28 +623,17 @@ impl<'a> RenderBackend for WgpuFrame<'a> {
         if cmds.is_empty() {
             return;
         }
-        let load = self.shape_pass_load();
-        let mut pass = self.encoder.begin_render_pass(
-            &(wgpu::RenderPassDescriptor {
-                label: Some("xengui shape pass"),
-                color_attachments: &[
-                    Some(wgpu::RenderPassColorAttachment {
-                        view: &self.view,
-                        resolve_target: None,
-                        ops: wgpu::Operations { load, store: wgpu::StoreOp::Store },
-                        depth_slice: None,
-                    }),
-                ],
-                depth_stencil_attachment: None,
-                timestamp_writes: None,
-                occlusion_query_set: None,
-                multiview_mask: None,
-            })
-        );
-        self.pipelines.box_shadow.draw_batch(
+        // Composited through its own mask/blur/composite passes instead
+        // of the shared shape pass every other draw_* call batches into.
+        if !self.shape_pass_open {
+            self.clear_frame();
+        }
+        let view = self.view.clone();
+        self.pipelines.postprocess.draw_box_shadows(
             self.device,
             self.queue,
-            &mut pass,
+            self.encoder,
+            &view,
             self.width,
             self.height,
             cmds

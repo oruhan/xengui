@@ -9,17 +9,20 @@
 //! composite via [`BlitPass`]). Segments ping-pong through a small pool of
 //! reusable textures sized to the source, so a filtered widget never
 //! allocates a new GPU texture on frames where its size hasn't changed.
+#![allow(clippy::too_many_arguments)]
 mod color_pass;
 mod kawase_pass;
 mod blit_pass;
 mod texture_pool;
+mod box_shadow_pass;
 
 pub use color_pass::ColorFilterPass;
 pub use kawase_pass::KawasePass;
 pub use blit_pass::BlitPass;
+pub use box_shadow_pass::BoxShadowEngine;
 use texture_pool::TexturePool;
 
-use xengui::{ Filter, FilterChain };
+use xengui::{ BoxShadowCommand, Filter, FilterChain };
 
 /// Physical-pixel padding needed around a filtered subtree so blur can
 /// sample past its own edges without clipping. `chain.max_blur_radius()`
@@ -68,6 +71,7 @@ pub struct PostProcessEngine {
     kawase: KawasePass,
     blit: BlitPass,
     pool: TexturePool,
+    box_shadow: BoxShadowEngine,
 }
 
 impl PostProcessEngine {
@@ -77,6 +81,7 @@ impl PostProcessEngine {
             kawase: KawasePass::new(device, format),
             blit: BlitPass::new(device, format),
             pool: TexturePool::new(format),
+            box_shadow: BoxShadowEngine::new(device, format),
         }
     }
 
@@ -418,6 +423,32 @@ impl PostProcessEngine {
         );
 
         composited
+    }
+
+    /// Renders `cmds` through the mask + Dual Kawase blur + composite
+    /// pipeline directly into `target_view`.
+    #[allow(clippy::too_many_arguments)]
+    pub fn draw_box_shadows(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        encoder: &mut wgpu::CommandEncoder,
+        target_view: &wgpu::TextureView,
+        target_width: u32,
+        target_height: u32,
+        cmds: &[BoxShadowCommand]
+    ) {
+        self.box_shadow.draw_batch(
+            device,
+            queue,
+            encoder,
+            &self.kawase,
+            &mut self.pool,
+            target_view,
+            target_width,
+            target_height,
+            cmds
+        );
     }
 }
 
