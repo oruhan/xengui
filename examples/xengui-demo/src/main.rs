@@ -173,7 +173,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                                 0.0,
                                                 4.0,
                                                 12.0,
-                                                Color::BLACK.with_alpha(30)
+                                                Color::RED_500.with_alpha(30)
                                             ).direction(ShadowDirection::Bottom)
                                         )
                                         .border(|theme: &Theme| Border::bottom(1, theme.border))
