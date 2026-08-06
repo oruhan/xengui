@@ -8,26 +8,7 @@ use web_time::Instant;
 use winit::event_loop::{ ControlFlow, EventLoop };
 use winit::window::Window;
 use xengui::{
-    ElementState,
-    EventCtx,
-    InputEvent,
-    InputState,
-    MouseButton,
-    TOUCH_LONG_PRESS_DURATION,
-    TOUCH_LONG_PRESS_MOVE_TOLERANCE_DP,
-    TouchPanPhase,
-    Widget,
-    clear_text_selection_recursive,
-    collect_focusable_paths,
-    collect_selected_text_recursive,
-    dispatch_positional,
-    dispatch_to_path,
-    hit_test_path,
-    hooks,
-    path_is_within,
-    reconciler,
-    style,
-    update_global_text_selection,
+    Cursor, ElementState, EventCtx, InputEvent, InputState, MouseButton, TOUCH_LONG_PRESS_DURATION, TOUCH_LONG_PRESS_MOVE_TOLERANCE_DP, TouchPanPhase, Widget, clear_text_selection_recursive, collect_focusable_paths, collect_selected_text_recursive, dispatch_positional, dispatch_to_path, hit_test_path, hooks, path_is_within, reconciler, style, update_global_text_selection,
 };
 use xengui_wgpu::WgpuWindowRenderer;
 
@@ -214,16 +195,27 @@ impl App {
             return;
         }
 
-        if let Some(old) = self.input.hovered_path.take() {
-            let mut ctx = EventCtx::new();
-            dispatch_to_path(&mut self.root, &old, &InputEvent::MouseExited, &mut ctx);
-            self.apply_event_ctx(ctx);
+        let mut ctx = EventCtx::new();
+        let old_hover = self.input.hovered_path.take();
+
+        // The previously hovered path may no longer exist in the current
+        // tree at all (e.g. its whole subtree was swapped out by a route
+        // change), in which case dispatching MouseExited to it below is a
+        // silent no-op and never reaches the cursor-resetting branch
+        // inside Interaction::handle. Resetting to Default here first
+        // guarantees the cursor always matches the widget actually under
+        // the pointer, regardless of whether the old widget survived.
+        if old_hover.is_some() {
+            ctx.set_cursor_icon(Cursor::Default);
+        }
+        if let Some(old) = &old_hover {
+            dispatch_to_path(&mut self.root, old, &InputEvent::MouseExited, &mut ctx);
         }
         if let Some(new) = &new_hover {
-            let mut ctx = EventCtx::new();
             dispatch_to_path(&mut self.root, new, &InputEvent::MouseEntered, &mut ctx);
-            self.apply_event_ctx(ctx);
         }
+
+        self.apply_event_ctx(ctx);
         self.input.hovered_path = new_hover;
     }
 }
