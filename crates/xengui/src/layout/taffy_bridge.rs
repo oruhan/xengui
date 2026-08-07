@@ -153,7 +153,15 @@ pub fn style_to_taffy(style: &Style, scale_factor: f32) -> TaffyStyle {
             t.min_size.width = dim(w, scale_factor);
         }
         if let Some(h) = size.height {
-            t.min_size.height = dim(h, scale_factor);
+            // Percentage min-height is resolved manually in apply_layout
+            // against the widget's real parent box, instead of being
+            // forwarded to taffy here - taffy would otherwise resolve it
+            // during the same single-pass measurement it uses to
+            // determine this item's own auto width, locking that width
+            // to whatever's available instead of its natural content size.
+            if !matches!(h, crate::Length::Percent(_)) {
+                t.min_size.height = dim(h, scale_factor);
+            }
         }
     }
     if let Some(size) = &style.max_size {

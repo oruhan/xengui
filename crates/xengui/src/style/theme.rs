@@ -1,6 +1,5 @@
-use crate::{ Border, Outline, properties::StyleValue };
-
 // SPDX-License-Identifier: Apache-2.0
+use crate::{ Border, Outline, properties::StyleValue };
 use super::{ Background, Color, Edges, Length };
 use std::cell::{ Cell, RefCell };
 

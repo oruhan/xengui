@@ -12,7 +12,6 @@ pub fn layout(_params: &RouteParams, child: Box<dyn Widget>) -> Box<dyn Widget> 
             .gap(0, 4)
             .background(|theme: &Theme| theme.background)
             .overflow_y(Overflow::Scroll)
-            .overflow_x(Overflow::Auto)
             .scrollbar_gutter(ScrollbarGutter::Stable)
             .overscroll(Overscroll::Stretch)
             .children_vec(

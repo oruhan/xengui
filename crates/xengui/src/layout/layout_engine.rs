@@ -81,6 +81,7 @@ impl LayoutEngine {
                 node_id,
                 0.0,
                 0.0,
+                viewport_height,
                 ctx.scale_factor,
                 viewport,
                 None
@@ -195,6 +196,7 @@ fn apply_layout(
     node_id: NodeId,
     parent_x: f32,
     parent_y: f32,
+    parent_height: f32,
     scale_factor: f32,
     viewport: (f32, f32),
     scroll_viewport: Option<LayoutBox>
@@ -244,8 +246,6 @@ fn apply_layout(
         }
     }
 
-    // Sticky clamps the in-flow position so it can't scroll past its
-    // nearest scrollable ancestor's edge, matching CSS's `position: sticky`.
     if position == Position::Sticky && let Some(container) = scroll_viewport {
         let style = widget.computed_style();
         if let Some(top) = style.top {
@@ -264,6 +264,17 @@ fn apply_layout(
                 container.x + container.width - width - right.to_physical(scale_factor)
             );
         }
+    }
+
+    // Percentage min-height isn't forwarded to taffy (see style_to_taffy)
+    // so it can never influence this widget's own auto-width measurement;
+    // it's resolved here instead, against the real parent height, as the
+    // very last adjustment before the box is committed.
+    if
+        let Some(min_size) = widget.computed_style().min_size &&
+        let Some(crate::Length::Percent(p)) = min_size.height
+    {
+        height = height.max(parent_height * (p / 100.0));
     }
 
     widget.layout(LayoutBox {
@@ -319,6 +330,7 @@ fn apply_layout(
                 child_id,
                 snapped_x - offset_x,
                 snapped_y - offset_y,
+                height,
                 scale_factor,
                 viewport,
                 next_scroll_viewport
