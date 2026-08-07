@@ -27,7 +27,7 @@ use crate::{
     Widget,
     WidgetBase,
     WidgetContent,
-    properties::{
+    constants::{
         DEFAULT_CURSOR_ICON,
         DEFAULT_FONT_SIZE,
         DEFAULT_LINK_COLOR,

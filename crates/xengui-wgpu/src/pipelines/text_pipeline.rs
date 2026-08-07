@@ -1,17 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 use xengui::{
-    Background,
-    Color,
-    FontStyle,
-    FontWeight,
-    MeasureResult,
-    RectCommand,
-    SystemTheme,
-    TextAlign,
-    TextCommand,
-    TextDecoration,
-    TextMeasurer,
-    properties::{ self, DEFAULT_FONT_SIZE },
+    Background, Color, DEFAULT_LINE_HEIGHT_RATIO, FontStyle, FontWeight, MeasureResult, RectCommand, SystemTheme, TextAlign, TextCommand, TextDecoration, TextMeasurer, constants::DEFAULT_FONT_SIZE,
 };
 use glyphon::{
     Attrs,
@@ -814,7 +803,7 @@ fn convert_style(style: FontStyle) -> GlyphonStyle {
 }
 
 fn resolve_line_height(scale: f32, line_height: f32) -> f32 {
-    if line_height > 0.0 { line_height } else { scale * properties::DEFAULT_LINE_HEIGHT_RATIO }
+    if line_height > 0.0 { line_height } else { scale * DEFAULT_LINE_HEIGHT_RATIO }
 }
 
 fn map_text_align(align: TextAlign) -> glyphon::cosmic_text::Align {

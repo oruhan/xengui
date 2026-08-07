@@ -3,7 +3,18 @@ use web_time::Duration;
 
 use xen_animation::{ Easing, Transition };
 
-use crate::Length;
+use crate::{ Color, Cursor, Length };
+
+/// Default font size in logical pixels
+pub const DEFAULT_FONT_SIZE: Length = Length::px(15.0);
+/// Default line height ratio in logical pixels
+pub const DEFAULT_LINE_HEIGHT_RATIO: f32 = 1.25;
+/// Default cursor icon
+pub const DEFAULT_CURSOR_ICON: Cursor = Cursor::Default;
+/// Default pointer cursor icon
+pub const DEFAULT_POINTER_CURSOR_ICON: Cursor = Cursor::Pointer;
+/// Default link color
+pub const DEFAULT_LINK_COLOR: Color = Color::BLUE_400;
 
 /// Maximum distance (in logical/DP units) between two consecutive taps or
 /// clicks for them to count as part of the same multi-click sequence

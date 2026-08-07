@@ -24,7 +24,7 @@ use crate::{
     Widget,
     WidgetBase,
     WidgetId,
-    properties::{ DEFAULT_CURSOR_ICON, DEFAULT_FONT_SIZE },
+    constants::{ DEFAULT_CURSOR_ICON, DEFAULT_FONT_SIZE },
 };
 use smol_str::SmolStr;
 use std::cell::{ Cell, RefCell };

@@ -71,12 +71,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 .font_size(13)
                                 .color(Color::NEUTRAL_500)
                                 .background(Color::NEUTRAL_100)
-                                .border(Border::new(1, Color::NEUTRAL_200, Length::px(6.0)))
+                                .border(Border::all(1, Color::NEUTRAL_200).radius(6))
                                 .padding(Edges::only(10, 4, 10, 6))
                                 .hover_style(|s, _theme: &Theme|
                                     s
                                         .background(Color::NEUTRAL_200)
-                                        .border(Border::new(1, Color::NEUTRAL_300, Length::px(6.0)))
+                                        .border(Border::all(1, Color::NEUTRAL_300).radius(6))
                                 )
                         )
                         .child(
@@ -85,12 +85,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 .font_size(13)
                                 .color(Color::NEUTRAL_500)
                                 .background(Color::NEUTRAL_100)
-                                .border(Border::new(1, Color::NEUTRAL_200, Length::px(6.0)))
+                                .border(Border::all(1, Color::NEUTRAL_200).radius(6))
                                 .padding(Edges::only(10, 4, 10, 6))
                                 .hover_style(|s, _theme: &Theme|
                                     s
                                         .background(Color::NEUTRAL_200)
-                                        .border(Border::new(1, Color::NEUTRAL_300, Length::px(6.0)))
+                                        .border(Border::all(1, Color::NEUTRAL_300).radius(6))
                                 )
                         )
                 )

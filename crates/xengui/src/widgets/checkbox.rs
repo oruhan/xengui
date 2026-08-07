@@ -31,7 +31,7 @@ use crate::{
     Widget,
     WidgetBase,
     WidgetId,
-    properties::{ DEFAULT_CURSOR_ICON, DEFAULT_POINTER_CURSOR_ICON },
+    constants::{ DEFAULT_CURSOR_ICON, DEFAULT_POINTER_CURSOR_ICON },
 };
 use std::cell::Cell;
 use web_time::Duration;

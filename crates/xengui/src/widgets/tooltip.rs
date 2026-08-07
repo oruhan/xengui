@@ -28,7 +28,7 @@ use crate::{
     Widget,
     WidgetBase,
     WidgetId,
-    properties::DEFAULT_FONT_SIZE,
+    constants::DEFAULT_FONT_SIZE,
 };
 use smol_str::SmolStr;
 use std::cell::Cell;

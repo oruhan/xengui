@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 use crate::{
     AlignItems as XAlign,
+    BoxSizing as XBoxSizing,
     Display as XDisplay,
     FlexDirection as XFlexDir,
     FlexWrap as XFlexWrap,
@@ -35,6 +36,10 @@ pub fn style_to_taffy(style: &Style, scale_factor: f32) -> TaffyStyle {
             XPosition::Static | XPosition::Relative | XPosition::Sticky =>
                 taffy::style::Position::Relative,
             XPosition::Absolute | XPosition::Fixed => taffy::style::Position::Absolute,
+        },
+        box_sizing: match style.box_sizing {
+            XBoxSizing::BorderBox => taffy::style::BoxSizing::BorderBox,
+            XBoxSizing::ContentBox => taffy::style::BoxSizing::ContentBox,
         },
         ..Default::default()
     };

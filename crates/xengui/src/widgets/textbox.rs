@@ -33,7 +33,7 @@ use crate::{
     WidgetBase,
     WidgetContent,
     WidgetId,
-    properties::{ DEFAULT_FONT_SIZE, DEFAULT_LINE_HEIGHT_RATIO },
+    constants::{ DEFAULT_FONT_SIZE, DEFAULT_LINE_HEIGHT_RATIO },
     widget::NativeTextInputSnapshot,
 };
 use smol_str::SmolStr;

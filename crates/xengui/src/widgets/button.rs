@@ -23,7 +23,7 @@ use crate::{
     WidgetBase,
     WidgetContent,
     WidgetId,
-    properties::{ DEFAULT_CURSOR_ICON, DEFAULT_FONT_SIZE, DEFAULT_POINTER_CURSOR_ICON },
+    constants::{ DEFAULT_CURSOR_ICON, DEFAULT_FONT_SIZE, DEFAULT_POINTER_CURSOR_ICON },
 };
 use smol_str::SmolStr;
 use std::cell::Cell;

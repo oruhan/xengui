@@ -44,7 +44,7 @@ use crate::{
     WidgetBase,
     WidgetId,
     pct,
-    properties::{ DEFAULT_FONT_SIZE, DEFAULT_LINE_HEIGHT_RATIO },
+    constants::{ DEFAULT_FONT_SIZE, DEFAULT_LINE_HEIGHT_RATIO },
 };
 use smol_str::SmolStr;
 use std::cell::{ Cell, RefCell };

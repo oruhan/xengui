@@ -11,7 +11,7 @@ fn filter_card(title: &str, chain: FilterChain) -> View {
                 .width(120)
                 .height(90)
                 .background(Color::ROSE_500)
-                .border(Border::new(0, Color::TRANSPARENT, 12))
+                .border(Border::all(0, Color::TRANSPARENT).radius(12))
                 .filter(chain)
                 .child(Label::new().label("XenGUI").color(Color::WHITE))
         )

@@ -1,13 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
-
 use crate::{
-    BoxShadow,
-    Overflow,
-    Overscroll,
-    ScrollbarGutter,
-    TransitionProperty,
-    properties::StyleValue,
-    style::{ FontStyle, FontWeight, IntoThemed, LetterSpacing },
+    BoxShadow, BoxSizing, Overflow, Overscroll, ScrollbarGutter, TransitionProperty, properties::StyleValue, style::{ FontStyle, FontWeight, IntoThemed, LetterSpacing },
 };
 
 use super::{
@@ -43,9 +36,7 @@ pub trait StyleBuilder: Sized {
         self.style_mut().size.get_or_insert_with(Default::default).width = Some(
             width.resolve_themed()
         );
-
         self.mark_dirty();
-
         self
     }
 
@@ -53,9 +44,7 @@ pub trait StyleBuilder: Sized {
         self.style_mut().size.get_or_insert_with(Default::default).height = Some(
             height.resolve_themed()
         );
-
         self.mark_dirty();
-
         self
     }
 
@@ -63,73 +52,55 @@ pub trait StyleBuilder: Sized {
         where W: IntoThemed<Length, MW>, H: IntoThemed<Length, MH>
     {
         self.style_mut().size = Some(Size::new(width.resolve_themed(), height.resolve_themed()));
-
         self.mark_dirty();
-
         self
     }
 
     fn padding<M>(mut self, padding: impl IntoThemed<Edges, M>) -> Self {
         self.style_mut().padding = Some(padding.resolve_themed());
-
         self.mark_dirty();
-
         self
     }
 
     fn color<M>(mut self, color: impl IntoThemed<Color, M>) -> Self {
         self.style_mut().color = Some(color.resolve_themed());
-
         self.mark_dirty();
-
         self
     }
 
     fn selection_color<M>(mut self, color: impl IntoThemed<Color, M>) -> Self {
         self.style_mut().selection_color = Some(color.resolve_themed());
-
         self.mark_dirty();
-
         self
     }
 
     fn selection_background<M>(mut self, color: impl IntoThemed<Color, M>) -> Self {
         self.style_mut().selection_background = Some(color.resolve_themed());
-
         self.mark_dirty();
-
         self
     }
 
     fn caret_color<M>(mut self, color: impl IntoThemed<Color, M>) -> Self {
         self.style_mut().caret_color = Some(color.resolve_themed());
-
         self.mark_dirty();
-
         self
     }
 
     fn selection_border_width<M>(mut self, width: impl IntoThemed<Length, M>) -> Self {
         self.style_mut().selection_border_width = Some(width.resolve_themed());
-
         self.mark_dirty();
-
         self
     }
 
     fn selection_border_color<M>(mut self, color: impl IntoThemed<Color, M>) -> Self {
         self.style_mut().selection_border_color = Some(color.resolve_themed());
-
         self.mark_dirty();
-
         self
     }
 
     fn selection_border_radius<M>(mut self, radius: impl IntoThemed<Length, M>) -> Self {
         self.style_mut().selection_border_radius = Some(radius.resolve_themed());
-
         self.mark_dirty();
-
         self
     }
 
@@ -351,142 +322,113 @@ pub trait StyleBuilder: Sized {
         self
     }
 
+    fn box_sizing(mut self, box_sizing: BoxSizing) -> Self {
+        self.style_mut().box_sizing = box_sizing;
+        self.mark_dirty();
+        self
+    }
+
     fn position(mut self, position: Position) -> Self {
         self.style_mut().position = Some(position);
-
         self.mark_dirty();
-
         self
     }
 
     fn top<M>(mut self, value: impl IntoThemed<Length, M>) -> Self {
         self.style_mut().top = Some(value.resolve_themed());
-
         self.mark_dirty();
-
         self
     }
 
     fn right<M>(mut self, value: impl IntoThemed<Length, M>) -> Self {
         self.style_mut().right = Some(value.resolve_themed());
-
         self.mark_dirty();
-
         self
     }
 
     fn bottom<M>(mut self, value: impl IntoThemed<Length, M>) -> Self {
         self.style_mut().bottom = Some(value.resolve_themed());
-
         self.mark_dirty();
-
         self
     }
 
     fn left<M>(mut self, value: impl IntoThemed<Length, M>) -> Self {
         self.style_mut().left = Some(value.resolve_themed());
-
         self.mark_dirty();
-
         self
     }
 
     /// Paint order relative to siblings; higher values paint later, on top.
     fn z_index(mut self, z_index: i32) -> Self {
         self.style_mut().z_index = Some(z_index);
-
         self.mark_dirty();
-
         self
     }
 
     fn overflow_x(mut self, overflow: Overflow) -> Self {
         self.style_mut().overflow_x = Some(overflow);
-
         self.mark_dirty();
-
         self
     }
 
     fn overflow_y(mut self, overflow: Overflow) -> Self {
         self.style_mut().overflow_y = Some(overflow);
-
         self.mark_dirty();
-
         self
     }
 
     fn overflow(mut self, x: Overflow, y: Overflow) -> Self {
         self.style_mut().overflow_x = Some(x);
-
         self.style_mut().overflow_y = Some(y);
-
         self.mark_dirty();
-
         self
     }
 
     fn overscroll(mut self, overscroll: Overscroll) -> Self {
         self.style_mut().overscroll = Some(overscroll);
-
         self.mark_dirty();
-
         self
     }
 
     fn flex_direction(mut self, direction: FlexDirection) -> Self {
         self.style_mut().flex_direction = Some(direction);
-
         self.mark_dirty();
-
         self
     }
 
     fn flex_wrap(mut self, wrap: FlexWrap) -> Self {
         self.style_mut().flex_wrap = Some(wrap);
-
         self.mark_dirty();
-
         self
     }
 
     fn flex_grow(mut self, grow: f32) -> Self {
         self.style_mut().flex_grow = Some(grow);
-
         self.mark_dirty();
-
         self
     }
 
     fn flex_shrink(mut self, shrink: f32) -> Self {
         self.style_mut().flex_shrink = Some(shrink);
-
         self.mark_dirty();
-
         self
     }
 
     fn flex_basis<M>(mut self, basis: impl IntoThemed<Length, M>) -> Self {
         self.style_mut().flex_basis = Some(basis.resolve_themed());
-
         self.mark_dirty();
-
         self
     }
 
     fn align_items(mut self, align: AlignItems) -> Self {
         self.style_mut().align_items = Some(align);
-
         self.mark_dirty();
-
         self
     }
 
     fn align_self(mut self, align: AlignItems) -> Self {
         self.style_mut().align_self = Some(align);
-
         self.mark_dirty();
-
         self
     }
 
@@ -819,103 +761,69 @@ pub trait StyleBuilder: Sized {
 
     fn scale(mut self, scale: f32) -> Self {
         self.style_mut().scale = Some(scale);
-
         self.mark_dirty();
-
         self
     }
 
     fn content_scale(mut self, scale: f32) -> Self {
         self.style_mut().content_scale = Some(scale);
-
         self.mark_dirty();
-
         self
     }
 
     fn transition(mut self, transition: crate::Transition) -> Self {
         self.style_mut().transition = Some(transition);
-
         let props = self.style_mut().transition_properties.unwrap_or(TransitionProperty::NONE);
-
         self.style_mut().transition_properties = Some(props.union(TransitionProperty::DEFAULT));
-
         self.mark_dirty();
-
         self
     }
 
     fn transition_all(mut self, transition: crate::Transition) -> Self {
         self.style_mut().transition = Some(transition);
-
         let props = self.style_mut().transition_properties.unwrap_or(TransitionProperty::NONE);
-
         self.style_mut().transition_properties = Some(props.union(TransitionProperty::ALL));
-
         self.mark_dirty();
-
         self
     }
 
     fn transition_colors(mut self, transition: crate::Transition) -> Self {
         self.style_mut().transition_overrides.colors = Some(transition);
-
         let props = self.style_mut().transition_properties.unwrap_or(TransitionProperty::NONE);
-
         self.style_mut().transition_properties = Some(props.union(TransitionProperty::COLORS));
-
         self.mark_dirty();
-
         self
     }
 
     fn transition_opacity(mut self, transition: crate::Transition) -> Self {
         self.style_mut().transition_overrides.opacity = Some(transition);
-
         let props = self.style_mut().transition_properties.unwrap_or(TransitionProperty::NONE);
-
         self.style_mut().transition_properties = Some(props.union(TransitionProperty::OPACITY));
-
         self.mark_dirty();
-
         self
     }
 
-    // Reserved for the future box-shadow system; has no visible effect yet.
-
     fn transition_shadow(mut self, transition: crate::Transition) -> Self {
         self.style_mut().transition_overrides.shadow = Some(transition);
-
         let props = self.style_mut().transition_properties.unwrap_or(TransitionProperty::NONE);
-
         self.style_mut().transition_properties = Some(props.union(TransitionProperty::SHADOW));
-
         self.mark_dirty();
-
         self
     }
 
     fn transition_transform(mut self, transition: crate::Transition) -> Self {
         self.style_mut().transition_overrides.transform = Some(transition);
-
         let props = self.style_mut().transition_properties.unwrap_or(TransitionProperty::NONE);
-
         self.style_mut().transition_properties = Some(props.union(TransitionProperty::TRANSFORM));
-
         self.mark_dirty();
-
         self
     }
 
     fn transition_none(mut self) -> Self {
         self.style_mut().transition = None;
-
         self.style_mut().transition_overrides = Default::default();
-
         self.style_mut().transition_properties = Some(TransitionProperty::NONE);
-
         self.mark_dirty();
-
         self
     }
 }

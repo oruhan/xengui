@@ -76,6 +76,7 @@ pub use style::{
     set_active_theme,
     set_active_theme_by_name,
     BoxShadow,
+    BoxSizing,
     Color,
     Cursor,
     IntoThemed,
