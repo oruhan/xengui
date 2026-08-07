@@ -105,7 +105,8 @@ fn build_taffy_node(
     // measurements too.
     widget.on_layout_pass(&mut measure_ctx);
 
-    let mut style = style_to_taffy(widget.computed_style(), ctx.scale_factor);
+    let children = widget.children();
+    let mut style = style_to_taffy(widget.computed_style(), ctx.scale_factor, !children.is_empty());
     let children = widget.children();
 
     if children.is_empty() {
@@ -266,11 +267,14 @@ fn apply_layout(
         }
     }
 
-    // Percentage min-height isn't forwarded to taffy (see style_to_taffy)
-    // so it can never influence this widget's own auto-width measurement;
-    // it's resolved here instead, against the real parent height, as the
-    // very last adjustment before the box is committed.
+    // Widgets with children already got their percentage min-height
+    // forwarded to taffy (see style_to_taffy), so their height here
+    // already reflects it correctly within the flex layout. Leaf widgets
+    // don't get it forwarded (to avoid locking their auto-width
+    // measurement), so it's resolved here instead, against the real
+    // parent height.
     if
+        widget.children().is_empty() &&
         let Some(min_size) = widget.computed_style().min_size &&
         let Some(crate::Length::Percent(p)) = min_size.height
     {

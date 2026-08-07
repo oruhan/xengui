@@ -24,7 +24,7 @@ fn dim<T>(l: crate::Length, scale_factor: f32) -> T
     }
 }
 
-pub fn style_to_taffy(style: &Style, scale_factor: f32) -> TaffyStyle {
+pub fn style_to_taffy(style: &Style, scale_factor: f32, has_children: bool) -> TaffyStyle {
     let mut t = TaffyStyle {
         display: match style.display.unwrap_or_default() {
             XDisplay::Flex => taffy::style::Display::Flex,
@@ -153,13 +153,16 @@ pub fn style_to_taffy(style: &Style, scale_factor: f32) -> TaffyStyle {
             t.min_size.width = dim(w, scale_factor);
         }
         if let Some(h) = size.height {
-            // Percentage min-height is resolved manually in apply_layout
-            // against the widget's real parent box, instead of being
-            // forwarded to taffy here - taffy would otherwise resolve it
-            // during the same single-pass measurement it uses to
-            // determine this item's own auto width, locking that width
-            // to whatever's available instead of its natural content size.
-            if !matches!(h, crate::Length::Percent(_)) {
+            // Percentage min-height only resolves correctly through taffy's
+            // own flex algorithm (it needs to interact with sibling
+            // flex-grow/shrink and overflow), so it's forwarded here for
+            // widgets that have children. Leaf widgets go through their own
+            // intrinsic measurement pass instead (see layout_engine's
+            // build_taffy_node), where resolving this here would lock their
+            // auto width to whatever space is available instead of their
+            // natural content size, so it's excluded there and resolved
+            // manually afterwards.
+            if has_children || !matches!(h, crate::Length::Percent(_)) {
                 t.min_size.height = dim(h, scale_factor);
             }
         }
