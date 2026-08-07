@@ -14,14 +14,14 @@ pub fn layout(_params: &RouteParams, child: Box<dyn Widget>) -> Box<dyn Widget> 
             .overflow_y(Overflow::Scroll)
             .scrollbar_gutter(ScrollbarGutter::Stable)
             .overscroll(Overscroll::Stretch)
-            .min_height(pct!(100.0))
+            .height(pct!(100.0))
             .children_vec(
                 vec![
                     Box::new(
                         /* Header */
                         View::new()
                             .top(0)
-                            .position(Position::Sticky)
+                            .position(Position::Fixed)
                             .z_index(10)
                             .display(Display::Flex)
                             .flex_direction(FlexDirection::Row)
@@ -180,10 +180,160 @@ pub fn layout(_params: &RouteParams, child: Box<dyn Widget>) -> Box<dyn Widget> 
                         View::new()
                             .display(Display::Flex)
                             .flex_direction(FlexDirection::Column)
-                            .align_items(Align::Start)
-                            .justify_content(JustifyContent::Center)
-                            .padding(Edges::symmetric(120, 0))
-                            .child(Label::new().label("Footer"))
+                            .background(|theme: &Theme| theme.surface)
+                            .border(|theme: &Theme| Border::top(1, theme.border))
+                            .padding(Edges::only(120, 48, 120, 32))
+                            .gap(0, 32)
+
+                            // Top
+                            .child(
+                                View::new()
+                                    .display(Display::Flex)
+                                    .justify_content(JustifyContent::SpaceBetween)
+                                    .align_items(Align::Start)
+
+                                    // Left
+                                    .child(
+                                        View::new()
+                                            .display(Display::Flex)
+                                            .flex_direction(FlexDirection::Column)
+                                            .gap(0, 12)
+
+                                            .child(
+                                                Svg::from_bytes(
+                                                    include_bytes!(
+                                                        concat!(
+                                                            env!("CARGO_MANIFEST_DIR"),
+                                                            "/assets/XenGui_header.svg"
+                                                        )
+                                                    )
+                                                )
+                                                    .width(110)
+                                                    .height(110)
+                                                    .background(Color::TRANSPARENT)
+                                            )
+
+                                            .child(
+                                                Label::new()
+                                                    .label(
+                                                        "Modern Rust UI framework for embedded, desktop and web."
+                                                    )
+                                                    .font_size(15)
+                                                    .color(Color::NEUTRAL_400)
+                                                    .max_width(px!(320))
+                                            )
+                                    )
+
+                                    // Resources
+                                    .child(
+                                        View::new()
+                                            .display(Display::Flex)
+                                            .flex_direction(FlexDirection::Column)
+                                            .gap(0, 10)
+
+                                            .child(
+                                                Label::new()
+                                                    .label("Resources")
+                                                    .font_weight(FontWeight::SemiBold)
+                                            )
+
+                                            .child(xen_router::link("/docs").label("Docs"))
+                                            .child(xen_router::link("/examples").label("Examples"))
+                                            .child(
+                                                xen_router::link("/playground").label("Playground")
+                                            )
+                                    )
+
+                                    // Community
+                                    .child(
+                                        View::new()
+                                            .display(Display::Flex)
+                                            .flex_direction(FlexDirection::Column)
+                                            .gap(0, 10)
+
+                                            .child(
+                                                Label::new()
+                                                    .label("Community")
+                                                    .font_weight(FontWeight::SemiBold)
+                                            )
+
+                                            .child(
+                                                Link::new()
+                                                    .label("GitHub")
+                                                    .href("https://github.com/randseas/xengui")
+                                                    .target_blank(true)
+                                            )
+
+                                            .child(
+                                                Link::new()
+                                                    .label("Crates.io")
+                                                    .href("https://crates.io/crates/xengui")
+                                                    .target_blank(true)
+                                            )
+
+                                            .child(Link::new().label("Discord").href("#"))
+                                    )
+                            )
+
+                            // Divider
+                            .child(View::new().height(1).background(Color::NEUTRAL_800))
+
+                            // Bottom
+                            .child(
+                                View::new()
+                                    .display(Display::Flex)
+                                    .justify_content(JustifyContent::SpaceBetween)
+                                    .align_items(Align::Center)
+
+                                    .child(
+                                        Label::new()
+                                            .label("© 2026 Xengui • Apache-2.0")
+                                            .font_size(14)
+                                            .color(Color::NEUTRAL_500)
+                                    )
+
+                                    .child(
+                                        View::new()
+                                            .display(Display::Flex)
+                                            .gap(8, 0)
+
+                                            .child(
+                                                Label::new()
+                                                    .label("Rust")
+                                                    .padding(Edges::only(10, 5, 10, 5))
+                                                    .background(Color::NEUTRAL_900)
+                                                    .border(
+                                                        Border::all(1, Color::NEUTRAL_800).radius(
+                                                            999
+                                                        )
+                                                    )
+                                            )
+
+                                            .child(
+                                                Label::new()
+                                                    .label("wgpu")
+                                                    .padding(Edges::only(10, 5, 10, 5))
+                                                    .background(Color::NEUTRAL_900)
+                                                    .border(
+                                                        Border::all(1, Color::NEUTRAL_800).radius(
+                                                            999
+                                                        )
+                                                    )
+                                            )
+
+                                            .child(
+                                                Label::new()
+                                                    .label("Taffy")
+                                                    .padding(Edges::only(10, 5, 10, 5))
+                                                    .background(Color::NEUTRAL_900)
+                                                    .border(
+                                                        Border::all(1, Color::NEUTRAL_800).radius(
+                                                            999
+                                                        )
+                                                    )
+                                            )
+                                    )
+                            )
                     ) as Box<dyn Widget>
                 ]
             )
