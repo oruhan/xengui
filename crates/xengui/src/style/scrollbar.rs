@@ -1,4 +1,4 @@
-use crate::{ Color, DEFAULT_SCROLLBAR_THUMB_THICKNESS };
+use crate::{ Color, DEFAULT_SCROLLBAR_THUMB_THICKNESS, current_theme };
 
 #[derive(Clone, Copy, Debug, PartialEq, Default)]
 pub struct ScrollbarStyle {
@@ -33,20 +33,21 @@ impl ScrollbarStyle {
     }
 
     pub fn resolve(&self) -> ResolvedScrollbar {
+        let theme = current_theme();
         let thickness = self.thickness.unwrap_or(DEFAULT_SCROLLBAR_THUMB_THICKNESS);
-        let thumb_color = self.thumb_color.unwrap_or(Color::NEUTRAL_400.with_alpha(160));
+        let thumb_color = self.thumb_color.unwrap_or(theme.scrollbar_thumb);
         ResolvedScrollbar {
             thickness,
             thumb_color,
-            track_color: self.track_color.unwrap_or(Color::TRANSPARENT),
+            track_color: self.track_color.unwrap_or(theme.scrollbar_track),
             button_color: self.button_color.unwrap_or(thumb_color),
-            arrow_color: self.arrow_color.unwrap_or(Color::WHITE),
+            arrow_color: self.arrow_color.unwrap_or(theme.scrollbar_arrow),
             min_thumb_length: self.min_thumb_length.unwrap_or(thickness * 1.5),
             thumb_radius: self.thumb_radius.unwrap_or(thickness * 2.0),
             thumb_border_width: self.thumb_border_width.unwrap_or(0.0),
-            thumb_border_color: self.thumb_border_color.unwrap_or(Color::TRANSPARENT),
+            thumb_border_color: self.thumb_border_color.unwrap_or(theme.scrollbar_thumb_border),
             track_border_width: self.track_border_width.unwrap_or(0.0),
-            track_border_color: self.track_border_color.unwrap_or(Color::TRANSPARENT),
+            track_border_color: self.track_border_color.unwrap_or(theme.scrollbar_track_border),
         }
     }
 }

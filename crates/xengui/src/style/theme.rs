@@ -36,6 +36,13 @@ pub struct Theme {
     pub selection_border_radius: Length,
     pub caret_color: Color,
 
+    pub scrollbar_thumb: Color,
+    pub scrollbar_track: Color,
+    pub scrollbar_button: Color,
+    pub scrollbar_arrow: Color,
+    pub scrollbar_thumb_border: Color,
+    pub scrollbar_track_border: Color,
+
     pub radius_xs: Length,
     pub radius_sm: Length,
     pub radius_md: Length,
@@ -88,6 +95,13 @@ impl Theme {
             selection_border_radius: Length::px(4.0),
             caret_color: Color::WHITE,
 
+            scrollbar_thumb: Color::NEUTRAL_400,
+            scrollbar_track: Color::NEUTRAL_100,
+            scrollbar_button: Color::NEUTRAL_300,
+            scrollbar_arrow: Color::NEUTRAL_700,
+            scrollbar_thumb_border: Color::TRANSPARENT,
+            scrollbar_track_border: Color::TRANSPARENT,
+
             // Border radius
             radius_xs: Length::px(2.0), // rounded-sm
             radius_sm: Length::px(4.0), // rounded
@@ -135,6 +149,14 @@ impl Theme {
             .selection(Color::BLUE_500.with_alpha(80))
             .selection_color(Color::WHITE)
             .caret_color(Color::BLUE_500)
+
+            .scrollbar_thumb(Color::NEUTRAL_400)
+            .scrollbar_track(Color::NEUTRAL_100)
+            .scrollbar_button(Color::NEUTRAL_300)
+            .scrollbar_arrow(Color::NEUTRAL_700)
+            .scrollbar_thumb_border(Color::TRANSPARENT)
+            .scrollbar_track_border(Color::TRANSPARENT)
+
             .selection_border_color(Color::TRANSPARENT)
             .selection_border_width(Length::px(0.0))
             .selection_border_radius(Length::px(4.0))
@@ -163,6 +185,14 @@ impl Theme {
             .selection(Color::BLUE_500.with_alpha(80))
             .selection_color(Color::BLUE_200)
             .caret_color(Color::BLUE_400)
+
+            .scrollbar_thumb(Color::NEUTRAL_600)
+            .scrollbar_track(Color::NEUTRAL_900)
+            .scrollbar_button(Color::NEUTRAL_700)
+            .scrollbar_arrow(Color::NEUTRAL_200)
+            .scrollbar_thumb_border(Color::TRANSPARENT)
+            .scrollbar_track_border(Color::TRANSPARENT)
+
             .selection_border_color(Color::TRANSPARENT)
             .selection_border_width(Length::px(0.0))
             .selection_border_radius(Length::px(4.0))
@@ -251,6 +281,36 @@ impl Theme {
 
     pub fn caret_color(mut self, color: Color) -> Self {
         self.caret_color = color;
+        self
+    }
+
+    pub fn scrollbar_thumb(mut self, color: Color) -> Self {
+        self.scrollbar_thumb = color;
+        self
+    }
+
+    pub fn scrollbar_track(mut self, color: Color) -> Self {
+        self.scrollbar_track = color;
+        self
+    }
+
+    pub fn scrollbar_button(mut self, color: Color) -> Self {
+        self.scrollbar_button = color;
+        self
+    }
+
+    pub fn scrollbar_arrow(mut self, color: Color) -> Self {
+        self.scrollbar_arrow = color;
+        self
+    }
+
+    pub fn scrollbar_thumb_border(mut self, color: Color) -> Self {
+        self.scrollbar_thumb_border = color;
+        self
+    }
+
+    pub fn scrollbar_track_border(mut self, color: Color) -> Self {
+        self.scrollbar_track_border = color;
         self
     }
 
