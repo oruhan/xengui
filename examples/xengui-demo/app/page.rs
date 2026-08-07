@@ -9,6 +9,7 @@ pub fn page(_params: &RouteParams) -> Box<dyn Widget> {
             .flex_direction(FlexDirection::Column)
             .align_items(Align::Start)
             .justify_content(JustifyContent::Center)
+            .min_height(pct!(100.0))
             .child(
                 View::new()
                     .display(Display::Flex)
@@ -45,7 +46,7 @@ pub fn page(_params: &RouteParams) -> Box<dyn Widget> {
                             .display(Display::Flex)
                             .flex_direction(FlexDirection::Row)
                             .margin(Edges::only(0, 16, 0, 16))
-                            .gap(4, 0)
+                            .gap(6, 0)
                             .child(
                                 Button::new()
                                     .background(Color::BLUE_500)
