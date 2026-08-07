@@ -14,6 +14,7 @@ pub fn layout(_params: &RouteParams, child: Box<dyn Widget>) -> Box<dyn Widget> 
             .overflow_y(Overflow::Scroll)
             .scrollbar_gutter(ScrollbarGutter::Stable)
             .overscroll(Overscroll::Stretch)
+            .min_height(pct!(100.0))
             .children_vec(
                 vec![
                     Box::new(
