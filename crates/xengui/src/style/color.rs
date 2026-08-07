@@ -57,6 +57,7 @@ impl Color {
         [self.r(), self.g(), self.b(), self.a()]
     }
 
+    /// 0-255
     pub const fn with_alpha(self, alpha: u8) -> Self {
         Self {
             r: self.r,

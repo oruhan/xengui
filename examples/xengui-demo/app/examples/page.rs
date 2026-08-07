@@ -8,6 +8,7 @@ pub fn page(_params: &RouteParams) -> Box<dyn Widget> {
             .flex_direction(FlexDirection::Column)
             .align_items(AlignItems::Start)
             .justify_content(JustifyContent::Center)
+            .min_height(pct!(100.0))
             .padding(Edges::only(120, 160, 120, 0))
             .child(
                 View::new()
@@ -21,7 +22,7 @@ pub fn page(_params: &RouteParams) -> Box<dyn Widget> {
                             .flex_direction(FlexDirection::Column)
                             .font_size(60)
                             .font_weight(FontWeight::Medium)
-                            .line_height(pct!(78.0))
+                            .line_height(pct!(64.0))
                             .letter_spacing(px!(-2.25))
                             .color(|theme: &Theme| theme.foreground)
                             .child(Label::new().label("Examples"))

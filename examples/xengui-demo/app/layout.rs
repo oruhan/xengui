@@ -4,23 +4,24 @@ use xengui::*;
 
 pub fn layout(_params: &RouteParams, child: Box<dyn Widget>) -> Box<dyn Widget> {
     Box::new(
+        /* Main */
         View::new()
             .font("Inter")
             .display(Display::Flex)
             .flex_direction(FlexDirection::Column)
+            .min_height(pct!(100.0))
             .gap(0, 4)
             .background(|theme: &Theme| theme.background)
             .overflow_y(Overflow::Scroll)
             .scrollbar_gutter(ScrollbarGutter::Stable)
-            .scrollbar_track_color(Color::NEUTRAL_800)
             .overscroll(Overscroll::Stretch)
             .children_vec(
                 vec![
                     Box::new(
                         /* Header */
                         View::new()
-                            .position(Position::Sticky)
                             .top(0)
+                            .position(Position::Sticky)
                             .z_index(10)
                             .display(Display::Flex)
                             .flex_direction(FlexDirection::Row)
@@ -29,13 +30,13 @@ pub fn layout(_params: &RouteParams, child: Box<dyn Widget>) -> Box<dyn Widget> 
                             .width(pct!(100))
                             .height(px!(55))
                             .backdrop_filter(Filter::Blur(Length::px(8.0)))
-                            .background(Color::rgba(20, 20, 20, 140))
+                            .background(|theme: &Theme| theme.surface.with_alpha(200))
                             .box_shadow(
                                 BoxShadow::new(
                                     0.0,
                                     4.0,
                                     12.0,
-                                    Color::RED_500.with_alpha(30)
+                                    Color::NEUTRAL_500.with_alpha(16)
                                 ).direction(ShadowDirection::Bottom)
                             )
                             .border(|theme: &Theme| Border::bottom(1, theme.border))
