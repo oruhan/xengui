@@ -150,7 +150,14 @@ pub fn style_to_taffy(style: &Style, scale_factor: f32, has_children: bool) -> T
     }
     if let Some(size) = &style.min_size {
         if let Some(w) = size.width {
-            t.min_size.width = dim(w, scale_factor);
+            // Same leaf-vs-parent split as min-height below: a leaf's
+            // percentage min-width needs the real parent width (resolved
+            // after layout in apply_layout), not taffy's own indeterminate
+            // measurement pass, or it can resolve against the wrong space
+            // and overflow past its actual container.
+            if has_children || !matches!(w, crate::Length::Percent(_)) {
+                t.min_size.width = dim(w, scale_factor);
+            }
         }
         if let Some(h) = size.height {
             // Percentage min-height only resolves correctly through taffy's

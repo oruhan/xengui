@@ -81,6 +81,7 @@ impl LayoutEngine {
                 node_id,
                 0.0,
                 0.0,
+                viewport_width,
                 viewport_height,
                 ctx.scale_factor,
                 viewport,
@@ -197,6 +198,7 @@ fn apply_layout(
     node_id: NodeId,
     parent_x: f32,
     parent_y: f32,
+    parent_width: f32,
     parent_height: f32,
     scale_factor: f32,
     viewport: (f32, f32),
@@ -217,19 +219,11 @@ fn apply_layout(
 
     let position = widget.computed_style().position.unwrap_or_default();
 
-    // Fixed/Sticky override snapped_x/snapped_y below, independent of
-    // wherever this widget would otherwise sit in the flow - so its own
-    // size must come straight from taffy's position-independent result
-    // instead of the corner-subtraction above, whose rounding otherwise
-    // drifts by a pixel every frame as a scrolled ancestor shifts this
-    // widget's unclamped flow position through different fractional offsets.
     if matches!(position, Position::Fixed | Position::Sticky) {
         width = layout.size.width.round();
         height = layout.size.height.round();
     }
 
-    // Fixed is anchored to the viewport itself rather than the flow
-    // position taffy computed, matching CSS's `position: fixed`.
     if position == Position::Fixed {
         let (vw, vh) = viewport;
         let style = widget.computed_style();
@@ -267,6 +261,18 @@ fn apply_layout(
         }
     }
 
+    // Mirrors the min-height resolution below for the width axis: a leaf
+    // widget's percentage min-width is excluded from taffy's own pass
+    // (see style_to_taffy) and resolved here instead, against the real
+    // parent width, so it can't overflow past the actual container.
+    if
+        widget.children().is_empty() &&
+        let Some(min_size) = widget.computed_style().min_size &&
+        let Some(crate::Length::Percent(p)) = min_size.width
+    {
+        width = width.max(parent_width * (p / 100.0));
+    }
+
     // Widgets with children already got their percentage min-height
     // forwarded to taffy (see style_to_taffy), so their height here
     // already reflects it correctly within the flex layout. Leaf widgets
@@ -290,10 +296,6 @@ fn apply_layout(
 
     let child_ids = taffy.children(node_id).ok();
 
-    // Union of every in-flow child's own box gives the total scrollable
-    // content size, which can exceed this node's own box when content
-    // overflows it. Out-of-flow children (absolute/fixed) are skipped,
-    // since they don't participate in the normal flow's overflow box.
     if let Some(ids) = &child_ids {
         let mut content_w: f32 = layout.size.width;
         let mut content_h: f32 = layout.size.height;
@@ -334,6 +336,7 @@ fn apply_layout(
                 child_id,
                 snapped_x - offset_x,
                 snapped_y - offset_y,
+                width,
                 height,
                 scale_factor,
                 viewport,
