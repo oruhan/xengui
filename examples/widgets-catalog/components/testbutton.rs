@@ -48,7 +48,7 @@ impl Render for TestButton {
         Box::new(
             View::new()
                 .padding(Edges::symmetric(14.0, 8.0))
-                .align_items(AlignItems::Center)
+                .align_items(Align::Center)
                 .justify_content(JustifyContent::Center)
                 .background(self.color.unwrap_or(Color::BLUE_500))
                 .border(Border::new(0.0, Color::TRANSPARENT, 8.0))

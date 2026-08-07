@@ -11,7 +11,7 @@ use crate::{
 };
 use super::{
     Outline,
-    AlignItems,
+    Align,
     Background,
     Border,
     Color,
@@ -134,8 +134,8 @@ pub struct Style {
     pub flex_grow: Option<f32>,
     pub flex_shrink: Option<f32>,
     pub flex_basis: Option<Length>,
-    pub align_items: Option<AlignItems>,
-    pub align_self: Option<AlignItems>,
+    pub align_items: Option<Align>,
+    pub align_self: Option<Align>,
     pub justify_content: Option<JustifyContent>,
     pub align_content: Option<JustifyContent>,
     pub gap: Option<(Length, Length)>,

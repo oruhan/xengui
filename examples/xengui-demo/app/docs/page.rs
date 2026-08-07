@@ -7,14 +7,14 @@ pub fn page(_params: &RouteParams) -> Box<dyn Widget> {
         View::new()
             .display(Display::Flex)
             .flex_direction(FlexDirection::Column)
-            .align_items(AlignItems::Start)
+            .align_items(Align::Start)
             .justify_content(JustifyContent::Center)
             .min_height(pct!(100.0))
             .child(
                 View::new()
                     .display(Display::Flex)
                     .flex_direction(FlexDirection::Column)
-                    .align_items(AlignItems::Start)
+                    .align_items(Align::Start)
                     .justify_content(JustifyContent::Start)
                     .padding(Edges::only(120, 100, 120, 0))
                     .child(

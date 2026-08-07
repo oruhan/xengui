@@ -66,7 +66,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     View::new()
                         .display(Display::Flex)
                         .flex_direction(FlexDirection::Row)
-                        .align_items(AlignItems::Center)
+                        .align_items(Align::Center)
                         .width(pct!(100.0))
                         .height(px!(32.0))
                         .min_height(px!(32.0))
@@ -93,7 +93,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 .height(pct!(100.0))
                                 .child(
                                     Button::new()
-                                        .align_items(AlignItems::Center)
+                                        .align_items(Align::Center)
                                         .justify_content(JustifyContent::Center)
                                         .height(pct!(100.0))
                                         .width(px!(44.0))
@@ -116,7 +116,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 )
                                 .child(
                                     Button::new()
-                                        .align_items(AlignItems::Center)
+                                        .align_items(Align::Center)
                                         .justify_content(JustifyContent::Center)
                                         .height(pct!(100.0))
                                         .width(px!(44.0))
@@ -139,7 +139,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 )
                                 .child(
                                     Button::new()
-                                        .align_items(AlignItems::Center)
+                                        .align_items(Align::Center)
                                         .justify_content(JustifyContent::Center)
                                         .height(pct!(100.0))
                                         .width(px!(44.0))
@@ -188,7 +188,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 )
                                 .child(
                                     Button::new()
-                                        .align_items(AlignItems::Center)
+                                        .align_items(Align::Center)
                                         .justify_content(JustifyContent::Center)
                                         .height(px!(50))
                                         .width(px!(44.0))
@@ -210,7 +210,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 )
                                 .child(
                                     Button::new()
-                                        .align_items(AlignItems::Center)
+                                        .align_items(Align::Center)
                                         .justify_content(JustifyContent::Center)
                                         .height(px!(50.0))
                                         .width(px!(44.0))

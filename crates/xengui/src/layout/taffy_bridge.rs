@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 use crate::{
-    AlignItems as XAlign,
+    Align as XAlign,
     BoxSizing as XBoxSizing,
     Display as XDisplay,
     FlexDirection as XFlexDir,

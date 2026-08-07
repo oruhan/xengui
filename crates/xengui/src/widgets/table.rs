@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 use crate::{
-    AlignItems,
+    Align,
     Background,
     Border,
     Color,
@@ -24,15 +24,15 @@ use smol_str::SmolStr;
 pub struct TableColumn {
     pub header: SmolStr,
     pub width: Length,
-    pub align: AlignItems,
+    pub align: Align,
 }
 
 impl TableColumn {
     pub fn new(header: impl Into<SmolStr>, width: impl Into<Length>) -> Self {
-        Self { header: header.into(), width: width.into(), align: AlignItems::Start }
+        Self { header: header.into(), width: width.into(), align: Align::Start }
     }
 
-    pub fn align(mut self, align: AlignItems) -> Self {
+    pub fn align(mut self, align: Align) -> Self {
         self.align = align;
         self
     }
@@ -310,7 +310,7 @@ impl Render for Table {
                 let align = self.columns
                     .get(col_index)
                     .map(|c| c.align)
-                    .unwrap_or(AlignItems::Start);
+                    .unwrap_or(Align::Start);
 
                 let cell_widget = cell_build();
                 let cell = View::new()

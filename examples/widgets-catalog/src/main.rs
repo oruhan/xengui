@@ -125,7 +125,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     let set_c = set_radio_selected.clone();
                     Row::new()
                         .gap(14, 0)
-                        .align_items(AlignItems::Center)
+                        .align_items(Align::Center)
                         .child(
                             RadioButton::new()
                                 .selected(radio_selected == 0)
@@ -320,7 +320,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         .display(Display::Flex)
                         .flex_direction(FlexDirection::Column)
                         .justify_content(JustifyContent::Center)
-                        .align_items(AlignItems::Center)
+                        .align_items(Align::Center)
                         .width(Length::pct(100.0))
                         .height(Length::pct(100.0))
                         .background(|theme: &Theme| theme.background)

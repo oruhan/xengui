@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 use crate::{
     AnimationManager,
-    AlignItems,
+    Align,
     Color,
     Constraints,
     EventCtx,
@@ -81,7 +81,7 @@ impl Button {
         // Default alignment for the label/icon content inside the button box;
         // overridable via the normal StyleBuilder::justify_content/align_items.
         base.style.justify_content = Some(JustifyContent::Center);
-        base.style.align_items = Some(AlignItems::Center);
+        base.style.align_items = Some(Align::Center);
 
         Self {
             base,
@@ -357,7 +357,7 @@ impl Widget for Button {
         let combined_h = text_h.max(icon_h);
 
         let justify = style.justify_content.unwrap_or(JustifyContent::Center);
-        let align = style.align_items.unwrap_or(AlignItems::Center);
+        let align = style.align_items.unwrap_or(Align::Center);
 
         let content_x =
             self.layout_box.x + pad_l + justify_offset(justify, available_w, combined_w);
@@ -550,10 +550,10 @@ fn justify_offset(justify: JustifyContent, available: f32, content: f32) -> f32 
     }
 }
 
-fn align_offset(align: AlignItems, available: f32, content: f32) -> f32 {
+fn align_offset(align: Align, available: f32, content: f32) -> f32 {
     match align {
-        AlignItems::Start => 0.0,
-        AlignItems::End => (available - content).max(0.0),
+        Align::Start => 0.0,
+        Align::End => (available - content).max(0.0),
         _ => (available - content).max(0.0) * 0.5,
     }
 }

@@ -4,7 +4,7 @@ use crate::{
 };
 
 use super::{
-    AlignItems,
+    Align,
     Background,
     Border,
     Outline,
@@ -420,13 +420,13 @@ pub trait StyleBuilder: Sized {
         self
     }
 
-    fn align_items(mut self, align: AlignItems) -> Self {
+    fn align_items(mut self, align: Align) -> Self {
         self.style_mut().align_items = Some(align);
         self.mark_dirty();
         self
     }
 
-    fn align_self(mut self, align: AlignItems) -> Self {
+    fn align_self(mut self, align: Align) -> Self {
         self.style_mut().align_self = Some(align);
         self.mark_dirty();
         self

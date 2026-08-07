@@ -30,7 +30,7 @@ The core, retained-mode GUI library at the heart of the XenGui ecosystem.
 View::new()
     .display(Display::Flex)
     .flex_direction(FlexDirection::Column)
-    .align_items(AlignItems::Center)
+    .align_items(Align::Center)
     .justify_content(JustifyContent::Center)
     .width(Length::Percent(100.0))
     .height(Length::Percent(100.0))

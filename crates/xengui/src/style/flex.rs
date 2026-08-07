@@ -17,7 +17,7 @@ pub enum FlexWrap {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
-pub enum AlignItems {
+pub enum Align {
     #[default]
     Stretch,
     Start,
