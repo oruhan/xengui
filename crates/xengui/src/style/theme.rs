@@ -16,6 +16,9 @@ pub struct Theme {
     mode: ThemeMode,
 
     /* Colors */
+    pub background: Color,
+    pub on_background: Color,
+
     // Primary
     pub inverse_primary: Color,
     pub primary: Color,
@@ -155,6 +158,9 @@ impl Theme {
             mode: ThemeMode::Light,
 
             /* Colors */
+            background: Color::WHITE,
+            on_background: Color::NEUTRAL_950,
+
             // Primary
             inverse_primary: Color::BLUE_700,
             primary: Color::BLUE_500,
@@ -296,6 +302,8 @@ impl Theme {
             .mode(ThemeMode::Light)
 
             /* Colors */
+            .background(Color::WHITE)
+            .on_background(Color::NEUTRAL_950)
 
             // Primary
             .inverse_primary(Color::BLUE_700)
@@ -400,6 +408,8 @@ impl Theme {
             .mode(ThemeMode::Dark)
 
             /* Colors */
+            .background(Color::BLACK)
+            .on_background(Color::NEUTRAL_50)
 
             // Primary
             .inverse_primary(Color::BLUE_300)
@@ -510,6 +520,16 @@ impl Theme {
         self
     }
 
+    pub fn background(mut self, color: Color) -> Self {
+        self.background = color;
+        self
+    }
+
+    pub fn on_background(mut self, color: Color) -> Self {
+        self.on_background = color;
+        self
+    }
+
     pub fn inverse_primary(mut self, color: Color) -> Self {
         self.inverse_primary = color;
         self
@@ -517,6 +537,286 @@ impl Theme {
 
     pub fn primary(mut self, color: Color) -> Self {
         self.primary = color;
+        self
+    }
+
+    pub fn on_primary(mut self, color: Color) -> Self {
+        self.on_primary = color;
+        self
+    }
+
+    pub fn primary_container(mut self, color: Color) -> Self {
+        self.primary_container = color;
+        self
+    }
+
+    pub fn on_primary_container(mut self, color: Color) -> Self {
+        self.on_primary_container = color;
+        self
+    }
+
+    pub fn primary_fixed(mut self, color: Color) -> Self {
+        self.primary_fixed = color;
+        self
+    }
+
+    pub fn primary_fixed_dim(mut self, color: Color) -> Self {
+        self.primary_fixed_dim = color;
+        self
+    }
+
+    pub fn on_primary_fixed(mut self, color: Color) -> Self {
+        self.on_primary_fixed = color;
+        self
+    }
+
+    pub fn on_primary_fixed_variant(mut self, color: Color) -> Self {
+        self.on_primary_fixed_variant = color;
+        self
+    }
+
+    pub fn inverse_secondary(mut self, color: Color) -> Self {
+        self.inverse_secondary = color;
+        self
+    }
+
+    pub fn secondary(mut self, color: Color) -> Self {
+        self.secondary = color;
+        self
+    }
+
+    pub fn on_secondary(mut self, color: Color) -> Self {
+        self.on_secondary = color;
+        self
+    }
+
+    pub fn secondary_container(mut self, color: Color) -> Self {
+        self.secondary_container = color;
+        self
+    }
+
+    pub fn on_secondary_container(mut self, color: Color) -> Self {
+        self.on_secondary_container = color;
+        self
+    }
+
+    pub fn secondary_fixed(mut self, color: Color) -> Self {
+        self.secondary_fixed = color;
+        self
+    }
+
+    pub fn secondary_fixed_dim(mut self, color: Color) -> Self {
+        self.secondary_fixed_dim = color;
+        self
+    }
+
+    pub fn on_secondary_fixed(mut self, color: Color) -> Self {
+        self.on_secondary_fixed = color;
+        self
+    }
+
+    pub fn on_secondary_fixed_variant(mut self, color: Color) -> Self {
+        self.on_secondary_fixed_variant = color;
+        self
+    }
+
+    pub fn inverse_tertiary(mut self, color: Color) -> Self {
+        self.inverse_tertiary = color;
+        self
+    }
+
+    pub fn tertiary(mut self, color: Color) -> Self {
+        self.tertiary = color;
+        self
+    }
+
+    pub fn on_tertiary(mut self, color: Color) -> Self {
+        self.on_tertiary = color;
+        self
+    }
+
+    pub fn tertiary_container(mut self, color: Color) -> Self {
+        self.tertiary_container = color;
+        self
+    }
+
+    pub fn on_tertiary_container(mut self, color: Color) -> Self {
+        self.on_tertiary_container = color;
+        self
+    }
+
+    pub fn tertiary_fixed(mut self, color: Color) -> Self {
+        self.tertiary_fixed = color;
+        self
+    }
+
+    pub fn tertiary_fixed_dim(mut self, color: Color) -> Self {
+        self.tertiary_fixed_dim = color;
+        self
+    }
+
+    pub fn on_tertiary_fixed(mut self, color: Color) -> Self {
+        self.on_tertiary_fixed = color;
+        self
+    }
+
+    pub fn on_tertiary_fixed_variant(mut self, color: Color) -> Self {
+        self.on_tertiary_fixed_variant = color;
+        self
+    }
+
+    pub fn info(mut self, color: Color) -> Self {
+        self.info = color;
+        self
+    }
+
+    pub fn on_info(mut self, color: Color) -> Self {
+        self.on_info = color;
+        self
+    }
+
+    pub fn info_container(mut self, color: Color) -> Self {
+        self.info_container = color;
+        self
+    }
+
+    pub fn on_info_container(mut self, color: Color) -> Self {
+        self.on_info_container = color;
+        self
+    }
+
+    pub fn error(mut self, color: Color) -> Self {
+        self.error = color;
+        self
+    }
+
+    pub fn on_error(mut self, color: Color) -> Self {
+        self.on_error = color;
+        self
+    }
+
+    pub fn error_container(mut self, color: Color) -> Self {
+        self.error_container = color;
+        self
+    }
+
+    pub fn on_error_container(mut self, color: Color) -> Self {
+        self.on_error_container = color;
+        self
+    }
+
+    pub fn warning(mut self, color: Color) -> Self {
+        self.warning = color;
+        self
+    }
+
+    pub fn on_warning(mut self, color: Color) -> Self {
+        self.on_warning = color;
+        self
+    }
+
+    pub fn warning_container(mut self, color: Color) -> Self {
+        self.warning_container = color;
+        self
+    }
+
+    pub fn on_warning_container(mut self, color: Color) -> Self {
+        self.on_warning_container = color;
+        self
+    }
+
+    pub fn success(mut self, color: Color) -> Self {
+        self.success = color;
+        self
+    }
+
+    pub fn on_success(mut self, color: Color) -> Self {
+        self.on_success = color;
+        self
+    }
+
+    pub fn success_container(mut self, color: Color) -> Self {
+        self.success_container = color;
+        self
+    }
+
+    pub fn on_success_container(mut self, color: Color) -> Self {
+        self.on_success_container = color;
+        self
+    }
+
+    pub fn surface_dim(mut self, color: Color) -> Self {
+        self.surface_dim = color;
+        self
+    }
+
+    pub fn surface_bright(mut self, color: Color) -> Self {
+        self.surface_bright = color;
+        self
+    }
+
+    pub fn inverse_surface(mut self, color: Color) -> Self {
+        self.inverse_surface = color;
+        self
+    }
+
+    pub fn inverse_on_surface(mut self, color: Color) -> Self {
+        self.inverse_on_surface = color;
+        self
+    }
+
+    pub fn surface_container_low(mut self, color: Color) -> Self {
+        self.surface_container_low = color;
+        self
+    }
+
+    pub fn surface_container_lowest(mut self, color: Color) -> Self {
+        self.surface_container_lowest = color;
+        self
+    }
+
+    pub fn surface_container(mut self, color: Color) -> Self {
+        self.surface_container = color;
+        self
+    }
+
+    pub fn surface_container_high(mut self, color: Color) -> Self {
+        self.surface_container_high = color;
+        self
+    }
+
+    pub fn surface_container_highest(mut self, color: Color) -> Self {
+        self.surface_container_highest = color;
+        self
+    }
+
+    pub fn on_surface(mut self, color: Color) -> Self {
+        self.on_surface = color;
+        self
+    }
+
+    pub fn on_surface_variant(mut self, color: Color) -> Self {
+        self.on_surface_variant = color;
+        self
+    }
+
+    pub fn outline(mut self, color: Color) -> Self {
+        self.outline = color;
+        self
+    }
+
+    pub fn outline_variant(mut self, color: Color) -> Self {
+        self.outline_variant = color;
+        self
+    }
+
+    pub fn scrim(mut self, color: Color) -> Self {
+        self.scrim = color;
+        self
+    }
+
+    pub fn shadow(mut self, color: Color) -> Self {
+        self.shadow = color;
         self
     }
 
@@ -686,21 +986,97 @@ impl Theme {
         matches!(self.mode, ThemeMode::Auto)
     }
 
-    // Only the color set flips with the system theme; spacing/radius
-    // tokens the user configured on this theme are preserved as-is.
+    /// Rebuilds the color set from `Theme::light()`/`Theme::dark()` based on
+    /// `system_is_dark`, while keeping every non-color field (radius,
+    /// spacing, typography, border width, name) from `self` untouched.
+    /// A no-op for non-`Auto` themes.
     pub fn resolved_for_system(&self, system_is_dark: bool) -> Self {
         if !self.is_auto() {
             return self.clone();
         }
         let palette = if system_is_dark { Self::dark() } else { Self::light() };
         Self {
+            inverse_primary: palette.inverse_primary,
             primary: palette.primary,
-            accent: palette.accent,
-            background: palette.background,
+            on_primary: palette.on_primary,
+            primary_container: palette.primary_container,
+            on_primary_container: palette.on_primary_container,
+            primary_fixed: palette.primary_fixed,
+            primary_fixed_dim: palette.primary_fixed_dim,
+            on_primary_fixed: palette.on_primary_fixed,
+            on_primary_fixed_variant: palette.on_primary_fixed_variant,
+
+            inverse_secondary: palette.inverse_secondary,
+            secondary: palette.secondary,
+            on_secondary: palette.on_secondary,
+            secondary_container: palette.secondary_container,
+            on_secondary_container: palette.on_secondary_container,
+            secondary_fixed: palette.secondary_fixed,
+            secondary_fixed_dim: palette.secondary_fixed_dim,
+            on_secondary_fixed: palette.on_secondary_fixed,
+            on_secondary_fixed_variant: palette.on_secondary_fixed_variant,
+
+            inverse_tertiary: palette.inverse_tertiary,
+            tertiary: palette.tertiary,
+            on_tertiary: palette.on_tertiary,
+            tertiary_container: palette.tertiary_container,
+            on_tertiary_container: palette.on_tertiary_container,
+            tertiary_fixed: palette.tertiary_fixed,
+            tertiary_fixed_dim: palette.tertiary_fixed_dim,
+            on_tertiary_fixed: palette.on_tertiary_fixed,
+            on_tertiary_fixed_variant: palette.on_tertiary_fixed_variant,
+
+            info: palette.info,
+            on_info: palette.on_info,
+            info_container: palette.info_container,
+            on_info_container: palette.on_info_container,
+
+            error: palette.error,
+            on_error: palette.on_error,
+            error_container: palette.error_container,
+            on_error_container: palette.on_error_container,
+
+            warning: palette.warning,
+            on_warning: palette.on_warning,
+            warning_container: palette.warning_container,
+            on_warning_container: palette.on_warning_container,
+
+            success: palette.success,
+            on_success: palette.on_success,
+            success_container: palette.success_container,
+            on_success_container: palette.on_success_container,
+
+            surface_dim: palette.surface_dim,
             surface: palette.surface,
-            surface_hover: palette.surface_hover,
-            foreground: palette.foreground,
-            border: palette.border,
+            surface_bright: palette.surface_bright,
+            inverse_surface: palette.inverse_surface,
+            inverse_on_surface: palette.inverse_on_surface,
+            surface_container_low: palette.surface_container_low,
+            surface_container_lowest: palette.surface_container_lowest,
+            surface_container: palette.surface_container,
+            surface_container_high: palette.surface_container_high,
+            surface_container_highest: palette.surface_container_highest,
+            on_surface: palette.on_surface,
+            on_surface_variant: palette.on_surface_variant,
+
+            outline: palette.outline,
+            outline_variant: palette.outline_variant,
+
+            scrim: palette.scrim,
+            shadow: palette.shadow,
+
+            selection: palette.selection,
+            selection_color: palette.selection_color,
+            selection_border_color: palette.selection_border_color,
+            caret_color: palette.caret_color,
+
+            scrollbar_thumb: palette.scrollbar_thumb,
+            scrollbar_track: palette.scrollbar_track,
+            scrollbar_button: palette.scrollbar_button,
+            scrollbar_arrow: palette.scrollbar_arrow,
+            scrollbar_thumb_border: palette.scrollbar_thumb_border,
+            scrollbar_track_border: palette.scrollbar_track_border,
+
             ..self.clone()
         }
     }
