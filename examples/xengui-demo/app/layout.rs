@@ -196,7 +196,7 @@ pub fn layout(_params: &RouteParams, child: Box<dyn Widget>) -> Box<dyn Widget> 
                                             .flex_direction(FlexDirection::Column)
                                             .justify_content(JustifyContent::Start)
                                             .align_items(Align::Start)
-                                            .gap(0, 8)
+                                            .gap(0, 12)
                                             .child(
                                                 Svg::from_bytes(
                                                     include_bytes!(
@@ -213,7 +213,7 @@ pub fn layout(_params: &RouteParams, child: Box<dyn Widget>) -> Box<dyn Widget> 
                                             .child(
                                                 Label::new()
                                                     .label(
-                                                        "Modern Rust UI framework for embedded, desktop and web."
+                                                        "Build native desktop, web, mobile, and embedded applications from a single codebase."
                                                     )
                                                     .font_size(15)
                                                     .color(|theme: &Theme| theme.on_background)
