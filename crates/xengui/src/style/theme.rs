@@ -483,7 +483,7 @@ impl Theme {
             .on_surface_variant(Color::NEUTRAL_300)
 
             // Outline
-            .outline(Color::NEUTRAL_400)
+            .outline(Color::NEUTRAL_800)
             .outline_variant(Color::NEUTRAL_700)
 
             // Scrim & Shadow
