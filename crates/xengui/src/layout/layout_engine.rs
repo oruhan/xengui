@@ -89,6 +89,26 @@ impl LayoutEngine {
             );
         }
     }
+
+    /// Repositions an already-computed layout tree by however much each
+    /// scrollable view's offset moved since the last full layout or reflow,
+    /// without touching taffy at all - the cheap path for a frame where
+    /// scrolling is the only thing changing.
+    pub fn reflow_scroll(tree: &mut [Box<dyn Widget>]) {
+        for widget in tree.iter_mut() {
+            reflow_scroll_recursive(widget.as_mut());
+        }
+    }
+
+    /// Resets every scrollable view's delta bookkeeping to its current
+    /// offset - called after a full layout, which already positions
+    /// everything from the live offset directly, so a later `reflow_scroll`
+    /// call starts measuring from here instead of a stale baseline.
+    pub fn sync_scroll_offsets(tree: &mut [Box<dyn Widget>]) {
+        for widget in tree.iter_mut() {
+            sync_scroll_recursive(widget.as_mut());
+        }
+    }
 }
 
 fn build_taffy_node(
@@ -342,6 +362,40 @@ fn apply_layout(
                 viewport,
                 next_scroll_viewport
             );
+        }
+    }
+}
+
+fn reflow_scroll_recursive(widget: &mut dyn Widget) {
+    let (dx, dy) = widget.take_scroll_delta();
+    if (dx != 0.0 || dy != 0.0)
+        && let Some(children) = widget.children_mut() {
+            for child in children.iter_mut() {
+                translate_subtree(child.as_mut(), -dx, -dy);
+            }
+        }
+    if let Some(children) = widget.children_mut() {
+        for child in children.iter_mut() {
+            reflow_scroll_recursive(child.as_mut());
+        }
+    }
+}
+
+fn translate_subtree(widget: &mut dyn Widget, dx: f32, dy: f32) {
+    let b = *widget.layout_box();
+    widget.layout(LayoutBox { x: b.x + dx, y: b.y + dy, width: b.width, height: b.height });
+    if let Some(children) = widget.children_mut() {
+        for child in children.iter_mut() {
+            translate_subtree(child.as_mut(), dx, dy);
+        }
+    }
+}
+
+fn sync_scroll_recursive(widget: &mut dyn Widget) {
+    let _ = widget.take_scroll_delta();
+    if let Some(children) = widget.children_mut() {
+        for child in children.iter_mut() {
+            sync_scroll_recursive(child.as_mut());
         }
     }
 }

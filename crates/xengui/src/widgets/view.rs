@@ -280,6 +280,10 @@ pub struct View {
     children: Vec<Box<dyn Widget>>,
     scroll_offset: Cell<(f32, f32)>,
     scroll_target: Cell<(f32, f32)>,
+    // Offset last reported to the layout engine's scroll-delta reflow
+    // pass; diffed against `scroll_offset` each frame so only the moved
+    // distance needs to be applied, without a full re-layout.
+    last_layout_scroll: Cell<(f32, f32)>,
 
     content_size: Cell<(f32, f32)>,
     scrollbar_drag: Cell<Option<ScrollDrag>>,
@@ -322,6 +326,8 @@ impl View {
             children: Vec::new(),
             scroll_offset: Cell::new((0.0, 0.0)),
             scroll_target: Cell::new((0.0, 0.0)),
+            last_layout_scroll: Cell::new((0.0, 0.0)),
+
             content_size: Cell::new((0.0, 0.0)),
             scrollbar_drag: Cell::new(None),
             pending_track_drag: Cell::new(None),
@@ -737,10 +743,10 @@ impl View {
         anim.set_target(key, AnimValue([target.0, target.1, 0.0, 0.0]), transition);
 
         match anim.value(key) {
-            Some(v) => {
-                self.scroll_offset.set((v.0[0], v.0[1]));
-                self.base.dirty = true;
-            }
+            // Repositioning happens via the layout engine's scroll-delta
+            // reflow pass, not the paint-cache dirty flag - marking dirty
+            // here would force a full taffy re-layout every scroll frame.
+            Some(v) => self.scroll_offset.set((v.0[0], v.0[1])),
             None => self.scroll_offset.set(target),
         }
     }
@@ -1262,7 +1268,6 @@ impl View {
             // and button nudges go through the animated path.
             self.scroll_offset.set(next);
             self.scroll_target.set(next);
-            self.base.dirty = true;
             ctx.request_redraw();
         }
 
@@ -1401,7 +1406,6 @@ impl View {
         if next != current {
             self.scroll_offset.set(next);
             self.scroll_target.set(next);
-            self.base.dirty = true;
             ctx.request_redraw();
         }
     }
@@ -1502,7 +1506,6 @@ impl View {
                 if next != current {
                     self.scroll_offset.set(next);
                     self.scroll_target.set(next);
-                    self.base.dirty = true;
                     ctx.request_redraw();
                 }
 
@@ -1596,7 +1599,6 @@ impl View {
 
         self.scroll_offset.set((clamped_x, clamped_y));
         self.scroll_target.set((clamped_x, clamped_y));
-        self.base.dirty = true;
         ctx.request_redraw();
 
         let decay = (-MOMENTUM_FRICTION * dt).exp();
@@ -1719,6 +1721,12 @@ impl Widget for View {
 
     fn scroll_offset(&self) -> (f32, f32) {
         self.scroll_offset.get()
+    }
+
+    fn take_scroll_delta(&self) -> (f32, f32) {
+        let current = self.scroll_offset.get();
+        let previous = self.last_layout_scroll.replace(current);
+        (current.0 - previous.0, current.1 - previous.1)
     }
 
     fn set_content_size(&mut self, size: (f32, f32)) {
@@ -2069,6 +2077,7 @@ impl Widget for View {
         if let Some(old) = old.as_any().downcast_ref::<View>() {
             self.scroll_offset.set(old.scroll_offset.get());
             self.scroll_target.set(old.scroll_target.get());
+            self.last_layout_scroll.set(old.last_layout_scroll.get());
             self.content_size.set(old.content_size.get());
             self.scrollbar_hovered.set(old.scrollbar_hovered.get());
             self.scrollbar_thickness_anim.set(old.scrollbar_thickness_anim.get());

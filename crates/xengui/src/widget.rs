@@ -82,6 +82,14 @@ pub trait Widget: Any {
         (0.0, 0.0)
     }
 
+    /// How far this widget's own `scroll_offset()` moved since the layout
+    /// engine last asked, resetting its bookkeeping to the current value.
+    /// Only `View` overrides this; every other widget has nothing to
+    /// report and the default is a no-op.
+    fn take_scroll_delta(&self) -> (f32, f32) {
+        (0.0, 0.0)
+    }
+
     /// Reports this widget's total content size after layout, which may
     /// exceed `layout_box()` when children overflow it.
     fn set_content_size(&mut self, _size: (f32, f32)) {}

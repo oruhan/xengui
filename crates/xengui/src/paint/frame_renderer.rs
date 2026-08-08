@@ -79,11 +79,7 @@ impl FrameRenderer {
         let needs_full_layout =
             std::mem::take(&mut self.force_layout) ||
             tree_is_dirty(tree) ||
-            self.anim
-                .active_keys()
-                .any(|k| {
-                    k.property.affects_layout() || k.property == crate::AnimProperty::ScrollOffset
-                });
+            self.anim.active_keys().any(|k| k.property.affects_layout());
 
         let mut layout_ctx = LayoutContext {
             text: backend.text_measurer(),
@@ -99,8 +95,14 @@ impl FrameRenderer {
                 width as f32,
                 height as f32
             );
+            LayoutEngine::sync_scroll_offsets(tree);
         } else {
             LayoutEngine::cascade(tree, &mut layout_ctx);
+            // Scrolling never changes box sizes, so reposition the
+            // already-laid-out subtree directly instead of paying for a
+            // full taffy re-layout every animated-scroll frame. A no-op
+            // walk when nothing actually scrolled this frame.
+            LayoutEngine::reflow_scroll(tree);
         }
 
         let mut commands: Vec<(i32, DrawCommand)> = Vec::new();
