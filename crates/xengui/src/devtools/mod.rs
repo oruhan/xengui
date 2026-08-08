@@ -4,6 +4,9 @@
 //! the workspace can push timestamped events into it and dump them as a
 //! single ordered log at a convenient moment (e.g. WM_EXITSIZEMOVE).
 
+mod render_log;
+pub use render_log::*;
+
 use std::cell::RefCell;
 use std::collections::VecDeque;
 use web_time::Instant;

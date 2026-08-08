@@ -181,6 +181,11 @@ impl WorkLoop {
         let old_siblings = resolve_old_siblings_mut(old_root, &old_path);
 
         if frame.new_siblings[idx].as_any().type_id() != old_siblings[old_idx].as_any().type_id() {
+            if crate::devtools::is_enabled() {
+                let name = frame.new_siblings[idx].debug_name();
+                let path = reconcile_path(&old_path, idx);
+                crate::devtools::log_rerender(&path, name, "widget type changed");
+            }
             unmount_subtree(old_siblings[old_idx].as_mut());
             mount_subtree(frame.new_siblings[idx].as_mut());
             return;
@@ -191,14 +196,17 @@ impl WorkLoop {
 
         new_node.transfer_interaction_state(old_node.as_ref());
         let content_equal = new_node.content_eq(old_node.as_ref());
+
+        if !content_equal && crate::devtools::is_enabled() {
+            let path = reconcile_path(&old_path, idx);
+            crate::devtools::log_rerender(&path, new_node.debug_name(), "content changed");
+        }
+
         new_node.after_interaction_transfer();
         new_node.transfer_composite_children(old_node.as_mut());
 
         if content_equal {
             new_node.transfer_measured_state(old_node.as_ref());
-            // Fresh widget instances default to a zero LayoutBox and are
-            // never touched by transfer_measured_state, so without this
-            // they'd render at (0,0,0,0) whenever layout is skipped below.
             new_node.layout(*old_node.layout_box());
             new_node.set_dirty(false);
         }
@@ -231,6 +239,18 @@ impl WorkLoop {
             return Some(candidate);
         }
         None
+    }
+}
+
+// Debug-only display path built from reconciler frame indices - not the
+// same format as the paint/input system's key-based WidgetPath, but
+// stable enough to eyeball in the DevTools log.
+fn reconcile_path(old_path: &[usize], idx: usize) -> String {
+    if old_path.is_empty() {
+        idx.to_string()
+    } else {
+        let parent: Vec<String> = old_path.iter().map(usize::to_string).collect();
+        format!("{}.{}", parent.join("."), idx)
     }
 }
 

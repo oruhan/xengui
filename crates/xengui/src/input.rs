@@ -393,7 +393,12 @@ pub fn dispatch_positional(
             continue;
         };
 
+        let redraw_before = ctx.redraw_requested();
         let status = widget.event(event, ctx);
+
+        if !redraw_before && ctx.redraw_requested() && crate::devtools::is_enabled() {
+            crate::devtools::log_repaint(&path, widget.debug_name(), format!("{event:?}"));
+        }
 
         if ctx.take_focus_request() {
             ctx.focus_target = Some(path.clone());
@@ -416,7 +421,14 @@ pub fn dispatch_to_path(
     ctx: &mut EventCtx
 ) -> EventStatus {
     match find_widget_mut(tree, path) {
-        Some(widget) => widget.event(event, ctx),
+        Some(widget) => {
+            let redraw_before = ctx.redraw_requested();
+            let status = widget.event(event, ctx);
+            if !redraw_before && ctx.redraw_requested() && crate::devtools::is_enabled() {
+                crate::devtools::log_repaint(path, widget.debug_name(), format!("{event:?}"));
+            }
+            status
+        }
         None => EventStatus::Ignored,
     }
 }

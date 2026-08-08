@@ -298,6 +298,9 @@ impl<T: 'static> SetState<T> {
     pub fn set(&self, value: T) {
         *self.slot.borrow_mut() = Box::new(value);
         DIRTY.with(|d| d.set(true));
+        if crate::devtools::is_enabled() {
+            crate::devtools::log_rerender("?", "SetState", "state set");
+        }
         request_redraw();
     }
 
@@ -311,6 +314,9 @@ impl<T: 'static> SetState<T> {
             f(current);
         }
         DIRTY.with(|d| d.set(true));
+        if crate::devtools::is_enabled() {
+            crate::devtools::log_rerender("?", "SetState", "state updated");
+        }
         request_redraw();
     }
 }
