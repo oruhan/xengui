@@ -19,7 +19,7 @@ fn filter_card(title: &str, chain: FilterChain) -> View {
             Label::new()
                 .label(title)
                 .font_size(12)
-                .color(|t: &Theme| t.foreground_muted)
+                .color(|t: &Theme| t.on_background)
         )
 }
 
