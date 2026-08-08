@@ -24,7 +24,7 @@ pub fn page(_params: &RouteParams) -> Box<dyn Widget> {
                             .font_weight(FontWeight::Medium)
                             .line_height(pct!(64.0))
                             .letter_spacing(px!(-2.25))
-                            .color(|theme: &Theme| theme.foreground)
+                            .color(|theme: &Theme|  theme.on_background)
                             .child(Label::new().label("Playground"))
                             .child(Label::new().label("page"))
                     )
@@ -32,7 +32,7 @@ pub fn page(_params: &RouteParams) -> Box<dyn Widget> {
             .child(
                 View::new()
                     .background(|theme: &Theme| theme.surface)
-                    .border(|theme: &Theme| Border::all(1, theme.border).radius(12))
+                    .border(|theme: &Theme| Border::all(1, theme.outline).radius(12))
                     .width(pct!(100))
                     .height(px!(640))
                     .child(Label::new().label("Playground code/view etc..."))

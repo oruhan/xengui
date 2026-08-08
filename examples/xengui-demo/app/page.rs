@@ -25,12 +25,12 @@ pub fn page(_params: &RouteParams) -> Box<dyn Widget> {
                             .font_weight(FontWeight::Medium)
                             .line_height(pct!(64.0))
                             .letter_spacing(px!(-2.2))
-                            .color(|theme: &Theme| theme.foreground)
+                            .color(|theme: &Theme|  theme.on_background)
                             .child(Label::new().label("The Retained GUI Library"))
                             .child(Label::new().label("for Rust"))
                             .child(
                                 Label::new()
-                                    .color(|theme: &Theme| theme.foreground_muted)
+                                    .color(|theme: &Theme| theme.on_background)
                                     .font_size(16)
                                     .font_weight(FontWeight::Regular)
                                     .line_height(pct!(1.0))
@@ -99,7 +99,7 @@ pub fn page(_params: &RouteParams) -> Box<dyn Widget> {
             .child(
                 View::new()
                     .background(|theme: &Theme| theme.surface)
-                    .border(|theme: &Theme| Border::all(1, theme.border).radius(12))
+                    .border(|theme: &Theme| Border::all(1, theme.outline).radius(12))
                     .align_self(Align::Stretch)
                     .height(px!(640))
                     .margin(Edges::symmetric(120, 0))

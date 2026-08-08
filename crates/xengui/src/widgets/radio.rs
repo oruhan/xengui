@@ -22,7 +22,6 @@ use crate::{
     MeasureContext,
     MeasureResult,
     MouseButton,
-    Outline,
     PaintContext,
     RectCommand,
     Style,
@@ -78,12 +77,6 @@ impl RadioButton {
             on_select: None,
             select_progress: Cell::new(0.0),
         };
-
-        // RadioButton is circular; the framework's default focus outline is
-        // a plain rectangle, so it needs its own round outline instead.
-        radio = radio.outline(|theme: &crate::Theme|
-            Outline::new(2.5, theme.primary, Some(BorderRadius::all(9999.0)), 4.0)
-        );
 
         radio.recompute_style();
         radio
@@ -219,7 +212,7 @@ impl Widget for RadioButton {
             });
         }
 
-        self.paint_outline(ctx);
+        self.paint_focus(ctx);
     }
 
     fn hit_test(&self, point: (f32, f32)) -> bool {

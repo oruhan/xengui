@@ -39,7 +39,7 @@ pub fn layout(_params: &RouteParams, child: Box<dyn Widget>) -> Box<dyn Widget> 
                                     Color::NEUTRAL_500.with_alpha(16)
                                 ).direction(ShadowDirection::Bottom)
                             )
-                            .border(|theme: &Theme| Border::bottom(1, theme.border))
+                            .border(|theme: &Theme| Border::bottom(1, theme.outline))
                             .padding(Edges::symmetric(120, 0))
                             .child(
                                 Svg::from_bytes(
@@ -78,7 +78,7 @@ pub fn layout(_params: &RouteParams, child: Box<dyn Widget>) -> Box<dyn Widget> 
                                                     .color(Color::NEUTRAL_800)
                                                     .radius(64)
                                             )
-                                            .hover_style(|ctx, theme| ctx.background(theme.hover))
+                                            .hover_style(|ctx, theme| ctx.background(theme.surface))
                                     )
                                     .child(
                                         xen_router
@@ -97,7 +97,7 @@ pub fn layout(_params: &RouteParams, child: Box<dyn Widget>) -> Box<dyn Widget> 
                                                     .color(Color::NEUTRAL_800)
                                                     .radius(64)
                                             )
-                                            .hover_style(|ctx, theme| ctx.background(theme.hover))
+                                            .hover_style(|ctx, theme| ctx.background(theme.surface))
                                     )
                                     .child(
                                         xen_router
@@ -116,7 +116,7 @@ pub fn layout(_params: &RouteParams, child: Box<dyn Widget>) -> Box<dyn Widget> 
                                                     .color(Color::NEUTRAL_800)
                                                     .radius(64)
                                             )
-                                            .hover_style(|ctx, theme| ctx.background(theme.hover))
+                                            .hover_style(|ctx, theme| ctx.background(theme.surface))
                                     )
                                     .child(
                                         Link::new()
@@ -136,7 +136,7 @@ pub fn layout(_params: &RouteParams, child: Box<dyn Widget>) -> Box<dyn Widget> 
                                                     .color(Color::NEUTRAL_800)
                                                     .radius(64)
                                             )
-                                            .hover_style(|ctx, theme| ctx.background(theme.hover))
+                                            .hover_style(|ctx, theme| ctx.background(theme.surface))
                                     )
                             )
                             .child(
@@ -181,7 +181,7 @@ pub fn layout(_params: &RouteParams, child: Box<dyn Widget>) -> Box<dyn Widget> 
                             .display(Display::Flex)
                             .flex_direction(FlexDirection::Column)
                             .background(|theme: &Theme| theme.surface)
-                            .border(|theme: &Theme| Border::top(1, theme.border))
+                            .border(|theme: &Theme| Border::top(1, theme.outline))
                             .padding(Edges::only(120, 26, 120, 18))
                             // Top
                             .child(
@@ -216,7 +216,7 @@ pub fn layout(_params: &RouteParams, child: Box<dyn Widget>) -> Box<dyn Widget> 
                                                         "Modern Rust UI framework for embedded, desktop and web."
                                                     )
                                                     .font_size(15)
-                                                    .color(|theme: &Theme| theme.foreground_muted)
+                                                    .color(|theme: &Theme| theme.on_background)
                                                     .max_width(px!(320))
                                             )
                                     )
@@ -243,7 +243,9 @@ pub fn layout(_params: &RouteParams, child: Box<dyn Widget>) -> Box<dyn Widget> 
                                                             .label("XenGui")
                                                             .font_weight(FontWeight::SemiBold)
                                                             .font_size(15)
-                                                            .color(|theme: &Theme| theme.foreground)
+                                                            .color(
+                                                                |theme: &Theme| theme.on_background
+                                                            )
                                                     )
                                                     .child(
                                                         View::new()
@@ -265,7 +267,7 @@ pub fn layout(_params: &RouteParams, child: Box<dyn Widget>) -> Box<dyn Widget> 
                                                                     )
                                                                     .color(
                                                                         |theme: &Theme|
-                                                                            theme.foreground_muted
+                                                                            theme.on_surface
                                                                     )
                                                                     .hover_style(
                                                                         |
@@ -273,7 +275,7 @@ pub fn layout(_params: &RouteParams, child: Box<dyn Widget>) -> Box<dyn Widget> 
                                                                             theme: &Theme
                                                                         |
                                                                             ctx.color(
-                                                                                theme.foreground
+                                                                                theme.on_background
                                                                             )
                                                                     )
                                                             )
@@ -290,7 +292,7 @@ pub fn layout(_params: &RouteParams, child: Box<dyn Widget>) -> Box<dyn Widget> 
                                                                     )
                                                                     .color(
                                                                         |theme: &Theme|
-                                                                            theme.foreground_muted
+                                                                            theme.on_surface
                                                                     )
                                                                     .hover_style(
                                                                         |
@@ -298,7 +300,7 @@ pub fn layout(_params: &RouteParams, child: Box<dyn Widget>) -> Box<dyn Widget> 
                                                                             theme: &Theme
                                                                         |
                                                                             ctx.color(
-                                                                                theme.foreground
+                                                                                theme.on_background
                                                                             )
                                                                     )
                                                             )
@@ -315,7 +317,7 @@ pub fn layout(_params: &RouteParams, child: Box<dyn Widget>) -> Box<dyn Widget> 
                                                                     )
                                                                     .color(
                                                                         |theme: &Theme|
-                                                                            theme.foreground_muted
+                                                                            theme.on_surface
                                                                     )
                                                                     .hover_style(
                                                                         |
@@ -323,7 +325,7 @@ pub fn layout(_params: &RouteParams, child: Box<dyn Widget>) -> Box<dyn Widget> 
                                                                             theme: &Theme
                                                                         |
                                                                             ctx.color(
-                                                                                theme.foreground
+                                                                                theme.on_background
                                                                             )
                                                                     )
                                                             )
@@ -340,7 +342,7 @@ pub fn layout(_params: &RouteParams, child: Box<dyn Widget>) -> Box<dyn Widget> 
                                                                     )
                                                                     .color(
                                                                         |theme: &Theme|
-                                                                            theme.foreground_muted
+                                                                            theme.on_surface
                                                                     )
                                                                     .hover_style(
                                                                         |
@@ -348,7 +350,7 @@ pub fn layout(_params: &RouteParams, child: Box<dyn Widget>) -> Box<dyn Widget> 
                                                                             theme: &Theme
                                                                         |
                                                                             ctx.color(
-                                                                                theme.foreground
+                                                                                theme.on_background
                                                                             )
                                                                     )
                                                             )
@@ -369,7 +371,9 @@ pub fn layout(_params: &RouteParams, child: Box<dyn Widget>) -> Box<dyn Widget> 
                                                             .label("Documentation")
                                                             .font_weight(FontWeight::SemiBold)
                                                             .font_size(15)
-                                                            .color(|theme: &Theme| theme.foreground)
+                                                            .color(
+                                                                |theme: &Theme| theme.on_background
+                                                            )
                                                     )
                                                     .child(
                                                         View::new()
@@ -393,7 +397,7 @@ pub fn layout(_params: &RouteParams, child: Box<dyn Widget>) -> Box<dyn Widget> 
                                                                     )
                                                                     .color(
                                                                         |theme: &Theme|
-                                                                            theme.foreground_muted
+                                                                            theme.on_surface
                                                                     )
                                                                     .hover_style(
                                                                         |
@@ -401,7 +405,7 @@ pub fn layout(_params: &RouteParams, child: Box<dyn Widget>) -> Box<dyn Widget> 
                                                                             theme: &Theme
                                                                         |
                                                                             ctx.color(
-                                                                                theme.foreground
+                                                                                theme.on_background
                                                                             )
                                                                     )
                                                             )
@@ -418,7 +422,7 @@ pub fn layout(_params: &RouteParams, child: Box<dyn Widget>) -> Box<dyn Widget> 
                                                                     )
                                                                     .color(
                                                                         |theme: &Theme|
-                                                                            theme.foreground_muted
+                                                                            theme.on_surface
                                                                     )
                                                                     .hover_style(
                                                                         |
@@ -426,7 +430,7 @@ pub fn layout(_params: &RouteParams, child: Box<dyn Widget>) -> Box<dyn Widget> 
                                                                             theme: &Theme
                                                                         |
                                                                             ctx.color(
-                                                                                theme.foreground
+                                                                                theme.on_background
                                                                             )
                                                                     )
                                                             )
@@ -443,7 +447,7 @@ pub fn layout(_params: &RouteParams, child: Box<dyn Widget>) -> Box<dyn Widget> 
                                                                     )
                                                                     .color(
                                                                         |theme: &Theme|
-                                                                            theme.foreground_muted
+                                                                            theme.on_surface
                                                                     )
                                                                     .hover_style(
                                                                         |
@@ -451,7 +455,7 @@ pub fn layout(_params: &RouteParams, child: Box<dyn Widget>) -> Box<dyn Widget> 
                                                                             theme: &Theme
                                                                         |
                                                                             ctx.color(
-                                                                                theme.foreground
+                                                                                theme.on_background
                                                                             )
                                                                     )
                                                             )
@@ -472,7 +476,9 @@ pub fn layout(_params: &RouteParams, child: Box<dyn Widget>) -> Box<dyn Widget> 
                                                             .label("Resources")
                                                             .font_weight(FontWeight::SemiBold)
                                                             .font_size(15)
-                                                            .color(|theme: &Theme| theme.foreground)
+                                                            .color(
+                                                                |theme: &Theme| theme.on_background
+                                                            )
                                                     )
                                                     .child(
                                                         View::new()
@@ -494,7 +500,7 @@ pub fn layout(_params: &RouteParams, child: Box<dyn Widget>) -> Box<dyn Widget> 
                                                                     )
                                                                     .color(
                                                                         |theme: &Theme|
-                                                                            theme.foreground_muted
+                                                                            theme.on_surface
                                                                     )
                                                                     .hover_style(
                                                                         |
@@ -502,7 +508,7 @@ pub fn layout(_params: &RouteParams, child: Box<dyn Widget>) -> Box<dyn Widget> 
                                                                             theme: &Theme
                                                                         |
                                                                             ctx.color(
-                                                                                theme.foreground
+                                                                                theme.on_background
                                                                             )
                                                                     )
                                                             )
@@ -519,7 +525,7 @@ pub fn layout(_params: &RouteParams, child: Box<dyn Widget>) -> Box<dyn Widget> 
                                                                     )
                                                                     .color(
                                                                         |theme: &Theme|
-                                                                            theme.foreground_muted
+                                                                            theme.on_surface
                                                                     )
                                                                     .hover_style(
                                                                         |
@@ -527,7 +533,7 @@ pub fn layout(_params: &RouteParams, child: Box<dyn Widget>) -> Box<dyn Widget> 
                                                                             theme: &Theme
                                                                         |
                                                                             ctx.color(
-                                                                                theme.foreground
+                                                                                theme.on_background
                                                                             )
                                                                     )
                                                             )
@@ -548,17 +554,16 @@ pub fn layout(_params: &RouteParams, child: Box<dyn Widget>) -> Box<dyn Widget> 
                                                             .label("Ecosystem")
                                                             .font_size(15)
                                                             .font_weight(FontWeight::SemiBold)
-                                                            .color(|theme: &Theme| theme.foreground)
+                                                            .color(
+                                                                |theme: &Theme| theme.on_background
+                                                            )
                                                     )
                                                     .child(
                                                         Link::new()
                                                             .label("xengui")
                                                             .href("https://crates.io/crates/xengui")
                                                             .target_blank(true)
-                                                            .color(
-                                                                |theme: &Theme|
-                                                                    theme.foreground_muted
-                                                            )
+                                                            .color(|theme: &Theme| theme.on_surface)
                                                     )
                                                     .child(
                                                         Link::new()
@@ -567,10 +572,7 @@ pub fn layout(_params: &RouteParams, child: Box<dyn Widget>) -> Box<dyn Widget> 
                                                                 "https://crates.io/crates/xenframe"
                                                             )
                                                             .target_blank(true)
-                                                            .color(
-                                                                |theme: &Theme|
-                                                                    theme.foreground_muted
-                                                            )
+                                                            .color(|theme: &Theme| theme.on_surface)
                                                     )
                                                     .child(
                                                         Link::new()
@@ -579,10 +581,7 @@ pub fn layout(_params: &RouteParams, child: Box<dyn Widget>) -> Box<dyn Widget> 
                                                                 "https://crates.io/crates/xengui-wgpu"
                                                             )
                                                             .target_blank(true)
-                                                            .color(
-                                                                |theme: &Theme|
-                                                                    theme.foreground_muted
-                                                            )
+                                                            .color(|theme: &Theme| theme.on_surface)
                                                     )
                                                     .child(
                                                         Link::new()
@@ -591,10 +590,7 @@ pub fn layout(_params: &RouteParams, child: Box<dyn Widget>) -> Box<dyn Widget> 
                                                                 "https://crates.io/crates/xengui-lucide"
                                                             )
                                                             .target_blank(true)
-                                                            .color(
-                                                                |theme: &Theme|
-                                                                    theme.foreground_muted
-                                                            )
+                                                            .color(|theme: &Theme| theme.on_surface)
                                                     )
                                                     .child(
                                                         Link::new()
@@ -603,10 +599,7 @@ pub fn layout(_params: &RouteParams, child: Box<dyn Widget>) -> Box<dyn Widget> 
                                                                 "https://crates.io/crates/xen-svg"
                                                             )
                                                             .target_blank(true)
-                                                            .color(
-                                                                |theme: &Theme|
-                                                                    theme.foreground_muted
-                                                            )
+                                                            .color(|theme: &Theme| theme.on_surface)
                                                     )
                                                     .child(
                                                         Link::new()
@@ -615,10 +608,7 @@ pub fn layout(_params: &RouteParams, child: Box<dyn Widget>) -> Box<dyn Widget> 
                                                                 "https://crates.io/crates/xen-router"
                                                             )
                                                             .target_blank(true)
-                                                            .color(
-                                                                |theme: &Theme|
-                                                                    theme.foreground_muted
-                                                            )
+                                                            .color(|theme: &Theme| theme.on_surface)
                                                     )
                                                     .child(
                                                         Link::new()
@@ -627,10 +617,7 @@ pub fn layout(_params: &RouteParams, child: Box<dyn Widget>) -> Box<dyn Widget> 
                                                                 "https://crates.io/crates/xen-animation"
                                                             )
                                                             .target_blank(true)
-                                                            .color(
-                                                                |theme: &Theme|
-                                                                    theme.foreground_muted
-                                                            )
+                                                            .color(|theme: &Theme| theme.on_surface)
                                                     )
                                                     .child(
                                                         Link::new()
@@ -639,10 +626,7 @@ pub fn layout(_params: &RouteParams, child: Box<dyn Widget>) -> Box<dyn Widget> 
                                                                 "https://crates.io/crates/xen-clipboard"
                                                             )
                                                             .target_blank(true)
-                                                            .color(
-                                                                |theme: &Theme|
-                                                                    theme.foreground_muted
-                                                            )
+                                                            .color(|theme: &Theme| theme.on_surface)
                                                     )
                                             )
 
@@ -660,7 +644,9 @@ pub fn layout(_params: &RouteParams, child: Box<dyn Widget>) -> Box<dyn Widget> 
                                                             .label("Community")
                                                             .font_size(15)
                                                             .font_weight(FontWeight::SemiBold)
-                                                            .color(|theme: &Theme| theme.foreground)
+                                                            .color(
+                                                                |theme: &Theme| theme.on_background
+                                                            )
                                                     )
                                                     .child(
                                                         Link::new()
@@ -669,20 +655,14 @@ pub fn layout(_params: &RouteParams, child: Box<dyn Widget>) -> Box<dyn Widget> 
                                                                 "https://github.com/randseas/xengui"
                                                             )
                                                             .target_blank(true)
-                                                            .color(
-                                                                |theme: &Theme|
-                                                                    theme.foreground_muted
-                                                            )
+                                                            .color(|theme: &Theme| theme.on_surface)
                                                     )
                                                     .child(
                                                         Link::new()
                                                             .label("Discord")
                                                             .href("https://discord.com/invite/")
                                                             .target_blank(true)
-                                                            .color(
-                                                                |theme: &Theme|
-                                                                    theme.foreground_muted
-                                                            )
+                                                            .color(|theme: &Theme| theme.on_surface)
                                                     )
                                                     .child(
                                                         Link::new()
@@ -690,11 +670,8 @@ pub fn layout(_params: &RouteParams, child: Box<dyn Widget>) -> Box<dyn Widget> 
                                                             .href(
                                                                 "https://github.com/randseas/xengui/CONTRIBUTING.md"
                                                             )
-                                                             .target_blank(true)
-                                                            .color(
-                                                                |theme: &Theme|
-                                                                    theme.foreground_muted
-                                                            )
+                                                            .target_blank(true)
+                                                            .color(|theme: &Theme| theme.on_surface)
                                                     )
                                             )
                                     )
@@ -703,7 +680,7 @@ pub fn layout(_params: &RouteParams, child: Box<dyn Widget>) -> Box<dyn Widget> 
                             .child(
                                 View::new()
                                     .height(1)
-                                    .background(|theme: &Theme| theme.border)
+                                    .background(|theme: &Theme| theme.outline)
                                     .margin(Edges::only(0, 24, 0, 16))
                             )
                             // Bottom
@@ -716,7 +693,7 @@ pub fn layout(_params: &RouteParams, child: Box<dyn Widget>) -> Box<dyn Widget> 
                                         Label::new()
                                             .label("© 2026 xengui - Apache License 2.0")
                                             .font_size(14)
-                                            .color(|theme: &Theme| theme.foreground_muted)
+                                            .color(|theme: &Theme| theme.on_background)
                                     )
                                     .child(View::new().display(Display::Flex))
                             )
