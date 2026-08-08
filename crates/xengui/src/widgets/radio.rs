@@ -181,7 +181,7 @@ impl Widget for RadioButton {
         let t = self.select_progress.get();
 
         let border = style.border.as_ref();
-        let unselected_border = border.map(|bo| bo.color).unwrap_or(theme.foreground_muted);
+        let unselected_border = border.map(|bo| bo.color).unwrap_or(theme.on_surface_variant);
         let selected_border = border.map(|bo| bo.color).unwrap_or(theme.primary);
         let ring_color = lerp_color(unselected_border, selected_border, t);
 

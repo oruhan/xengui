@@ -1090,7 +1090,7 @@ impl ContextMenu {
 
         let bg = self.background.clone().unwrap_or(Background::Color(theme.surface));
         let border = self.border.as_ref();
-        let border_color = border.map(|b| b.color).unwrap_or(theme.border);
+        let border_color = border.map(|b| b.color).unwrap_or(theme.outline_variant);
 
         ctx.draw_rect(RectCommand {
             position: (mx, my),
@@ -1104,7 +1104,7 @@ impl ContextMenu {
             clip_rect: None,
         });
 
-        let divider_color = self.divider_color.unwrap_or(theme.border);
+        let divider_color = self.divider_color.unwrap_or(theme.outline_variant);
         let pad = self.effective_item_padding();
         let (pad_l, pad_t, pad_b) = (
             pad.left.to_physical(sf),
@@ -1155,14 +1155,16 @@ impl ContextMenu {
                     self.item_pressed_background
                         .clone()
                         .or_else(|| self.item_hover_background.clone())
-                        .unwrap_or(Background::Color(theme.pressed)),
+                        .unwrap_or(Background::Color(theme.surface_container_highest)),
                     self.item_pressed_text_color
                         .or(self.item_hover_text_color)
                         .or(self.item_text_color),
                 )
             } else {
                 (
-                    self.item_hover_background.clone().unwrap_or(Background::Color(theme.hover)),
+                    self.item_hover_background
+                        .clone()
+                        .unwrap_or(Background::Color(theme.surface_container_high)),
                     self.item_hover_text_color.or(self.item_text_color),
                 )
             };
@@ -1201,14 +1203,14 @@ impl ContextMenu {
             }
 
             let idle_text_color = if item.enabled {
-                self.item_text_color.unwrap_or(theme.foreground)
+                self.item_text_color.unwrap_or(theme.on_surface)
             } else {
-                theme.foreground_muted
+                theme.on_surface_variant
             };
             let target_text_color = if item.enabled {
-                hover_text_color_opt.unwrap_or(theme.foreground)
+                hover_text_color_opt.unwrap_or(theme.on_surface)
             } else {
-                hover_text_color_opt.unwrap_or(theme.foreground_muted)
+                hover_text_color_opt.unwrap_or(theme.on_surface_variant)
             };
             let base_color = lerp_color(idle_text_color, target_text_color, t);
             let alpha_scale = if item.enabled { 1.0 } else { 0.6 };

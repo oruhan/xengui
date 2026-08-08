@@ -284,7 +284,7 @@ impl Widget for Tooltip {
         let size = self.label_size.get();
         let (x, y) = self.box_position(self.layout_box, size);
 
-        let bg = self.background.clone().unwrap_or(Background::Color(theme.foreground));
+        let bg = self.background.clone().unwrap_or(Background::Color(theme.inverse_surface));
         let bg_color = bg.representative_color();
         let radius = self.border_radius.unwrap_or(Length::px(4.0)).to_physical(sf);
 
@@ -311,7 +311,9 @@ impl Widget for Tooltip {
         });
 
         let padding = self.effective_padding();
-        let text_color = self.text_color.unwrap_or(theme.background).with_alpha_f32(opacity);
+        let text_color = self.text_color
+            .unwrap_or(theme.inverse_on_surface)
+            .with_alpha_f32(opacity);
 
         let mut text_style = self.base.computed_style.clone();
         text_style.font_size.get_or_insert(self.font_size.unwrap_or(DEFAULT_FONT_SIZE));

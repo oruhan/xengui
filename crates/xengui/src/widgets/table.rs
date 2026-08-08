@@ -222,7 +222,7 @@ impl StyleBuilder for Table {
 impl Render for Table {
     fn render(&self) -> Box<dyn Widget> {
         let theme = crate::current_theme();
-        let border_color = self.border_color.unwrap_or(theme.border);
+        let border_color = self.border_color.unwrap_or(theme.outline_variant);
         let cell_padding = self.cell_padding.unwrap_or_else(|| Edges::symmetric(10.0, 8.0));
 
         let mut root = View::new()
@@ -244,7 +244,7 @@ impl Render for Table {
             for column in &self.columns {
                 let label = Label::new()
                     .label(column.header.clone())
-                    .color(self.header_text_color.unwrap_or(theme.foreground));
+                    .color(self.header_text_color.unwrap_or(theme.on_surface));
 
                 let cell = View::new()
                     .width(column.width)
@@ -270,7 +270,9 @@ impl Render for Table {
                 self.row_alt_background
                     .clone()
                     .or_else(|| self.row_background.clone())
-                    .or_else(|| self.striped.then_some(Background::Color(theme.surface_hover)))
+                    .or_else(||
+                        self.striped.then_some(Background::Color(theme.surface_container_high))
+                    )
             } else {
                 self.row_background
                     .clone()

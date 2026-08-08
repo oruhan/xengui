@@ -225,13 +225,13 @@ impl Widget for Switch {
         let theme = crate::current_theme();
         let t = self.progress.get();
 
-        let track_off = self.track_off_color.unwrap_or(theme.surface_hover);
+        let track_off = self.track_off_color.unwrap_or(theme.surface_container_high);
         let track_on = self.track_on_color.unwrap_or(theme.primary);
         let thumb_off = self.thumb_off_color.unwrap_or(
-            self.border_color.unwrap_or(theme.foreground_muted)
+            self.border_color.unwrap_or(theme.on_surface_variant)
         );
-        let thumb_on = self.thumb_on_color.unwrap_or(theme.background);
-        let border_color = self.border_color.unwrap_or(theme.border_hover);
+        let thumb_on = self.thumb_on_color.unwrap_or(theme.on_primary);
+        let border_color = self.border_color.unwrap_or(theme.outline);
 
         let track_color = lerp_color(track_off, track_on, t);
         let thumb_color = lerp_color(thumb_off, thumb_on, t);

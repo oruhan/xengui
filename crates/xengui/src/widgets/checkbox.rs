@@ -188,7 +188,7 @@ impl Widget for Checkbox {
             .clone()
             .unwrap_or(Background::Color(theme.primary))
             .representative_color();
-        let unchecked_border = border.map(|bo| bo.color).unwrap_or(theme.foreground_muted);
+        let unchecked_border = border.map(|bo| bo.color).unwrap_or(theme.on_surface_variant);
         let checked_border = border.map(|bo| bo.color).unwrap_or(theme.primary);
 
         // Blends fill/border color across the toggle instead of snapping
@@ -214,7 +214,7 @@ impl Widget for Checkbox {
         });
 
         if t > 0.001 {
-            let check_color = self.check_color.unwrap_or(theme.background);
+            let check_color = self.check_color.unwrap_or(theme.on_primary);
             let stroke = (b.width * 0.12).max(1.5 * sf);
 
             // The checkmark scales in from the box's own center as `t`
