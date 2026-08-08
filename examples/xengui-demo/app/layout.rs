@@ -182,23 +182,21 @@ pub fn layout(_params: &RouteParams, child: Box<dyn Widget>) -> Box<dyn Widget> 
                             .flex_direction(FlexDirection::Column)
                             .background(|theme: &Theme| theme.surface)
                             .border(|theme: &Theme| Border::top(1, theme.border))
-                            .padding(Edges::only(120, 48, 120, 32))
-                            .gap(0, 32)
-
+                            .padding(Edges::only(120, 26, 120, 18))
                             // Top
                             .child(
                                 View::new()
                                     .display(Display::Flex)
                                     .justify_content(JustifyContent::SpaceBetween)
                                     .align_items(Align::Start)
-
                                     // Left
                                     .child(
                                         View::new()
                                             .display(Display::Flex)
                                             .flex_direction(FlexDirection::Column)
-                                            .gap(0, 12)
-
+                                            .justify_content(JustifyContent::Start)
+                                            .align_items(Align::Start)
+                                            .gap(0, 8)
                                             .child(
                                                 Svg::from_bytes(
                                                     include_bytes!(
@@ -209,130 +207,518 @@ pub fn layout(_params: &RouteParams, child: Box<dyn Widget>) -> Box<dyn Widget> 
                                                     )
                                                 )
                                                     .width(110)
-                                                    .height(110)
+                                                    .height(30)
                                                     .background(Color::TRANSPARENT)
                                             )
-
                                             .child(
                                                 Label::new()
                                                     .label(
                                                         "Modern Rust UI framework for embedded, desktop and web."
                                                     )
                                                     .font_size(15)
-                                                    .color(Color::NEUTRAL_400)
+                                                    .color(|theme: &Theme| theme.foreground_muted)
                                                     .max_width(px!(320))
                                             )
                                     )
 
-                                    // Resources
                                     .child(
                                         View::new()
                                             .display(Display::Flex)
-                                            .flex_direction(FlexDirection::Column)
-                                            .gap(0, 10)
+                                            .flex_direction(FlexDirection::Row)
+                                            .align_items(Align::Start)
+                                            .justify_content(JustifyContent::End)
+                                            .gap(64, 0)
 
+                                            // XenGui
                                             .child(
-                                                Label::new()
-                                                    .label("Resources")
-                                                    .font_weight(FontWeight::SemiBold)
+                                                View::new()
+                                                    .display(Display::Flex)
+                                                    .flex_direction(FlexDirection::Column)
+                                                    .align_items(Align::Start)
+                                                    .justify_content(JustifyContent::Start)
+                                                    .gap(0, 12)
+                                                    .font_size(14)
+                                                    .child(
+                                                        Label::new()
+                                                            .label("XenGui")
+                                                            .font_weight(FontWeight::SemiBold)
+                                                            .font_size(15)
+                                                            .color(|theme: &Theme| theme.foreground)
+                                                    )
+                                                    .child(
+                                                        View::new()
+                                                            .gap(0, 8)
+                                                            .display(Display::Flex)
+                                                            .flex_direction(FlexDirection::Column)
+                                                            .align_items(Align::Start)
+                                                            .justify_content(JustifyContent::Start)
+                                                            .child(
+                                                                xen_router
+                                                                    ::link("/about")
+                                                                    .label("About")
+                                                                    .transition_colors(
+                                                                        Transition::new(
+                                                                            Duration::from_millis(
+                                                                                150
+                                                                            )
+                                                                        ).easing(Easing::EaseInOut)
+                                                                    )
+                                                                    .color(
+                                                                        |theme: &Theme|
+                                                                            theme.foreground_muted
+                                                                    )
+                                                                    .hover_style(
+                                                                        |
+                                                                            ctx: StylePatch,
+                                                                            theme: &Theme
+                                                                        |
+                                                                            ctx.color(
+                                                                                theme.foreground
+                                                                            )
+                                                                    )
+                                                            )
+                                                            .child(
+                                                                xen_router
+                                                                    ::link("/releases")
+                                                                    .label("Releases")
+                                                                    .transition_colors(
+                                                                        Transition::new(
+                                                                            Duration::from_millis(
+                                                                                150
+                                                                            )
+                                                                        ).easing(Easing::EaseInOut)
+                                                                    )
+                                                                    .color(
+                                                                        |theme: &Theme|
+                                                                            theme.foreground_muted
+                                                                    )
+                                                                    .hover_style(
+                                                                        |
+                                                                            ctx: StylePatch,
+                                                                            theme: &Theme
+                                                                        |
+                                                                            ctx.color(
+                                                                                theme.foreground
+                                                                            )
+                                                                    )
+                                                            )
+                                                            .child(
+                                                                xen_router
+                                                                    ::link("/playground")
+                                                                    .label("Playground")
+                                                                    .transition_colors(
+                                                                        Transition::new(
+                                                                            Duration::from_millis(
+                                                                                150
+                                                                            )
+                                                                        ).easing(Easing::EaseInOut)
+                                                                    )
+                                                                    .color(
+                                                                        |theme: &Theme|
+                                                                            theme.foreground_muted
+                                                                    )
+                                                                    .hover_style(
+                                                                        |
+                                                                            ctx: StylePatch,
+                                                                            theme: &Theme
+                                                                        |
+                                                                            ctx.color(
+                                                                                theme.foreground
+                                                                            )
+                                                                    )
+                                                            )
+                                                            .child(
+                                                                xen_router
+                                                                    ::link("/changelog")
+                                                                    .label("Changelog")
+                                                                    .transition_colors(
+                                                                        Transition::new(
+                                                                            Duration::from_millis(
+                                                                                150
+                                                                            )
+                                                                        ).easing(Easing::EaseInOut)
+                                                                    )
+                                                                    .color(
+                                                                        |theme: &Theme|
+                                                                            theme.foreground_muted
+                                                                    )
+                                                                    .hover_style(
+                                                                        |
+                                                                            ctx: StylePatch,
+                                                                            theme: &Theme
+                                                                        |
+                                                                            ctx.color(
+                                                                                theme.foreground
+                                                                            )
+                                                                    )
+                                                            )
+                                                    )
                                             )
 
-                                            .child(xen_router::link("/docs").label("Docs"))
-                                            .child(xen_router::link("/examples").label("Examples"))
+                                            // Documentation
                                             .child(
-                                                xen_router::link("/playground").label("Playground")
+                                                View::new()
+                                                    .display(Display::Flex)
+                                                    .flex_direction(FlexDirection::Column)
+                                                    .align_items(Align::Start)
+                                                    .justify_content(JustifyContent::Start)
+                                                    .gap(0, 12)
+                                                    .font_size(14)
+                                                    .child(
+                                                        Label::new()
+                                                            .label("Documentation")
+                                                            .font_weight(FontWeight::SemiBold)
+                                                            .font_size(15)
+                                                            .color(|theme: &Theme| theme.foreground)
+                                                    )
+                                                    .child(
+                                                        View::new()
+                                                            .gap(0, 8)
+                                                            .display(Display::Flex)
+                                                            .flex_direction(FlexDirection::Column)
+                                                            .align_items(Align::Start)
+                                                            .justify_content(JustifyContent::Start)
+                                                            .child(
+                                                                xen_router
+                                                                    ::link(
+                                                                        "/docs/xengui#getting-started"
+                                                                    )
+                                                                    .label("Getting Started")
+                                                                    .transition_colors(
+                                                                        Transition::new(
+                                                                            Duration::from_millis(
+                                                                                150
+                                                                            )
+                                                                        ).easing(Easing::EaseInOut)
+                                                                    )
+                                                                    .color(
+                                                                        |theme: &Theme|
+                                                                            theme.foreground_muted
+                                                                    )
+                                                                    .hover_style(
+                                                                        |
+                                                                            ctx: StylePatch,
+                                                                            theme: &Theme
+                                                                        |
+                                                                            ctx.color(
+                                                                                theme.foreground
+                                                                            )
+                                                                    )
+                                                            )
+                                                            .child(
+                                                                xen_router
+                                                                    ::link("/docs/xengui/guides")
+                                                                    .label("Guides")
+                                                                    .transition_colors(
+                                                                        Transition::new(
+                                                                            Duration::from_millis(
+                                                                                150
+                                                                            )
+                                                                        ).easing(Easing::EaseInOut)
+                                                                    )
+                                                                    .color(
+                                                                        |theme: &Theme|
+                                                                            theme.foreground_muted
+                                                                    )
+                                                                    .hover_style(
+                                                                        |
+                                                                            ctx: StylePatch,
+                                                                            theme: &Theme
+                                                                        |
+                                                                            ctx.color(
+                                                                                theme.foreground
+                                                                            )
+                                                                    )
+                                                            )
+                                                            .child(
+                                                                xen_router
+                                                                    ::link("/examples")
+                                                                    .label("Examples")
+                                                                    .transition_colors(
+                                                                        Transition::new(
+                                                                            Duration::from_millis(
+                                                                                150
+                                                                            )
+                                                                        ).easing(Easing::EaseInOut)
+                                                                    )
+                                                                    .color(
+                                                                        |theme: &Theme|
+                                                                            theme.foreground_muted
+                                                                    )
+                                                                    .hover_style(
+                                                                        |
+                                                                            ctx: StylePatch,
+                                                                            theme: &Theme
+                                                                        |
+                                                                            ctx.color(
+                                                                                theme.foreground
+                                                                            )
+                                                                    )
+                                                            )
+                                                    )
                                             )
-                                    )
 
-                                    // Community
-                                    .child(
-                                        View::new()
-                                            .display(Display::Flex)
-                                            .flex_direction(FlexDirection::Column)
-                                            .gap(0, 10)
-
+                                            // Resources
                                             .child(
-                                                Label::new()
-                                                    .label("Community")
-                                                    .font_weight(FontWeight::SemiBold)
+                                                View::new()
+                                                    .display(Display::Flex)
+                                                    .flex_direction(FlexDirection::Column)
+                                                    .align_items(Align::Start)
+                                                    .justify_content(JustifyContent::Start)
+                                                    .gap(0, 12)
+                                                    .font_size(14)
+                                                    .child(
+                                                        Label::new()
+                                                            .label("Resources")
+                                                            .font_weight(FontWeight::SemiBold)
+                                                            .font_size(15)
+                                                            .color(|theme: &Theme| theme.foreground)
+                                                    )
+                                                    .child(
+                                                        View::new()
+                                                            .gap(0, 8)
+                                                            .display(Display::Flex)
+                                                            .flex_direction(FlexDirection::Column)
+                                                            .align_items(Align::Start)
+                                                            .justify_content(JustifyContent::Start)
+                                                            .child(
+                                                                xen_router
+                                                                    ::link("/license")
+                                                                    .label("License")
+                                                                    .transition_colors(
+                                                                        Transition::new(
+                                                                            Duration::from_millis(
+                                                                                150
+                                                                            )
+                                                                        ).easing(Easing::EaseInOut)
+                                                                    )
+                                                                    .color(
+                                                                        |theme: &Theme|
+                                                                            theme.foreground_muted
+                                                                    )
+                                                                    .hover_style(
+                                                                        |
+                                                                            ctx: StylePatch,
+                                                                            theme: &Theme
+                                                                        |
+                                                                            ctx.color(
+                                                                                theme.foreground
+                                                                            )
+                                                                    )
+                                                            )
+                                                            .child(
+                                                                xen_router
+                                                                    ::link("/security")
+                                                                    .label("Security")
+                                                                    .transition_colors(
+                                                                        Transition::new(
+                                                                            Duration::from_millis(
+                                                                                150
+                                                                            )
+                                                                        ).easing(Easing::EaseInOut)
+                                                                    )
+                                                                    .color(
+                                                                        |theme: &Theme|
+                                                                            theme.foreground_muted
+                                                                    )
+                                                                    .hover_style(
+                                                                        |
+                                                                            ctx: StylePatch,
+                                                                            theme: &Theme
+                                                                        |
+                                                                            ctx.color(
+                                                                                theme.foreground
+                                                                            )
+                                                                    )
+                                                            )
+                                                    )
                                             )
 
+                                            // Ecosystem
                                             .child(
-                                                Link::new()
-                                                    .label("GitHub")
-                                                    .href("https://github.com/randseas/xengui")
-                                                    .target_blank(true)
+                                                View::new()
+                                                    .display(Display::Flex)
+                                                    .flex_direction(FlexDirection::Column)
+                                                    .align_items(Align::Start)
+                                                    .justify_content(JustifyContent::End)
+                                                    .gap(0, 8)
+                                                    .font_size(14)
+                                                    .child(
+                                                        Label::new()
+                                                            .label("Ecosystem")
+                                                            .font_size(15)
+                                                            .font_weight(FontWeight::SemiBold)
+                                                            .color(|theme: &Theme| theme.foreground)
+                                                    )
+                                                    .child(
+                                                        Link::new()
+                                                            .label("xengui")
+                                                            .href("https://crates.io/crates/xengui")
+                                                            .target_blank(true)
+                                                            .color(
+                                                                |theme: &Theme|
+                                                                    theme.foreground_muted
+                                                            )
+                                                    )
+                                                    .child(
+                                                        Link::new()
+                                                            .label("xenframe")
+                                                            .href(
+                                                                "https://crates.io/crates/xenframe"
+                                                            )
+                                                            .target_blank(true)
+                                                            .color(
+                                                                |theme: &Theme|
+                                                                    theme.foreground_muted
+                                                            )
+                                                    )
+                                                    .child(
+                                                        Link::new()
+                                                            .label("xengui-wgpu")
+                                                            .href(
+                                                                "https://crates.io/crates/xengui-wgpu"
+                                                            )
+                                                            .target_blank(true)
+                                                            .color(
+                                                                |theme: &Theme|
+                                                                    theme.foreground_muted
+                                                            )
+                                                    )
+                                                    .child(
+                                                        Link::new()
+                                                            .label("xengui-lucide")
+                                                            .href(
+                                                                "https://crates.io/crates/xengui-lucide"
+                                                            )
+                                                            .target_blank(true)
+                                                            .color(
+                                                                |theme: &Theme|
+                                                                    theme.foreground_muted
+                                                            )
+                                                    )
+                                                    .child(
+                                                        Link::new()
+                                                            .label("xen-svg")
+                                                            .href(
+                                                                "https://crates.io/crates/xen-svg"
+                                                            )
+                                                            .target_blank(true)
+                                                            .color(
+                                                                |theme: &Theme|
+                                                                    theme.foreground_muted
+                                                            )
+                                                    )
+                                                    .child(
+                                                        Link::new()
+                                                            .label("xen-router")
+                                                            .href(
+                                                                "https://crates.io/crates/xen-router"
+                                                            )
+                                                            .target_blank(true)
+                                                            .color(
+                                                                |theme: &Theme|
+                                                                    theme.foreground_muted
+                                                            )
+                                                    )
+                                                    .child(
+                                                        Link::new()
+                                                            .label("xen-animation")
+                                                            .href(
+                                                                "https://crates.io/crates/xen-animation"
+                                                            )
+                                                            .target_blank(true)
+                                                            .color(
+                                                                |theme: &Theme|
+                                                                    theme.foreground_muted
+                                                            )
+                                                    )
+                                                    .child(
+                                                        Link::new()
+                                                            .label("xen-clipboard")
+                                                            .href(
+                                                                "https://crates.io/crates/xen-clipboard"
+                                                            )
+                                                            .target_blank(true)
+                                                            .color(
+                                                                |theme: &Theme|
+                                                                    theme.foreground_muted
+                                                            )
+                                                    )
                                             )
 
+                                            // Community
                                             .child(
-                                                Link::new()
-                                                    .label("Crates.io")
-                                                    .href("https://crates.io/crates/xengui")
-                                                    .target_blank(true)
+                                                View::new()
+                                                    .display(Display::Flex)
+                                                    .flex_direction(FlexDirection::Column)
+                                                    .align_items(Align::Start)
+                                                    .justify_content(JustifyContent::End)
+                                                    .gap(0, 8)
+                                                    .font_size(14)
+                                                    .child(
+                                                        Label::new()
+                                                            .label("Community")
+                                                            .font_size(15)
+                                                            .font_weight(FontWeight::SemiBold)
+                                                            .color(|theme: &Theme| theme.foreground)
+                                                    )
+                                                    .child(
+                                                        Link::new()
+                                                            .label("GitHub")
+                                                            .href(
+                                                                "https://github.com/randseas/xengui"
+                                                            )
+                                                            .target_blank(true)
+                                                            .color(
+                                                                |theme: &Theme|
+                                                                    theme.foreground_muted
+                                                            )
+                                                    )
+                                                    .child(
+                                                        Link::new()
+                                                            .label("Discord")
+                                                            .href("https://discord.com/invite/")
+                                                            .target_blank(true)
+                                                            .color(
+                                                                |theme: &Theme|
+                                                                    theme.foreground_muted
+                                                            )
+                                                    )
+                                                    .child(
+                                                        Link::new()
+                                                            .label("Contributing")
+                                                            .href(
+                                                                "https://github.com/randseas/xengui/CONTRIBUTING.md"
+                                                            )
+                                                             .target_blank(true)
+                                                            .color(
+                                                                |theme: &Theme|
+                                                                    theme.foreground_muted
+                                                            )
+                                                    )
                                             )
-
-                                            .child(Link::new().label("Discord").href("#"))
                                     )
                             )
-
                             // Divider
-                            .child(View::new().height(1).background(Color::NEUTRAL_800))
-
+                            .child(
+                                View::new()
+                                    .height(1)
+                                    .background(|theme: &Theme| theme.border)
+                                    .margin(Edges::only(0, 24, 0, 16))
+                            )
                             // Bottom
                             .child(
                                 View::new()
                                     .display(Display::Flex)
                                     .justify_content(JustifyContent::SpaceBetween)
                                     .align_items(Align::Center)
-
                                     .child(
                                         Label::new()
-                                            .label("© 2026 Xengui • Apache-2.0")
+                                            .label("© 2026 xengui - Apache License 2.0")
                                             .font_size(14)
-                                            .color(Color::NEUTRAL_500)
+                                            .color(|theme: &Theme| theme.foreground_muted)
                                     )
-
-                                    .child(
-                                        View::new()
-                                            .display(Display::Flex)
-                                            .gap(8, 0)
-
-                                            .child(
-                                                Label::new()
-                                                    .label("Rust")
-                                                    .padding(Edges::only(10, 5, 10, 5))
-                                                    .background(Color::NEUTRAL_900)
-                                                    .border(
-                                                        Border::all(1, Color::NEUTRAL_800).radius(
-                                                            999
-                                                        )
-                                                    )
-                                            )
-
-                                            .child(
-                                                Label::new()
-                                                    .label("wgpu")
-                                                    .padding(Edges::only(10, 5, 10, 5))
-                                                    .background(Color::NEUTRAL_900)
-                                                    .border(
-                                                        Border::all(1, Color::NEUTRAL_800).radius(
-                                                            999
-                                                        )
-                                                    )
-                                            )
-
-                                            .child(
-                                                Label::new()
-                                                    .label("Taffy")
-                                                    .padding(Edges::only(10, 5, 10, 5))
-                                                    .background(Color::NEUTRAL_900)
-                                                    .border(
-                                                        Border::all(1, Color::NEUTRAL_800).radius(
-                                                            999
-                                                        )
-                                                    )
-                                            )
-                                    )
+                                    .child(View::new().display(Display::Flex))
                             )
                     ) as Box<dyn Widget>
                 ]

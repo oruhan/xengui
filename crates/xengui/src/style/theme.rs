@@ -15,19 +15,93 @@ pub struct Theme {
     name: String,
     mode: ThemeMode,
 
+    /* Colors */
+    // Primary
+    pub inverse_primary: Color,
     pub primary: Color,
-    pub accent: Color,
-    pub background: Color,
-    pub surface: Color,
-    pub surface_hover: Color,
-    pub foreground: Color,
-    pub foreground_muted: Color,
-    pub border: Color,
-    pub border_hover: Color,
+    pub on_primary: Color,
+    pub primary_container: Color,
+    pub on_primary_container: Color,
 
-    pub hover: Color,
-    pub pressed: Color,
-    pub disabled: Color,
+    pub primary_fixed: Color,
+    pub primary_fixed_dim: Color,
+    pub on_primary_fixed: Color,
+    pub on_primary_fixed_variant: Color,
+
+    // Secondary
+    pub inverse_secondary: Color,
+    pub secondary: Color,
+    pub on_secondary: Color,
+    pub secondary_container: Color,
+    pub on_secondary_container: Color,
+
+    pub secondary_fixed: Color,
+    pub secondary_fixed_dim: Color,
+    pub on_secondary_fixed: Color,
+    pub on_secondary_fixed_variant: Color,
+
+    // Tertiary
+    pub inverse_tertiary: Color,
+    pub tertiary: Color,
+    pub on_tertiary: Color,
+    pub tertiary_container: Color,
+    pub on_tertiary_container: Color,
+
+    pub tertiary_fixed: Color,
+    pub tertiary_fixed_dim: Color,
+    pub on_tertiary_fixed: Color,
+    pub on_tertiary_fixed_variant: Color,
+
+    // Info
+    pub info: Color,
+    pub on_info: Color,
+    pub info_container: Color,
+    pub on_info_container: Color,
+
+    // Error
+    pub error: Color,
+    pub on_error: Color,
+    pub error_container: Color,
+    pub on_error_container: Color,
+
+    // Warning
+    pub warning: Color,
+    pub on_warning: Color,
+    pub warning_container: Color,
+    pub on_warning_container: Color,
+
+    // Success
+    pub success: Color,
+    pub on_success: Color,
+    pub success_container: Color,
+    pub on_success_container: Color,
+
+    // Surface
+    pub surface_dim: Color,
+    pub surface: Color,
+    pub surface_bright: Color,
+
+    pub inverse_surface: Color,
+    pub inverse_on_surface: Color,
+
+    pub surface_container_low: Color,
+    pub surface_container_lowest: Color,
+    pub surface_container: Color,
+    pub surface_container_high: Color,
+    pub surface_container_highest: Color,
+
+    pub on_surface: Color,
+    pub on_surface_variant: Color,
+
+    // Outline
+    pub outline: Color,
+    pub outline_variant: Color,
+
+    // Scrim & Shadow
+    pub scrim: Color,
+    pub shadow: Color,
+
+    /* -------------------------------------- */
 
     pub selection: Color,
     pub selection_color: Color,
@@ -61,6 +135,16 @@ pub struct Theme {
     pub space_3xl: Length,
     pub space_4xl: Length,
 
+    /* Typography */
+    pub text_xs: Length,
+    pub text_sm: Length,
+    pub text_md: Length,
+    pub text_lg: Length,
+    pub text_xl: Length,
+    pub text_2xl: Length,
+    pub text_3xl: Length,
+    pub text_4xl: Length,
+
     pub border_width: Length,
 }
 
@@ -70,31 +154,102 @@ impl Theme {
             name: name.into(),
             mode: ThemeMode::Light,
 
-            // Colors
+            /* Colors */
+            // Primary
+            inverse_primary: Color::BLUE_700,
             primary: Color::BLUE_500,
-            accent: Color::BLUE_500,
+            on_primary: Color::WHITE,
+            primary_container: Color::BLUE_100,
+            on_primary_container: Color::BLUE_900,
 
-            background: Color::WHITE,
+            primary_fixed: Color::BLUE_500,
+            primary_fixed_dim: Color::BLUE_600,
+            on_primary_fixed: Color::WHITE,
+            on_primary_fixed_variant: Color::BLUE_900,
+
+            // Secondary
+            inverse_secondary: Color::BLUE_700,
+            secondary: Color::BLUE_600,
+            on_secondary: Color::WHITE,
+            secondary_container: Color::BLUE_100,
+            on_secondary_container: Color::BLUE_900,
+
+            secondary_fixed: Color::BLUE_600,
+            secondary_fixed_dim: Color::BLUE_700,
+            on_secondary_fixed: Color::WHITE,
+            on_secondary_fixed_variant: Color::BLUE_900,
+
+            // Tertiary
+            inverse_tertiary: Color::BLUE_800,
+            tertiary: Color::BLUE_700,
+            on_tertiary: Color::WHITE,
+            tertiary_container: Color::BLUE_200,
+            on_tertiary_container: Color::BLUE_900,
+
+            tertiary_fixed: Color::BLUE_700,
+            tertiary_fixed_dim: Color::BLUE_800,
+            on_tertiary_fixed: Color::WHITE,
+            on_tertiary_fixed_variant: Color::BLUE_900,
+
+            // Info
+            info: Color::CYAN_600,
+            on_info: Color::WHITE,
+            info_container: Color::CYAN_100,
+            on_info_container: Color::CYAN_900,
+
+            // Error
+            error: Color::RED_500,
+            on_error: Color::WHITE,
+            error_container: Color::RED_100,
+            on_error_container: Color::RED_900,
+
+            // Warning
+            warning: Color::AMBER_500,
+            on_warning: Color::BLACK,
+            warning_container: Color::AMBER_100,
+            on_warning_container: Color::AMBER_900,
+
+            // Success
+            success: Color::GREEN_600,
+            on_success: Color::WHITE,
+            success_container: Color::GREEN_100,
+            on_success_container: Color::GREEN_900,
+
+            // Surface
+            surface_dim: Color::NEUTRAL_100,
             surface: Color::NEUTRAL_50,
-            surface_hover: Color::NEUTRAL_100,
+            surface_bright: Color::WHITE,
 
-            foreground: Color::NEUTRAL_900,
-            foreground_muted: Color::NEUTRAL_500,
+            inverse_surface: Color::NEUTRAL_900,
+            inverse_on_surface: Color::NEUTRAL_50,
 
-            border: Color::NEUTRAL_200,
-            border_hover: Color::NEUTRAL_300,
+            surface_container_low: Color::NEUTRAL_100,
+            surface_container_lowest: Color::WHITE,
+            surface_container: Color::NEUTRAL_100,
+            surface_container_high: Color::NEUTRAL_200,
+            surface_container_highest: Color::NEUTRAL_300,
 
-            hover: Color::NEUTRAL_100,
-            pressed: Color::NEUTRAL_200,
-            disabled: Color::NEUTRAL_300.with_alpha(50),
+            on_surface: Color::NEUTRAL_900,
+            on_surface_variant: Color::NEUTRAL_600,
 
+            // Outline
+            outline: Color::NEUTRAL_500,
+            outline_variant: Color::NEUTRAL_300,
+
+            // Scrim & Shadow
+            scrim: Color::BLACK,
+            shadow: Color::BLACK,
+            /* -------------------------------------- */
+
+            /* Text cursor */
+            caret_color: Color::WHITE,
             selection: Color::BLUE_500.with_alpha(80),
             selection_color: Color::BLUE_200,
             selection_border_color: Color::TRANSPARENT,
             selection_border_width: Length::px(0.0),
             selection_border_radius: Length::px(4.0),
-            caret_color: Color::WHITE,
 
+            /* Scrollbar */
             scrollbar_thumb: Color::NEUTRAL_400,
             scrollbar_track: Color::NEUTRAL_100,
             scrollbar_button: Color::NEUTRAL_300,
@@ -102,17 +257,17 @@ impl Theme {
             scrollbar_thumb_border: Color::TRANSPARENT,
             scrollbar_track_border: Color::TRANSPARENT,
 
-            // Border radius
-            radius_xs: Length::px(2.0), // rounded-sm
-            radius_sm: Length::px(4.0), // rounded
-            radius_md: Length::px(6.0), // rounded-md
-            radius_lg: Length::px(8.0), // rounded-lg
-            radius_xl: Length::px(12.0), // rounded-xl
-            radius_2xl: Length::px(16.0), // rounded-2xl
-            radius_3xl: Length::px(24.0), // rounded-3xl
-            radius_4xl: Length::px(9999.0), // rounded-full
+            /* Corner radius */
+            radius_xs: Length::px(2.0),
+            radius_sm: Length::px(4.0),
+            radius_md: Length::px(6.0),
+            radius_lg: Length::px(8.0),
+            radius_xl: Length::px(12.0),
+            radius_2xl: Length::px(16.0),
+            radius_3xl: Length::px(24.0),
+            radius_4xl: Length::px(9999.0),
 
-            // Spacing
+            /* Spacing */
             space_xs: Length::px(2.0),
             space_sm: Length::px(4.0),
             space_md: Length::px(8.0),
@@ -122,6 +277,16 @@ impl Theme {
             space_3xl: Length::px(32.0),
             space_4xl: Length::px(48.0),
 
+            /* Typography */
+            text_xs: Length::px(10.0),
+            text_sm: Length::px(13.0),
+            text_md: Length::px(15.0),
+            text_lg: Length::px(18.0),
+            text_xl: Length::px(20.0),
+            text_2xl: Length::px(24.0),
+            text_3xl: Length::px(32.0),
+            text_4xl: Length::px(48.0),
+
             border_width: Length::px(1.0),
         }
     }
@@ -129,73 +294,209 @@ impl Theme {
     pub fn light() -> Self {
         Self::new("light")
             .mode(ThemeMode::Light)
+
+            /* Colors */
+
+            // Primary
+            .inverse_primary(Color::BLUE_700)
             .primary(Color::BLUE_500)
-            .accent(Color::BLUE_500)
+            .on_primary(Color::WHITE)
+            .primary_container(Color::BLUE_100)
+            .on_primary_container(Color::BLUE_900)
+            .primary_fixed(Color::BLUE_500)
+            .primary_fixed_dim(Color::BLUE_600)
+            .on_primary_fixed(Color::WHITE)
+            .on_primary_fixed_variant(Color::BLUE_900)
 
-            .background(Color::WHITE)
+            // Secondary
+            .inverse_secondary(Color::BLUE_700)
+            .secondary(Color::BLUE_600)
+            .on_secondary(Color::WHITE)
+            .secondary_container(Color::BLUE_100)
+            .on_secondary_container(Color::BLUE_900)
+            .secondary_fixed(Color::BLUE_600)
+            .secondary_fixed_dim(Color::BLUE_700)
+            .on_secondary_fixed(Color::WHITE)
+            .on_secondary_fixed_variant(Color::BLUE_900)
+
+            // Tertiary
+            .inverse_tertiary(Color::BLUE_800)
+            .tertiary(Color::BLUE_700)
+            .on_tertiary(Color::WHITE)
+            .tertiary_container(Color::BLUE_200)
+            .on_tertiary_container(Color::BLUE_900)
+            .tertiary_fixed(Color::BLUE_700)
+            .tertiary_fixed_dim(Color::BLUE_800)
+            .on_tertiary_fixed(Color::WHITE)
+            .on_tertiary_fixed_variant(Color::BLUE_900)
+
+            // Info
+            .info(Color::CYAN_600)
+            .on_info(Color::WHITE)
+            .info_container(Color::CYAN_100)
+            .on_info_container(Color::CYAN_900)
+
+            // Error
+            .error(Color::RED_500)
+            .on_error(Color::WHITE)
+            .error_container(Color::RED_100)
+            .on_error_container(Color::RED_900)
+
+            // Warning
+            .warning(Color::AMBER_500)
+            .on_warning(Color::BLACK)
+            .warning_container(Color::AMBER_100)
+            .on_warning_container(Color::AMBER_900)
+
+            // Success
+            .success(Color::GREEN_600)
+            .on_success(Color::WHITE)
+            .success_container(Color::GREEN_100)
+            .on_success_container(Color::GREEN_900)
+
+            // Surface
+            .surface_dim(Color::NEUTRAL_100)
             .surface(Color::NEUTRAL_50)
-            .surface_hover(Color::NEUTRAL_100)
+            .surface_bright(Color::WHITE)
+            .inverse_surface(Color::NEUTRAL_900)
+            .inverse_on_surface(Color::NEUTRAL_50)
+            .surface_container_low(Color::NEUTRAL_100)
+            .surface_container_lowest(Color::WHITE)
+            .surface_container(Color::NEUTRAL_100)
+            .surface_container_high(Color::NEUTRAL_200)
+            .surface_container_highest(Color::NEUTRAL_300)
+            .on_surface(Color::NEUTRAL_900)
+            .on_surface_variant(Color::NEUTRAL_600)
 
-            .foreground(Color::NEUTRAL_900)
-            .foreground_muted(Color::NEUTRAL_500)
+            // Outline
+            .outline(Color::NEUTRAL_500)
+            .outline_variant(Color::NEUTRAL_300)
 
-            .border(Color::NEUTRAL_200)
-            .border_hover(Color::NEUTRAL_300)
+            // Scrim & Shadow
+            .scrim(Color::BLACK)
+            .shadow(Color::BLACK)
 
-            .hover(Color::NEUTRAL_100)
-            .pressed(Color::NEUTRAL_200)
-            .disabled(Color::NEUTRAL_300.with_alpha(50))
+            /* XenGui */
 
+            // Selection
             .selection(Color::BLUE_500.with_alpha(80))
             .selection_color(Color::WHITE)
+            .selection_border_color(Color::TRANSPARENT)
+            .selection_border_width(Length::px(0.0))
+            .selection_border_radius(Length::px(4.0))
             .caret_color(Color::BLUE_500)
 
+            // Scrollbar
             .scrollbar_thumb(Color::NEUTRAL_400)
             .scrollbar_track(Color::NEUTRAL_100)
             .scrollbar_button(Color::NEUTRAL_300)
             .scrollbar_arrow(Color::NEUTRAL_700)
             .scrollbar_thumb_border(Color::TRANSPARENT)
             .scrollbar_track_border(Color::TRANSPARENT)
-
-            .selection_border_color(Color::TRANSPARENT)
-            .selection_border_width(Length::px(0.0))
-            .selection_border_radius(Length::px(4.0))
     }
 
     pub fn dark() -> Self {
         Self::new("dark")
             .mode(ThemeMode::Dark)
+
+            /* Colors */
+
+            // Primary
+            .inverse_primary(Color::BLUE_300)
             .primary(Color::BLUE_400)
-            .accent(Color::BLUE_400)
+            .on_primary(Color::BLUE_950)
+            .primary_container(Color::BLUE_800)
+            .on_primary_container(Color::BLUE_100)
+            .primary_fixed(Color::BLUE_500)
+            .primary_fixed_dim(Color::BLUE_600)
+            .on_primary_fixed(Color::BLUE_950)
+            .on_primary_fixed_variant(Color::BLUE_900)
 
-            .background(Color::NEUTRAL_950)
+            // Secondary
+            .inverse_secondary(Color::BLUE_300)
+            .secondary(Color::BLUE_400)
+            .on_secondary(Color::BLUE_950)
+            .secondary_container(Color::BLUE_800)
+            .on_secondary_container(Color::BLUE_100)
+            .secondary_fixed(Color::BLUE_600)
+            .secondary_fixed_dim(Color::BLUE_700)
+            .on_secondary_fixed(Color::BLUE_950)
+            .on_secondary_fixed_variant(Color::BLUE_900)
+
+            // Tertiary
+            .inverse_tertiary(Color::BLUE_300)
+            .tertiary(Color::BLUE_400)
+            .on_tertiary(Color::BLUE_950)
+            .tertiary_container(Color::BLUE_800)
+            .on_tertiary_container(Color::BLUE_100)
+            .tertiary_fixed(Color::BLUE_700)
+            .tertiary_fixed_dim(Color::BLUE_800)
+            .on_tertiary_fixed(Color::BLUE_950)
+            .on_tertiary_fixed_variant(Color::BLUE_900)
+
+            // Info
+            .info(Color::CYAN_400)
+            .on_info(Color::CYAN_950)
+            .info_container(Color::CYAN_800)
+            .on_info_container(Color::CYAN_100)
+
+            // Error
+            .error(Color::RED_400)
+            .on_error(Color::RED_950)
+            .error_container(Color::RED_800)
+            .on_error_container(Color::RED_100)
+
+            // Warning
+            .warning(Color::AMBER_400)
+            .on_warning(Color::AMBER_950)
+            .warning_container(Color::AMBER_800)
+            .on_warning_container(Color::AMBER_100)
+
+            // Success
+            .success(Color::GREEN_400)
+            .on_success(Color::GREEN_950)
+            .success_container(Color::GREEN_800)
+            .on_success_container(Color::GREEN_100)
+
+            // Surface
+            .surface_dim(Color::NEUTRAL_950)
             .surface(Color::NEUTRAL_900)
-            .surface_hover(Color::NEUTRAL_800)
+            .surface_bright(Color::NEUTRAL_800)
+            .inverse_surface(Color::NEUTRAL_100)
+            .inverse_on_surface(Color::NEUTRAL_900)
+            .surface_container_lowest(Color::NEUTRAL_950)
+            .surface_container_low(Color::NEUTRAL_900)
+            .surface_container(Color::NEUTRAL_800)
+            .surface_container_high(Color::NEUTRAL_800)
+            .surface_container_highest(Color::NEUTRAL_700)
+            .on_surface(Color::NEUTRAL_50)
+            .on_surface_variant(Color::NEUTRAL_300)
 
-            .foreground(Color::NEUTRAL_50)
-            .foreground_muted(Color::NEUTRAL_300)
+            // Outline
+            .outline(Color::NEUTRAL_400)
+            .outline_variant(Color::NEUTRAL_700)
 
-            .border(Color::NEUTRAL_800)
-            .border_hover(Color::NEUTRAL_700)
+            // Scrim & Shadow
+            .scrim(Color::BLACK)
+            .shadow(Color::BLACK)
 
-            .hover(Color::NEUTRAL_800)
-            .pressed(Color::NEUTRAL_700)
-            .disabled(Color::NEUTRAL_700.with_alpha(50))
+            /* XenGui */
 
+            // Selection
             .selection(Color::BLUE_500.with_alpha(80))
             .selection_color(Color::BLUE_200)
+            .selection_border_color(Color::TRANSPARENT)
+            .selection_border_width(Length::px(0.0))
+            .selection_border_radius(Length::px(4.0))
             .caret_color(Color::BLUE_400)
 
+            // Scrollbar
             .scrollbar_thumb(Color::NEUTRAL_600)
             .scrollbar_track(Color::NEUTRAL_900)
             .scrollbar_button(Color::NEUTRAL_700)
             .scrollbar_arrow(Color::NEUTRAL_200)
             .scrollbar_thumb_border(Color::TRANSPARENT)
             .scrollbar_track_border(Color::TRANSPARENT)
-
-            .selection_border_color(Color::TRANSPARENT)
-            .selection_border_width(Length::px(0.0))
-            .selection_border_radius(Length::px(4.0))
     }
 
     pub fn auto() -> Self {
@@ -209,63 +510,18 @@ impl Theme {
         self
     }
 
+    pub fn inverse_primary(mut self, color: Color) -> Self {
+        self.inverse_primary = color;
+        self
+    }
+
     pub fn primary(mut self, color: Color) -> Self {
         self.primary = color;
         self
     }
 
-    pub fn accent(mut self, color: Color) -> Self {
-        self.accent = color;
-        self
-    }
-
-    pub fn background(mut self, color: Color) -> Self {
-        self.background = color;
-        self
-    }
-
     pub fn surface(mut self, color: Color) -> Self {
         self.surface = color;
-        self
-    }
-
-    pub fn surface_hover(mut self, color: Color) -> Self {
-        self.surface_hover = color;
-        self
-    }
-
-    pub fn foreground(mut self, color: Color) -> Self {
-        self.foreground = color;
-        self
-    }
-
-    pub fn foreground_muted(mut self, color: Color) -> Self {
-        self.foreground_muted = color;
-        self
-    }
-
-    pub fn border(mut self, color: Color) -> Self {
-        self.border = color;
-        self
-    }
-
-    pub fn border_hover(mut self, color: Color) -> Self {
-        self.border_hover = color;
-        self
-    }
-
-    pub fn hover(mut self, color: Color) -> Self {
-        self.hover = color;
-        self
-    }
-
-    pub fn pressed(mut self, color: Color) -> Self {
-        self.pressed = color;
-        self
-    }
-
-    pub fn disabled(mut self, color: Color) -> Self {
-        self.disabled = color;
         self
     }
 
