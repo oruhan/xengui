@@ -102,7 +102,7 @@ impl FrameRenderer {
             // already-laid-out subtree directly instead of paying for a
             // full taffy re-layout every animated-scroll frame. A no-op
             // walk when nothing actually scrolled this frame.
-            LayoutEngine::reflow_scroll(tree);
+            LayoutEngine::reflow_scroll(tree, scale_factor);
         }
 
         let mut commands: Vec<(i32, DrawCommand)> = Vec::new();

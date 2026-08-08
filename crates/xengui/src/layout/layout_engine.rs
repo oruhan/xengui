@@ -94,9 +94,9 @@ impl LayoutEngine {
     /// scrollable view's offset moved since the last full layout or reflow,
     /// without touching taffy at all - the cheap path for a frame where
     /// scrolling is the only thing changing.
-    pub fn reflow_scroll(tree: &mut [Box<dyn Widget>]) {
+    pub fn reflow_scroll(tree: &mut [Box<dyn Widget>], scale_factor: f32) {
         for widget in tree.iter_mut() {
-            reflow_scroll_recursive(widget.as_mut());
+            reflow_scroll_recursive(widget.as_mut(), None, scale_factor);
         }
     }
 
@@ -366,27 +366,82 @@ fn apply_layout(
     }
 }
 
-fn reflow_scroll_recursive(widget: &mut dyn Widget) {
+fn reflow_scroll_recursive(
+    widget: &mut dyn Widget,
+    scroll_viewport: Option<LayoutBox>,
+    scale_factor: f32
+) {
     let (dx, dy) = widget.take_scroll_delta();
-    if (dx != 0.0 || dy != 0.0)
-        && let Some(children) = widget.children_mut() {
-            for child in children.iter_mut() {
-                translate_subtree(child.as_mut(), -dx, -dy);
-            }
+
+    let next_scroll_viewport = widget
+        .clip_children()
+        .map(|(x, y, w, h)| LayoutBox { x, y, width: w, height: h })
+        .or(scroll_viewport);
+
+    if (dx != 0.0 || dy != 0.0) && let Some(children) = widget.children_mut() {
+        for child in children.iter_mut() {
+            translate_subtree(child.as_mut(), -dx, -dy, next_scroll_viewport, scale_factor);
         }
+    }
+
     if let Some(children) = widget.children_mut() {
         for child in children.iter_mut() {
-            reflow_scroll_recursive(child.as_mut());
+            reflow_scroll_recursive(child.as_mut(), next_scroll_viewport, scale_factor);
         }
     }
 }
 
-fn translate_subtree(widget: &mut dyn Widget, dx: f32, dy: f32) {
+// Moves a subtree by a scroll delta while respecting out-of-flow
+// positioning, mirroring apply_layout's own Fixed/Sticky handling: a
+// Fixed widget (and everything under it) is pinned to the viewport and
+// left untouched, and a Sticky widget is re-clamped against its scroll
+// container after the shift instead of just drifting with it.
+fn translate_subtree(
+    widget: &mut dyn Widget,
+    dx: f32,
+    dy: f32,
+    scroll_viewport: Option<LayoutBox>,
+    scale_factor: f32
+) {
+    let position = widget.computed_style().position.unwrap_or_default();
+
+    if position == Position::Fixed {
+        return;
+    }
+
     let b = *widget.layout_box();
-    widget.layout(LayoutBox { x: b.x + dx, y: b.y + dy, width: b.width, height: b.height });
+    let mut moved = LayoutBox { x: b.x + dx, y: b.y + dy, width: b.width, height: b.height };
+
+    if position == Position::Sticky && let Some(container) = scroll_viewport {
+        let style = widget.computed_style();
+        if let Some(top) = style.top {
+            moved.y = moved.y.max(container.y + top.to_physical(scale_factor));
+        }
+        if let Some(bottom) = style.bottom {
+            moved.y = moved.y.min(
+                container.y + container.height - moved.height - bottom.to_physical(scale_factor)
+            );
+        }
+        if let Some(left) = style.left {
+            moved.x = moved.x.max(container.x + left.to_physical(scale_factor));
+        }
+        if let Some(right) = style.right {
+            moved.x = moved.x.min(
+                container.x + container.width - moved.width - right.to_physical(scale_factor)
+            );
+        }
+    }
+
+    widget.layout(moved);
+
+    let next_scroll_viewport = widget
+        .clip_children()
+        .map(|(x, y, w, h)| LayoutBox { x, y, width: w, height: h })
+        .or(scroll_viewport);
+
     if let Some(children) = widget.children_mut() {
         for child in children.iter_mut() {
-            translate_subtree(child.as_mut(), dx, dy);
+            translate_subtree(child.as_mut(), dx, dy, next_scroll_viewport, scale_factor);
         }
     }
 }

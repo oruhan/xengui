@@ -125,10 +125,14 @@ pub fn scissor_for_clip(
     let x1 = (x + w).max(0.0).min(surface_width as f32);
     let y1 = (y + h).max(0.0).min(surface_height as f32);
 
-    (
-        x0.round() as u32,
-        y0.round() as u32,
-        (x1 - x0).round().max(0.0) as u32,
-        (y1 - y0).round().max(0.0) as u32,
-    )
+    // Each edge is rounded independently and width/height derived from the
+    // rounded edges, instead of rounding the origin and the span on their
+    // own - the latter can round both up and overshoot the (already
+    // clamped) surface bound by a texel.
+    let x0 = x0.round() as u32;
+    let y0 = y0.round() as u32;
+    let x1 = x1.round() as u32;
+    let y1 = y1.round() as u32;
+
+    (x0, y0, x1.saturating_sub(x0), y1.saturating_sub(y0))
 }
