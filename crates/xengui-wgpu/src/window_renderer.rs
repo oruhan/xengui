@@ -162,24 +162,28 @@ impl WgpuWindowRenderer {
             surface_caps.alpha_modes
         );
 
+        // Mailbox presents each frame in sync with the display's vsync
+        // interval without blocking the CPU while waiting for it (unlike
+        // Fifo), so frame pacing stays even and tear-free regardless of
+        // the monitor's refresh rate. Immediate is the non-blocking
+        // fallback when Mailbox isn't available on this adapter/surface -
         // Fifo blocks get_current_texture() until the previous frame's
-        // vsync completes. The whole resize pipeline runs synchronously
-        // inside WM_SIZE (Windows never pumps RedrawRequested during a
-        // live resize), so a blocked acquire stalls that handler - DWM
-        // then stretches the last presented (stale-sized) buffer to fill
-        // the already-grown window until the stalled call returns. A
-        // non-blocking present mode keeps acquire immediate so every
-        // WM_SIZE can finish its own layout/raster/present without
-        // falling behind the drag.
+        // vsync completes, and the whole resize pipeline runs
+        // synchronously inside WM_SIZE (Windows never pumps
+        // RedrawRequested during a live resize), so a blocked acquire
+        // stalls that handler - DWM then stretches the last presented
+        // (stale-sized) buffer to fill the already-grown window until the
+        // stalled call returns. Fifo is the last resort when neither
+        // non-blocking mode is available.
         let present_mode = surface_caps.present_modes
             .iter()
             .copied()
-            .find(|m| *m == wgpu::PresentMode::Immediate)
+            .find(|m| *m == wgpu::PresentMode::Mailbox)
             .or_else(||
                 surface_caps.present_modes
                     .iter()
                     .copied()
-                    .find(|m| *m == wgpu::PresentMode::Mailbox)
+                    .find(|m| *m == wgpu::PresentMode::Immediate)
             )
             .unwrap_or(wgpu::PresentMode::Fifo);
 

@@ -77,7 +77,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         .font_size(14)
                         .background(Color::BLUE_500)
                         .padding(Edges::only(10, 6, 10, 6))
-                        .border(Border::new(1, Color::BLUE_500, Length::px(8.0)))
+                        .border(Border::all(1, Color::BLUE_500).radius(8))
                         .transition_all(Transition::new(Duration::from_millis(150)))
                         .hover_style(|s, _theme: &Theme| s.background(Color::BLUE_600))
                         .pressed_style(|s, _theme: &Theme|
@@ -134,7 +134,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         .child(
                             Label::new()
                                 .label("A")
-                                .color(|theme: &Theme|  theme.on_background)
+                                .color(|theme: &Theme| theme.on_background)
                         )
                         .child(
                             RadioButton::new()
@@ -144,7 +144,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         .child(
                             Label::new()
                                 .label("B")
-                                .color(|theme: &Theme|  theme.on_background)
+                                .color(|theme: &Theme| theme.on_background)
                         )
                         .child(
                             RadioButton::new()
@@ -154,7 +154,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         .child(
                             Label::new()
                                 .label("C")
-                                .color(|theme: &Theme|  theme.on_background)
+                                .color(|theme: &Theme| theme.on_background)
                         )
                 }
             });
@@ -173,7 +173,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         .min_width(Length::px(160.0))
                         .padding(Edges::all(8))
                         .background(|theme: &Theme| theme.surface)
-                        .border(|theme: &Theme| Border::new(1, theme.outline, Length::px(8.0)))
+                        .border(|theme: &Theme| Border::all(1, theme.outline).radius(8))
                         .on_change({
                             let set_text_value = set_text_value.clone();
                             move |value, _ctx| set_text_value.set(value.to_string())
@@ -206,7 +206,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .cell(|| Link::new().label("Svg").href(format!("{REPO_BASE}svg.rs")))
             .cell(||
                 View::new()
-                    .color(|theme: &Theme|  theme.on_background_muted)
+                    .color(|theme: &Theme| theme.on_background)
                     .child(Svg::from_string(WAND_ICON).width(22).height(22))
             );
 
@@ -216,7 +216,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 Tooltip::new("This is an tooltip").child(
                     Label::new()
                         .label("Hover")
-                        .color(|theme: &Theme|  theme.on_background)
+                        .color(|theme: &Theme| theme.on_background)
                 )
             );
 
@@ -244,7 +244,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 move || {
                     Label::new()
                         .label(format!("Right click. Last action: {last_menu_action}"))
-                        .color(|theme: &Theme|  theme.on_background_muted)
+                        .color(|theme: &Theme| theme.on_background)
                 }
             });
 
@@ -285,8 +285,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             ContextMenu::new()
                 .font("Noto_Sans")
                 .menu_background(|theme: &Theme| theme.surface)
-                .border(|theme: &Theme| Border::new(1, theme.outline, Length::px(8.0)))
-                .item_hover_background(|theme: &Theme| theme.hover)
+                .border(|theme: &Theme| Border::all(1, theme.outline).radius(8))
+                .item_hover_background(|theme: &Theme| theme.surface)
                 .item(
                     ContextMenuItem::new("Reset counter").on_click({
                         let set_click_count = set_click_count.clone();
@@ -330,15 +330,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             Label::new()
                                 .label("Widgets Catalog")
                                 .font_size(Length::px(18.0))
-                                .color(|theme: &Theme|  theme.on_background)
+                                .color(|theme: &Theme| theme.on_background)
                         )
                         .child(
                             View::new()
                                 .flex_direction(FlexDirection::Column)
                                 .overflow_y(Overflow::Auto)
-                                .scrollbar_track_color(|theme: &Theme| theme.outline)
-                                .scrollbar_thumb_color(|theme: &Theme|  theme.on_background_muted)
-                                .scrollbar_arrow_color(|theme: &Theme|  theme.on_background_muted)
                                 .child(table)
                         )
                 )
