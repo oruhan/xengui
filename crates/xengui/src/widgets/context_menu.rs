@@ -880,6 +880,12 @@ impl ContextMenu {
             self.pressed_index.set(None);
             self.submenu_stack.borrow_mut().clear();
             self.closing_submenus.borrow_mut().clear();
+            // Any reopen request from before this close is now stale -
+            // without clearing it here, a leftover position can silently
+            // reopen the menu later once the fade-out settles, even
+            // though the user closed it through an unrelated path
+            // (click outside, Escape, item click).
+            self.pending_reopen.set(None);
             ctx.request_redraw();
         }
     }
@@ -1457,8 +1463,10 @@ impl Widget for ContextMenu {
             } => {
                 if self.layout_box.contains_rounded(*position, 0.0) {
                     if self.open.get() {
-                        self.pending_reopen.set(Some(*position));
+                        // close() clears pending_reopen, so the intended
+                        // reopen request must be set after it, not before.
                         self.close(ctx);
+                        self.pending_reopen.set(Some(*position));
                     } else {
                         self.open_at(*position, ctx);
                     }
