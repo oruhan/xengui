@@ -39,7 +39,7 @@ pub use flex::*;
 pub use font_style::FontStyle;
 pub use font_weight::FontWeight;
 pub use grid::*;
-pub use length::{ Length, set_viewport_size };
+pub use length::{ Length, set_viewport_size, viewport_size };
 pub use letter_spacing::LetterSpacing;
 pub use line_height::LineHeight;
 pub use position::Position;

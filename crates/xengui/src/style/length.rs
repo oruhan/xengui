@@ -11,6 +11,10 @@ pub fn set_viewport_size(width: f32, height: f32) {
     VIEWPORT_SIZE.with(|cell| cell.set((width, height)));
 }
 
+pub fn viewport_size() -> (f32, f32) {
+    VIEWPORT_SIZE.with(Cell::get)
+}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Length {
     Px(f32),

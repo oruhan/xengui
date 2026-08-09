@@ -432,6 +432,12 @@ fn translate_subtree(
         }
     }
 
+    // Children move by however much this widget actually moved after
+    // clamping, not the raw scroll delta - otherwise a pinned sticky
+    // widget's own children drift away from it while it stays put.
+    let effective_dx = moved.x - b.x;
+    let effective_dy = moved.y - b.y;
+
     widget.layout(moved);
 
     let next_scroll_viewport = widget
@@ -441,7 +447,13 @@ fn translate_subtree(
 
     if let Some(children) = widget.children_mut() {
         for child in children.iter_mut() {
-            translate_subtree(child.as_mut(), dx, dy, next_scroll_viewport, scale_factor);
+            translate_subtree(
+                child.as_mut(),
+                effective_dx,
+                effective_dy,
+                next_scroll_viewport,
+                scale_factor
+            );
         }
     }
 }

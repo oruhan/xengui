@@ -31,12 +31,9 @@ thread_local! {
     static START: Instant = Instant::now();
     static ENABLED: Cell<bool> = const { Cell::new(false) };
     static LAST_NOTIFY: Cell<Option<Instant>> = const { Cell::new(None) };
+    static SUPPRESS_DEPTH: Cell<u32> = const { Cell::new(0) };
 }
 
-/// Toggled by the DevTools panel (F12). While disabled, `log_rerender`/
-/// `log_repaint` are a single thread-local bool read - callers on hot
-/// paths (interaction dispatch, reconciliation) still guard the more
-/// expensive `format!()` call sites with `is_enabled()` themselves.
 pub fn set_enabled(enabled: bool) {
     ENABLED.with(|e| e.set(enabled));
     if !enabled {
@@ -48,11 +45,21 @@ pub fn is_enabled() -> bool {
     ENABLED.with(Cell::get)
 }
 
-// Wakes the app's own hooks-dirty rebuild so the DevTools panel's widget
-// tree (built from a `snapshot()` taken at render time) picks up new
-// entries - throttled so a burst of interaction-driven repaints while
-// the panel is open can't itself become the dominant source of rebuilds
-// it's supposed to be measuring.
+/// Runs `f` with render-log recording paused. A widget that rebuilds its
+/// own display of the log (the DevTools panel itself) must wrap that
+/// rebuild in this, or its own churn shows up as new entries and keeps
+/// waking itself back up.
+pub fn with_suppressed<R>(f: impl FnOnce() -> R) -> R {
+    SUPPRESS_DEPTH.with(|d| d.set(d.get() + 1));
+    let result = f();
+    SUPPRESS_DEPTH.with(|d| d.set(d.get().saturating_sub(1)));
+    result
+}
+
+fn is_suppressed() -> bool {
+    SUPPRESS_DEPTH.with(|d| d.get() > 0)
+}
+
 fn notify_new_entry() {
     let should_notify = LAST_NOTIFY.with(|cell| {
         let now = Instant::now();
@@ -72,7 +79,7 @@ fn notify_new_entry() {
 }
 
 fn push(kind: RenderEventKind, widget_path: &str, widget_name: &'static str, reason: String) {
-    if !is_enabled() {
+    if !is_enabled() || is_suppressed() {
         return;
     }
     let t_micros = START.with(|s| Instant::now().duration_since(*s).as_micros());

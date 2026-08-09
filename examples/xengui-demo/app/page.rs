@@ -16,7 +16,7 @@ pub fn page(_params: &RouteParams) -> Box<dyn Widget> {
                     .flex_direction(FlexDirection::Column)
                     .align_items(Align::Start)
                     .justify_content(JustifyContent::Start)
-                    .margin(Edges::only(120, 140, 120, 0))
+                    .margin(Edges::only(120,250, 120, 0))
                     .child(
                         View::new()
                             .display(Display::Flex)

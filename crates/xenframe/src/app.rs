@@ -76,6 +76,8 @@ pub struct App {
     // (including a fresh DevtoolsPanel instance) on every render.
     pub(crate) devtools_open: bool,
     pub(crate) devtools_panel_width: Rc<Cell<f32>>,
+    pub(crate) devtools_ever_opened: bool,
+    pub(crate) devtools_close_requested: Rc<Cell<bool>>,
     #[cfg(target_os = "windows")]
     pub(crate) last_rendered_size: Option<(u32, u32)>,
 
@@ -113,8 +115,11 @@ impl App {
             clipboard: xen_clipboard::Clipboard::new(),
             pending_long_press: None,
             last_titlebar_click: None,
+
             devtools_open: false,
             devtools_panel_width: Rc::new(Cell::new(420.0)),
+            devtools_ever_opened: false,
+            devtools_close_requested: Rc::new(Cell::new(false)),
 
             #[cfg(target_os = "windows")]
             last_rendered_size: None,
@@ -174,22 +179,30 @@ impl App {
 
         hooks::take_dirty();
 
-        // Wraps the real root with the DevTools sidebar when open, so the
-        // main content shrinks to make room instead of the panel
-        // overlapping it. The wrap is rebuilt every schedule_render since
-        // the user's own root is rebuilt fresh too.
         if self.devtools_open {
+            self.devtools_ever_opened = true;
+        }
+
+        if self.devtools_ever_opened {
             new_root.style_mut().flex_grow = Some(1.0);
-            let panel = xengui::DevtoolsPanel
-                ::new(self.devtools_panel_width.clone())
-                .key("xengui_devtools_panel");
+
+            let mut children: Vec<Box<dyn xengui::Widget>> = vec![new_root];
+
+            if self.devtools_open {
+                let panel = xengui::DevtoolsPanel
+                    ::new(self.devtools_panel_width.clone(), self.devtools_close_requested.clone())
+                    .key("xengui_devtools_panel");
+                children.push(Box::new(panel));
+            }
+
             new_root = Box::new(
                 xengui::View
                     ::new()
+                    .key("xengui_root_wrapper")
                     .display(xengui::Display::Flex)
                     .flex_direction(xengui::FlexDirection::Row)
                     .size(xengui::pct!(100.0), xengui::pct!(100.0))
-                    .children_vec(vec![new_root, Box::new(panel) as Box<dyn xengui::Widget>])
+                    .children_vec(children)
             );
         }
 
@@ -339,6 +352,16 @@ impl App {
 
         if ctx.redraw_requested() && let Some(window) = &self.window {
             window.request_redraw();
+        }
+
+        if self.devtools_close_requested.take() {
+            self.devtools_open = false;
+            xengui::devtools::set_enabled(false);
+            self.schedule_render();
+            while self.pump_reconciliation() {}
+            if let Some(window) = &self.window {
+                window.request_redraw();
+            }
         }
     }
 

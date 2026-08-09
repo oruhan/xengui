@@ -3,6 +3,7 @@
 //! Not meant to be added to a user's own tree directly.
 use crate::{
     Align,
+    AnimationManager,
     Background,
     Border,
     Button,
@@ -42,12 +43,15 @@ use smol_str::SmolStr;
 use std::cell::Cell;
 use std::rc::Rc;
 
-const HANDLE_WIDTH: f32 = 4.0;
+const HANDLE_WIDTH: f32 = 6.0;
 const MIN_PANEL_WIDTH: f32 = 240.0;
 const MAX_PANEL_WIDTH: f32 = 900.0;
-// Bounded so a long debug session doesn't force hundreds of Label widgets
-// to be measured/painted every rebuild - only recent activity matters
-// for live debugging.
+// How far past MIN_PANEL_WIDTH a drag can go before it counts as "drag to
+// close" instead of just clamping at the minimum.
+const CLOSE_DRAG_SLACK: f32 = 80.0;
+// Logical px always left over for the app's own content, regardless of
+// how wide the panel is asked to be.
+const MIN_CONTENT_WIDTH: f32 = 200.0;
 const MAX_VISIBLE_ENTRIES: usize = 300;
 
 /// Thin draggable strip at the panel's left edge. Writes directly into a
@@ -57,13 +61,15 @@ pub struct DevtoolsResizeHandle {
     base: WidgetBase,
     layout_box: LayoutBox,
     width_handle: Rc<Cell<f32>>,
+    close_handle: Rc<Cell<bool>>,
     dragging: Cell<bool>,
     drag_start_mouse_x: Cell<f32>,
     drag_start_width: Cell<f32>,
+    scale_factor: Cell<f32>,
 }
 
 impl DevtoolsResizeHandle {
-    pub fn new(width_handle: Rc<Cell<f32>>) -> Self {
+    pub fn new(width_handle: Rc<Cell<f32>>, close_handle: Rc<Cell<bool>>) -> Self {
         let mut interaction = Interaction::new();
         interaction.hover_cursor = Some(Cursor::EwResize);
 
@@ -74,9 +80,11 @@ impl DevtoolsResizeHandle {
             base,
             layout_box: LayoutBox::default(),
             width_handle,
+            close_handle,
             dragging: Cell::new(false),
             drag_start_mouse_x: Cell::new(0.0),
             drag_start_width: Cell::new(0.0),
+            scale_factor: Cell::new(1.0),
         }
     }
 }
@@ -124,6 +132,10 @@ impl Widget for DevtoolsResizeHandle {
 
     fn measure(&self, _ctx: &mut MeasureContext, _constraints: Constraints) -> MeasureResult {
         MeasureResult::new(0.0, 0.0)
+    }
+
+    fn on_layout_pass(&self, ctx: &mut MeasureContext) {
+        self.scale_factor.set(ctx.scale_factor);
     }
 
     fn layout(&mut self, rect: LayoutBox) {
@@ -194,13 +206,27 @@ impl Widget for DevtoolsResizeHandle {
                 EventStatus::Handled
             }
             InputEvent::MouseMoved { position } if self.dragging.get() => {
-                // The panel sits to the right of this handle, so dragging
-                // left (negative delta) must grow it, not shrink it.
                 let delta = position.0 - self.drag_start_mouse_x.get();
-                let new_width = (self.drag_start_width.get() - delta).clamp(
-                    MIN_PANEL_WIDTH,
+                let raw_width = self.drag_start_width.get() - delta;
+
+                if raw_width < MIN_PANEL_WIDTH - CLOSE_DRAG_SLACK {
+                    self.dragging.set(false);
+                    self.close_handle.set(true);
+                    ctx.set_cursor_icon(Cursor::Default);
+                    self.base.dirty = true;
+                    ctx.request_redraw();
+                    return EventStatus::Handled;
+                }
+
+                let (viewport_w, _) = crate::viewport_size();
+                let sf = self.scale_factor.get().max(0.0001);
+                let max_width = if viewport_w > 0.0 {
+                    (viewport_w / sf - MIN_CONTENT_WIDTH).clamp(MIN_PANEL_WIDTH, MAX_PANEL_WIDTH)
+                } else {
                     MAX_PANEL_WIDTH
-                );
+                };
+
+                let new_width = raw_width.clamp(MIN_PANEL_WIDTH, max_width);
                 self.width_handle.set(new_width);
                 ctx.set_cursor_icon(Cursor::EwResize);
                 self.base.dirty = true;
@@ -217,6 +243,7 @@ impl Widget for DevtoolsResizeHandle {
             self.drag_start_mouse_x.set(old.drag_start_mouse_x.get());
             self.drag_start_width.set(old.drag_start_width.get());
             self.base.interaction.hovered = old.base.interaction.hovered;
+            self.scale_factor.set(old.scale_factor.get());
         }
     }
 }
@@ -227,16 +254,20 @@ pub struct DevtoolsPanel {
     inner: Vec<Box<dyn Widget>>,
     hooks_id: WidgetId,
     width_handle: Rc<Cell<f32>>,
+    close_handle: Rc<Cell<bool>>,
+    scale_factor: Cell<f32>,
 }
 
 impl DevtoolsPanel {
-    pub fn new(width_handle: Rc<Cell<f32>>) -> Self {
+    pub fn new(width_handle: Rc<Cell<f32>>, close_handle: Rc<Cell<bool>>) -> Self {
         Self {
             base: WidgetBase::new(Interaction::new()),
             layout_box: LayoutBox::default(),
             inner: Vec::new(),
             hooks_id: WidgetId::new_unique(),
             width_handle,
+            close_handle,
+            scale_factor: Cell::new(1.0),
         }
     }
 
@@ -280,7 +311,15 @@ fn entry_row(entry: &devtools::RenderLogEntry, index: usize) -> Label {
 
 impl Render for DevtoolsPanel {
     fn render(&self) -> Box<dyn Widget> {
-        let width = self.width_handle.get();
+        let (viewport_w, _) = crate::viewport_size();
+        let sf = self.scale_factor.get().max(0.0001);
+        let max_width = if viewport_w > 0.0 {
+            (viewport_w / sf - MIN_CONTENT_WIDTH).clamp(MIN_PANEL_WIDTH, MAX_PANEL_WIDTH)
+        } else {
+            MAX_PANEL_WIDTH
+        };
+        let width = self.width_handle.get().clamp(MIN_PANEL_WIDTH, max_width);
+
         let entries = devtools::snapshot();
         let visible = if entries.len() > MAX_VISIBLE_ENTRIES {
             &entries[entries.len() - MAX_VISIBLE_ENTRIES..]
@@ -302,9 +341,39 @@ impl Render for DevtoolsPanel {
             .display(Display::Flex)
             .flex_direction(FlexDirection::Column)
             .flex_grow(1.0)
+            .overflow_x(Overflow::Hidden)
             .overflow_y(Overflow::Auto)
             .padding(Edges::symmetric(8.0, 4.0))
             .child(log_column);
+
+        let close_handle = self.close_handle.clone();
+
+        let header_buttons = View::new()
+            .display(Display::Flex)
+            .flex_direction(FlexDirection::Row)
+            .align_items(Align::Center)
+            .gap(6.0, 0.0)
+            .child(
+                Button::new()
+                    .label("Clear")
+                    .font_size(Length::px(12.0))
+                    .padding(Edges::symmetric(8.0, 4.0))
+                    .background(Color::NEUTRAL_800)
+                    .color(Color::NEUTRAL_100)
+                    .on_click(|_ctx| devtools::clear())
+            )
+            .child(
+                Button::new()
+                    .label("✕")
+                    .font_size(Length::px(12.0))
+                    .padding(Edges::symmetric(8.0, 4.0))
+                    .background(Color::NEUTRAL_800)
+                    .color(Color::NEUTRAL_100)
+                    .on_click(move |ctx| {
+                        close_handle.set(true);
+                        ctx.request_redraw();
+                    })
+            );
 
         let header = View::new()
             .display(Display::Flex)
@@ -319,21 +388,14 @@ impl Render for DevtoolsPanel {
                     .color(Color::NEUTRAL_100)
                     .font_size(Length::px(13.0))
             )
-            .child(
-                Button::new()
-                    .label("Clear")
-                    .font_size(Length::px(12.0))
-                    .padding(Edges::symmetric(8.0, 4.0))
-                    .background(Color::NEUTRAL_800)
-                    .color(Color::NEUTRAL_100)
-                    .on_click(|_ctx| devtools::clear())
-            );
+            .child(header_buttons);
 
         let content = View::new()
             .key("devtools_content")
             .display(Display::Flex)
             .flex_direction(FlexDirection::Column)
             .flex_grow(1.0)
+            .overflow_x(Overflow::Hidden)
             .background(Color::NEUTRAL_950)
             .child(header)
             .child(log_body);
@@ -343,10 +405,81 @@ impl Render for DevtoolsPanel {
                 .display(Display::Flex)
                 .flex_direction(FlexDirection::Row)
                 .size(Length::px(width), pct!(100.0))
-                .child(DevtoolsResizeHandle::new(self.width_handle.clone()))
+                .child(
+                    DevtoolsResizeHandle::new(self.width_handle.clone(), self.close_handle.clone())
+                )
                 .child(content)
         )
     }
 }
 
-crate::impl_composite_widget!(DevtoolsPanel);
+impl Widget for DevtoolsPanel {
+    crate::impl_widget_boilerplate!();
+
+    fn debug_name(&self) -> &'static str {
+        "DevtoolsPanel"
+    }
+
+    fn children(&self) -> &[Box<dyn Widget>] {
+        &self.inner
+    }
+
+    fn children_mut(&mut self) -> Option<&mut Vec<Box<dyn Widget>>> {
+        Some(&mut self.inner)
+    }
+
+    fn measure(&self, _ctx: &mut MeasureContext, _constraints: Constraints) -> MeasureResult {
+        MeasureResult::new(0.0, 0.0)
+    }
+
+    fn on_layout_pass(&self, ctx: &mut MeasureContext) {
+        self.scale_factor.set(ctx.scale_factor);
+    }
+
+    fn paint(&self, _ctx: &mut PaintContext) {}
+
+    fn cascade_style(&mut self, parent: &Style, anim: &mut AnimationManager) {
+        self.base.inherited_style = parent.clone();
+        self.base.recompute_style();
+
+        if self.inner.is_empty() {
+            let key = format!("DevtoolsPanel#{}", self.hooks_id.get());
+            let built = devtools::with_suppressed(|| {
+                crate::component(key, || Render::render(self))
+            });
+            self.inner = vec![built];
+        }
+
+        for child in self.inner.iter_mut() {
+            child.cascade_style(&self.base.computed_style, anim);
+        }
+    }
+
+    fn transfer_interaction_state(&mut self, old: &dyn Widget) {
+        if let (Some(new), Some(old_i)) = (self.interaction_mut(), old.interaction()) {
+            new.transfer_from(old_i);
+        }
+        if let Some(old) = old.as_any().downcast_ref::<DevtoolsPanel>() {
+            self.hooks_id = old.hooks_id;
+            self.scale_factor.set(old.scale_factor.get());
+        }
+    }
+
+    // Its own internal rebuild/reconcile never gets logged and never
+    // wakes another rebuild, so opening or closing the panel can't feed
+    // back into itself.
+    fn transfer_composite_children(&mut self, old: &mut dyn Widget) {
+        let key = format!("DevtoolsPanel#{}", self.hooks_id.get());
+
+        devtools::with_suppressed(|| {
+            let rendered = crate::component(key, || Render::render(self));
+
+            if let Some(old) = old.as_any_mut().downcast_mut::<DevtoolsPanel>() {
+                let mut old_inner = std::mem::take(&mut old.inner);
+                self.inner = crate::reconciler::reconcile_now(vec![rendered], &mut old_inner);
+            } else {
+                self.inner = vec![rendered];
+            }
+        });
+    }
+}
