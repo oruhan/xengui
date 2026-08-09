@@ -1,64 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-use crate::{
-    AUTO_SCROLL_DEAD_ZONE_DP,
-    AUTO_SCROLL_MAX_SPEED,
-    AUTO_SCROLL_RANGE_DP,
-    AnimKey,
-    AnimLayer,
-    AnimProperty,
-    AnimationManager,
-    Background,
-    BorderRadius,
-    Constraints,
-    ContextMenuHandle,
-    Cursor,
-    DEFAULT_SCROLLBAR_THUMB_HOVER_THICKNESS,
-    ElementState,
-    EventCtx,
-    EventStatus,
-    InputEvent,
-    Interaction,
-    Key,
-    KeyState,
-    LayoutBox,
-    Length,
-    MOMENTUM_FRICTION,
-    MOMENTUM_MIN_SPEED,
-    MeasureContext,
-    MeasureResult,
-    ModifiersState,
-    MouseButton,
-    MouseScrollDelta,
-    OVERSCROLL_GLOW_FADE_TRANSITION,
-    OVERSCROLL_RETURN_TRANSITION,
-    OVERSCROLL_RUBBER_BAND_RANGE,
-    Overflow,
-    Overscroll,
-    PaintContext,
-    Point,
-    Rect,
-    RectCommand,
-    ResolvedScrollbar,
-    SCROLL_TRANSITION,
-    SCROLLBAR_ARROW_CAP_SEGMENTS,
-    SCROLLBAR_ARROW_CORNER_RADIUS,
-    SCROLLBAR_ARROW_PRESS_SCALE,
-    SCROLLBAR_ARROW_PRESS_TRANSITION,
-    SCROLLBAR_ARROW_SIZE,
-    SCROLLBAR_DISABLED_OPACITY,
-    SCROLLBAR_THICKNESS_TRANSITION,
-    SCROLLBAR_THUMB_PADDING,
-    ScrollbarGutter,
-    Style,
-    StyleBuilder,
-    TOUCH_PAN_THRESHOLD_DP,
-    TouchPanPhase,
-    Triangle,
-    TriangleCommand,
-    Widget,
-    WidgetBase,
-    WidgetId,
-};
+use crate::*;
 use xen_animation::{ AnimValue };
 use std::cell::Cell;
 use web_time::Instant;
@@ -314,6 +255,9 @@ pub struct View {
     // to snap that edge's animated value back up to full intensity.
     glow_pending_hit: Cell<[bool; 4]>,
     glow_anim_ids: [WidgetId; 4],
+    // When true, `set_content_size` snaps vertical scroll straight to the
+    // bottom instead of preserving whatever offset the view already had
+    pin_scroll_bottom: bool,
 }
 
 impl View {
@@ -362,6 +306,7 @@ impl View {
                 WidgetId::new_unique(),
                 WidgetId::new_unique(),
             ],
+            pin_scroll_bottom: false,
         };
         view = view
             .selection_background(|theme: &crate::Theme| theme.selection)
@@ -409,6 +354,15 @@ impl View {
     /// least one axis.
     pub fn auto_scroll(mut self, enabled: bool) -> Self {
         self.auto_scroll_enabled = enabled;
+        self
+    }
+
+    /// Snaps vertical scroll straight to the maximum offset whenever this
+    /// view's content size changes, instead of preserving the previous
+    /// scroll position. Used by DevTools' log view so newly appended rows
+    /// are always visible without the user scrolling manually.
+    pub(super) fn pin_scroll_to_bottom(mut self, pin: bool) -> Self {
+        self.pin_scroll_bottom = pin;
         self
     }
 
@@ -1731,6 +1685,14 @@ impl Widget for View {
 
     fn set_content_size(&mut self, size: (f32, f32)) {
         self.content_size.set(size);
+
+        if self.pin_scroll_bottom {
+            let bottom = (self.scroll_offset.get().0, self.max_scroll_y());
+            self.scroll_offset.set(bottom);
+            self.scroll_target.set(bottom);
+            return;
+        }
+
         // Re-clamp in case the scrollable range shrank (e.g. children were
         // removed, or the viewport was resized).
         self.scroll_offset.set(self.clamp_offset(self.scroll_offset.get()));

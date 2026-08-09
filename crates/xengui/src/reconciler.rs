@@ -130,15 +130,27 @@ impl WorkLoop {
                 let finished = self.stack.pop().expect("frame exists");
 
                 let old_siblings = resolve_old_siblings_mut(old_root, &finished.old_path);
+                let mut any_removed = false;
                 for (i, consumed) in finished.consumed.iter().enumerate() {
                     if !consumed {
                         unmount_subtree(old_siblings[i].as_mut());
+                        any_removed = true;
                     }
                 }
                 match self.stack.last_mut() {
                     Some(parent) => {
                         let parent_idx = parent.next_index - 1;
-                        if let Some(slot) = parent.new_siblings[parent_idx].children_mut() {
+                        let parent_widget = &mut parent.new_siblings[parent_idx];
+                        if any_removed {
+                            // A child actually disappeared from beneath this
+                            // widget, so its taffy node shape changed even
+                            // though its own style stayed content_eq - without
+                            // this, the widget keeps its stale (pre-removal)
+                            // layout box until something unrelated marks the
+                            // tree dirty again.
+                            parent_widget.set_dirty(true);
+                        }
+                        if let Some(slot) = parent_widget.children_mut() {
                             *slot = finished.new_siblings;
                         }
                     }

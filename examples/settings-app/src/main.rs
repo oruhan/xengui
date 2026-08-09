@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
+// hide console window on windows subsystem
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use web_time::Duration;

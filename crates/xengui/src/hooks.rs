@@ -176,11 +176,13 @@ fn push_component(key: ComponentKey) -> ComponentId {
 
     let first_time_this_frame = LIVE_COMPONENTS.with(|s| s.borrow_mut().insert(id.clone()));
     if !first_time_this_frame {
-        log::warn!(
-            "xengui: duplicate component key '{}' - used twice in the same frame. \
+        let message = format!(
+            "duplicate component key '{}' - used twice in the same frame. \
              In dynamic lists, give each item a unique key (like React's 'key' prop).",
             id.as_str()
         );
+        log::warn!("xengui: {message}");
+        crate::devtools::log_warning(id.as_str(), "component", message);
     }
 
     COMPONENT_STACK.with(|s| s.borrow_mut().push(id.clone()));

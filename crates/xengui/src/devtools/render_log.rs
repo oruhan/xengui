@@ -6,17 +6,27 @@
 
 use std::cell::{ Cell, RefCell };
 use std::collections::VecDeque;
-use web_time::Instant;
+use web_time::{ Instant, SystemTime, UNIX_EPOCH };
+
+/// Widget key assigned to the DevTools panel when it's mounted into the
+/// app's root wrapper (see `xenframe::App::schedule_render`). Shared here
+/// so the render log can recognize - and skip logging - anything that
+/// happened inside the panel's own subtree, instead of the panel
+/// perpetually reporting on its own churn.
+pub const DEVTOOLS_PANEL_KEY: &str = "xengui_devtools_panel";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum RenderEventKind {
     Rerender,
     Repaint,
+    Layout,
+    Warning,
+    Error,
 }
 
 #[derive(Clone, Debug)]
 pub struct RenderLogEntry {
-    pub t_micros: u128,
+    pub epoch_millis: u128,
     pub kind: RenderEventKind,
     pub widget_path: String,
     pub widget_name: &'static str,
@@ -28,7 +38,6 @@ const NOTIFY_THROTTLE_MS: u64 = 300;
 
 thread_local! {
     static LOG: RefCell<VecDeque<RenderLogEntry>> = RefCell::new(VecDeque::with_capacity(CAPACITY));
-    static START: Instant = Instant::now();
     static ENABLED: Cell<bool> = const { Cell::new(false) };
     static LAST_NOTIFY: Cell<Option<Instant>> = const { Cell::new(None) };
     static SUPPRESS_DEPTH: Cell<u32> = const { Cell::new(0) };
@@ -60,6 +69,15 @@ fn is_suppressed() -> bool {
     SUPPRESS_DEPTH.with(|d| d.get() > 0)
 }
 
+// A path is "inside" the DevTools panel when one of its dot-separated
+// segments is the panel's own keyed segment - matches the panel widget
+// itself and everything nested under it (resize handle, buttons, rows...).
+fn is_devtools_panel_path(widget_path: &str) -> bool {
+    widget_path
+        .split('.')
+        .any(|segment| segment.strip_prefix('k').is_some_and(|key| key == DEVTOOLS_PANEL_KEY))
+}
+
 fn notify_new_entry() {
     let should_notify = LAST_NOTIFY.with(|cell| {
         let now = Instant::now();
@@ -79,17 +97,20 @@ fn notify_new_entry() {
 }
 
 fn push(kind: RenderEventKind, widget_path: &str, widget_name: &'static str, reason: String) {
-    if !is_enabled() || is_suppressed() {
+    if !is_enabled() || is_suppressed() || is_devtools_panel_path(widget_path) {
         return;
     }
-    let t_micros = START.with(|s| Instant::now().duration_since(*s).as_micros());
+    let epoch_millis = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_millis())
+        .unwrap_or(0);
     LOG.with(|log| {
         let mut log = log.borrow_mut();
         if log.len() == CAPACITY {
             log.pop_front();
         }
         log.push_back(RenderLogEntry {
-            t_micros,
+            epoch_millis,
             kind,
             widget_path: widget_path.to_string(),
             widget_name,
@@ -105,6 +126,20 @@ pub fn log_rerender(widget_path: &str, widget_name: &'static str, reason: impl I
 
 pub fn log_repaint(widget_path: &str, widget_name: &'static str, reason: impl Into<String>) {
     push(RenderEventKind::Repaint, widget_path, widget_name, reason.into());
+}
+
+/// Logs that a full layout pass (taffy tree rebuild + re-apply) actually
+/// ran this frame, as opposed to the cheaper cascade/reflow-only path.
+pub fn log_layout(widget_path: &str, widget_name: &'static str, reason: impl Into<String>) {
+    push(RenderEventKind::Layout, widget_path, widget_name, reason.into());
+}
+
+pub fn log_warning(widget_path: &str, widget_name: &'static str, reason: impl Into<String>) {
+    push(RenderEventKind::Warning, widget_path, widget_name, reason.into());
+}
+
+pub fn log_error(widget_path: &str, widget_name: &'static str, reason: impl Into<String>) {
+    push(RenderEventKind::Error, widget_path, widget_name, reason.into());
 }
 
 /// Snapshot of every entry recorded so far, oldest first.

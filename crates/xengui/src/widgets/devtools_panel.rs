@@ -287,15 +287,30 @@ impl StyleBuilder for DevtoolsPanel {
     }
 }
 
+// Formats milliseconds-since-epoch as a plain HH:MM:SS wall-clock string
+// (UTC, since no timezone database is available here) - readable at a
+// glance, unlike a raw microsecond counter.
+fn format_clock(epoch_millis: u128) -> String {
+    let total_seconds = epoch_millis / 1000;
+    let seconds_of_day = total_seconds % 86400;
+    let hours = seconds_of_day / 3600;
+    let minutes = (seconds_of_day % 3600) / 60;
+    let seconds = seconds_of_day % 60;
+    format!("{hours:02}:{minutes:02}:{seconds:02}")
+}
+
 fn entry_row(entry: &devtools::RenderLogEntry, index: usize) -> Label {
     let (kind_label, kind_color) = match entry.kind {
-        RenderEventKind::Rerender => ("RERENDER", Color::AMBER_400),
-        RenderEventKind::Repaint => ("REPAINT ", Color::SKY_400),
+        RenderEventKind::Rerender => ("RERENDER", Color::WHITE),
+        RenderEventKind::Repaint => ("REPAINT ", Color::WHITE),
+        RenderEventKind::Layout => ("LAYOUT  ", Color::WHITE),
+        RenderEventKind::Warning => ("WARNING ", Color::AMBER_400),
+        RenderEventKind::Error => ("ERROR   ", Color::RED_400),
     };
 
     let text = format!(
-        "[{:>10}us] {kind_label}  {:<28} {:<20} {}",
-        entry.t_micros,
+        "[{}] {kind_label}  {:<28} {:<20} {}",
+        format_clock(entry.epoch_millis),
         entry.widget_path,
         entry.widget_name,
         entry.reason
@@ -344,6 +359,7 @@ impl Render for DevtoolsPanel {
             .overflow_x(Overflow::Hidden)
             .overflow_y(Overflow::Auto)
             .padding(Edges::symmetric(8.0, 4.0))
+            .pin_scroll_to_bottom(true)
             .child(log_column);
 
         let close_handle = self.close_handle.clone();

@@ -184,14 +184,25 @@ impl App {
         }
 
         if self.devtools_ever_opened {
-            new_root.style_mut().flex_grow = Some(1.0);
+            let root_style = new_root.style_mut();
+            root_style.flex_grow = Some(1.0);
+            // A root View commonly pins its own width to 100% via
+            // StyleBuilder::width/size; style_to_taffy then treats that
+            // explicit width as a hard floor (flex_shrink forced to 0.0)
+            // unless overridden here, so without this the app content
+            // would refuse to shrink for the panel and push it off the
+            // right edge of the window instead.
+            root_style.flex_shrink = Some(1.0);
+            root_style.min_size.get_or_insert_with(Default::default).width = Some(
+                xengui::Length::px(0.0)
+            );
 
             let mut children: Vec<Box<dyn xengui::Widget>> = vec![new_root];
 
             if self.devtools_open {
                 let panel = xengui::DevtoolsPanel
                     ::new(self.devtools_panel_width.clone(), self.devtools_close_requested.clone())
-                    .key("xengui_devtools_panel");
+                    .key(xengui::devtools::DEVTOOLS_PANEL_KEY);
                 children.push(Box::new(panel));
             }
 

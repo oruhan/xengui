@@ -18,3 +18,8 @@ env_logger = { workspace = true }
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 console_error_panic_hook = "0.1.7"
 console_log = { workspace = true }
+
+[build-dependencies]
+ico = "0.3"
+image = "0.24"
+winres = "0.1"
