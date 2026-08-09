@@ -18,6 +18,8 @@ pub mod table;
 pub mod radio;
 /* DevTools */
 pub mod devtools_panel;
+pub mod split_handle;
+pub mod split_pane;
 
 pub use view::View;
 pub use layout_sugar::{ Column, Row };
@@ -45,6 +47,8 @@ pub use table::{ Table, TableColumn, TableRow };
 pub use radio::RadioButton;
 /* DevTools */
 pub use devtools_panel::*;
+pub use split_handle::*;
+pub use split_pane::*;
 
 #[cfg(not(target_arch = "wasm32"))]
 pub use image::image_source_from_path;
