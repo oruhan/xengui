@@ -49,8 +49,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     );
 
     app.render(|| {
-        let sidebar_width: Rc<Cell<f32>> = Rc::new(Cell::new(240.0));
-        let outline_width: Rc<Cell<f32>> = Rc::new(Cell::new(240.0));
+        let (sidebar_width, _) = use_state(Rc::new(Cell::new(240.0)));
+        let (outline_width, _) = use_state(Rc::new(Cell::new(240.0)));
+        let (bottom_height, _) = use_state(Rc::new(Cell::new(200.0)));
 
         Box::new(
             ContextMenu::new()
@@ -126,7 +127,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                             .color(|theme: &Theme| theme.on_primary)
                                             .width(pct!(100))
                                             .child(Label::new().label("Bottom box")),
-                                        outline_width.clone()
+                                        bottom_height.clone()
                                     )
                                         .min_size(160.0)
                                         .max_size(400.0)
