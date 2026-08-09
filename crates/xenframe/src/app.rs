@@ -1,6 +1,6 @@
 #[cfg(target_arch = "wasm32")]
 use std::cell::RefCell;
-#[cfg(target_arch = "wasm32")]
+use std::cell::Cell;
 use std::rc::Rc;
 use std::{ sync::Arc };
 use web_time::Instant;
@@ -8,7 +8,28 @@ use web_time::Instant;
 use winit::event_loop::{ ControlFlow, EventLoop };
 use winit::window::Window;
 use xengui::{
-    Cursor, ElementState, EventCtx, InputEvent, InputState, MouseButton, TOUCH_LONG_PRESS_DURATION, TOUCH_LONG_PRESS_MOVE_TOLERANCE_DP, TouchPanPhase, Widget, clear_text_selection_recursive, collect_focusable_paths, collect_selected_text_recursive, dispatch_positional, dispatch_to_path, hit_test_path, hooks, path_is_within, reconciler, style, update_global_text_selection,
+    Cursor,
+    ElementState,
+    EventCtx,
+    InputEvent,
+    InputState,
+    MouseButton,
+    StyleBuilder,
+    TOUCH_LONG_PRESS_DURATION,
+    TOUCH_LONG_PRESS_MOVE_TOLERANCE_DP,
+    TouchPanPhase,
+    Widget,
+    clear_text_selection_recursive,
+    collect_focusable_paths,
+    collect_selected_text_recursive,
+    dispatch_positional,
+    dispatch_to_path,
+    hit_test_path,
+    hooks,
+    path_is_within,
+    reconciler,
+    style,
+    update_global_text_selection,
 };
 use xengui_wgpu::WgpuWindowRenderer;
 
@@ -50,6 +71,11 @@ pub struct App {
     pub(crate) clipboard: xen_clipboard::Clipboard,
     pub(crate) pending_long_press: Option<(Instant, (f32, f32), String)>,
     pub(crate) last_titlebar_click: Option<(Instant, (f32, f32))>,
+    // DevTools: toggled with F12, panel width persists across rebuilds
+    // via a shared handle since the App reconstructs the whole tree
+    // (including a fresh DevtoolsPanel instance) on every render.
+    pub(crate) devtools_open: bool,
+    pub(crate) devtools_panel_width: Rc<Cell<f32>>,
     #[cfg(target_os = "windows")]
     pub(crate) last_rendered_size: Option<(u32, u32)>,
 
@@ -87,6 +113,9 @@ impl App {
             clipboard: xen_clipboard::Clipboard::new(),
             pending_long_press: None,
             last_titlebar_click: None,
+            devtools_open: false,
+            devtools_panel_width: Rc::new(Cell::new(420.0)),
+
             #[cfg(target_os = "windows")]
             last_rendered_size: None,
 
@@ -140,10 +169,29 @@ impl App {
         style::theme::set_current_theme(active.resolved_for_system(system_is_dark));
 
         hooks::begin_render();
-        let new_root = hooks::component("root", || builder());
+        let mut new_root = hooks::component("root", || builder());
         hooks::end_render();
 
         hooks::take_dirty();
+
+        // Wraps the real root with the DevTools sidebar when open, so the
+        // main content shrinks to make room instead of the panel
+        // overlapping it. The wrap is rebuilt every schedule_render since
+        // the user's own root is rebuilt fresh too.
+        if self.devtools_open {
+            new_root.style_mut().flex_grow = Some(1.0);
+            let panel = xengui::DevtoolsPanel
+                ::new(self.devtools_panel_width.clone())
+                .key("xengui_devtools_panel");
+            new_root = Box::new(
+                xengui::View
+                    ::new()
+                    .display(xengui::Display::Flex)
+                    .flex_direction(xengui::FlexDirection::Row)
+                    .size(xengui::pct!(100.0), xengui::pct!(100.0))
+                    .children_vec(vec![new_root, Box::new(panel) as Box<dyn xengui::Widget>])
+            );
+        }
 
         let new_tree = vec![new_root];
         self.reconcile_work = Some(reconciler::WorkLoop::new(new_tree, &self.root));

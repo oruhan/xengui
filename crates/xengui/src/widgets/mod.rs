@@ -16,6 +16,8 @@ pub mod kbd;
 pub mod switch;
 pub mod table;
 pub mod radio;
+/* DevTools */
+pub mod devtools_panel;
 
 pub use view::View;
 pub use layout_sugar::{ Column, Row };
@@ -41,6 +43,8 @@ pub use kbd::Kbd;
 pub use switch::Switch;
 pub use table::{ Table, TableColumn, TableRow };
 pub use radio::RadioButton;
+/* DevTools */
+pub use devtools_panel::*;
 
 #[cfg(not(target_arch = "wasm32"))]
 pub use image::image_source_from_path;

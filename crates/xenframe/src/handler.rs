@@ -970,6 +970,24 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
                     _ => {}
                 }
 
+                // Toggles the built-in render/repaint inspector, handled
+                // globally like Tab just below - not routed through
+                // whatever widget currently has focus.
+                if
+                    keyboard_event.key == Key::F12 &&
+                    keyboard_event.state == KeyState::Pressed &&
+                    !keyboard_event.repeat
+                {
+                    self.devtools_open = !self.devtools_open;
+                    xengui::devtools::set_enabled(self.devtools_open);
+                    self.schedule_render();
+                    while self.pump_reconciliation() {}
+                    if let Some(window) = &self.window {
+                        window.request_redraw();
+                    }
+                    return;
+                }
+
                 if
                     keyboard_event.key == Key::Tab &&
                     keyboard_event.state == KeyState::Pressed &&
