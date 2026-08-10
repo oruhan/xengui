@@ -27,6 +27,7 @@ use crate::{
     Widget,
     WidgetBase,
     WidgetContent,
+    WidgetId,
     constants::{
         DEFAULT_CURSOR_ICON,
         DEFAULT_FONT_SIZE,
@@ -40,6 +41,7 @@ use web_time::Instant;
 
 pub struct Link {
     base: WidgetBase,
+    anim_id: WidgetId,
 
     selectable: bool,
     content: SmolStr,
@@ -69,6 +71,7 @@ impl Link {
 
         let mut link = Self {
             base: WidgetBase::new(interaction),
+            anim_id: WidgetId::new_unique(),
 
             selectable: false,
             content: SmolStr::new(""),
@@ -597,13 +600,29 @@ impl Widget for Link {
             self.target_blank == other.target_blank
     }
 
-    fn cascade_style(&mut self, parent: &Style, _anim: &mut AnimationManager) {
+    fn cascade_style(&mut self, parent: &Style, anim: &mut AnimationManager) {
         self.base.inherited_style = parent.clone();
         self.recompute_style();
+        if crate::animate_computed_style(self.anim_id, &mut self.base.computed_style, anim) {
+            self.base.dirty = true;
+        }
     }
 
     fn after_interaction_transfer(&mut self) {
         self.recompute_style();
+    }
+
+    fn transfer_interaction_state(&mut self, old: &dyn Widget) {
+        if let (Some(new), Some(old_i)) = (self.interaction_mut(), old.interaction()) {
+            new.transfer_from(old_i);
+        }
+        if let Some(old) = old.as_any().downcast_ref::<Link>() {
+            self.anim_id = old.anim_id;
+        }
+    }
+
+    fn anim_id(&self) -> WidgetId {
+        self.anim_id
     }
 
     fn transfer_measured_state(&mut self, old: &dyn Widget) {

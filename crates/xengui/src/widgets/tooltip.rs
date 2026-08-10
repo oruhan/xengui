@@ -286,7 +286,7 @@ impl Widget for Tooltip {
 
         let bg = self.background.clone().unwrap_or(Background::Color(theme.inverse_surface));
         let bg_color = bg.representative_color();
-        let radius = self.border_radius.unwrap_or(Length::px(4.0)).to_physical(sf);
+        let radius = self.border_radius.unwrap_or(Length::px(8.0)).to_physical(sf);
 
         if let Some(shadows) = &self.base.computed_style.box_shadow {
             let popup_box = LayoutBox { x, y, width: size.0, height: size.1 };
@@ -331,9 +331,21 @@ impl Widget for Tooltip {
     fn event(&mut self, event: &InputEvent, ctx: &mut EventCtx) -> EventStatus {
         match event {
             InputEvent::MouseMoved { position } => {
-                let hovering = self.layout_box.contains_rounded(*position, 0.0);
-                if hovering && self.hover_start.get().is_none() {
-                    self.hover_start.set(Some(Instant::now()));
+                // hit_test already covers the floating popup's own bounds
+                // while showing, so this doubles as the closing path when
+                // the pointer leaves without a matching MouseExited ever
+                // reaching this widget.
+                if self.hit_test(*position) {
+                    if self.hover_start.get().is_none() {
+                        self.hover_start.set(Some(Instant::now()));
+                    }
+                } else {
+                    self.hover_start.set(None);
+                    if self.showing.get() {
+                        self.showing.set(false);
+                        self.base.dirty = true;
+                        ctx.request_redraw();
+                    }
                 }
             }
             // Guaranteed to fire whenever the pointer leaves this widget's
