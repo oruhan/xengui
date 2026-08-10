@@ -80,7 +80,7 @@ impl PostProcessEngine {
         Self {
             color: ColorFilterPass::new(device, format),
             kawase: KawasePass::new(device, format),
-            blit: BlitPass::new(device, format),
+            blit: BlitPass::new(device, format, 1),
             pool: TexturePool::new(format),
             box_shadow: BoxShadowEngine::new(device, format),
         }

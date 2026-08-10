@@ -10,7 +10,7 @@ xenframe = { workspace = true }
 xengui-wgpu = { workspace = true }
 xen-router = { workspace = true }
 xen-clipboard = { workspace = true }
-xengui-lucide = { workspace = true }
+xengui-icons = { workspace = true }
 web-time = { workspace = true }
 log = { workspace = true }
 

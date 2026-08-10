@@ -119,9 +119,9 @@ impl Checkbox {
         self
     }
 
-    /// Overrides the icon drawn while checked. Defaults to xengui-lucide's
+    /// Overrides the icon drawn while checked. Defaults to xengui-icons's
     /// check icon; accepts any SVG source, including another
-    /// `xengui-lucide` constant.
+    /// `xengui-icons` constant.
     pub fn icon(mut self, svg_source: &str) -> Self {
         self.check_icon.set_svg(svg_source);
         self.mark_dirty();
@@ -129,7 +129,7 @@ impl Checkbox {
     }
 
     /// Overrides the icon drawn while indeterminate. Defaults to
-    /// xengui-lucide's minus icon.
+    /// xengui-icons's minus icon.
     pub fn indeterminate_icon(mut self, svg_source: &str) -> Self {
         self.indeterminate_icon.set_svg(svg_source);
         self.mark_dirty();

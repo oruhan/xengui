@@ -2,7 +2,7 @@
 //! Shared icon-rendering helper for widgets that paint a small optional
 //! SVG glyph (Checkbox's check/dash, Switch's on/off icon), mapped into
 //! an arbitrary square box at paint time. Default icons (from
-//! xengui-lucide) are parsed once per process and shared via `Arc`
+//! xengui-icons) are parsed once per process and shared via `Arc`
 //! instead of being re-tessellated on every widget instance.
 use crate::{ Color, PaintContext, TriangleCommand };
 use std::sync::{ Arc, OnceLock };
@@ -33,20 +33,20 @@ pub(super) struct IconSlot {
 impl IconSlot {
     pub(super) fn default_check() -> Self {
         let (document, triangles) = DEFAULT_CHECK.get_or_init(||
-            parse_and_tessellate(xengui_lucide::CHECK_SVG)
+            parse_and_tessellate(xengui_icons::Material::PLUS)
         ).clone();
         Self { enabled: true, document: Some(document), triangles }
     }
 
     pub(super) fn default_minus() -> Self {
         let (document, triangles) = DEFAULT_MINUS.get_or_init(||
-            parse_and_tessellate(xengui_lucide::MINUS_SVG)
+            parse_and_tessellate(xengui_icons::Material::MINUS)
         ).clone();
         Self { enabled: true, document: Some(document), triangles }
     }
 
     /// Replaces the icon with arbitrary SVG source - a custom icon or
-    /// another `xengui-lucide` constant are both just a `&str` here.
+    /// another `xengui-icons` constant are both just a `&str` here.
     pub(super) fn set_svg(&mut self, source: &str) {
         let (document, triangles) = parse_and_tessellate(source);
         self.document = Some(document);

@@ -585,9 +585,9 @@ pub fn layout(_params: &RouteParams, child: Box<dyn Widget>) -> Box<dyn Widget> 
                                                     )
                                                     .child(
                                                         Link::new()
-                                                            .label("xengui-lucide")
+                                                            .label("xengui-icons")
                                                             .href(
-                                                                "https://crates.io/crates/xengui-lucide"
+                                                                "https://crates.io/crates/xengui-icons"
                                                             )
                                                             .target_blank(true)
                                                             .color(|theme: &Theme| theme.on_surface)

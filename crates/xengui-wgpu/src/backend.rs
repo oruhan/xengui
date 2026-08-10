@@ -7,7 +7,7 @@ use crate::pipelines::{
     TextPipeline,
     TrianglePipeline,
 };
-use crate::pipelines::postprocess::{ padding_for_chain, directional_shadow_padding };
+use crate::pipelines::postprocess::{ BlitPass, directional_shadow_padding, padding_for_chain };
 use xengui::{
     BoxShadowCommand,
     Color,
@@ -28,6 +28,7 @@ use xengui::{
 pub struct WgpuPipelines {
     pub(crate) rect: RectPipeline,
     triangle: TrianglePipeline,
+    triangle_offscreen: TrianglePipeline,
     stroke: StrokePipeline,
     image: ImagePipeline,
     text: TextPipeline,
@@ -49,6 +50,13 @@ pub struct WgpuPipelines {
     scene_view: wgpu::TextureView,
     scene_width: u32,
     scene_height: u32,
+    // MSAA
+    triangle_sample_count: u32,
+    triangle_msaa_seed: BlitPass,
+    triangle_msaa_texture: Option<wgpu::Texture>,
+    triangle_msaa_view: Option<wgpu::TextureView>,
+    triangle_msaa_width: u32,
+    triangle_msaa_height: u32,
 }
 
 impl WgpuPipelines {
@@ -62,9 +70,13 @@ impl WgpuPipelines {
     ) -> Result<Self, String> {
         let sample_count = requested_samples.clamp_to_adapter(adapter, surface_format).as_u32();
 
-        // Placeholder 1x1 target; the real size is (re)created lazily by
-        // `ensure_scene_target` on the first `begin_frame` call, once the
-        // actual surface dimensions are known.
+        // Tessellated SVG triangles (icons, checkmarks) have no analytic AA
+        // of their own the way the rect/image SDF pipelines do, so they get
+        // a dedicated MSAA target independent of the rest of the scene.
+        let triangle_sample_count = crate::SampleCount::X4
+            .clamp_to_adapter(adapter, surface_format)
+            .as_u32();
+
         let scene_texture = device.create_texture(
             &(wgpu::TextureDescriptor {
                 label: Some("xengui scene target"),
@@ -83,7 +95,8 @@ impl WgpuPipelines {
 
         Ok(Self {
             rect: RectPipeline::new(device, surface_format, sample_count),
-            triangle: TrianglePipeline::new(device, surface_format, sample_count),
+            triangle: TrianglePipeline::new(device, surface_format, triangle_sample_count),
+            triangle_offscreen: TrianglePipeline::new(device, surface_format, 1),
             stroke: StrokePipeline::new(device, surface_format, sample_count),
             image: ImagePipeline::new(device, surface_format, sample_count),
             text: TextPipeline::new(device, queue, surface_format, user_fonts, sample_count)?,
@@ -92,6 +105,12 @@ impl WgpuPipelines {
             sample_count,
             msaa_texture: None,
             msaa_view: None,
+            triangle_sample_count,
+            triangle_msaa_seed: BlitPass::new(device, surface_format, triangle_sample_count),
+            triangle_msaa_texture: None,
+            triangle_msaa_view: None,
+            triangle_msaa_width: 0,
+            triangle_msaa_height: 0,
             scene_texture,
             scene_view,
             scene_width: 0,
@@ -126,6 +145,33 @@ impl WgpuPipelines {
         self.scene_texture = texture;
         self.scene_width = width;
         self.scene_height = height;
+    }
+
+    fn ensure_triangle_msaa_target(&mut self, device: &wgpu::Device, width: u32, height: u32) {
+        if self.triangle_sample_count <= 1 {
+            return;
+        }
+        let width = width.max(1);
+        let height = height.max(1);
+        if self.triangle_msaa_width == width && self.triangle_msaa_height == height {
+            return;
+        }
+        let texture = device.create_texture(
+            &(wgpu::TextureDescriptor {
+                label: Some("xengui triangle msaa target"),
+                size: wgpu::Extent3d { width, height, depth_or_array_layers: 1 },
+                mip_level_count: 1,
+                sample_count: self.triangle_sample_count,
+                dimension: wgpu::TextureDimension::D2,
+                format: self.surface_format,
+                usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+                view_formats: &[],
+            })
+        );
+        self.triangle_msaa_view = Some(texture.create_view(&Default::default()));
+        self.triangle_msaa_texture = Some(texture);
+        self.triangle_msaa_width = width;
+        self.triangle_msaa_height = height;
     }
 
     /// Composites the accumulated scene target onto `target` (the real
@@ -199,8 +245,10 @@ impl WgpuPipelines {
         log::trace!("WgpuPipelines::begin_frame size={width}x{height} scale_factor={scale_factor}");
 
         self.ensure_scene_target(device, width, height);
+        self.ensure_triangle_msaa_target(device, width, height);
         self.rect.reset_frame();
         self.triangle.reset_frame();
+        self.triangle_offscreen.reset_frame();
         self.stroke.reset_frame();
         self.image.reset_frame();
         self.postprocess.reset_frame();
@@ -377,7 +425,7 @@ impl<'a> WgpuFrame<'a> {
                     }
                     Some(RunKind::Triangle) => {
                         let mut pass = shape_pass!();
-                        self.pipelines.triangle.draw_batch(
+                        self.pipelines.triangle_offscreen.draw_batch(
                             self.device,
                             self.queue,
                             &mut pass,
@@ -585,15 +633,71 @@ impl<'a> RenderBackend for WgpuFrame<'a> {
         if cmds.is_empty() {
             return;
         }
-        let load = self.shape_pass_load();
+
+        let Some(msaa_view) = self.pipelines.triangle_msaa_view.clone() else {
+            // Adapter has no MSAA support for this format - falls back
+            // to the plain single-sample path instead of failing.
+            let load = self.shape_pass_load();
+            let mut pass = self.encoder.begin_render_pass(
+                &(wgpu::RenderPassDescriptor {
+                    label: Some("xengui shape pass"),
+                    color_attachments: &[
+                        Some(wgpu::RenderPassColorAttachment {
+                            view: &self.view,
+                            resolve_target: None,
+                            ops: wgpu::Operations { load, store: wgpu::StoreOp::Store },
+                            depth_slice: None,
+                        }),
+                    ],
+                    depth_stencil_attachment: None,
+                    timestamp_writes: None,
+                    occlusion_query_set: None,
+                    multiview_mask: None,
+                })
+            );
+            self.pipelines.triangle.draw_batch(
+                self.device,
+                self.queue,
+                &mut pass,
+                self.width,
+                self.height,
+                cmds
+            );
+            return;
+        };
+
+        if !self.shape_pass_open {
+            self.clear_frame();
+        }
+
+        // The MSAA resolve at the end of this pass overwrites the whole
+        // target, so every sample first needs to see what's already
+        // painted in the scene, not just the pixels the triangles
+        // themselves cover.
+        self.pipelines.triangle_msaa_seed.run(
+            self.device,
+            self.queue,
+            self.encoder,
+            &self.view,
+            &msaa_view,
+            self.width,
+            self.height,
+            (0.0, 0.0),
+            (1.0, 1.0),
+            None
+        );
+
         let mut pass = self.encoder.begin_render_pass(
             &(wgpu::RenderPassDescriptor {
-                label: Some("xengui shape pass"),
+                label: Some("xengui triangle msaa pass"),
                 color_attachments: &[
                     Some(wgpu::RenderPassColorAttachment {
-                        view: &self.view,
-                        resolve_target: None,
-                        ops: wgpu::Operations { load, store: wgpu::StoreOp::Store },
+                        view: &msaa_view,
+                        resolve_target: Some(&self.view),
+                        ops: wgpu::Operations {
+                            load: wgpu::LoadOp::Load,
+                            store: wgpu::StoreOp::Store,
+                        },
                         depth_slice: None,
                     }),
                 ],

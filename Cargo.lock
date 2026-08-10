@@ -705,7 +705,7 @@ dependencies = [
  "xen-router-build",
  "xenframe",
  "xengui",
- "xengui-lucide",
+ "xengui-icons",
  "xengui-wgpu",
 ]
 
@@ -1193,7 +1193,7 @@ dependencies = [
  "xen-clipboard",
  "xenframe",
  "xengui",
- "xengui-lucide",
+ "xengui-icons",
 ]
 
 [[package]]
@@ -2209,7 +2209,7 @@ dependencies = [
  "xen-router-build",
  "xenframe",
  "xengui",
- "xengui-lucide",
+ "xengui-icons",
  "xengui-wgpu",
 ]
 
@@ -2376,7 +2376,7 @@ dependencies = [
  "xen-clipboard",
  "xenframe",
  "xengui",
- "xengui-lucide",
+ "xengui-icons",
 ]
 
 [[package]]
@@ -3184,7 +3184,7 @@ dependencies = [
  "xen-clipboard",
  "xenframe",
  "xengui",
- "xengui-lucide",
+ "xengui-icons",
 ]
 
 [[package]]
@@ -3584,7 +3584,7 @@ dependencies = [
  "xen-animation",
  "xen-clipboard",
  "xen-svg",
- "xengui-lucide",
+ "xengui-icons",
 ]
 
 [[package]]
@@ -3602,12 +3602,12 @@ dependencies = [
  "xen-router-build",
  "xenframe",
  "xengui",
- "xengui-lucide",
+ "xengui-icons",
  "xengui-wgpu",
 ]
 
 [[package]]
-name = "xengui-lucide"
+name = "xengui-icons"
 version = "0.1.0"
 dependencies = [
  "xen-svg",

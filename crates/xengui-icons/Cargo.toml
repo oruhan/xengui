@@ -1,0 +1,15 @@
+[package]
+name = "xengui-icons"
+version = "0.1.0"
+edition = { workspace = true }
+rust-version = { workspace = true }
+authors = ["randseas <waultbank@gmail.com>"]
+description = "xengui icons"
+license = "Apache-2.0"
+repository = "https://github.com/randseas/xengui/tree/main/crates/xengui-icons"
+readme = "README.md"
+keywords = ["gui", "icons", "svg", "lucide", "material"]
+categories = ["gui"]
+
+[dependencies]
+xen-svg = { workspace = true }

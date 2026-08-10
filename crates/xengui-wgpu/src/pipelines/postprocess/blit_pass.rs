@@ -35,7 +35,7 @@ pub struct BlitPass {
 }
 
 impl BlitPass {
-    pub fn new(device: &wgpu::Device, format: wgpu::TextureFormat) -> Self {
+    pub fn new(device: &wgpu::Device, format: wgpu::TextureFormat, sample_count: u32) -> Self {
         let vs = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("Blit Fullscreen VS"),
             source: wgpu::ShaderSource::Wgsl(include_str!("../shaders/fullscreen.wgsl").into()),
@@ -103,7 +103,11 @@ impl BlitPass {
                         ..Default::default()
                     },
                     depth_stencil: None,
-                    multisample: Default::default(),
+                    multisample: wgpu::MultisampleState {
+                        count: sample_count,
+                        mask: !0,
+                        alpha_to_coverage_enabled: false,
+                    },
                     fragment: Some(wgpu::FragmentState {
                         module: &fs,
                         entry_point: Some("fs_main"),
@@ -128,10 +132,6 @@ impl BlitPass {
             "Blit Pipeline (blend)"
         );
 
-        // The shader itself clamps sample_uv to [0,1] and returns transparent
-        // black outside that range, so the sampler's own address mode never
-        // actually samples out-of-bounds - ClampToEdge avoids depending on
-        // the optional ADDRESS_MODE_CLAMP_TO_BORDER device feature.
         let sampler = device.create_sampler(
             &(wgpu::SamplerDescriptor {
                 label: Some("xengui blit sampler"),

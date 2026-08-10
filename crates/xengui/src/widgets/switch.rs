@@ -166,8 +166,8 @@ impl Switch {
     }
 
     /// Overrides the icon shown once the thumb settles into the "on"
-    /// state. Defaults to xengui-lucide's check icon; accepts any SVG
-    /// source, including another `xengui-lucide` constant.
+    /// state. Defaults to xengui-icons's check icon; accepts any SVG
+    /// source, including another `xengui-icons` constant.
     pub fn icon_on(mut self, svg_source: &str) -> Self {
         self.icon_on.set_svg(svg_source);
         self.mark_dirty();
@@ -175,7 +175,7 @@ impl Switch {
     }
 
     /// Overrides the icon shown once the thumb settles into the "off"
-    /// state. Defaults to xengui-lucide's minus icon.
+    /// state. Defaults to xengui-icons's minus icon.
     pub fn icon_off(mut self, svg_source: &str) -> Self {
         self.icon_off.set_svg(svg_source);
         self.mark_dirty();
