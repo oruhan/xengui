@@ -212,6 +212,7 @@ impl VariableIconPipeline {
 
         let font = FontRef::from_index(cmd.font, 0)?;
         let glyph_id = font.charmap().map(cmd.codepoint);
+
         if glyph_id == 0 {
             log::warn!(
                 "xengui-wgpu: VariableIcon codepoint U+{:04X} not found in font",
@@ -223,7 +224,7 @@ impl VariableIconPipeline {
         let variation_settings: Vec<(swash::Tag, f32)> = cmd.axes
             .to_variations()
             .into_iter()
-            .map(|(tag, value)| (swash::Tag::new(&tag), value))
+            .map(|(tag, value)| { (u32::from_be_bytes(tag), value) })
             .collect();
 
         let mut scaler = self.scale_context

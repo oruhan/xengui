@@ -31,7 +31,6 @@ use crate::{
     WidgetBase,
     WidgetId,
     constants::{ DEFAULT_CURSOR_ICON, DEFAULT_POINTER_CURSOR_ICON },
-    widgets::icon_slot::IconSlot,
 };
 use std::cell::Cell;
 use web_time::Duration;
@@ -84,8 +83,8 @@ pub struct Switch {
     progress: Cell<f32>,
     thumb_size: Cell<f32>,
     on_change: Option<ChangeCallback>,
-    icon_on: IconSlot,
-    icon_off: IconSlot,
+    /*icon_on: IconSlot,
+    icon_off: IconSlot,*/
 }
 
 impl Switch {
@@ -108,8 +107,8 @@ impl Switch {
             progress: Cell::new(0.0),
             thumb_size: Cell::new(THUMB_UNSELECTED),
             on_change: None,
-            icon_on: IconSlot::default_check(),
-            icon_off: IconSlot::default_minus(),
+            /*icon_on: IconSlot::default_check(),
+            icon_off: IconSlot::default_minus(),*/
         };
 
         switch.recompute_style();
@@ -165,7 +164,7 @@ impl Switch {
         self
     }
 
-    /// Overrides the icon shown once the thumb settles into the "on"
+    /*/// Overrides the icon shown once the thumb settles into the "on"
     /// state. Defaults to xengui-icons's check icon; accepts any SVG
     /// source, including another `xengui-icons` constant.
     pub fn icon_on(mut self, svg_source: &str) -> Self {
@@ -188,7 +187,7 @@ impl Switch {
         self.icon_off.set_enabled(enabled);
         self.mark_dirty();
         self
-    }
+    }*/
 
     fn recompute_style(&mut self) {
         self.base.recompute_style();
@@ -298,7 +297,7 @@ impl Widget for Switch {
         let icon_size = thumb_d * 0.64;
         let icon_rect = (cx - icon_size * 0.5, cy - icon_size * 0.5, icon_size, icon_size);
 
-        if t > 0.6 {
+        /*if t > 0.6 {
             // Icon fades in once the thumb has mostly grown to its "on"
             // size, matching Material 3's icon-switch timing.
             let mark_alpha = ((t - 0.6) / 0.4).clamp(0.0, 1.0);
@@ -307,7 +306,7 @@ impl Widget for Switch {
             // Icon fades in as the thumb shrinks back to its "off" size.
             let mark_alpha = ((0.4 - t) / 0.4).clamp(0.0, 1.0);
             self.icon_off.paint(ctx, icon_rect, track_off, mark_alpha);
-        }
+        }*/
 
         self.paint_outline(ctx);
     }
@@ -376,8 +375,8 @@ impl Widget for Switch {
             self.thumb_on_color == other.thumb_on_color &&
             self.thumb_off_color == other.thumb_off_color &&
             self.border_color == other.border_color &&
-            self.icon_on == other.icon_on &&
-            self.icon_off == other.icon_off &&
+            /*self.icon_on == other.icon_on &&
+            self.icon_off == other.icon_off &&*/
             self.base.style == other.base.style
     }
 

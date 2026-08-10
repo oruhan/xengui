@@ -8,6 +8,7 @@ use xenframe::{ App, AppConfig };
 #[cfg(not(target_arch = "wasm32"))]
 use xenframe::WindowPosition;
 use xengui::{ properties::StyleValue, * };
+use xengui_icons::{ IconAxes, codepoints };
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     #[cfg(target_arch = "wasm32")]
@@ -298,6 +299,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                             s
                                                 .background(Color::NEUTRAL_100)
                                                 .color(Color::NEUTRAL_400)
+                                        )
+                                )
+                                .child(
+                                    VariableIcon::new(codepoints::HOME)
+                                        .size(32.0)
+                                        .color(Color::WHITE)
+                                        .axes(
+                                            IconAxes::default()
+                                                .weight(500.0)
+                                                .grade(0.0)
+                                                .optical_size(32.0)
+                                                .fill(0.0)
                                         )
                                 )
                                 .child(

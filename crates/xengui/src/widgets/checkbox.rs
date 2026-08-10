@@ -31,7 +31,6 @@ use crate::{
     WidgetBase,
     WidgetId,
     constants::{ DEFAULT_CURSOR_ICON, DEFAULT_POINTER_CURSOR_ICON },
-    widgets::icon_slot::IconSlot,
 };
 use std::cell::Cell;
 use web_time::Duration;
@@ -62,8 +61,8 @@ pub struct Checkbox {
     // 0.0 (unchecked) -> 1.0 (checked), animated on every toggle and
     // driving both the fill/border color blend and the checkmark draw-in.
     check_progress: Cell<f32>,
-    check_icon: IconSlot,
-    indeterminate_icon: IconSlot,
+    /*check_icon: IconSlot,
+    indeterminate_icon: IconSlot,*/
 }
 
 impl Checkbox {
@@ -82,8 +81,8 @@ impl Checkbox {
             check_color: None,
             on_change: None,
             check_progress: Cell::new(0.0),
-            check_icon: IconSlot::default_check(),
-            indeterminate_icon: IconSlot::default_minus(),
+            /*check_icon: IconSlot::default_check(),
+            indeterminate_icon: IconSlot::default_minus(),*/
         };
 
         checkbox.recompute_style();
@@ -119,7 +118,7 @@ impl Checkbox {
         self
     }
 
-    /// Overrides the icon drawn while checked. Defaults to xengui-icons's
+    /*/// Overrides the icon drawn while checked. Defaults to xengui-icons's
     /// check icon; accepts any SVG source, including another
     /// `xengui-icons` constant.
     pub fn icon(mut self, svg_source: &str) -> Self {
@@ -142,7 +141,7 @@ impl Checkbox {
         self.indeterminate_icon.set_enabled(enabled);
         self.mark_dirty();
         self
-    }
+    }*/
 
     pub fn on_change(mut self, f: impl FnMut(bool, &mut EventCtx) + 'static) -> Self {
         self.on_change = Some(Box::new(f));
@@ -268,11 +267,11 @@ impl Widget for Checkbox {
             );
             let rect = (icon_box.x, icon_box.y, icon_box.width, icon_box.height);
 
-            if self.indeterminate {
+            /*if self.indeterminate {
                 self.indeterminate_icon.paint(ctx, rect, icon_color, t);
             } else {
                 self.check_icon.paint(ctx, rect, icon_color, t);
-            }
+            }*/
         }
 
         self.paint_outline(ctx);
@@ -330,8 +329,8 @@ impl Widget for Checkbox {
             self.indeterminate == other.indeterminate &&
             self.size == other.size &&
             self.check_color == other.check_color &&
-            self.check_icon == other.check_icon &&
-            self.indeterminate_icon == other.indeterminate_icon &&
+            /*self.check_icon == other.check_icon &&
+            self.indeterminate_icon == other.indeterminate_icon &&*/
             self.base.style == other.base.style &&
             self.base.hover_style == other.base.hover_style &&
             self.base.pressed_style == other.base.pressed_style &&
