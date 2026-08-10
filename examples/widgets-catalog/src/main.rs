@@ -15,7 +15,18 @@ use components::*;
 const REPO_BASE: &str = "https://github.com/randseas/xengui/blob/main/crates/xengui/src/widgets/";
 
 const WAND_ICON: &str =
-    r#"<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.64 3.64-1.28-1.28a1.21 1.21 0 0 0-1.72 0L2.36 18.64a1.21 1.21 0 0 0 0 1.72l1.28 1.28a1.2 1.2 0 0 0 1.72 0L21.64 5.36a1.2 1.2 0 0 0 0-1.72"/><path d="m14 7 3 3"/><path d="M5 6v4"/><path d="M19 14v4"/><path d="M10 2v2"/><path d="M7 8H3"/><path d="M21 16h-4"/><path d="M11 3H9"/></svg>"#;
+    r#"<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24"
+viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+stroke-linecap="round" stroke-linejoin="round">
+<path d="m21.64 3.64-1.28-1.28a1.21 1.21 0 0 0-1.72 0L2.36 18.64a1.21 1.21 0 0 0 0 1.72l1.28 1.28a1.2 1.2 0 0 0 1.72 0L21.64 5.36a1.2 1.2 0 0 0 0-1.72"/>
+<path d="m14 7 3 3"/>
+<path d="M5 6v4"/>
+<path d="M19 14v4"/>
+<path d="M10 2v2"/>
+<path d="M7 8H3"/>
+<path d="M21 16h-4"/>
+<path d="M11 3H9"/>
+</svg>"#;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     #[cfg(target_arch = "wasm32")]
@@ -36,11 +47,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let config = AppConfig {
         #[cfg(not(target_arch = "wasm32"))]
-        title: "XenGui - Widgets Catalog".into(),
+        title: "XenGui Widgets".into(),
         #[cfg(not(target_arch = "wasm32"))]
-        width: 800,
+        width: 900,
         #[cfg(not(target_arch = "wasm32"))]
-        height: 600,
+        height: 680,
         #[cfg(not(target_arch = "wasm32"))]
         position: WindowPosition::Center,
 
@@ -67,64 +78,76 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let (last_menu_action, set_last_menu_action) = use_state(String::from("—"));
 
         let button_row = TableRow::new()
-            .cell(|| Link::new().label("Button").href(format!("{REPO_BASE}button.rs")))
+            .cell(|| { Link::new().label("Button").href(format!("{REPO_BASE}button.rs")) })
             .cell({
                 let set_click_count = set_click_count.clone();
+
                 move || {
                     let set_click_count = set_click_count.clone();
+
                     Button::new()
                         .label(format!("Click ({click_count})"))
                         .font_size(14)
                         .background(Color::BLUE_500)
-                        .padding(Edges::only(10, 6, 10, 6))
+                        .padding(Edges::only(12, 7, 12, 7))
                         .border(Border::all(1, Color::BLUE_500).radius(8))
                         .transition_all(Transition::new(Duration::from_millis(150)))
-                        .hover_style(|s, _theme: &Theme| s.background(Color::BLUE_600))
-                        .pressed_style(|s, _theme: &Theme|
+                        .hover_style(|s, _theme: &Theme| { s.background(Color::BLUE_600) })
+                        .pressed_style(|s, _theme: &Theme| {
                             s.background(Color::BLUE_700).scale(0.97)
-                        )
-                        .on_click(move |_ctx| set_click_count.set(click_count + 1))
+                        })
+                        .on_click(move |_ctx| { set_click_count.set(click_count + 1) })
                 }
             });
 
         let checkbox_row = TableRow::new()
-            .cell(|| Link::new().label("Checkbox").href(format!("{REPO_BASE}checkbox.rs")))
+            .cell(|| { Link::new().label("Checkbox").href(format!("{REPO_BASE}checkbox.rs")) })
             .cell({
                 let set_checked = set_checked.clone();
+
                 move || {
                     Checkbox::new()
                         .checked(checked)
                         .on_change({
                             let set_checked = set_checked.clone();
-                            move |value, _ctx| set_checked.set(value)
+
+                            move |value, _ctx| {
+                                set_checked.set(value);
+                            }
                         })
                 }
             });
 
         let switch_row = TableRow::new()
-            .cell(|| Link::new().label("Switch").href(format!("{REPO_BASE}switch.rs")))
+            .cell(|| { Link::new().label("Switch").href(format!("{REPO_BASE}switch.rs")) })
             .cell({
                 let set_switch_on = set_switch_on.clone();
+
                 move || {
                     Switch::new()
                         .checked(switch_on)
                         .on_change({
                             let set_switch_on = set_switch_on.clone();
-                            move |value, _ctx| set_switch_on.set(value)
+
+                            move |value, _ctx| {
+                                set_switch_on.set(value);
+                            }
                         })
                 }
             });
 
         let radio_row = TableRow::new()
-            .cell(|| Link::new().label("RadioButton").href(format!("{REPO_BASE}radio.rs")))
+            .cell(|| { Link::new().label("RadioButton").href(format!("{REPO_BASE}radio.rs")) })
             .cell({
                 let set_radio_selected = set_radio_selected.clone();
+
                 move || {
                     let set_a = set_radio_selected.clone();
                     let set_b = set_radio_selected.clone();
                     let set_c = set_radio_selected.clone();
+
                     Row::new()
-                        .gap(14, 0)
+                        .gap(16, 0)
                         .align_items(Align::Center)
                         .child(
                             RadioButton::new()
@@ -160,39 +183,43 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             });
 
         let textbox_row = TableRow::new()
-            .cell(|| Link::new().label("TextBox").href(format!("{REPO_BASE}textbox.rs")))
+            .cell(|| { Link::new().label("TextBox").href(format!("{REPO_BASE}textbox.rs")) })
             .cell({
                 let text_value = text_value.clone();
                 let set_text_value = set_text_value.clone();
+
                 move || {
                     TextBox::new()
                         .value(text_value.clone())
                         .enabled(checked)
                         .read_only(switch_on)
                         .placeholder("Mark checkbox to enable")
-                        .min_width(Length::px(160.0))
+                        .min_width(Length::px(180.0))
                         .padding(Edges::all(8))
                         .background(|theme: &Theme| theme.surface)
-                        .border(|theme: &Theme| Border::all(1, theme.outline).radius(8))
+                        .border(|theme: &Theme| { Border::all(1, theme.outline).radius(8) })
                         .on_change({
                             let set_text_value = set_text_value.clone();
-                            move |value, _ctx| set_text_value.set(value.to_string())
+
+                            move |value, _ctx| {
+                                set_text_value.set(value.to_string());
+                            }
                         })
                 }
             });
 
         let link_row = TableRow::new()
-            .cell(|| Link::new().label("Link").href(format!("{REPO_BASE}link.rs")))
-            .cell(||
+            .cell(|| { Link::new().label("Link").href(format!("{REPO_BASE}link.rs")) })
+            .cell(|| {
                 Link::new()
                     .label("github.com/randseas/xengui")
                     .href("https://github.com/randseas/xengui")
                     .color(|theme: &Theme| theme.primary)
-            );
+            });
 
         let image_row = TableRow::new()
-            .cell(|| Link::new().label("Image").href(format!("{REPO_BASE}image.rs")))
-            .cell(||
+            .cell(|| { Link::new().label("Image").href(format!("{REPO_BASE}image.rs")) })
+            .cell(|| {
                 Image::new()
                     .bytes(
                         include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/assets/ferris.png"))
@@ -200,30 +227,31 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     .object_fit(ObjectFit::Contain)
                     .width(64)
                     .height(42)
-            );
+            });
 
         let svg_row = TableRow::new()
-            .cell(|| Link::new().label("Svg").href(format!("{REPO_BASE}svg.rs")))
-            .cell(||
+            .cell(|| { Link::new().label("Svg").href(format!("{REPO_BASE}svg.rs")) })
+            .cell(|| {
                 View::new()
                     .color(|theme: &Theme| theme.on_background)
                     .child(Svg::from_string(WAND_ICON).width(22).height(22))
-            );
+            });
 
         let tooltip_row = TableRow::new()
-            .cell(|| Link::new().label("Tooltip").href(format!("{REPO_BASE}tooltip.rs")))
-            .cell(||
-                Tooltip::new("This is an tooltip").child(
+            .cell(|| { Link::new().label("Tooltip").href(format!("{REPO_BASE}tooltip.rs")) })
+            .cell(|| {
+                Tooltip::new("This is a tooltip").child(
                     Label::new()
-                        .label("Hover")
+                        .label("Hover me")
                         .color(|theme: &Theme| theme.on_background)
                 )
-            );
+            });
 
         let rich_text_row = TableRow::new()
-            .cell(|| Link::new().label("RichText").href(format!("{REPO_BASE}rich_text.rs")))
+            .cell(|| { Link::new().label("RichText").href(format!("{REPO_BASE}rich_text.rs")) })
             .cell({
                 let text_value = text_value.clone();
+
                 move || {
                     RichText::new()
                         .span(TextSpan::new("Text: ").color(Color::NEUTRAL_500))
@@ -232,39 +260,46 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             });
 
         let kbd_row = TableRow::new()
-            .cell(|| Link::new().label("Kbd").href(format!("{REPO_BASE}kbd.rs")))
-            .cell(||
-                Row::new().gap(6, 0).child(Kbd::new().label("Ctrl")).child(Kbd::new().label("K"))
-            );
+            .cell(|| { Link::new().label("Kbd").href(format!("{REPO_BASE}kbd.rs")) })
+            .cell(|| {
+                Row::new()
+                    .gap(6, 0)
+                    .align_items(Align::Center)
+                    .child(Kbd::new().label("Ctrl"))
+                    .child(Kbd::new().label("K"))
+            });
 
         let context_menu_row = TableRow::new()
-            .cell(|| Link::new().label("ContextMenu").href(format!("{REPO_BASE}context_menu.rs")))
+            .cell(|| {
+                Link::new().label("ContextMenu").href(format!("{REPO_BASE}context_menu.rs"))
+            })
             .cell({
                 let last_menu_action = last_menu_action.clone();
+
                 move || {
                     Label::new()
-                        .label(format!("Right click. Last action: {last_menu_action}"))
+                        .label(format!("Right click · Last action: {last_menu_action}"))
                         .color(|theme: &Theme| theme.on_background)
                 }
             });
 
         let test_button_row = TableRow::new()
-            .cell(||
+            .cell(|| {
                 Link::new()
-                    .label("TestButton (example)")
+                    .label("TestButton")
                     .href(
                         "https://github.com/randseas/xengui/blob/main/examples/widgets-catalog/components/testbutton.rs"
                     )
-            )
-            .cell(|| TestButton::new().label("Composite").color(Color::BLUE_500));
+            })
+            .cell(|| { TestButton::new().label("Composite").color(Color::BLUE_500) });
 
         let table = Table::new()
             .width(Length::pct(100.0))
             .striped(true)
             .columns(
                 vec![
-                    TableColumn::new("Source", Length::pct(35.0)),
-                    TableColumn::new("Widget", Length::pct(65.0))
+                    TableColumn::new("Component", Length::pct(30.0)),
+                    TableColumn::new("Preview", Length::pct(70.0))
                 ]
             )
             .row(button_row)
@@ -281,16 +316,58 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .row(context_menu_row)
             .row(test_button_row);
 
+        let content = View::new()
+            .font("Noto_Sans")
+            .display(Display::Flex)
+            .flex_direction(FlexDirection::Column)
+            .width(Length::pct(100.0))
+            .height(Length::pct(100.0))
+            .background(|theme: &Theme| theme.background)
+            .padding(Edges::all(24))
+            .gap(0, 18)
+            .child(
+                View::new()
+                    .display(Display::Flex)
+                    .flex_direction(FlexDirection::Column)
+                    .gap(0, 4)
+                    .child(
+                        Label::new()
+                            .label("XenGui Widgets")
+                            .font_size(Length::px(24.0))
+                            .font_weight(FontWeight::Bold)
+                            .color(|theme: &Theme| theme.on_background)
+                    )
+                    .child(
+                        Label::new()
+                            .label("Interactive component catalog and examples.")
+                            .font_size(Length::px(14.0))
+                            .color(|theme: &Theme| theme.on_surface_variant)
+                    )
+            )
+            .child(
+                View::new()
+                    .display(Display::Flex)
+                    .flex_direction(FlexDirection::Column)
+                    .width(Length::pct(100.0))
+                    .height(Length::pct(100.0))
+                    .overflow_y(Overflow::Auto)
+                    .background(|theme: &Theme| theme.surface)
+                    .border(|theme: &Theme| { Border::all(1, theme.outline).radius(10) })
+                    .padding(Edges::all(2))
+                    .child(table)
+            );
+
         Box::new(
             ContextMenu::new()
                 .font("Noto_Sans")
                 .menu_background(|theme: &Theme| theme.surface)
-                .border(|theme: &Theme| Border::all(1, theme.outline).radius(8))
+                .border(|theme: &Theme| { Border::all(1, theme.outline).radius(8) })
                 .item_hover_background(|theme: &Theme| theme.surface)
                 .item(
                     ContextMenuItem::new("Reset counter").on_click({
                         let set_click_count = set_click_count.clone();
                         let set_last_menu_action = set_last_menu_action.clone();
+
                         move |_ctx| {
                             set_click_count.set(0);
                             set_last_menu_action.set("Counter reset".to_string());
@@ -301,6 +378,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     ContextMenuItem::new("Clear text").on_click({
                         let set_text_value = set_text_value.clone();
                         let set_last_menu_action = set_last_menu_action.clone();
+
                         move |_ctx| {
                             set_text_value.set(String::new());
                             set_last_menu_action.set("Text cleared".to_string());
@@ -311,34 +389,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .item(
                     ContextMenuItem::new("About").on_click({
                         let set_last_menu_action = set_last_menu_action.clone();
-                        move |_ctx| set_last_menu_action.set("XenGui Widgets Catalog".to_string())
+
+                        move |_ctx| {
+                            set_last_menu_action.set("XenGui Widgets Catalog".to_string());
+                        }
                     })
                 )
-                .child(
-                    View::new()
-                        .font("Noto_Sans")
-                        .display(Display::Flex)
-                        .flex_direction(FlexDirection::Column)
-                        .justify_content(JustifyContent::Center)
-                        .align_items(Align::Center)
-                        .width(Length::pct(100.0))
-                        .height(Length::pct(100.0))
-                        .background(|theme: &Theme| theme.background)
-                        .padding(Edges::all(15))
-                        .gap(0, 10)
-                        .child(
-                            Label::new()
-                                .label("Widgets Catalog")
-                                .font_size(Length::px(18.0))
-                                .color(|theme: &Theme| theme.on_background)
-                        )
-                        .child(
-                            View::new()
-                                .flex_direction(FlexDirection::Column)
-                                .overflow_y(Overflow::Auto)
-                                .child(table)
-                        )
-                )
+                .child(content)
         )
     });
 
