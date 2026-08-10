@@ -27,6 +27,7 @@ use crate::{
     Style,
     StyleBuilder,
     Transition,
+    VariableIconCommand,
     Widget,
     WidgetBase,
     WidgetId,
@@ -34,6 +35,7 @@ use crate::{
 };
 use std::cell::Cell;
 use web_time::Duration;
+use xengui_icons::material_symbols::{ codepoints, IconAxes, MaterialSymbolsVariable };
 
 type ChangeCallback = Box<dyn FnMut(bool, &mut EventCtx)>;
 
@@ -61,8 +63,6 @@ pub struct Checkbox {
     // 0.0 (unchecked) -> 1.0 (checked), animated on every toggle and
     // driving both the fill/border color blend and the checkmark draw-in.
     check_progress: Cell<f32>,
-    /*check_icon: IconSlot,
-    indeterminate_icon: IconSlot,*/
 }
 
 impl Checkbox {
@@ -81,8 +81,6 @@ impl Checkbox {
             check_color: None,
             on_change: None,
             check_progress: Cell::new(0.0),
-            /*check_icon: IconSlot::default_check(),
-            indeterminate_icon: IconSlot::default_minus(),*/
         };
 
         checkbox.recompute_style();
@@ -258,20 +256,25 @@ impl Widget for Checkbox {
             let icon_color = self.check_color.unwrap_or(theme.on_primary);
             let icon_box = crate::scaled_layout_box(
                 LayoutBox {
-                    x: b.x + b.width * 0.18,
-                    y: b.y + b.height * 0.18,
-                    width: b.width * 0.64,
-                    height: b.height * 0.64,
+                    x: b.x + b.width * 0.12,
+                    y: b.y + b.height * 0.12,
+                    width: b.width * 0.76,
+                    height: b.height * 0.76,
                 },
                 t
             );
-            let rect = (icon_box.x, icon_box.y, icon_box.width, icon_box.height);
 
-            /*if self.indeterminate {
-                self.indeterminate_icon.paint(ctx, rect, icon_color, t);
-            } else {
-                self.check_icon.paint(ctx, rect, icon_color, t);
-            }*/
+            let codepoint = if self.indeterminate { codepoints::REMOVE } else { codepoints::CHECK };
+
+            ctx.draw_variable_icon(VariableIconCommand {
+                position: (icon_box.x, icon_box.y),
+                size: (icon_box.width, icon_box.height),
+                codepoint,
+                font: MaterialSymbolsVariable::FONT,
+                axes: IconAxes::default().fill(1.0).weight(700.0),
+                color: icon_color.with_alpha_f32(icon_color.a() * t),
+                clip_rect: None,
+            });
         }
 
         self.paint_outline(ctx);
@@ -329,8 +332,6 @@ impl Widget for Checkbox {
             self.indeterminate == other.indeterminate &&
             self.size == other.size &&
             self.check_color == other.check_color &&
-            /*self.check_icon == other.check_icon &&
-            self.indeterminate_icon == other.indeterminate_icon &&*/
             self.base.style == other.base.style &&
             self.base.hover_style == other.base.hover_style &&
             self.base.pressed_style == other.base.pressed_style &&

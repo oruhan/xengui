@@ -9,6 +9,7 @@ use swash::scale::{ Render, ScaleContext, Source };
 use swash::zeno::Format;
 use swash::FontRef;
 use xengui::{ paint, VariableIconCommand };
+use std::sync::Arc;
 
 #[repr(C)]
 #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
@@ -54,7 +55,6 @@ struct GlyphKey {
 
 struct CachedGlyph {
     bind_group: wgpu::BindGroup,
-    offset: (f32, f32),
     size: (f32, f32),
 }
 
@@ -67,8 +67,10 @@ pub struct VariableIconPipeline {
     write_offset: usize,
     glyphs: HashMap<GlyphKey, CachedGlyph>,
     scale_context: ScaleContext,
+    // WOFF2 containers must be unpacked into raw TTF/OTF bytes before
+    // swash can parse them; decoded once per font pointer and reused.
+    decoded_fonts: HashMap<usize, Arc<Vec<u8>>>,
 }
-
 const VERTICES_PER_ICON: usize = 6;
 const DEFAULT_ICON_CAPACITY: usize = 64;
 
@@ -182,11 +184,38 @@ impl VariableIconPipeline {
             write_offset: 0,
             glyphs: HashMap::new(),
             scale_context: ScaleContext::new(),
+            decoded_fonts: HashMap::new(),
         }
     }
 
     pub fn reset_frame(&mut self) {
         self.write_offset = 0;
+    }
+
+    // swash only parses raw TTF/OTF outline tables, not WOFF2's own
+    // compressed container - unpacks (and caches by font pointer) once
+    // per distinct font instead of on every glyph rasterization.
+    fn decoded_font_bytes(&mut self, font: &'static [u8]) -> Arc<Vec<u8>> {
+        let key = font.as_ptr() as usize;
+        if let Some(bytes) = self.decoded_fonts.get(&key) {
+            return bytes.clone();
+        }
+
+        let decoded = if woff2_patched::decode::is_woff2(font) {
+            match woff2_patched::decode::convert_woff2_to_ttf(&mut std::io::Cursor::new(font)) {
+                Ok(ttf) => ttf,
+                Err(err) => {
+                    log::error!("xengui-wgpu: failed to decode woff2 font: {err:?}");
+                    font.to_vec()
+                }
+            }
+        } else {
+            font.to_vec()
+        };
+
+        let decoded = Arc::new(decoded);
+        self.decoded_fonts.insert(key, decoded.clone());
+        decoded
     }
 
     // Rasterizes (or reuses a cached rasterization of) the glyph a
@@ -210,7 +239,8 @@ impl VariableIconPipeline {
             return Some(key);
         }
 
-        let font = FontRef::from_index(cmd.font, 0)?;
+        let font_bytes = self.decoded_font_bytes(cmd.font);
+        let font = FontRef::from_index(&font_bytes, 0)?;
         let glyph_id = font.charmap().map(cmd.codepoint);
 
         if glyph_id == 0 {
@@ -294,7 +324,6 @@ impl VariableIconPipeline {
 
         self.glyphs.insert(key, CachedGlyph {
             bind_group,
-            offset: (image.placement.left as f32, -image.placement.top as f32),
             size: (width as f32, height as f32),
         });
 
@@ -328,10 +357,14 @@ impl VariableIconPipeline {
             };
             let glyph = &self.glyphs[&key];
 
+            // Centers the rasterized glyph's own bounding box within the
+            // requested icon box - font bearing cancels out algebraically
+            // for box-centering, so it's not needed here (unlike normal
+            // baseline-aligned text layout).
             let cx = cmd.position.0 + cmd.size.0 * 0.5;
             let cy = cmd.position.1 + cmd.size.1 * 0.5;
-            let gx = cx + glyph.offset.0 - glyph.size.0 * 0.5;
-            let gy = cy + glyph.offset.1 + glyph.size.1 * 0.5;
+            let gx = (cx - glyph.size.0 * 0.5).round();
+            let gy = (cy + glyph.size.1 * 0.5).round();
 
             let tint = cmd.color.to_f32_array();
             let p0 = ndc(gx, gy - glyph.size.1);

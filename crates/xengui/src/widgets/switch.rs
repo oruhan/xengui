@@ -27,6 +27,7 @@ use crate::{
     Style,
     StyleBuilder,
     Transition,
+    VariableIconCommand,
     Widget,
     WidgetBase,
     WidgetId,
@@ -34,6 +35,7 @@ use crate::{
 };
 use std::cell::Cell;
 use web_time::Duration;
+use xengui_icons::{ IconAxes, MaterialSymbolsVariable, codepoints };
 
 type ChangeCallback = Box<dyn FnMut(bool, &mut EventCtx)>;
 
@@ -43,8 +45,8 @@ const TRACK_HEIGHT: f32 = 32.0;
 const THUMB_UNSELECTED: f32 = 16.0;
 const THUMB_SELECTED: f32 = 24.0;
 
-const THUMB_PRESSED_UNCHECKED: f32 = 28.0;
-const THUMB_PRESSED_CHECKED: f32 = 28.0;
+const THUMB_PRESSED_UNCHECKED: f32 = 20.0;
+const THUMB_PRESSED_CHECKED: f32 = 26.0;
 
 const TRACK_PADDING_LEFT: f32 = 4.0;
 const TRACK_PADDING_RIGHT: f32 = 4.0;
@@ -53,8 +55,8 @@ const TOGGLE_TRANSITION: Transition = Transition::new(Duration::from_millis(200)
     Easing::EaseOut
 );
 
-const THUMB_SIZE_TRANSITION: Transition = Transition::new(Duration::from_millis(150)).easing(
-    Easing::EaseInOut
+const THUMB_SIZE_TRANSITION: Transition = Transition::new(Duration::from_millis(120)).easing(
+    Easing::EaseOut
 );
 
 fn lerp_color(a: Color, b: Color, t: f32) -> Color {
@@ -294,19 +296,36 @@ impl Widget for Switch {
             clip_rect: None,
         });
 
-        let icon_size = thumb_d * 0.64;
-        let icon_rect = (cx - icon_size * 0.5, cy - icon_size * 0.5, icon_size, icon_size);
+        let icon_size = thumb_d * 0.72;
+        let icon_x = cx - icon_size * 0.5;
+        let icon_y = cy - icon_size * 0.5;
 
-        /*if t > 0.6 {
+        if t > 0.6 {
             // Icon fades in once the thumb has mostly grown to its "on"
             // size, matching Material 3's icon-switch timing.
             let mark_alpha = ((t - 0.6) / 0.4).clamp(0.0, 1.0);
-            self.icon_on.paint(ctx, icon_rect, track_on, mark_alpha);
+            ctx.draw_variable_icon(VariableIconCommand {
+                position: (icon_x, icon_y),
+                size: (icon_size, icon_size),
+                codepoint: codepoints::CHECK,
+                font: MaterialSymbolsVariable::FONT,
+                axes: IconAxes::default().fill(1.0).weight(700.0),
+                color: track_on.with_alpha_f32(track_on.a() * mark_alpha),
+                clip_rect: None,
+            });
         } else if t < 0.4 {
             // Icon fades in as the thumb shrinks back to its "off" size.
             let mark_alpha = ((0.4 - t) / 0.4).clamp(0.0, 1.0);
-            self.icon_off.paint(ctx, icon_rect, track_off, mark_alpha);
-        }*/
+            ctx.draw_variable_icon(VariableIconCommand {
+                position: (icon_x, icon_y),
+                size: (icon_size, icon_size),
+                codepoint: codepoints::REMOVE,
+                font: MaterialSymbolsVariable::FONT,
+                axes: IconAxes::default().fill(1.0).weight(700.0),
+                color: track_off.with_alpha_f32(track_off.a() * mark_alpha),
+                clip_rect: None,
+            });
+        }
 
         self.paint_outline(ctx);
     }
@@ -375,8 +394,6 @@ impl Widget for Switch {
             self.thumb_on_color == other.thumb_on_color &&
             self.thumb_off_color == other.thumb_off_color &&
             self.border_color == other.border_color &&
-            /*self.icon_on == other.icon_on &&
-            self.icon_off == other.icon_off &&*/
             self.base.style == other.base.style
     }
 
