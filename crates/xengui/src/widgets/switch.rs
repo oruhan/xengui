@@ -27,7 +27,7 @@ use crate::{
     Style,
     StyleBuilder,
     Transition,
-    TriangleCommand,
+    StrokeCommand,
     Widget,
     WidgetBase,
     WidgetId,
@@ -38,18 +38,18 @@ use web_time::Duration;
 
 type ChangeCallback = Box<dyn FnMut(bool, &mut EventCtx)>;
 
-const TRACK_WIDTH: f32 = 56.0;
+const TRACK_WIDTH: f32 = 52.0;
 const TRACK_HEIGHT: f32 = 32.0;
-const THUMB_UNSELECTED: f32 = 16.0;
-const THUMB_SELECTED: f32 = 24.0;
+const THUMB_UNSELECTED: f32 = 22.0;
+const THUMB_SELECTED: f32 = 22.0;
 // Pressed thumb size is interpolated between these two by the same
 // checked-progress `t` the idle thumb uses, so "off, pressed" and
 // "on, pressed" no longer share one fixed size.
-const THUMB_PRESSED_UNCHECKED: f32 = 20.0;
-const THUMB_PRESSED_CHECKED: f32 = 24.0;
+const THUMB_PRESSED_UNCHECKED: f32 = 26.0;
+const THUMB_PRESSED_CHECKED: f32 = 26.0;
 // Track is visually off-center otherwise: the unchecked thumb sits much
 // closer to the left edge than the checked thumb does to the right.
-const TRACK_PADDING_LEFT: f32 = 6.0;
+const TRACK_PADDING_LEFT: f32 = 4.0;
 const TRACK_PADDING_RIGHT: f32 = 4.0;
 
 const TOGGLE_TRANSITION: Transition = Transition::new(Duration::from_millis(200)).easing(
@@ -241,8 +241,8 @@ impl Widget for Switch {
             size: (b.width, b.height),
             background: Some(Background::Color(track_color)),
             border_radius: Some(BorderRadius::all(Length::px(b.height * 0.5))),
-            border_width: Some(Length::px(2.0 * sf * (1.0 - t))),
-            border_color: Some(border_color),
+            border_width: (t < 0.999).then(|| Length::px(2.0 * sf * (1.0 - t))),
+            border_color: (t < 0.999).then_some(border_color),
             clip_rect: None,
         });
 
@@ -267,45 +267,45 @@ impl Widget for Switch {
             clip_rect: None,
         });
 
+        let icon_scale = thumb_d * 0.32;
+        let icon_stroke = (thumb_d * 0.12).max(1.2 * sf);
+
         if t > 0.6 {
+            // Checkmark fades in once the thumb has mostly grown to its
+            // "on" size, matching Material 3's icon-switch timing.
             let mark_alpha = ((t - 0.6) / 0.4).clamp(0.0, 1.0);
-            let stroke = (thumb_d * 0.12).max(1.2 * sf);
-            let scale = thumb_d * 0.32;
+            let color = track_on.with_alpha_f32(track_on.a() * mark_alpha);
 
             let raw = [
-                (cx - scale * 0.6, cy + scale * 0.05),
-                (cx - scale * 0.15, cy + scale * 0.5),
-                (cx + scale * 0.7, cy - scale * 0.45),
+                (cx - icon_scale * 0.6, cy + icon_scale * 0.05),
+                (cx - icon_scale * 0.15, cy + icon_scale * 0.5),
+                (cx + icon_scale * 0.7, cy - icon_scale * 0.45),
             ];
-            let color = track_on.with_alpha_f32(track_on.a() * mark_alpha);
 
             for (a, bnd) in [
                 (raw[0], raw[1]),
                 (raw[1], raw[2]),
             ] {
-                let (dx, dy) = (bnd.0 - a.0, bnd.1 - a.1);
-                let len = (dx * dx + dy * dy).sqrt().max(0.0001);
-                let (nx, ny) = ((-dy / len) * stroke * 0.5, (dx / len) * stroke * 0.5);
-                let q0 = (a.0 + nx, a.1 + ny);
-                let q1 = (a.0 - nx, a.1 - ny);
-                let q2 = (bnd.0 + nx, bnd.1 + ny);
-                let q3 = (bnd.0 - nx, bnd.1 - ny);
-
-                ctx.draw_triangle(TriangleCommand {
-                    p0: q0,
-                    p1: q1,
-                    p2: q2,
-                    color,
-                    clip_rect: None,
-                });
-                ctx.draw_triangle(TriangleCommand {
-                    p0: q1,
-                    p1: q3,
-                    p2: q2,
+                ctx.draw_stroke(StrokeCommand {
+                    p0: a,
+                    p1: bnd,
+                    thickness: icon_stroke,
                     color,
                     clip_rect: None,
                 });
             }
+        } else if t < 0.4 {
+            // Minus fades in as the thumb shrinks back to its "off" size.
+            let mark_alpha = ((0.4 - t) / 0.4).clamp(0.0, 1.0);
+            let color = track_off.with_alpha_f32(track_off.a() * mark_alpha);
+
+            ctx.draw_stroke(StrokeCommand {
+                p0: (cx - icon_scale * 0.55, cy),
+                p1: (cx + icon_scale * 0.55, cy),
+                thickness: icon_stroke,
+                color,
+                clip_rect: None,
+            });
         }
 
         self.paint_outline(ctx);

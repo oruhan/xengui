@@ -24,10 +24,10 @@ use crate::{
     MouseButton,
     PaintContext,
     RectCommand,
+    StrokeCommand,
     Style,
     StyleBuilder,
     Transition,
-    TriangleCommand,
     Widget,
     WidgetBase,
     WidgetId,
@@ -55,6 +55,7 @@ pub struct Checkbox {
     anim_id: WidgetId,
     layout_box: LayoutBox,
     checked: bool,
+    indeterminate: bool,
     size: f32,
     check_color: Option<Color>,
     on_change: Option<ChangeCallback>,
@@ -74,6 +75,7 @@ impl Checkbox {
             anim_id: WidgetId::new_unique(),
             layout_box: LayoutBox::default(),
             checked: false,
+            indeterminate: false,
             size: 18.0,
             check_color: None,
             on_change: None,
@@ -87,6 +89,16 @@ impl Checkbox {
     pub fn checked(mut self, checked: bool) -> Self {
         self.checked = checked;
         self.check_progress.set(if checked { 1.0 } else { 0.0 });
+        self.mark_dirty();
+        self
+    }
+
+    /// Shows a dash instead of a checkmark for a "some but not all"
+    /// tri-state selection. Independent of `checked` - clicking clears
+    /// it and sets `checked` to true.
+    pub fn indeterminate(mut self, value: bool) -> Self {
+        self.indeterminate = value;
+        self.check_progress.set(if value || self.checked { 1.0 } else { 0.0 });
         self.mark_dirty();
         self
     }
@@ -123,6 +135,7 @@ impl Checkbox {
 
     fn toggle(&mut self, ctx: &mut EventCtx) {
         self.checked = !self.checked;
+        self.indeterminate = false;
         self.base.dirty = true;
         if let Some(cb) = self.on_change.as_mut() {
             cb(self.checked, ctx);
@@ -214,49 +227,45 @@ impl Widget for Checkbox {
         });
 
         if t > 0.001 {
-            let check_color = self.check_color.unwrap_or(theme.on_primary);
-            let stroke = (b.width * 0.12).max(1.5 * sf);
+            let icon_color = self.check_color.unwrap_or(theme.on_primary);
+            let stroke_width = (b.width * 0.12).max(1.5 * sf);
+            let color = icon_color.with_alpha_f32(icon_color.a() * t);
 
-            // The checkmark scales in from the box's own center as `t`
-            // grows, rather than only ever appearing at full size.
-            let cx = b.x + b.width * 0.5;
-            let cy = b.y + b.height * 0.5;
-            let scale_pt = |p: (f32, f32)| -> (f32, f32) {
-                (cx + (p.0 - cx) * t, cy + (p.1 - cy) * t)
-            };
+            if self.indeterminate {
+                let cx = b.x + b.width * 0.5;
+                let cy = b.y + b.height * 0.5;
+                let half_w = b.width * 0.28 * t;
 
-            let p0 = scale_pt((b.x + b.width * 0.22, b.y + b.height * 0.52));
-            let p1 = scale_pt((b.x + b.width * 0.42, b.y + b.height * 0.72));
-            let p2 = scale_pt((b.x + b.width * 0.8, b.y + b.height * 0.28));
-
-            let color = check_color.with_alpha_f32(check_color.a() * t);
-
-            for (a, bnd) in [
-                (p0, p1),
-                (p1, p2),
-            ] {
-                let (dx, dy) = (bnd.0 - a.0, bnd.1 - a.1);
-                let len = (dx * dx + dy * dy).sqrt().max(0.0001);
-                let (nx, ny) = ((-dy / len) * stroke * 0.5, (dx / len) * stroke * 0.5);
-                let q0 = (a.0 + nx, a.1 + ny);
-                let q1 = (a.0 - nx, a.1 - ny);
-                let q2 = (bnd.0 + nx, bnd.1 + ny);
-                let q3 = (bnd.0 - nx, bnd.1 - ny);
-
-                ctx.draw_triangle(TriangleCommand {
-                    p0: q0,
-                    p1: q1,
-                    p2: q2,
+                ctx.draw_stroke(StrokeCommand {
+                    p0: (cx - half_w, cy),
+                    p1: (cx + half_w, cy),
+                    thickness: stroke_width,
                     color,
                     clip_rect: None,
                 });
-                ctx.draw_triangle(TriangleCommand {
-                    p0: q1,
-                    p1: q3,
-                    p2: q2,
-                    color,
-                    clip_rect: None,
-                });
+            } else {
+                let cx = b.x + b.width * 0.5;
+                let cy = b.y + b.height * 0.5;
+                let scale_pt = |p: (f32, f32)| -> (f32, f32) {
+                    (cx + (p.0 - cx) * t, cy + (p.1 - cy) * t)
+                };
+
+                let p0 = scale_pt((b.x + b.width * 0.22, b.y + b.height * 0.52));
+                let p1 = scale_pt((b.x + b.width * 0.42, b.y + b.height * 0.72));
+                let p2 = scale_pt((b.x + b.width * 0.8, b.y + b.height * 0.28));
+
+                for (a, bnd) in [
+                    (p0, p1),
+                    (p1, p2),
+                ] {
+                    ctx.draw_stroke(StrokeCommand {
+                        p0: a,
+                        p1: bnd,
+                        thickness: stroke_width,
+                        color,
+                        clip_rect: None,
+                    });
+                }
             }
         }
 
@@ -312,6 +321,7 @@ impl Widget for Checkbox {
         };
 
         self.checked == other.checked &&
+            self.indeterminate == other.indeterminate &&
             self.size == other.size &&
             self.check_color == other.check_color &&
             self.base.style == other.base.style &&
@@ -331,7 +341,7 @@ impl Widget for Checkbox {
 
         // Drives the fill/border blend and checkmark draw-in toward the
         // current `checked` state every frame.
-        let target = if self.checked { 1.0 } else { 0.0 };
+        let target = if self.checked || self.indeterminate { 1.0 } else { 0.0 };
         let key = AnimKey {
             widget: self.anim_id,
             layer: AnimLayer::Content,
