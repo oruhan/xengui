@@ -97,6 +97,8 @@ pub use style::{
 pub use widgets::*;
 pub use redraw::RedrawRequester;
 pub use task::spawn;
+#[cfg(not(target_arch = "wasm32"))]
+pub use task::spawn_blocking;
 pub use xen_svg::{ SvgColor, SvgDocument, SvgElement, Transform2D };
 pub use svg_compat::IntoSvgColor;
 pub use types::*;

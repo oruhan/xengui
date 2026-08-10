@@ -153,11 +153,116 @@ pub fn cancel_all() {
     TASKS.with(|tasks| tasks.borrow_mut().clear());
 }
 
+// --- spawn_blocking support -------------------------------------------------
+//
+// Runs a blocking/synchronous closure (HID, filesystem, WMI, blocking
+// network calls, ...) on its own std::thread instead of stalling the GUI
+// thread. Unlike `spawn`, the closure and its result genuinely cross a
+// thread boundary and must be `Send + 'static`; the returned future
+// itself is never required to be `Send` since it's only ever polled from
+// the GUI thread, same as every other task in this module.
+
+#[cfg(not(target_arch = "wasm32"))]
+struct BlockingShared<T> {
+    result: Option<T>,
+    waker: Option<Waker>,
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+pub struct SpawnBlocking<T> {
+    shared: Arc<Mutex<BlockingShared<T>>>,
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+impl<T> Future for SpawnBlocking<T> {
+    type Output = T;
+
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<T> {
+        // Checking the result and (if absent) registering the waker under
+        // the same lock closes the window where the background thread
+        // could finish between those two steps - the exact sequence that
+        // would otherwise cause a lost wakeup.
+        let mut guard = self.shared.lock().unwrap_or_else(|p| p.into_inner());
+        if let Some(result) = guard.result.take() {
+            Poll::Ready(result)
+        } else {
+            guard.waker = Some(cx.waker().clone());
+            Poll::Pending
+        }
+    }
+}
+
+/// Runs `f` on a dedicated background `std::thread`, leaving the GUI
+/// thread free to keep handling input/paint. Await the returned future
+/// from within a `spawn`-ed task (or `use_resource`) to pick the result
+/// back up on the GUI thread once it's ready.
+///
+/// Each call spawns its own thread - fine for occasional blocking calls;
+/// reach for a real thread pool if this ever needs to run at high
+/// frequency.
+///
+/// ```compile_fail
+/// use std::rc::Rc;
+/// use xengui::task::spawn_blocking;
+///
+/// let state = Rc::new(5);
+/// let _ = spawn_blocking(move || {
+///     // `Rc` is not `Send`, so this fails to compile - exactly the
+///     // guardrail that keeps GUI state off the background thread.
+///     *state
+/// });
+/// ```
+///
+/// # Panics
+/// A panic inside `f` is caught on the background thread and simply never
+/// resolves the future (it stays `Pending` forever) instead of unwinding
+/// into the GUI executor. Under this workspace's `panic = "abort"`
+/// release profile the process still aborts, matching plain
+/// `std::thread::spawn`'s existing behavior; only unwind builds (e.g.
+/// `cargo test`) benefit from the catch.
+#[cfg(not(target_arch = "wasm32"))]
+pub fn spawn_blocking<F, T>(f: F) -> SpawnBlocking<T>
+    where F: FnOnce() -> T + Send + 'static, T: Send + 'static
+{
+    let shared = Arc::new(Mutex::new(BlockingShared { result: None, waker: None }));
+    let worker_shared = shared.clone();
+
+    std::thread::spawn(move || {
+        use std::panic;
+
+        let outcome = panic::catch_unwind(panic::AssertUnwindSafe(f));
+
+        let Ok(value) = outcome else {
+            // Nothing here can produce a `T` for a panicked closure, and
+            // this thread must not propagate the unwind onto the GUI
+            // thread - the task simply never completes (see doc above).
+            return;
+        };
+
+        // The future may already have been dropped (its `Arc` refcount
+        // down to just this one) - storing the result is still safe, it's
+        // simply never read back out, and `waker` will be `None`.
+        let waker = {
+            let mut guard = worker_shared.lock().unwrap_or_else(|p| p.into_inner());
+            guard.result = Some(value);
+            guard.waker.take()
+        };
+
+        if let Some(waker) = waker {
+            waker.wake();
+        }
+    });
+
+    SpawnBlocking { shared }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::cell::Cell;
     use std::rc::Rc;
+    #[cfg(not(target_arch = "wasm32"))]
+    use std::time::Duration;
 
     // Serializes tests that touch the executor's process-wide ready
     // queue and waker slot, since the test harness runs tests in
@@ -257,5 +362,135 @@ mod tests {
 
         cancel_all();
         assert!(dropped.get());
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    #[test]
+    fn spawn_blocking_runs_off_thread_and_returns_result() {
+        let _guard = test_guard();
+        let main_thread_id = std::thread::current().id();
+        let done = Rc::new(Cell::new(None));
+        let done_clone = done.clone();
+
+        spawn(async move {
+            let worker_id = spawn_blocking(|| std::thread::current().id()).await;
+            done_clone.set(Some(worker_id));
+        });
+
+        // Drives the executor until the blocking task's own waker fires.
+        for _ in 0..200 {
+            poll();
+            if done.get().is_some() {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(5));
+        }
+
+        let worker_id = done.get().expect("spawn_blocking never completed");
+        assert_ne!(worker_id, main_thread_id);
+        cancel_all();
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    #[test]
+    fn spawn_blocking_future_pending_then_ready() {
+        let _guard = test_guard();
+
+        struct NoopWaker;
+        impl Wake for NoopWaker {
+            fn wake(self: Arc<Self>) {}
+        }
+
+        let waker = Waker::from(Arc::new(NoopWaker));
+        let mut cx = Context::from_waker(&waker);
+
+        let mut fut = spawn_blocking(|| {
+            std::thread::sleep(Duration::from_millis(30));
+            99
+        });
+
+        let first = Pin::new(&mut fut).poll(&mut cx);
+        assert!(matches!(first, Poll::Pending));
+
+        std::thread::sleep(Duration::from_millis(80));
+        let second = Pin::new(&mut fut).poll(&mut cx);
+        assert_eq!(second, Poll::Ready(99));
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    #[test]
+    fn spawn_blocking_panic_does_not_break_executor() {
+        let _guard = test_guard();
+
+        spawn(async move {
+            // Never completes since the closure panics - documented
+            // behavior, not a bug in this test.
+            let _: i32 = spawn_blocking(|| panic!("boom")).await;
+        });
+
+        for _ in 0..50 {
+            poll();
+            std::thread::sleep(Duration::from_millis(5));
+        }
+
+        // The executor must still work normally for unrelated tasks.
+        let ran = Rc::new(Cell::new(false));
+        let ran_clone = ran.clone();
+        spawn(async move {
+            ran_clone.set(true);
+        });
+        poll();
+
+        assert!(ran.get());
+        cancel_all();
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    #[test]
+    fn spawn_blocking_dropped_before_completion_is_ignored() {
+        let _guard = test_guard();
+        let (tx, rx) = std::sync::mpsc::channel();
+
+        {
+            let fut = spawn_blocking(move || {
+                std::thread::sleep(Duration::from_millis(20));
+                let _ = tx.send(());
+                7
+            });
+            drop(fut); // dropped well before the background thread finishes
+        }
+
+        // The background thread still runs to completion; its result is
+        // simply never observed by anything since the future is gone.
+        rx.recv_timeout(Duration::from_secs(1)).expect("worker thread never finished");
+        cancel_all();
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    #[test]
+    fn spawn_blocking_many_concurrent_do_not_lose_wakeups() {
+        let _guard = test_guard();
+        const N: usize = 50;
+        let completed = Rc::new(Cell::new(0usize));
+
+        for i in 0..N {
+            let completed = completed.clone();
+            spawn(async move {
+                let v = spawn_blocking(move || i).await;
+                assert_eq!(v, i);
+                completed.set(completed.get() + 1);
+            });
+        }
+
+        for _ in 0..500 {
+            poll();
+            if completed.get() == N {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(5));
+        }
+
+        assert_eq!(completed.get(), N);
+        cancel_all();
     }
 }
