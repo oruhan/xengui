@@ -3584,6 +3584,7 @@ dependencies = [
  "xen-animation",
  "xen-clipboard",
  "xen-svg",
+ "xengui-lucide",
 ]
 
 [[package]]

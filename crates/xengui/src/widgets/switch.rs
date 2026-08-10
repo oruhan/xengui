@@ -27,11 +27,11 @@ use crate::{
     Style,
     StyleBuilder,
     Transition,
-    StrokeCommand,
     Widget,
     WidgetBase,
     WidgetId,
     constants::{ DEFAULT_CURSOR_ICON, DEFAULT_POINTER_CURSOR_ICON },
+    widgets::icon_slot::IconSlot,
 };
 use std::cell::Cell;
 use web_time::Duration;
@@ -40,23 +40,22 @@ type ChangeCallback = Box<dyn FnMut(bool, &mut EventCtx)>;
 
 const TRACK_WIDTH: f32 = 52.0;
 const TRACK_HEIGHT: f32 = 32.0;
-const THUMB_UNSELECTED: f32 = 22.0;
-const THUMB_SELECTED: f32 = 22.0;
-// Pressed thumb size is interpolated between these two by the same
-// checked-progress `t` the idle thumb uses, so "off, pressed" and
-// "on, pressed" no longer share one fixed size.
-const THUMB_PRESSED_UNCHECKED: f32 = 26.0;
-const THUMB_PRESSED_CHECKED: f32 = 26.0;
-// Track is visually off-center otherwise: the unchecked thumb sits much
-// closer to the left edge than the checked thumb does to the right.
+
+const THUMB_UNSELECTED: f32 = 16.0;
+const THUMB_SELECTED: f32 = 24.0;
+
+const THUMB_PRESSED_UNCHECKED: f32 = 28.0;
+const THUMB_PRESSED_CHECKED: f32 = 28.0;
+
 const TRACK_PADDING_LEFT: f32 = 4.0;
 const TRACK_PADDING_RIGHT: f32 = 4.0;
 
 const TOGGLE_TRANSITION: Transition = Transition::new(Duration::from_millis(200)).easing(
     Easing::EaseOut
 );
-const THUMB_SIZE_TRANSITION: Transition = Transition::new(Duration::from_millis(120)).easing(
-    Easing::EaseOut
+
+const THUMB_SIZE_TRANSITION: Transition = Transition::new(Duration::from_millis(150)).easing(
+    Easing::EaseInOut
 );
 
 fn lerp_color(a: Color, b: Color, t: f32) -> Color {
@@ -85,6 +84,8 @@ pub struct Switch {
     progress: Cell<f32>,
     thumb_size: Cell<f32>,
     on_change: Option<ChangeCallback>,
+    icon_on: IconSlot,
+    icon_off: IconSlot,
 }
 
 impl Switch {
@@ -107,6 +108,8 @@ impl Switch {
             progress: Cell::new(0.0),
             thumb_size: Cell::new(THUMB_UNSELECTED),
             on_change: None,
+            icon_on: IconSlot::default_check(),
+            icon_off: IconSlot::default_minus(),
         };
 
         switch.recompute_style();
@@ -159,6 +162,31 @@ impl Switch {
 
     pub fn on_change(mut self, f: impl FnMut(bool, &mut EventCtx) + 'static) -> Self {
         self.on_change = Some(Box::new(f));
+        self
+    }
+
+    /// Overrides the icon shown once the thumb settles into the "on"
+    /// state. Defaults to xengui-lucide's check icon; accepts any SVG
+    /// source, including another `xengui-lucide` constant.
+    pub fn icon_on(mut self, svg_source: &str) -> Self {
+        self.icon_on.set_svg(svg_source);
+        self.mark_dirty();
+        self
+    }
+
+    /// Overrides the icon shown once the thumb settles into the "off"
+    /// state. Defaults to xengui-lucide's minus icon.
+    pub fn icon_off(mut self, svg_source: &str) -> Self {
+        self.icon_off.set_svg(svg_source);
+        self.mark_dirty();
+        self
+    }
+
+    /// Hides both on/off thumb icons entirely.
+    pub fn icons_enabled(mut self, enabled: bool) -> Self {
+        self.icon_on.set_enabled(enabled);
+        self.icon_off.set_enabled(enabled);
+        self.mark_dirty();
         self
     }
 
@@ -267,45 +295,18 @@ impl Widget for Switch {
             clip_rect: None,
         });
 
-        let icon_scale = thumb_d * 0.32;
-        let icon_stroke = (thumb_d * 0.12).max(1.2 * sf);
+        let icon_size = thumb_d * 0.64;
+        let icon_rect = (cx - icon_size * 0.5, cy - icon_size * 0.5, icon_size, icon_size);
 
         if t > 0.6 {
-            // Checkmark fades in once the thumb has mostly grown to its
-            // "on" size, matching Material 3's icon-switch timing.
+            // Icon fades in once the thumb has mostly grown to its "on"
+            // size, matching Material 3's icon-switch timing.
             let mark_alpha = ((t - 0.6) / 0.4).clamp(0.0, 1.0);
-            let color = track_on.with_alpha_f32(track_on.a() * mark_alpha);
-
-            let raw = [
-                (cx - icon_scale * 0.6, cy + icon_scale * 0.05),
-                (cx - icon_scale * 0.15, cy + icon_scale * 0.5),
-                (cx + icon_scale * 0.7, cy - icon_scale * 0.45),
-            ];
-
-            for (a, bnd) in [
-                (raw[0], raw[1]),
-                (raw[1], raw[2]),
-            ] {
-                ctx.draw_stroke(StrokeCommand {
-                    p0: a,
-                    p1: bnd,
-                    thickness: icon_stroke,
-                    color,
-                    clip_rect: None,
-                });
-            }
+            self.icon_on.paint(ctx, icon_rect, track_on, mark_alpha);
         } else if t < 0.4 {
-            // Minus fades in as the thumb shrinks back to its "off" size.
+            // Icon fades in as the thumb shrinks back to its "off" size.
             let mark_alpha = ((0.4 - t) / 0.4).clamp(0.0, 1.0);
-            let color = track_off.with_alpha_f32(track_off.a() * mark_alpha);
-
-            ctx.draw_stroke(StrokeCommand {
-                p0: (cx - icon_scale * 0.55, cy),
-                p1: (cx + icon_scale * 0.55, cy),
-                thickness: icon_stroke,
-                color,
-                clip_rect: None,
-            });
+            self.icon_off.paint(ctx, icon_rect, track_off, mark_alpha);
         }
 
         self.paint_outline(ctx);
@@ -375,6 +376,8 @@ impl Widget for Switch {
             self.thumb_on_color == other.thumb_on_color &&
             self.thumb_off_color == other.thumb_off_color &&
             self.border_color == other.border_color &&
+            self.icon_on == other.icon_on &&
+            self.icon_off == other.icon_off &&
             self.base.style == other.base.style
     }
 

@@ -24,7 +24,6 @@ use crate::{
     MouseButton,
     PaintContext,
     RectCommand,
-    StrokeCommand,
     Style,
     StyleBuilder,
     Transition,
@@ -32,6 +31,7 @@ use crate::{
     WidgetBase,
     WidgetId,
     constants::{ DEFAULT_CURSOR_ICON, DEFAULT_POINTER_CURSOR_ICON },
+    widgets::icon_slot::IconSlot,
 };
 use std::cell::Cell;
 use web_time::Duration;
@@ -62,6 +62,8 @@ pub struct Checkbox {
     // 0.0 (unchecked) -> 1.0 (checked), animated on every toggle and
     // driving both the fill/border color blend and the checkmark draw-in.
     check_progress: Cell<f32>,
+    check_icon: IconSlot,
+    indeterminate_icon: IconSlot,
 }
 
 impl Checkbox {
@@ -80,6 +82,8 @@ impl Checkbox {
             check_color: None,
             on_change: None,
             check_progress: Cell::new(0.0),
+            check_icon: IconSlot::default_check(),
+            indeterminate_icon: IconSlot::default_minus(),
         };
 
         checkbox.recompute_style();
@@ -111,6 +115,31 @@ impl Checkbox {
 
     pub fn check_color(mut self, color: Color) -> Self {
         self.check_color = Some(color);
+        self.mark_dirty();
+        self
+    }
+
+    /// Overrides the icon drawn while checked. Defaults to xengui-lucide's
+    /// check icon; accepts any SVG source, including another
+    /// `xengui-lucide` constant.
+    pub fn icon(mut self, svg_source: &str) -> Self {
+        self.check_icon.set_svg(svg_source);
+        self.mark_dirty();
+        self
+    }
+
+    /// Overrides the icon drawn while indeterminate. Defaults to
+    /// xengui-lucide's minus icon.
+    pub fn indeterminate_icon(mut self, svg_source: &str) -> Self {
+        self.indeterminate_icon.set_svg(svg_source);
+        self.mark_dirty();
+        self
+    }
+
+    /// Hides the check/indeterminate icon entirely, leaving only the box.
+    pub fn icons_enabled(mut self, enabled: bool) -> Self {
+        self.check_icon.set_enabled(enabled);
+        self.indeterminate_icon.set_enabled(enabled);
         self.mark_dirty();
         self
     }
@@ -228,44 +257,21 @@ impl Widget for Checkbox {
 
         if t > 0.001 {
             let icon_color = self.check_color.unwrap_or(theme.on_primary);
-            let stroke_width = (b.width * 0.12).max(1.5 * sf);
-            let color = icon_color.with_alpha_f32(icon_color.a() * t);
+            let icon_box = crate::scaled_layout_box(
+                LayoutBox {
+                    x: b.x + b.width * 0.18,
+                    y: b.y + b.height * 0.18,
+                    width: b.width * 0.64,
+                    height: b.height * 0.64,
+                },
+                t
+            );
+            let rect = (icon_box.x, icon_box.y, icon_box.width, icon_box.height);
 
             if self.indeterminate {
-                let cx = b.x + b.width * 0.5;
-                let cy = b.y + b.height * 0.5;
-                let half_w = b.width * 0.28 * t;
-
-                ctx.draw_stroke(StrokeCommand {
-                    p0: (cx - half_w, cy),
-                    p1: (cx + half_w, cy),
-                    thickness: stroke_width,
-                    color,
-                    clip_rect: None,
-                });
+                self.indeterminate_icon.paint(ctx, rect, icon_color, t);
             } else {
-                let cx = b.x + b.width * 0.5;
-                let cy = b.y + b.height * 0.5;
-                let scale_pt = |p: (f32, f32)| -> (f32, f32) {
-                    (cx + (p.0 - cx) * t, cy + (p.1 - cy) * t)
-                };
-
-                let p0 = scale_pt((b.x + b.width * 0.22, b.y + b.height * 0.52));
-                let p1 = scale_pt((b.x + b.width * 0.42, b.y + b.height * 0.72));
-                let p2 = scale_pt((b.x + b.width * 0.8, b.y + b.height * 0.28));
-
-                for (a, bnd) in [
-                    (p0, p1),
-                    (p1, p2),
-                ] {
-                    ctx.draw_stroke(StrokeCommand {
-                        p0: a,
-                        p1: bnd,
-                        thickness: stroke_width,
-                        color,
-                        clip_rect: None,
-                    });
-                }
+                self.check_icon.paint(ctx, rect, icon_color, t);
             }
         }
 
@@ -324,6 +330,8 @@ impl Widget for Checkbox {
             self.indeterminate == other.indeterminate &&
             self.size == other.size &&
             self.check_color == other.check_color &&
+            self.check_icon == other.check_icon &&
+            self.indeterminate_icon == other.indeterminate_icon &&
             self.base.style == other.base.style &&
             self.base.hover_style == other.base.hover_style &&
             self.base.pressed_style == other.base.pressed_style &&

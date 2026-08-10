@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
+mod icon_slot;
 pub mod view;
 pub mod layout_sugar;
 pub mod label;
