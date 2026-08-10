@@ -39,19 +39,15 @@ use xengui_icons::{ IconAxes, MaterialSymbolsVariable, codepoints };
 
 type ChangeCallback = Box<dyn FnMut(bool, &mut EventCtx)>;
 
-const TRACK_WIDTH: f32 = 52.0;
+const TRACK_WIDTH: f32 = 54.0;
 const TRACK_HEIGHT: f32 = 32.0;
 
-const THUMB_UNSELECTED: f32 = 16.0;
-const THUMB_SELECTED: f32 = 24.0;
+const THUMB: f32 = 23.0;
+const THUMB_PRESSED: f32 = 27.0;
 
-const THUMB_PRESSED_UNCHECKED: f32 = 20.0;
-const THUMB_PRESSED_CHECKED: f32 = 26.0;
+const TRACK_PADDING: f32 = 5.0;
 
-const TRACK_PADDING_LEFT: f32 = 4.0;
-const TRACK_PADDING_RIGHT: f32 = 4.0;
-
-const TOGGLE_TRANSITION: Transition = Transition::new(Duration::from_millis(200)).easing(
+const TOGGLE_TRANSITION: Transition = Transition::new(Duration::from_millis(180)).easing(
     Easing::EaseOut
 );
 
@@ -107,7 +103,7 @@ impl Switch {
             thumb_off_color: None,
             border_color: None,
             progress: Cell::new(0.0),
-            thumb_size: Cell::new(THUMB_UNSELECTED),
+            thumb_size: Cell::new(THUMB),
             on_change: None,
             /*icon_on: IconSlot::default_check(),
             icon_off: IconSlot::default_minus(),*/
@@ -278,11 +274,14 @@ impl Widget for Switch {
         // Animated thumb diameter, driven from cascade_style instead of
         // snapping instantly between idle/pressed sizes.
         let thumb_d = self.thumb_size.get() * sf;
-        let pad_left = TRACK_PADDING_LEFT * sf;
-        let pad_right = TRACK_PADDING_RIGHT * sf;
+        let base_thumb_d = THUMB * sf;
+        let pad = TRACK_PADDING * sf;
 
-        let min_cx = b.x + pad_left + thumb_d * 0.5;
-        let max_cx = b.x + b.width - pad_right - thumb_d * 0.5;
+        // Keep the thumb's travel independent from its animated size.
+        // This prevents the ON/OFF states from appearing to have different
+        // thumb sizes or travel distances.
+        let min_cx = b.x + pad + base_thumb_d * 0.5;
+        let max_cx = b.x + b.width - pad - base_thumb_d * 0.5;
         let cx = lerp(min_cx, max_cx, t);
         let cy = b.y + b.height * 0.5;
 
@@ -309,7 +308,7 @@ impl Widget for Switch {
                 size: (icon_size, icon_size),
                 codepoint: codepoints::CHECK,
                 font: MaterialSymbolsVariable::FONT,
-                axes: IconAxes::default().fill(1.0).weight(700.0),
+                axes: IconAxes::default().fill(1.0).weight(500.0),
                 color: track_on.with_alpha_f32(track_on.a() * mark_alpha),
                 clip_rect: None,
             });
@@ -319,7 +318,7 @@ impl Widget for Switch {
             ctx.draw_variable_icon(VariableIconCommand {
                 position: (icon_x, icon_y),
                 size: (icon_size, icon_size),
-                codepoint: codepoints::REMOVE,
+                codepoint: codepoints::MINUS,
                 font: MaterialSymbolsVariable::FONT,
                 axes: IconAxes::default().fill(1.0).weight(700.0),
                 color: track_off.with_alpha_f32(track_off.a() * mark_alpha),
@@ -419,11 +418,8 @@ impl Widget for Switch {
         // Thumb size target depends on both checked progress and pressed
         // state, so "pressed while off" and "pressed while on" grow to
         // different sizes instead of sharing one fixed pressed diameter.
-        let t = self.progress.get();
         let pressed = self.base.interaction.pressed;
-        let idle_thumb = lerp(THUMB_UNSELECTED, THUMB_SELECTED, t);
-        let pressed_thumb = lerp(THUMB_PRESSED_UNCHECKED, THUMB_PRESSED_CHECKED, t);
-        let thumb_target = if pressed { pressed_thumb } else { idle_thumb };
+        let thumb_target = if pressed { THUMB_PRESSED } else { THUMB };
 
         let thumb_key = AnimKey {
             widget: self.anim_id,

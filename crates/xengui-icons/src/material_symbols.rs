@@ -48,7 +48,7 @@ impl IconAxes {
         self
     }
 
-     /// (20.0, 48.0)
+    /// (20.0, 48.0)
     pub fn optical_size(mut self, value: f32) -> Self {
         self.optical_size = value.clamp(Self::OPTICAL_SIZE_RANGE.0, Self::OPTICAL_SIZE_RANGE.1);
         self

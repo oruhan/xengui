@@ -235,14 +235,9 @@ impl Widget for Checkbox {
         let fill = lerp_color(unchecked_fill, checked_fill, t);
         let border_color = lerp_color(unchecked_border, checked_border, t);
 
-        // A brief overshoot as the box fills in, peaking mid-transition -
-        // gives the toggle a little bounce instead of a flat cross-fade.
-        let box_scale = 1.0 + t * (1.0 - t) * 0.12;
-        let scaled_box = crate::scaled_layout_box(b, box_scale);
-
         ctx.draw_rect(RectCommand {
-            position: (scaled_box.x, scaled_box.y),
-            size: (scaled_box.width, scaled_box.height),
+            position: (b.x, b.y),
+            size: (b.width, b.height),
             background: Some(Background::Color(fill)),
             border_radius: Some(BorderRadius::all(Length::px(radius))),
             border_color: Some(border_color),
@@ -254,15 +249,13 @@ impl Widget for Checkbox {
 
         if t > 0.001 {
             let icon_color = self.check_color.unwrap_or(theme.on_primary);
-            let icon_box = crate::scaled_layout_box(
-                LayoutBox {
-                    x: b.x + b.width * 0.12,
-                    y: b.y + b.height * 0.12,
-                    width: b.width * 0.76,
-                    height: b.height * 0.76,
-                },
-                t
-            );
+            let icon_size = b.width * 0.76 + 2.5 * sf;
+            let icon_box = LayoutBox {
+                x: b.x + (b.width - icon_size) * 0.5,
+                y: b.y + (b.height - icon_size) * 0.5,
+                width: icon_size,
+                height: icon_size,
+            };
 
             let codepoint = if self.indeterminate { codepoints::REMOVE } else { codepoints::CHECK };
 
@@ -271,7 +264,7 @@ impl Widget for Checkbox {
                 size: (icon_box.width, icon_box.height),
                 codepoint,
                 font: MaterialSymbolsVariable::FONT,
-                axes: IconAxes::default().fill(1.0).weight(700.0),
+                axes: IconAxes::default().fill(1.0).weight(600.0),
                 color: icon_color.with_alpha_f32(icon_color.a() * t),
                 clip_rect: None,
             });
