@@ -13,8 +13,10 @@ use crate::{
     RectCommand,
     RenderBackend,
     RenderCache,
+    StrokeCommand,
     SystemTheme,
     TriangleCommand,
+    VariableIconCommand,
     Widget,
 };
 use std::collections::HashSet;
@@ -145,6 +147,7 @@ impl FrameRenderer {
             Stroke,
             Filtered,
             BackdropFilter,
+            VariableIcon,
         }
 
         let mut current_kind: Option<RunKind> = None;
@@ -153,6 +156,7 @@ impl FrameRenderer {
         let mut img_buf: Vec<ImageCommand> = Vec::new();
         let mut shadow_buf: Vec<BoxShadowCommand> = Vec::new();
         let mut stroke_buf: Vec<crate::StrokeCommand> = Vec::new();
+        let mut icon_buf: Vec<VariableIconCommand> = Vec::new();
 
         macro_rules! flush_run {
             () => {
@@ -171,13 +175,15 @@ impl FrameRenderer {
                     }
                     Some(RunKind::Filtered) => {}
                     Some(RunKind::BackdropFilter) => {}
+                    Some(RunKind::VariableIcon) => backend.draw_variable_icons(&icon_buf),
                     None => {}
                 }
                 rect_buf.clear();
                 tri_buf.clear();
                 img_buf.clear();
                 shadow_buf.clear();
-                  stroke_buf.clear();
+                stroke_buf.clear();
+                icon_buf.clear();
             };
         }
 
@@ -228,6 +234,13 @@ impl FrameRenderer {
                     }
                     stroke_buf.push(cmd);
                 }
+                DrawCommand::VariableIcon(cmd) => {
+                    if current_kind != Some(RunKind::VariableIcon) {
+                        flush_run!();
+                        current_kind = Some(RunKind::VariableIcon);
+                    }
+                    icon_buf.push(*cmd);
+                }
                 DrawCommand::Filtered(filtered) => {
                     if current_kind != Some(RunKind::Filtered) {
                         flush_run!();
@@ -260,7 +273,8 @@ impl FrameRenderer {
             let mut top_tri_buf: Vec<TriangleCommand> = Vec::new();
             let mut top_img_buf: Vec<ImageCommand> = Vec::new();
             let mut top_shadow_buf: Vec<BoxShadowCommand> = Vec::new();
-            let mut top_stroke_buf: Vec<crate::StrokeCommand> = Vec::new();
+            let mut top_stroke_buf: Vec<StrokeCommand> = Vec::new();
+            let mut top_icon_buf: Vec<VariableIconCommand> = Vec::new();
             let mut top_kind: Option<RunKind> = None;
 
             macro_rules! flush_top_run {
@@ -280,12 +294,14 @@ impl FrameRenderer {
                         Some(RunKind::Stroke) => backend.draw_strokes(&top_stroke_buf),
                         Some(RunKind::Filtered) => {}
                         Some(RunKind::BackdropFilter) => {}
+                        Some(RunKind::VariableIcon) => backend.draw_variable_icons(&top_icon_buf),
                         None => {}
                     }
                     top_rect_buf.clear();
                     top_tri_buf.clear();
                     top_img_buf.clear();
                     top_stroke_buf.clear();
+                    top_icon_buf.clear();
                 };
             }
 
@@ -332,6 +348,13 @@ impl FrameRenderer {
                             top_kind = Some(RunKind::Stroke);
                         }
                         top_stroke_buf.push(cmd);
+                    }
+                    DrawCommand::VariableIcon(cmd) => {
+                        if top_kind != Some(RunKind::VariableIcon) {
+                            flush_top_run!();
+                            top_kind = Some(RunKind::VariableIcon);
+                        }
+                        top_icon_buf.push(*cmd);
                     }
                     DrawCommand::Filtered(_) => {}
                     // Overlay/top-layer content never produces a backdrop
@@ -686,6 +709,7 @@ fn apply_clip(command: &mut DrawCommand, clip_rect: Option<(f32, f32, f32, f32)>
         DrawCommand::BoxShadow(cmd) => &mut cmd.clip_rect,
         DrawCommand::Stroke(cmd) => &mut cmd.clip_rect,
         DrawCommand::Filtered(cmd) => &mut cmd.clip_rect,
+        DrawCommand::VariableIcon(cmd) => &mut cmd.clip_rect,
         DrawCommand::BackdropFilter(cmd) => &mut cmd.clip_rect,
     };
     *target = Some(clip_intersect(*target, ancestor_clip));

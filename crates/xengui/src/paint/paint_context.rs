@@ -1,7 +1,14 @@
-use crate::{BoxShadowCommand, StrokeCommand};
-
 // SPDX-License-Identifier: Apache-2.0
-use super::{ DrawCommand, ImageCommand, RectCommand, TextCommand, TriangleCommand };
+use super::{
+    DrawCommand,
+    ImageCommand,
+    RectCommand,
+    TextCommand,
+    TriangleCommand,
+    BoxShadowCommand,
+    StrokeCommand,
+    VariableIconCommand,
+};
 
 pub struct PaintContext<'a> {
     commands: &'a mut Vec<DrawCommand>,
@@ -35,5 +42,9 @@ impl<'a> PaintContext<'a> {
 
     pub fn draw_stroke(&mut self, command: StrokeCommand) {
         self.commands.push(DrawCommand::Stroke(command));
+    }
+
+    pub fn draw_variable_icon(&mut self, command: VariableIconCommand) {
+        self.commands.push(DrawCommand::VariableIcon(Box::new(command)));
     }
 }

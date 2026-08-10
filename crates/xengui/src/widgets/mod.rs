@@ -1,5 +1,4 @@
 // SPDX-License-Identifier: Apache-2.0
-mod icon_slot;
 pub mod view;
 pub mod layout_sugar;
 pub mod label;
@@ -21,6 +20,7 @@ pub mod radio;
 pub mod devtools_panel;
 pub mod split_handle;
 pub mod split_pane;
+pub mod variable_icon;
 
 pub use view::View;
 pub use layout_sugar::{ Column, Row };
@@ -50,6 +50,7 @@ pub use radio::RadioButton;
 pub use devtools_panel::*;
 pub use split_handle::*;
 pub use split_pane::*;
+pub use variable_icon::VariableIcon;
 
 #[cfg(not(target_arch = "wasm32"))]
 pub use image::image_source_from_path;

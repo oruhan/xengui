@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 use crate::{ Background, BorderRadius, Color, Length, ShadowDirection, Style };
 use smol_str::SmolStr;
+use xengui_icons::IconAxes;
 use std::sync::Arc;
 
 #[derive(Clone, Debug)]
@@ -79,6 +80,21 @@ pub struct StrokeCommand {
     pub clip_rect: Option<(f32, f32, f32, f32)>,
 }
 
+/// One rasterized Material Symbols (or any other variable-font) glyph
+/// draw, resolved by the backend's own variable-icon pipeline instead of
+/// the glyphon-backed text pipeline - the only path that can blend
+/// FILL/wght/GRAD/opsz continuously.
+#[derive(Clone, Debug)]
+pub struct VariableIconCommand {
+    pub position: (f32, f32),
+    pub size: (f32, f32),
+    pub codepoint: char,
+    pub font: &'static [u8],
+    pub axes: IconAxes,
+    pub color: Color,
+    pub clip_rect: Option<(f32, f32, f32, f32)>,
+}
+
 /// A subtree's own draw commands, rendered in isolation to an offscreen
 /// texture and processed through `chain` before being composited back
 /// into the frame. Produced by `FrameRenderer` for any widget whose
@@ -117,6 +133,7 @@ pub enum DrawCommand {
     Stroke(StrokeCommand),
     Filtered(Box<FilteredCommand>),
     BackdropFilter(Box<BackdropFilterCommand>),
+    VariableIcon(Box<VariableIconCommand>),
 }
 
 // Converts a logical clip rect (top-left origin) into a physical scissor
