@@ -70,6 +70,15 @@ pub struct BoxShadowCommand {
     pub direction: ShadowDirection,
 }
 
+#[derive(Clone, Debug)]
+pub struct StrokeCommand {
+    pub p0: (f32, f32),
+    pub p1: (f32, f32),
+    pub thickness: f32,
+    pub color: Color,
+    pub clip_rect: Option<(f32, f32, f32, f32)>,
+}
+
 /// A subtree's own draw commands, rendered in isolation to an offscreen
 /// texture and processed through `chain` before being composited back
 /// into the frame. Produced by `FrameRenderer` for any widget whose
@@ -105,6 +114,7 @@ pub enum DrawCommand {
     Text(Box<TextCommand>),
     Image(Box<ImageCommand>),
     BoxShadow(BoxShadowCommand),
+    Stroke(StrokeCommand),
     Filtered(Box<FilteredCommand>),
     BackdropFilter(Box<BackdropFilterCommand>),
 }

@@ -1,4 +1,4 @@
-use crate::BoxShadowCommand;
+use crate::{BoxShadowCommand, StrokeCommand};
 
 // SPDX-License-Identifier: Apache-2.0
 use super::{ DrawCommand, ImageCommand, RectCommand, TextCommand, TriangleCommand };
@@ -31,5 +31,9 @@ impl<'a> PaintContext<'a> {
 
     pub fn draw_box_shadow(&mut self, command: BoxShadowCommand) {
         self.commands.push(DrawCommand::BoxShadow(command));
+    }
+
+    pub fn draw_stroke(&mut self, command: StrokeCommand) {
+        self.commands.push(DrawCommand::Stroke(command));
     }
 }

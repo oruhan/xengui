@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 use crate::pipelines::{
     ImagePipeline,
+    PostProcessEngine,
     RectPipeline,
+    StrokePipeline,
     TextPipeline,
     TrianglePipeline,
-    PostProcessEngine,
 };
 use crate::pipelines::postprocess::{ padding_for_chain, directional_shadow_padding };
 use xengui::{
@@ -15,6 +16,7 @@ use xengui::{
     ImageCommand,
     RectCommand,
     RenderBackend,
+    StrokeCommand,
     SystemTheme,
     TextCommand,
     TextMeasurer,
@@ -26,6 +28,7 @@ use xengui::{
 pub struct WgpuPipelines {
     pub(crate) rect: RectPipeline,
     triangle: TrianglePipeline,
+    stroke: StrokePipeline,
     image: ImagePipeline,
     text: TextPipeline,
     postprocess: PostProcessEngine,
@@ -81,6 +84,7 @@ impl WgpuPipelines {
         Ok(Self {
             rect: RectPipeline::new(device, surface_format, sample_count),
             triangle: TrianglePipeline::new(device, surface_format, sample_count),
+            stroke: StrokePipeline::new(device, surface_format, sample_count),
             image: ImagePipeline::new(device, surface_format, sample_count),
             text: TextPipeline::new(device, queue, surface_format, user_fonts, sample_count)?,
             postprocess: PostProcessEngine::new(device, surface_format),
@@ -197,6 +201,7 @@ impl WgpuPipelines {
         self.ensure_scene_target(device, width, height);
         self.rect.reset_frame();
         self.triangle.reset_frame();
+        self.stroke.reset_frame();
         self.image.reset_frame();
         self.postprocess.reset_frame();
 
@@ -313,6 +318,7 @@ impl<'a> WgpuFrame<'a> {
             Image,
             Text,
             BoxShadow,
+            Stroke,
         }
 
         let mut current_kind: Option<RunKind> = None;
@@ -320,6 +326,7 @@ impl<'a> WgpuFrame<'a> {
         let mut tri_buf: Vec<TriangleCommand> = Vec::new();
         let mut img_buf: Vec<ImageCommand> = Vec::new();
         let mut shadow_buf: Vec<BoxShadowCommand> = Vec::new();
+        let mut stroke_buf: Vec<StrokeCommand> = Vec::new();
         // Whether the offscreen texture has already been cleared, so
         // every following pass loads instead of wiping earlier layers.
         let mut cleared = false;
@@ -390,6 +397,17 @@ impl<'a> WgpuFrame<'a> {
                             &img_buf
                         );
                     }
+                    Some(RunKind::Stroke) => {
+                        let mut pass = shape_pass!();
+                        self.pipelines.stroke.draw_batch(
+                            self.device,
+                            self.queue,
+                            &mut pass,
+                            target_width,
+                            target_height,
+                            &stroke_buf
+                        );
+                    }
                     Some(RunKind::BoxShadow) => {
                         if !cleared {
                             let _ = shape_pass!();
@@ -439,6 +457,7 @@ impl<'a> WgpuFrame<'a> {
                 tri_buf.clear();
                 img_buf.clear();
                 shadow_buf.clear();
+                stroke_buf.clear();
             };
         }
 
@@ -478,6 +497,13 @@ impl<'a> WgpuFrame<'a> {
                         current_kind = Some(RunKind::BoxShadow);
                     }
                     shadow_buf.push(cmd.clone());
+                }
+                DrawCommand::Stroke(cmd) => {
+                    if current_kind != Some(RunKind::Stroke) {
+                        flush_run!();
+                        current_kind = Some(RunKind::Stroke);
+                    }
+                    stroke_buf.push(cmd.clone());
                 }
                 // paint_subtree_for_filter (xengui core) never records a
                 // nested Filtered command - it inlines every descendant's
@@ -578,6 +604,38 @@ impl<'a> RenderBackend for WgpuFrame<'a> {
             })
         );
         self.pipelines.triangle.draw_batch(
+            self.device,
+            self.queue,
+            &mut pass,
+            self.width,
+            self.height,
+            cmds
+        );
+    }
+
+    fn draw_strokes(&mut self, cmds: &[StrokeCommand]) {
+        if cmds.is_empty() {
+            return;
+        }
+        let load = self.shape_pass_load();
+        let mut pass = self.encoder.begin_render_pass(
+            &(wgpu::RenderPassDescriptor {
+                label: Some("xengui shape pass"),
+                color_attachments: &[
+                    Some(wgpu::RenderPassColorAttachment {
+                        view: &self.view,
+                        resolve_target: None,
+                        ops: wgpu::Operations { load, store: wgpu::StoreOp::Store },
+                        depth_slice: None,
+                    }),
+                ],
+                depth_stencil_attachment: None,
+                timestamp_writes: None,
+                occlusion_query_set: None,
+                multiview_mask: None,
+            })
+        );
+        self.pipelines.stroke.draw_batch(
             self.device,
             self.queue,
             &mut pass,
@@ -985,6 +1043,15 @@ fn translate_draw_command(command: &DrawCommand, ox: f32, oy: f32) -> DrawComman
             c.box_position.1 -= oy;
             c.clip_rect = shift_clip(c.clip_rect);
             DrawCommand::BoxShadow(c)
+        }
+        DrawCommand::Stroke(c) => {
+            let mut c = c.clone();
+            c.p0.0 -= ox;
+            c.p0.1 -= oy;
+            c.p1.0 -= ox;
+            c.p1.1 -= oy;
+            c.clip_rect = shift_clip(c.clip_rect);
+            DrawCommand::Stroke(c)
         }
         DrawCommand::Filtered(nested) => {
             let mut nested = nested.clone();

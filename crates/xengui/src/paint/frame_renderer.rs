@@ -142,6 +142,7 @@ impl FrameRenderer {
             Image,
             Text,
             BoxShadow,
+            Stroke,
             Filtered,
             BackdropFilter,
         }
@@ -151,6 +152,7 @@ impl FrameRenderer {
         let mut tri_buf: Vec<TriangleCommand> = Vec::new();
         let mut img_buf: Vec<ImageCommand> = Vec::new();
         let mut shadow_buf: Vec<BoxShadowCommand> = Vec::new();
+        let mut stroke_buf: Vec<crate::StrokeCommand> = Vec::new();
 
         macro_rules! flush_run {
             () => {
@@ -159,6 +161,7 @@ impl FrameRenderer {
                     Some(RunKind::Triangle) => backend.draw_triangles(&tri_buf),
                     Some(RunKind::Image) => backend.draw_images(&img_buf),
                     Some(RunKind::BoxShadow) => backend.draw_box_shadows(&shadow_buf),
+                    Some(RunKind::Stroke) => backend.draw_strokes(&stroke_buf),
                     Some(RunKind::Text) => {
                         backend.flush_text();
                         let decorations = backend.take_text_decorations();
@@ -174,6 +177,7 @@ impl FrameRenderer {
                 tri_buf.clear();
                 img_buf.clear();
                 shadow_buf.clear();
+                  stroke_buf.clear();
             };
         }
 
@@ -217,6 +221,13 @@ impl FrameRenderer {
                     }
                     shadow_buf.push(cmd);
                 }
+                DrawCommand::Stroke(cmd) => {
+                    if current_kind != Some(RunKind::Stroke) {
+                        flush_run!();
+                        current_kind = Some(RunKind::Stroke);
+                    }
+                    stroke_buf.push(cmd);
+                }
                 DrawCommand::Filtered(filtered) => {
                     if current_kind != Some(RunKind::Filtered) {
                         flush_run!();
@@ -249,6 +260,7 @@ impl FrameRenderer {
             let mut top_tri_buf: Vec<TriangleCommand> = Vec::new();
             let mut top_img_buf: Vec<ImageCommand> = Vec::new();
             let mut top_shadow_buf: Vec<BoxShadowCommand> = Vec::new();
+            let mut top_stroke_buf: Vec<crate::StrokeCommand> = Vec::new();
             let mut top_kind: Option<RunKind> = None;
 
             macro_rules! flush_top_run {
@@ -265,6 +277,7 @@ impl FrameRenderer {
                             }
                         }
                         Some(RunKind::BoxShadow) => backend.draw_box_shadows(&top_shadow_buf),
+                        Some(RunKind::Stroke) => backend.draw_strokes(&top_stroke_buf),
                         Some(RunKind::Filtered) => {}
                         Some(RunKind::BackdropFilter) => {}
                         None => {}
@@ -272,6 +285,7 @@ impl FrameRenderer {
                     top_rect_buf.clear();
                     top_tri_buf.clear();
                     top_img_buf.clear();
+                    top_stroke_buf.clear();
                 };
             }
 
@@ -311,6 +325,13 @@ impl FrameRenderer {
                             current_kind = Some(RunKind::BoxShadow);
                         }
                         top_shadow_buf.push(cmd);
+                    }
+                    DrawCommand::Stroke(cmd) => {
+                        if top_kind != Some(RunKind::Stroke) {
+                            flush_top_run!();
+                            top_kind = Some(RunKind::Stroke);
+                        }
+                        top_stroke_buf.push(cmd);
                     }
                     DrawCommand::Filtered(_) => {}
                     // Overlay/top-layer content never produces a backdrop
@@ -663,6 +684,7 @@ fn apply_clip(command: &mut DrawCommand, clip_rect: Option<(f32, f32, f32, f32)>
         DrawCommand::Text(cmd) => &mut cmd.clip_rect,
         DrawCommand::Triangle(cmd) => &mut cmd.clip_rect,
         DrawCommand::BoxShadow(cmd) => &mut cmd.clip_rect,
+        DrawCommand::Stroke(cmd) => &mut cmd.clip_rect,
         DrawCommand::Filtered(cmd) => &mut cmd.clip_rect,
         DrawCommand::BackdropFilter(cmd) => &mut cmd.clip_rect,
     };

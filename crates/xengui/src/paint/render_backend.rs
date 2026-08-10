@@ -1,13 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 use crate::{
-    BoxShadowCommand,
-    Color,
-    ImageCommand,
-    RectCommand,
-    SystemTheme,
-    TextCommand,
-    TextMeasurer,
-    TriangleCommand,
+    BoxShadowCommand, Color, ImageCommand, RectCommand, StrokeCommand, SystemTheme, TextCommand, TextMeasurer, TriangleCommand,
 };
 
 /// Abstracts the GPU backend so xengui's core (layout, widgets,
@@ -25,6 +18,7 @@ pub trait RenderBackend {
     fn draw_triangles(&mut self, cmds: &[TriangleCommand]);
     fn draw_images(&mut self, cmds: &[ImageCommand]);
     fn draw_box_shadows(&mut self, cmds: &[BoxShadowCommand]);
+    fn draw_strokes(&mut self, cmds: &[StrokeCommand]);
     fn draw_text(&mut self, theme: SystemTheme, scale_factor: f32, cmd: &TextCommand);
 
     /// Renders `cmds` in isolation, runs `chain` over the result, and
