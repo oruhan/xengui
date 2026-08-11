@@ -264,6 +264,7 @@ struct ResolvedRasterImage {
     transform: Transform2D,
     opacity: f32,
     source: ImageSource,
+    clip: Option<(f32, f32, f32, f32)>,
 }
 
 enum ResolvedDrawOp {
@@ -423,6 +424,39 @@ impl Svg {
         self
     }
 
+    /// Overrides the fill paint of the element with the given `id`
+    /// (the SVG's own `id="..."` attribute), re-tessellating so the
+    /// change is visible next frame. No-op if no element with that id
+    /// exists in the current document.
+    pub fn fill_by_id(mut self, id: &str, color: impl IntoSvgColor) -> Self {
+        let mut document = (*self.document).clone();
+        if let Some(element) = document.find_by_id_mut(id) {
+            element.attrs_mut().fill = color.into_svg_color();
+        }
+        self.set_document(document);
+        self
+    }
+
+    /// Overrides the stroke paint of the element with the given `id`.
+    pub fn stroke_by_id(mut self, id: &str, color: impl IntoSvgColor) -> Self {
+        let mut document = (*self.document).clone();
+        if let Some(element) = document.find_by_id_mut(id) {
+            element.attrs_mut().stroke = color.into_svg_color();
+        }
+        self.set_document(document);
+        self
+    }
+
+    /// Overrides the opacity of the element with the given `id`.
+    pub fn opacity_by_id(mut self, id: &str, opacity: f32) -> Self {
+        let mut document = (*self.document).clone();
+        if let Some(element) = document.find_by_id_mut(id) {
+            element.attrs_mut().opacity = opacity;
+        }
+        self.set_document(document);
+        self
+    }
+
     fn push_element(&mut self, element: SvgElement) {
         let mut document = (*self.document).clone();
         document.elements.push(element);
@@ -448,6 +482,7 @@ impl Svg {
                                     img.width,
                                     img.height
                                 ),
+                                clip: img.clip,
                             }),
                     }
                 })
@@ -609,6 +644,43 @@ impl Widget for Svg {
                     let (px, py) = map((lx, ly));
                     let img_scale = transform_uniform_scale(image.transform) * scale;
 
+                    // Maps the local clip rect through the same
+                    // element-transform + viewBox chain used for the
+                    // image itself, then takes the axis-aligned bounding
+                    // box of the mapped corners.
+                    let clip_rect = image.clip.map(|(cx, cy, cw, ch)| {
+                        let corners = [
+                            (cx, cy),
+                            (cx + cw, cy),
+                            (cx, cy + ch),
+                            (cx + cw, cy + ch),
+                        ];
+                        let mapped: Vec<(f32, f32)> = corners
+                            .iter()
+                            .map(|&(x, y)| {
+                                let (tx, ty) = image.transform.apply(x, y);
+                                map((tx, ty))
+                            })
+                            .collect();
+                        let min_x = mapped
+                            .iter()
+                            .map(|p| p.0)
+                            .fold(f32::MAX, f32::min);
+                        let max_x = mapped
+                            .iter()
+                            .map(|p| p.0)
+                            .fold(f32::MIN, f32::max);
+                        let min_y = mapped
+                            .iter()
+                            .map(|p| p.1)
+                            .fold(f32::MAX, f32::min);
+                        let max_y = mapped
+                            .iter()
+                            .map(|p| p.1)
+                            .fold(f32::MIN, f32::max);
+                        (min_x, min_y, max_x - min_x, max_y - min_y)
+                    });
+
                     ctx.draw_image(ImageCommand {
                         position: (px, py),
                         size: (image.size.0 * img_scale, image.size.1 * img_scale),
@@ -617,7 +689,7 @@ impl Widget for Svg {
                         tint: (image.opacity < 1.0).then(||
                             crate::Color::WHITE.with_alpha_f32(image.opacity)
                         ),
-                        clip_rect: None,
+                        clip_rect,
                     });
                 }
             }

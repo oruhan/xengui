@@ -500,6 +500,7 @@ fn build_element(
                     height,
                     source: image.source.clone(),
                     attrs,
+                    clip: Some((rect_x, rect_y, rect_w, rect_h)),
                 });
             }
             Some(SvgElement::Rect {
@@ -529,6 +530,7 @@ fn build_element(
                 height: get("height"),
                 source: resolve_href(href),
                 attrs,
+                clip: None,
             })
         }
         _ => None,
@@ -540,6 +542,7 @@ fn build_element(
 // SVG/CSS's own inheritance rules for these presentation attributes.
 fn build_attrs(source: &HashMap<String, String>, parent: &SvgAttributes) -> SvgAttributes {
     let mut attrs = SvgAttributes {
+        id: None,
         fill: parent.fill,
         fill_rule: parent.fill_rule,
         stroke: parent.stroke,
@@ -551,10 +554,12 @@ fn build_attrs(source: &HashMap<String, String>, parent: &SvgAttributes) -> SvgA
         transform: Transform2D::IDENTITY,
     };
 
-    if let Some(v) = source.get("fill")
-        && !v.trim_start().starts_with("url(") {
-            attrs.fill = parse_paint(v);
-        }
+    if let Some(v) = source.get("id") {
+        attrs.id = Some(v.clone());
+    }
+    if let Some(v) = source.get("fill") && !v.trim_start().starts_with("url(") {
+        attrs.fill = parse_paint(v);
+    }
     if let Some(v) = source.get("fill-rule") {
         attrs.fill_rule = parse_fill_rule(v);
     }

@@ -62,6 +62,7 @@ pub enum FillRule {
 /// properties SVG borrows for fill/stroke/opacity.
 #[derive(Clone, Debug, PartialEq)]
 pub struct SvgAttributes {
+    pub id: Option<String>,
     pub fill: SvgColor,
     pub fill_rule: FillRule,
     pub stroke: SvgColor,
@@ -78,6 +79,7 @@ impl Default for SvgAttributes {
     // have no stroke at all, and use the spec's default cap/join/miter.
     fn default() -> Self {
         Self {
+            id: None,
             fill: SvgColor::Solid(Color::BLACK),
             fill_rule: FillRule::NonZero,
             stroke: SvgColor::None,
@@ -125,6 +127,10 @@ pub enum SvgElement {
         height: f32,
         source: SvgImageSource,
         attrs: SvgAttributes,
+        // Bounds (in this element's own local space) the image must be
+        // clipped to, e.g. the fill-rect a pattern-referenced image was
+        // resolved from. None means the image should draw unclipped.
+        clip: Option<(f32, f32, f32, f32)>,
     },
     Group {
         children: Vec<SvgElement>,
@@ -134,6 +140,17 @@ pub enum SvgElement {
 
 impl SvgElement {
     pub fn attrs(&self) -> &SvgAttributes {
+        match self {
+            | Self::Path { attrs, .. }
+            | Self::Rect { attrs, .. }
+            | Self::Circle { attrs, .. }
+            | Self::Line { attrs, .. }
+            | Self::Image { attrs, .. }
+            | Self::Group { attrs, .. } => attrs,
+        }
+    }
+
+    pub fn attrs_mut(&mut self) -> &mut SvgAttributes {
         match self {
             | Self::Path { attrs, .. }
             | Self::Rect { attrs, .. }

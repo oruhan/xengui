@@ -579,6 +579,7 @@ pub struct SvgRasterImage {
     pub rgba: std::sync::Arc<Vec<u8>>,
     pub opacity: f32,
     pub transform: Transform2D,
+    pub clip: Option<(f32, f32, f32, f32)>,
 }
 
 pub fn collect_raster_images(doc: &SvgDocument) -> Vec<SvgRasterImage> {
@@ -604,7 +605,7 @@ fn collect_raster_images_recursive(
                 collect_raster_images_recursive(child, transform, opacity, out);
             }
         }
-        SvgElement::Image { x, y, width, height, source, .. } => {
+        SvgElement::Image { x, y, width, height, source, clip, .. } => {
             match source {
                 SvgImageSource::Raster { width: iw, height: ih, rgba } => {
                     let w = if *width > 0.0 { *width } else { *iw as f32 };
@@ -617,6 +618,7 @@ fn collect_raster_images_recursive(
                         rgba: rgba.clone(),
                         opacity,
                         transform,
+                        clip: *clip,
                     });
                 }
                 SvgImageSource::Svg(nested) => {
@@ -723,7 +725,7 @@ fn collect_draw_ops_recursive(
             emit_stroke(&path, attrs, opacity, scale, &mut tris);
             out.extend(tris.into_iter().map(SvgDrawOp::Triangle));
         }
-        SvgElement::Image { x, y, width, height, source, .. } => {
+        SvgElement::Image { x, y, width, height, source, clip, .. } => {
             match source {
                 SvgImageSource::Raster { width: iw, height: ih, rgba } => {
                     let w = if *width > 0.0 { *width } else { *iw as f32 };
@@ -737,6 +739,7 @@ fn collect_draw_ops_recursive(
                             rgba: rgba.clone(),
                             opacity,
                             transform,
+                            clip: *clip,
                         })
                     );
                 }
