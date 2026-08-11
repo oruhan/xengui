@@ -30,7 +30,9 @@ pub fn layout(_params: &RouteParams, child: Box<dyn Widget>) -> Box<dyn Widget> 
                             .width(pct!(100))
                             .height(px!(55))
                             .backdrop_filter(Filter::Blur(Length::px(8.0)))
-                            .background(|theme: &Theme| theme.surface.with_alpha(200))
+                            .background(|theme: &Theme|
+                                theme.surface_container_lowest.with_alpha(200)
+                            )
                             .box_shadow(
                                 BoxShadow::new(
                                     0.0,
@@ -39,21 +41,27 @@ pub fn layout(_params: &RouteParams, child: Box<dyn Widget>) -> Box<dyn Widget> 
                                     Color::NEUTRAL_500.with_alpha(16)
                                 ).direction(ShadowDirection::Bottom)
                             )
-                            .border(|theme: &Theme| Border::bottom(1, theme.outline))
+                            .border(|theme: &Theme|
+                                Border::bottom(1, theme.outline.with_alpha(200))
+                            )
                             .padding(Edges::symmetric(120, 0))
                             .child(
-                                Svg::from_bytes(
-                                    include_bytes!(
-                                        concat!(
-                                            env!("CARGO_MANIFEST_DIR"),
-                                            "/assets/XenGui_header.svg"
+                                View::new()
+                                    .cursor(Cursor::Pointer)
+                                    .on_click(|_ctx| xen_router::push("/"))
+                                    .child(
+                                        Svg::from_bytes(
+                                            include_bytes!(
+                                                concat!(
+                                                    env!("CARGO_MANIFEST_DIR"),
+                                                    "/assets/XenGui_header.svg"
+                                                )
+                                            )
                                         )
+                                            .width(100)
+                                            .height(100)
+                                            .background(Color::TRANSPARENT)
                                     )
-                                )
-                                    .width(100)
-                                    .height(100)
-                                    .background(Color::TRANSPARENT)
-                                    .on_click(|_f| xen_router::push("/"))
                             )
                             .child(
                                 View::new()
@@ -149,6 +157,7 @@ pub fn layout(_params: &RouteParams, child: Box<dyn Widget>) -> Box<dyn Widget> 
                                             .background(Color::BLUE_500)
                                             .font_size(14)
                                             .font_weight(FontWeight::Medium)
+                                            .on_click(|_ctx| xen_router::push("/docs"))
                                             .transition_all(
                                                 Transition::new(Duration::from_millis(200)).easing(
                                                     Easing::EaseInOut
@@ -180,8 +189,10 @@ pub fn layout(_params: &RouteParams, child: Box<dyn Widget>) -> Box<dyn Widget> 
                         View::new()
                             .display(Display::Flex)
                             .flex_direction(FlexDirection::Column)
-                            .background(|theme: &Theme| theme.surface)
-                            .border(|theme: &Theme| Border::top(1, theme.outline))
+                            .background(|theme: &Theme|
+                                theme.surface_container_lowest.with_alpha(200)
+                            )
+                            .border(|theme: &Theme| Border::top(1, theme.outline.with_alpha(200)))
                             .padding(Edges::only(120, 26, 120, 18))
                             // Top
                             .child(
@@ -680,7 +691,7 @@ pub fn layout(_params: &RouteParams, child: Box<dyn Widget>) -> Box<dyn Widget> 
                             .child(
                                 View::new()
                                     .height(1)
-                                    .background(|theme: &Theme| theme.outline)
+                                    .background(|theme: &Theme| theme.outline.with_alpha(200))
                                     .margin(Edges::only(0, 24, 0, 16))
                             )
                             // Bottom
