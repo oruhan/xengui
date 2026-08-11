@@ -361,11 +361,14 @@ impl VariableIconPipeline {
             // requested icon box - font bearing cancels out algebraically
             // for box-centering, so it's not needed here (unlike normal
             // baseline-aligned text layout).
-            let cx = (cmd.position.0 + cmd.size.0 * 0.5).round();
-            let cy = (cmd.position.1 + cmd.size.1 * 0.5).round();
+            let cx = cmd.position.0 + cmd.size.0 * 0.5;
+            let cy = cmd.position.1 + cmd.size.1 * 0.5;
 
-            let gx = cx - (glyph.size.0 * 0.5).floor();
-            let gy = cy + (glyph.size.1 * 0.5).ceil();
+            // Both edges snapped with the same rounding rule, so the
+            // rasterized glyph's own bounding box lands symmetrically on
+            // the target center instead of drifting toward one corner.
+            let gx = (cx - glyph.size.0 * 0.5).round();
+            let gy = (cy + glyph.size.1 * 0.5).round();
 
             let tint = cmd.color.to_f32_array();
             let p0 = ndc(gx, gy - glyph.size.1);

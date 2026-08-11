@@ -285,8 +285,13 @@ impl Widget for Switch {
         let cx = lerp(min_cx, max_cx, t);
         let cy = b.y + b.height * 0.5;
 
+        // Position snapped to the pixel grid so the circular SDF's
+        // antialiasing band doesn't straddle a texel asymmetrically at
+        // edges - size stays unrounded so the thumb keeps scaling smoothly.
+        let thumb_position = ((cx - thumb_d * 0.5).round(), (cy - thumb_d * 0.5).round());
+
         ctx.draw_rect(RectCommand {
-            position: (cx - thumb_d * 0.5, cy - thumb_d * 0.5),
+            position: thumb_position,
             size: (thumb_d, thumb_d),
             background: Some(Background::Color(thumb_color)),
             border_radius: Some(BorderRadius::all(Length::px(thumb_d * 0.5))),

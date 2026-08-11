@@ -89,17 +89,14 @@ impl Checkbox {
 
     pub fn checked(mut self, checked: bool) -> Self {
         self.checked = checked;
-        self.check_progress.set(if checked { 1.0 } else { 0.0 });
         self.mark_dirty();
         self
     }
 
     /// Shows a dash instead of a checkmark for a "some but not all"
-    /// tri-state selection. Independent of `checked` - clicking clears
-    /// it and sets `checked` to true.
+    /// tri-state selection.
     pub fn indeterminate(mut self, value: bool) -> Self {
         self.indeterminate = value;
-        self.check_progress.set(if value || self.checked { 1.0 } else { 0.0 });
         self.mark_dirty();
         self
     }
@@ -354,7 +351,12 @@ impl Widget for Checkbox {
                 self.check_progress.set(v.0[0]);
                 self.base.dirty = true;
             }
-            None => self.check_progress.set(target),
+            None => {
+                if (self.check_progress.get() - target).abs() > f32::EPSILON {
+                    self.base.dirty = true;
+                }
+                self.check_progress.set(target);
+            }
         }
     }
 
