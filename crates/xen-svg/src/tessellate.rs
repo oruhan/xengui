@@ -119,21 +119,21 @@ fn tessellate_element(
             emit_stroke(&path, attrs, opacity, scale, out);
         }
         SvgElement::Image { x, y, width, height, source, .. } => {
-            if let SvgImageSource::Svg(nested) = source
-                &&
-                    let Some(nested_transform) = nested_svg_transform(
-                        *x,
-                        *y,
-                        *width,
-                        *height,
-                        nested.view_box,
-                        transform
-                    )
-                {
-                    for child in &nested.elements {
-                        tessellate_element(child, nested_transform, opacity, out);
-                    }
+            if
+                let SvgImageSource::Svg(nested) = source &&
+                let Some(nested_transform) = nested_svg_transform(
+                    *x,
+                    *y,
+                    *width,
+                    *height,
+                    nested.view_box,
+                    transform
+                )
+            {
+                for child in &nested.elements {
+                    tessellate_element(child, nested_transform, opacity, out);
                 }
+            }
             // Raster (PNG/JPEG) images produce no triangles - see
             // `collect_raster_images`, drawn by the host's own image pipeline.
         }
@@ -639,5 +639,125 @@ fn collect_raster_images_recursive(
             }
         }
         _ => {}
+    }
+}
+
+/// One document-order drawing operation - either a batch of flattened
+/// triangles from a vector shape, or a raster `<image>` placement. Unlike
+/// `tessellate_document`/`collect_raster_images` (which split vector and
+/// raster content into two separate lists), this preserves the original
+/// sequence so overlapping shapes and images composite in the correct
+/// paint order.
+#[derive(Clone, Debug)]
+pub enum SvgDrawOp {
+    Triangle(SvgTriangle),
+    Image(SvgRasterImage),
+}
+
+pub fn collect_draw_ops(doc: &SvgDocument) -> Vec<SvgDrawOp> {
+    let mut out = Vec::new();
+    for element in &doc.elements {
+        collect_draw_ops_recursive(element, Transform2D::IDENTITY, 1.0, &mut out);
+    }
+    out
+}
+
+fn collect_draw_ops_recursive(
+    element: &SvgElement,
+    parent_transform: Transform2D,
+    parent_opacity: f32,
+    out: &mut Vec<SvgDrawOp>
+) {
+    let transform = element.attrs().transform.then(parent_transform);
+    let opacity = parent_opacity * element.attrs().opacity;
+    let scale = transform_scale(transform);
+
+    match element {
+        SvgElement::Group { children, .. } => {
+            for child in children {
+                collect_draw_ops_recursive(child, transform, opacity, out);
+            }
+        }
+        SvgElement::Path { commands, attrs } => {
+            let mut tris = Vec::new();
+            let path = build_path_from_commands(commands, transform);
+            emit_shape(&path, attrs, opacity, scale, &mut tris);
+            if !matches!(attrs.fill, SvgColor::None) {
+                let loops = map_loops(&flatten_path_commands(commands), transform);
+                add_fill_aa_fringe(&loops, attrs.fill, opacity, &mut tris);
+            }
+            out.extend(tris.into_iter().map(SvgDrawOp::Triangle));
+        }
+        SvgElement::Rect { x, y, width, height, rx, attrs } => {
+            let mut tris = Vec::new();
+            let polygon = rect_polygon(*x, *y, *width, *height, *rx);
+            let path = build_polygon_path(&polygon, true, transform);
+            emit_shape(&path, attrs, opacity, scale, &mut tris);
+            if !matches!(attrs.fill, SvgColor::None) {
+                let mapped = map_points(&polygon, transform);
+                add_fill_aa_fringe(&[mapped], attrs.fill, opacity, &mut tris);
+            }
+            out.extend(tris.into_iter().map(SvgDrawOp::Triangle));
+        }
+        SvgElement::Circle { cx, cy, r, attrs } => {
+            let mut tris = Vec::new();
+            let polygon = circle_polygon(*cx, *cy, *r);
+            let path = build_polygon_path(&polygon, true, transform);
+            emit_shape(&path, attrs, opacity, scale, &mut tris);
+            if !matches!(attrs.fill, SvgColor::None) {
+                let mapped = map_points(&polygon, transform);
+                add_fill_aa_fringe(&[mapped], attrs.fill, opacity, &mut tris);
+            }
+            out.extend(tris.into_iter().map(SvgDrawOp::Triangle));
+        }
+        SvgElement::Line { x1, y1, x2, y2, attrs } => {
+            let mut tris = Vec::new();
+            let path = build_polygon_path(
+                &[
+                    (*x1, *y1),
+                    (*x2, *y2),
+                ],
+                false,
+                transform
+            );
+            emit_stroke(&path, attrs, opacity, scale, &mut tris);
+            out.extend(tris.into_iter().map(SvgDrawOp::Triangle));
+        }
+        SvgElement::Image { x, y, width, height, source, .. } => {
+            match source {
+                SvgImageSource::Raster { width: iw, height: ih, rgba } => {
+                    let w = if *width > 0.0 { *width } else { *iw as f32 };
+                    let h = if *height > 0.0 { *height } else { *ih as f32 };
+                    out.push(
+                        SvgDrawOp::Image(SvgRasterImage {
+                            position: (*x, *y),
+                            size: (w, h),
+                            width: *iw,
+                            height: *ih,
+                            rgba: rgba.clone(),
+                            opacity,
+                            transform,
+                        })
+                    );
+                }
+                SvgImageSource::Svg(nested) => {
+                    if
+                        let Some(nested_transform) = nested_svg_transform(
+                            *x,
+                            *y,
+                            *width,
+                            *height,
+                            nested.view_box,
+                            transform
+                        )
+                    {
+                        for child in &nested.elements {
+                            collect_draw_ops_recursive(child, nested_transform, opacity, out);
+                        }
+                    }
+                }
+                SvgImageSource::Unresolved(_) => {}
+            }
+        }
     }
 }

@@ -25,6 +25,13 @@ pub use element::{
     SvgImageSource,
 };
 pub use parser::parse_svg;
-pub use tessellate::{ tessellate_document, collect_raster_images, SvgRasterImage, SvgTriangle };
+pub use tessellate::{
+    tessellate_document,
+    collect_raster_images,
+    SvgRasterImage,
+    SvgTriangle,
+    collect_draw_ops,
+    SvgDrawOp,
+};
 pub use transform::{ parse_transform, Transform2D };
 pub use constants::*;

@@ -27,14 +27,13 @@ use xen_svg::{
     PathCommand,
     SvgAttributes,
     SvgDocument,
+    SvgDrawOp,
     SvgElement,
     SvgImageSource,
-    SvgRasterImage,
     SvgTriangle,
     Transform2D,
-    collect_raster_images,
+    collect_draw_ops,
     parse_svg,
-    tessellate_document,
 };
 
 macro_rules! impl_svg_attrs_builder {
@@ -267,6 +266,11 @@ struct ResolvedRasterImage {
     source: ImageSource,
 }
 
+enum ResolvedDrawOp {
+    Triangle(SvgTriangle),
+    Image(ResolvedRasterImage),
+}
+
 fn transform_uniform_scale(t: Transform2D) -> f32 {
     let sx = (t.a * t.a + t.b * t.b).sqrt();
     let sy = (t.c * t.c + t.d * t.d).sqrt();
@@ -316,24 +320,23 @@ pub struct Svg {
     anim_id: WidgetId,
     document: Arc<SvgDocument>,
     // Tessellated once per document change instead of on every paint, since
-    // flattening curves and triangulating shapes isn't free.
-    triangles: Arc<Vec<SvgTriangle>>,
-    raster_images: Arc<Vec<ResolvedRasterImage>>,
+    // flattening curves and triangulating shapes isn't free. Kept in
+    // document order so overlapping vector/raster content composites
+    // correctly (see paint()).
+    draw_ops: Arc<Vec<ResolvedDrawOp>>,
     layout_box: LayoutBox,
 }
 
 impl Svg {
     pub fn new() -> Self {
         let document = SvgDocument::default();
-        let triangles = Arc::new(tessellate_document(&document));
         let interaction = Interaction::new();
 
         Self {
             base: WidgetBase::new(interaction),
             anim_id: WidgetId::new_unique(),
             document: Arc::new(document),
-            triangles,
-            raster_images: Arc::new(Vec::new()),
+            draw_ops: Arc::new(Vec::new()),
             layout_box: LayoutBox::default(),
         }
     }
@@ -427,16 +430,26 @@ impl Svg {
     }
 
     fn set_document(&mut self, document: SvgDocument) {
-        self.triangles = Arc::new(tessellate_document(&document));
-        self.raster_images = Arc::new(
-            collect_raster_images(&document)
+        let ops = collect_draw_ops(&document);
+        self.draw_ops = Arc::new(
+            ops
                 .into_iter()
-                .map(|img: SvgRasterImage| ResolvedRasterImage {
-                    position: img.position,
-                    size: img.size,
-                    transform: img.transform,
-                    opacity: img.opacity,
-                    source: image_source_from_rgba8((*img.rgba).clone(), img.width, img.height),
+                .map(|op| {
+                    match op {
+                        SvgDrawOp::Triangle(tri) => ResolvedDrawOp::Triangle(tri),
+                        SvgDrawOp::Image(img) =>
+                            ResolvedDrawOp::Image(ResolvedRasterImage {
+                                position: img.position,
+                                size: img.size,
+                                transform: img.transform,
+                                opacity: img.opacity,
+                                source: image_source_from_rgba8(
+                                    (*img.rgba).clone(),
+                                    img.width,
+                                    img.height
+                                ),
+                            }),
+                    }
                 })
                 .collect()
         );
@@ -517,9 +530,23 @@ impl Widget for Svg {
         Some(&mut self.base.interaction)
     }
 
-    fn measure(&self, ctx: &mut MeasureContext, _constraints: Constraints) -> MeasureResult {
-        let (_, _, w, h) = self.document.view_box;
-        MeasureResult::new(w * ctx.scale_factor, h * ctx.scale_factor)
+    fn measure(&self, ctx: &mut MeasureContext, constraints: Constraints) -> MeasureResult {
+        let (_, _, vb_w, vb_h) = self.document.view_box;
+        if vb_w <= 0.0 || vb_h <= 0.0 {
+            return MeasureResult::new(0.0, 0.0);
+        }
+
+        let intrinsic_w = vb_w * ctx.scale_factor;
+        let intrinsic_h = vb_h * ctx.scale_factor;
+
+        let (width, height) = match (constraints.known_width, constraints.known_height) {
+            (Some(w), Some(h)) => (w, h),
+            (Some(w), None) => (w, (w * intrinsic_h) / intrinsic_w),
+            (None, Some(h)) => ((h * intrinsic_w) / intrinsic_h, h),
+            (None, None) => (intrinsic_w, intrinsic_h),
+        };
+
+        MeasureResult::new(width, height)
     }
 
     fn layout(&mut self, rect: LayoutBox) {
@@ -540,10 +567,6 @@ impl Widget for Svg {
         }
 
         let b = self.layout_box;
-        // Scales uniformly and centers within the box (SVG's default
-        // preserveAspectRatio="xMidYMid meet"), same as before. Rounded
-        // so axis-aligned vector edges land exactly on the pixel grid
-        // instead of straddling it - see xen-svg's add_fill_aa_fringe.
         let scale = (b.width / vb_w).min(b.height / vb_h);
         let offset_x = (b.x + (b.width - vb_w * scale) * 0.5).round();
         let offset_y = (b.y + (b.height - vb_h * scale) * 0.5).round();
@@ -552,54 +575,52 @@ impl Widget for Svg {
             (offset_x + (p.0 - vb_x) * scale, offset_y + (p.1 - vb_y) * scale)
         };
 
-        if !self.triangles.is_empty() {
-            // `color` is the CSS-inherited text color; `currentColor` paints
-            // resolve against it, so icons follow the parent's text color for
-            // free instead of needing an explicit tint on every instance.
-            let inherited_color = self.base.computed_style.color.unwrap_or(crate::Color::BLACK);
-            let inherited_svg_color = xen_svg::Color::rgba_f32(
-                inherited_color.r(),
-                inherited_color.g(),
-                inherited_color.b(),
-                inherited_color.a()
-            );
+        let inherited_color = self.base.computed_style.color.unwrap_or(crate::Color::BLACK);
+        let inherited_svg_color = xen_svg::Color::rgba_f32(
+            inherited_color.r(),
+            inherited_color.g(),
+            inherited_color.b(),
+            inherited_color.a()
+        );
 
-            for triangle in self.triangles.iter() {
-                let Some(color) = triangle.paint.resolve(inherited_svg_color) else {
-                    continue;
-                };
-                let color = from_svg_color(color);
-                let color = color.with_alpha_f32(color.a() * triangle.opacity);
+        // Draws vector triangles and raster images in the same order they
+        // appear in the source document instead of batching all triangles
+        // before all images, so a shape stacked on top of (or under) an
+        // embedded image composites in the correct visual order.
+        for op in self.draw_ops.iter() {
+            match op {
+                ResolvedDrawOp::Triangle(triangle) => {
+                    let Some(color) = triangle.paint.resolve(inherited_svg_color) else {
+                        continue;
+                    };
+                    let color = from_svg_color(color);
+                    let color = color.with_alpha_f32(color.a() * triangle.opacity);
 
-                ctx.draw_triangle(TriangleCommand {
-                    p0: map(triangle.p0),
-                    p1: map(triangle.p1),
-                    p2: map(triangle.p2),
-                    color,
-                    clip_rect: None,
-                });
+                    ctx.draw_triangle(TriangleCommand {
+                        p0: map(triangle.p0),
+                        p1: map(triangle.p1),
+                        p2: map(triangle.p2),
+                        color,
+                        clip_rect: None,
+                    });
+                }
+                ResolvedDrawOp::Image(image) => {
+                    let (lx, ly) = image.transform.apply(image.position.0, image.position.1);
+                    let (px, py) = map((lx, ly));
+                    let img_scale = transform_uniform_scale(image.transform) * scale;
+
+                    ctx.draw_image(ImageCommand {
+                        position: (px, py),
+                        size: (image.size.0 * img_scale, image.size.1 * img_scale),
+                        image: image.source.clone(),
+                        border_radius: None,
+                        tint: (image.opacity < 1.0).then(||
+                            crate::Color::WHITE.with_alpha_f32(image.opacity)
+                        ),
+                        clip_rect: None,
+                    });
+                }
             }
-        }
-
-        // Only translation + uniform scale is honored for raster images -
-        // ImageCommand itself has no rotation support, so any rotation an
-        // <image>'s own transform carries is dropped for the blit's
-        // placement (its vector siblings still rotate correctly above).
-        for image in self.raster_images.iter() {
-            let (lx, ly) = image.transform.apply(image.position.0, image.position.1);
-            let (px, py) = map((lx, ly));
-            let img_scale = transform_uniform_scale(image.transform) * scale;
-
-            ctx.draw_image(ImageCommand {
-                position: (px, py),
-                size: (image.size.0 * img_scale, image.size.1 * img_scale),
-                image: image.source.clone(),
-                border_radius: None,
-                tint: (image.opacity < 1.0).then(||
-                    crate::Color::WHITE.with_alpha_f32(image.opacity)
-                ),
-                clip_rect: None,
-            });
         }
     }
 

@@ -30,14 +30,40 @@ pub fn parse_svg(input: &str) -> Result<SvgDocument, String> {
     let view_box = tags[root].attrs
         .get("viewBox")
         .and_then(|v| parse_view_box(v))
+        .or_else(|| {
+            let w = tags[root].attrs.get("width").and_then(|v| parse_length_attr(v));
+            let h = tags[root].attrs.get("height").and_then(|v| parse_length_attr(v));
+            match (w, h) {
+                (Some(w), Some(h)) if w > 0.0 && h > 0.0 => Some((0.0, 0.0, w, h)),
+                _ => None,
+            }
+        })
         .unwrap_or((0.0, 0.0, 24.0, 24.0));
 
     let root_attrs = build_attrs(&tags[root].attrs, &SvgAttributes::default());
 
+    // <use> inside a <pattern> can reference an <image> defined anywhere
+    // in the document (typically inside <defs>), so both are harvested
+    // up front instead of depending on source order during the normal walk.
+    let images_by_id = collect_images_by_id(&tags);
+    let patterns_by_id = collect_patterns_by_id(&tags);
+
     let mut cursor = root + 1;
-    let elements = parse_children(&tags, &mut cursor, "svg", &root_attrs);
+    let elements = parse_children(
+        &tags,
+        &mut cursor,
+        "svg",
+        &root_attrs,
+        &images_by_id,
+        &patterns_by_id
+    );
 
     Ok(SvgDocument { view_box, elements })
+}
+
+fn parse_length_attr(value: &str) -> Option<f32> {
+    let value = value.trim();
+    value.strip_suffix("px").unwrap_or(value).parse::<f32>().ok()
 }
 
 fn parse_view_box(value: &str) -> Option<(f32, f32, f32, f32)> {
@@ -49,6 +75,143 @@ fn parse_view_box(value: &str) -> Option<(f32, f32, f32, f32)> {
     match nums.as_slice() {
         [minx, miny, width, height] => Some((*minx, *miny, *width, *height)),
         _ => None,
+    }
+}
+
+struct ImageDef {
+    source: SvgImageSource,
+    width: f32,
+    height: f32,
+}
+
+struct PatternDef {
+    image_id: String,
+    transform: Transform2D,
+    object_bounding_box: bool,
+}
+
+fn collect_images_by_id(tags: &[Tag]) -> HashMap<String, ImageDef> {
+    let mut map = HashMap::new();
+    for tag in tags {
+        if tag.name != "image" {
+            continue;
+        }
+        let Some(id) = tag.attrs.get("id") else {
+            continue;
+        };
+        let Some(href) = tag.attrs.get("href").or_else(|| tag.attrs.get("xlink:href")) else {
+            continue;
+        };
+        let width = tag.attrs
+            .get("width")
+            .and_then(|v| v.parse::<f32>().ok())
+            .unwrap_or(0.0);
+        let height = tag.attrs
+            .get("height")
+            .and_then(|v| v.parse::<f32>().ok())
+            .unwrap_or(0.0);
+        if width <= 0.0 || height <= 0.0 {
+            continue;
+        }
+        map.insert(id.clone(), ImageDef { source: resolve_href(href), width, height });
+    }
+    map
+}
+
+fn collect_patterns_by_id(tags: &[Tag]) -> HashMap<String, PatternDef> {
+    let mut map = HashMap::new();
+    let mut i = 0;
+    while i < tags.len() {
+        if tags[i].name == "pattern" && matches!(tags[i].kind, TagKind::Open) {
+            let Some(id) = tags[i].attrs.get("id").cloned() else {
+                i += 1;
+                continue;
+            };
+            let object_bounding_box = tags[i].attrs
+                .get("patternContentUnits")
+                .map(|v| v != "userSpaceOnUse")
+                .unwrap_or(true);
+
+            let mut depth = 1;
+            let mut j = i + 1;
+            let mut found: Option<PatternDef> = None;
+            while j < tags.len() && depth > 0 {
+                match tags[j].kind {
+                    TagKind::Open if tags[j].name == "pattern" => {
+                        depth += 1;
+                    }
+                    TagKind::Close if tags[j].name == "pattern" => {
+                        depth -= 1;
+                    }
+                    _ => {}
+                }
+                if found.is_none() && tags[j].name == "use" {
+                    let href = tags[j].attrs
+                        .get("href")
+                        .or_else(|| tags[j].attrs.get("xlink:href"));
+                    if let Some(href) = href && let Some(image_id) = href.strip_prefix('#') {
+                        let transform = tags[j].attrs
+                            .get("transform")
+                            .map(|v| parse_transform(v))
+                            .unwrap_or(Transform2D::IDENTITY);
+                        found = Some(PatternDef {
+                            image_id: image_id.to_string(),
+                            transform,
+                            object_bounding_box,
+                        });
+                    }
+                }
+                j += 1;
+            }
+
+            if let Some(def) = found {
+                map.insert(id, def);
+            }
+        }
+        i += 1;
+    }
+    map
+}
+
+fn parse_pattern_url(value: &str) -> Option<&str> {
+    let value = value.trim();
+    let inner = value.strip_prefix("url(")?.strip_suffix(')')?;
+    inner.trim().strip_prefix('#')
+}
+
+// Maps a <use>-referenced image through its own transform into the
+// filled rect's coordinate space. `objectBoundingBox` (Figma/Illustrator's
+// default image-fill export) scales the 0..1 mapped result by the rect's
+// own width/height; `userSpaceOnUse` uses the mapped coordinates as-is.
+// Rotation/skew isn't representable by Image's axis-aligned box, so only
+// the mapped corners' bounding box is kept.
+fn resolve_pattern_image_rect(
+    pattern: &PatternDef,
+    rect_x: f32,
+    rect_y: f32,
+    rect_w: f32,
+    rect_h: f32,
+    img_w: f32,
+    img_h: f32
+) -> Option<(f32, f32, f32, f32)> {
+    let (x0, y0) = pattern.transform.apply(0.0, 0.0);
+    let (x1, y1) = pattern.transform.apply(img_w, img_h);
+
+    let (ox, oy, ow, oh) = if pattern.object_bounding_box {
+        (rect_x, rect_y, rect_w, rect_h)
+    } else {
+        (0.0, 0.0, 1.0, 1.0)
+    };
+
+    let display_x = ox + x0.min(x1) * ow;
+    let display_y = oy + y0.min(y1) * oh;
+    let display_w = (x1 - x0).abs() * ow;
+    let display_h = (y1 - y0).abs() * oh;
+
+    if display_w <= 0.0 || display_h <= 0.0 {
+        None
+    } else {
+        Some((display_x, display_y, display_w, display_h))
     }
 }
 
@@ -206,7 +369,9 @@ fn parse_children(
     tags: &[Tag],
     cursor: &mut usize,
     parent_name: &str,
-    parent_attrs: &SvgAttributes
+    parent_attrs: &SvgAttributes,
+    images_by_id: &HashMap<String, ImageDef>,
+    patterns_by_id: &HashMap<String, PatternDef>
 ) -> Vec<SvgElement> {
     let mut elements = Vec::new();
 
@@ -221,7 +386,14 @@ fn parse_children(
                 return elements;
             }
             TagKind::SelfClose => {
-                if let Some(element) = build_element(tag, parent_attrs) {
+                if
+                    let Some(element) = build_element(
+                        tag,
+                        parent_attrs,
+                        images_by_id,
+                        patterns_by_id
+                    )
+                {
                     elements.push(element);
                 }
                 *cursor += 1;
@@ -233,13 +405,27 @@ fn parse_children(
                 if name == "g" {
                     let group_attrs = build_attrs(&attrs_source, parent_attrs);
                     *cursor += 1;
-                    let children = parse_children(tags, cursor, "g", &group_attrs);
+                    let children = parse_children(
+                        tags,
+                        cursor,
+                        "g",
+                        &group_attrs,
+                        images_by_id,
+                        patterns_by_id
+                    );
                     elements.push(SvgElement::Group {
                         children,
                         attrs: group_attrs,
                     });
                 } else {
-                    if let Some(element) = build_element(tag, parent_attrs) {
+                    if
+                        let Some(element) = build_element(
+                            tag,
+                            parent_attrs,
+                            images_by_id,
+                            patterns_by_id
+                        )
+                    {
                         elements.push(element);
                     }
                     *cursor += 1;
@@ -268,7 +454,12 @@ fn skip_until_close(tags: &[Tag], cursor: &mut usize, name: &str) {
     }
 }
 
-fn build_element(tag: &Tag, parent_attrs: &SvgAttributes) -> Option<SvgElement> {
+fn build_element(
+    tag: &Tag,
+    parent_attrs: &SvgAttributes,
+    images_by_id: &HashMap<String, ImageDef>,
+    patterns_by_id: &HashMap<String, PatternDef>
+) -> Option<SvgElement> {
     let attrs = build_attrs(&tag.attrs, parent_attrs);
     let get = |key: &str|
         tag.attrs
@@ -281,7 +472,36 @@ fn build_element(tag: &Tag, parent_attrs: &SvgAttributes) -> Option<SvgElement> 
             let d = tag.attrs.get("d")?;
             Some(SvgElement::Path { commands: parse_path_data(d), attrs })
         }
-        "rect" =>
+        "rect" => {
+            if
+                let Some(fill_value) = tag.attrs.get("fill") &&
+                let Some(pattern_id) = parse_pattern_url(fill_value) &&
+                let Some(pattern) = patterns_by_id.get(pattern_id) &&
+                let Some(image) = images_by_id.get(&pattern.image_id)
+            {
+                let (rect_x, rect_y, rect_w, rect_h) = (
+                    get("x"),
+                    get("y"),
+                    get("width"),
+                    get("height"),
+                );
+                return resolve_pattern_image_rect(
+                    pattern,
+                    rect_x,
+                    rect_y,
+                    rect_w,
+                    rect_h,
+                    image.width,
+                    image.height
+                ).map(|(x, y, width, height)| SvgElement::Image {
+                    x,
+                    y,
+                    width,
+                    height,
+                    source: image.source.clone(),
+                    attrs,
+                });
+            }
             Some(SvgElement::Rect {
                 x: get("x"),
                 y: get("y"),
@@ -289,7 +509,8 @@ fn build_element(tag: &Tag, parent_attrs: &SvgAttributes) -> Option<SvgElement> 
                 height: get("height"),
                 rx: get("rx"),
                 attrs,
-            }),
+            })
+        }
         "circle" => Some(SvgElement::Circle { cx: get("cx"), cy: get("cy"), r: get("r"), attrs }),
         "line" =>
             Some(SvgElement::Line {
@@ -330,9 +551,10 @@ fn build_attrs(source: &HashMap<String, String>, parent: &SvgAttributes) -> SvgA
         transform: Transform2D::IDENTITY,
     };
 
-    if let Some(v) = source.get("fill") {
-        attrs.fill = parse_paint(v);
-    }
+    if let Some(v) = source.get("fill")
+        && !v.trim_start().starts_with("url(") {
+            attrs.fill = parse_paint(v);
+        }
     if let Some(v) = source.get("fill-rule") {
         attrs.fill_rule = parse_fill_rule(v);
     }
@@ -468,12 +690,15 @@ fn percent_decode(input: &str) -> String {
     let mut out = Vec::with_capacity(bytes.len());
     let mut i = 0;
     while i < bytes.len() {
-        if bytes[i] == b'%' && i + 2 < bytes.len()
-            && let Ok(byte) = u8::from_str_radix(&input[i + 1..i + 3], 16) {
-                out.push(byte);
-                i += 3;
-                continue;
-            }
+        if
+            bytes[i] == b'%' &&
+            i + 2 < bytes.len() &&
+            let Ok(byte) = u8::from_str_radix(&input[i + 1..i + 3], 16)
+        {
+            out.push(byte);
+            i += 3;
+            continue;
+        }
         out.push(bytes[i]);
         i += 1;
     }
