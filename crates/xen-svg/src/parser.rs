@@ -8,6 +8,7 @@ use super::{
     SvgColor,
     SvgDocument,
     SvgElement,
+    SvgImageSource,
     Transform2D,
     parse_transform,
 };
@@ -298,6 +299,17 @@ fn build_element(tag: &Tag, parent_attrs: &SvgAttributes) -> Option<SvgElement> 
                 y2: get("y2"),
                 attrs,
             }),
+        "image" => {
+            let href = tag.attrs.get("href").or_else(|| tag.attrs.get("xlink:href"))?;
+            Some(SvgElement::Image {
+                x: get("x"),
+                y: get("y"),
+                width: get("width"),
+                height: get("height"),
+                source: resolve_href(href),
+                attrs,
+            })
+        }
         _ => None,
     }
 }
@@ -389,6 +401,83 @@ fn parse_paint(value: &str) -> SvgColor {
             }
         }
     }
+}
+
+// Decodes an <image> element's href. Only `data:` URIs can be resolved
+// here (this parser has no filesystem/network access by design);
+// anything else is left Unresolved for the host to fill in via
+// SvgDocument::resolve_images.
+fn resolve_href(href: &str) -> SvgImageSource {
+    let href = href.trim();
+    let Some(rest) = href.strip_prefix("data:") else {
+        return SvgImageSource::Unresolved(href.to_string());
+    };
+    let Some((meta, payload)) = rest.split_once(',') else {
+        return SvgImageSource::Unresolved(href.to_string());
+    };
+
+    let mut meta_parts = meta.split(';');
+    let mime = meta_parts.next().unwrap_or("").trim();
+    let is_base64 = meta_parts.any(|p| p.trim().eq_ignore_ascii_case("base64"));
+
+    if mime == "image/svg+xml" {
+        let text = if is_base64 {
+            match crate::base64::decode(payload).and_then(|b| String::from_utf8(b).ok()) {
+                Some(t) => t,
+                None => {
+                    return SvgImageSource::Unresolved(href.to_string());
+                }
+            }
+        } else {
+            percent_decode(payload)
+        };
+        return match parse_svg(&text) {
+            Ok(doc) => SvgImageSource::Svg(Box::new(doc)),
+            Err(_) => SvgImageSource::Unresolved(href.to_string()),
+        };
+    }
+
+    if mime == "image/png" || mime == "image/jpeg" || mime == "image/jpg" {
+        let Some(bytes) = is_base64.then(|| crate::base64::decode(payload)).flatten() else {
+            return SvgImageSource::Unresolved(href.to_string());
+        };
+        return match image::load_from_memory(&bytes) {
+            Ok(decoded) => {
+                let rgba = decoded.to_rgba8();
+                let (width, height) = rgba.dimensions();
+                SvgImageSource::Raster {
+                    width,
+                    height,
+                    rgba: std::sync::Arc::new(rgba.into_raw()),
+                }
+            }
+            Err(err) => {
+                log::error!("xen-svg: failed to decode <image> data URI: {err}");
+                SvgImageSource::Unresolved(href.to_string())
+            }
+        };
+    }
+
+    SvgImageSource::Unresolved(href.to_string())
+}
+
+// Minimal percent-decoding for a non-base64 data URI payload - only
+// handles %XX escapes; malformed escapes pass through verbatim.
+fn percent_decode(input: &str) -> String {
+    let bytes = input.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'%' && i + 2 < bytes.len()
+            && let Ok(byte) = u8::from_str_radix(&input[i + 1..i + 3], 16) {
+                out.push(byte);
+                i += 3;
+                continue;
+            }
+        out.push(bytes[i]);
+        i += 1;
+    }
+    String::from_utf8(out).unwrap_or_else(|_| input.to_string())
 }
 
 // Parses the inner contents of a CSS `rgb(...)`/`rgba(...)` function.

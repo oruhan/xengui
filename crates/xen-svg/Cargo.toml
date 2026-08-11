@@ -14,3 +14,4 @@ categories = ["graphics", "rendering"]
 [dependencies]
 lyon = { workspace = true }
 log = { workspace = true }
+image = { workspace = true }

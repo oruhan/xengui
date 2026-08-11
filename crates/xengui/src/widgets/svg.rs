@@ -4,6 +4,8 @@ use crate::{
     Constraints,
     EventCtx,
     EventStatus,
+    ImageCommand,
+    ImageSource,
     InputEvent,
     Interaction,
     LayoutBox,
@@ -16,6 +18,7 @@ use crate::{
     Widget,
     WidgetBase,
     WidgetId,
+    image_source_from_rgba8,
     svg_compat::{ IntoSvgColor, from_svg_color },
 };
 use smol_str::SmolStr;
@@ -25,8 +28,11 @@ use xen_svg::{
     SvgAttributes,
     SvgDocument,
     SvgElement,
+    SvgImageSource,
+    SvgRasterImage,
     SvgTriangle,
     Transform2D,
+    collect_raster_images,
     parse_svg,
     tessellate_document,
 };
@@ -250,8 +256,56 @@ impl Default for SvgGroupBuilder {
 
 impl_svg_attrs_builder!(SvgGroupBuilder);
 
+/// A single `<image>` placement resolved to something xengui's own image
+/// pipeline can draw - the `ImageSource` is built once (when the document
+/// is set) instead of re-hashing pixel data on every frame.
+struct ResolvedRasterImage {
+    position: (f32, f32),
+    size: (f32, f32),
+    transform: Transform2D,
+    opacity: f32,
+    source: ImageSource,
+}
+
+fn transform_uniform_scale(t: Transform2D) -> f32 {
+    let sx = (t.a * t.a + t.b * t.b).sqrt();
+    let sy = (t.c * t.c + t.d * t.d).sqrt();
+    (sx + sy) * 0.5
+}
+
+// Resolves any <image> href xen-svg's own parser couldn't decode (a bare
+// file path rather than a data: URI), reading it relative to the current
+// working directory - the same convention Image::path already uses.
+#[cfg(not(target_arch = "wasm32"))]
+fn resolve_document_images(document: &mut SvgDocument) {
+    document.resolve_images(
+        &mut (|href| {
+            let bytes = std::fs::read(href).ok()?;
+            let is_svg = href
+                .rsplit('.')
+                .next()
+                .is_some_and(|ext| ext.eq_ignore_ascii_case("svg"));
+
+            if is_svg {
+                let text = std::str::from_utf8(&bytes).ok()?;
+                parse_svg(text)
+                    .ok()
+                    .map(|doc| SvgImageSource::Svg(Box::new(doc)))
+            } else {
+                let decoded = image::load_from_memory(&bytes).ok()?.to_rgba8();
+                let (width, height) = decoded.dimensions();
+                Some(SvgImageSource::Raster { width, height, rgba: Arc::new(decoded.into_raw()) })
+            }
+        })
+    );
+}
+
+#[cfg(target_arch = "wasm32")]
+fn resolve_document_images(_document: &mut SvgDocument) {}
+
 /// A vector-graphics widget rendering a small subset of SVG (path, rect,
-/// circle, line, group) through the existing triangle pipeline.
+/// circle, line, image, group) through the existing triangle pipeline
+/// (vector content) and the existing image pipeline (raster `<image>`s).
 ///
 /// Colors may use [`SvgColor::CURRENT`] instead of a fixed [`crate::Color`]
 /// to follow the widget's inherited `color` at render time, the same way
@@ -264,6 +318,7 @@ pub struct Svg {
     // Tessellated once per document change instead of on every paint, since
     // flattening curves and triangulating shapes isn't free.
     triangles: Arc<Vec<SvgTriangle>>,
+    raster_images: Arc<Vec<ResolvedRasterImage>>,
     layout_box: LayoutBox,
 }
 
@@ -278,6 +333,7 @@ impl Svg {
             anim_id: WidgetId::new_unique(),
             document: Arc::new(document),
             triangles,
+            raster_images: Arc::new(Vec::new()),
             layout_box: LayoutBox::default(),
         }
     }
@@ -286,7 +342,10 @@ impl Svg {
     pub fn from_string(source: &str) -> Self {
         let mut svg = Self::new();
         match parse_svg(source) {
-            Ok(document) => svg.set_document(document),
+            Ok(mut document) => {
+                resolve_document_images(&mut document);
+                svg.set_document(document);
+            }
             Err(err) => log::error!("Svg::from_string parse error: {err}"),
         }
         svg
@@ -369,6 +428,18 @@ impl Svg {
 
     fn set_document(&mut self, document: SvgDocument) {
         self.triangles = Arc::new(tessellate_document(&document));
+        self.raster_images = Arc::new(
+            collect_raster_images(&document)
+                .into_iter()
+                .map(|img: SvgRasterImage| ResolvedRasterImage {
+                    position: img.position,
+                    size: img.size,
+                    transform: img.transform,
+                    opacity: img.opacity,
+                    source: image_source_from_rgba8((*img.rgba).clone(), img.width, img.height),
+                })
+                .collect()
+        );
         self.document = Arc::new(document);
         self.mark_dirty();
     }
@@ -464,45 +535,69 @@ impl Widget for Svg {
         self.paint_outline(ctx);
 
         let (vb_x, vb_y, vb_w, vb_h) = self.document.view_box;
-        if self.triangles.is_empty() || vb_w <= 0.0 || vb_h <= 0.0 {
+        if vb_w <= 0.0 || vb_h <= 0.0 {
             return;
         }
 
         let b = self.layout_box;
         // Scales uniformly and centers within the box (SVG's default
-        // preserveAspectRatio="xMidYMid meet"), keeping round caps/joins
-        // circular instead of skewed into ellipses.
+        // preserveAspectRatio="xMidYMid meet"), same as before. Rounded
+        // so axis-aligned vector edges land exactly on the pixel grid
+        // instead of straddling it - see xen-svg's add_fill_aa_fringe.
         let scale = (b.width / vb_w).min(b.height / vb_h);
-        let offset_x = b.x + (b.width - vb_w * scale) * 0.5;
-        let offset_y = b.y + (b.height - vb_h * scale) * 0.5;
+        let offset_x = (b.x + (b.width - vb_w * scale) * 0.5).round();
+        let offset_y = (b.y + (b.height - vb_h * scale) * 0.5).round();
 
-        // `color` is the CSS-inherited text color; `currentColor` paints
-        // resolve against it, so icons follow the parent's text color for
-        // free instead of needing an explicit tint on every instance.
-        let inherited_color = self.base.computed_style.color.unwrap_or(crate::Color::BLACK);
-        let inherited_svg_color = xen_svg::Color::rgba_f32(
-            inherited_color.r(),
-            inherited_color.g(),
-            inherited_color.b(),
-            inherited_color.a()
-        );
+        let map = |p: (f32, f32)| -> (f32, f32) {
+            (offset_x + (p.0 - vb_x) * scale, offset_y + (p.1 - vb_y) * scale)
+        };
 
-        for triangle in self.triangles.iter() {
-            let Some(color) = triangle.paint.resolve(inherited_svg_color) else {
-                continue;
-            };
-            let color = from_svg_color(color);
-            let color = color.with_alpha_f32(color.a() * triangle.opacity);
+        if !self.triangles.is_empty() {
+            // `color` is the CSS-inherited text color; `currentColor` paints
+            // resolve against it, so icons follow the parent's text color for
+            // free instead of needing an explicit tint on every instance.
+            let inherited_color = self.base.computed_style.color.unwrap_or(crate::Color::BLACK);
+            let inherited_svg_color = xen_svg::Color::rgba_f32(
+                inherited_color.r(),
+                inherited_color.g(),
+                inherited_color.b(),
+                inherited_color.a()
+            );
 
-            let map = |p: (f32, f32)| -> (f32, f32) {
-                (offset_x + (p.0 - vb_x) * scale, offset_y + (p.1 - vb_y) * scale)
-            };
+            for triangle in self.triangles.iter() {
+                let Some(color) = triangle.paint.resolve(inherited_svg_color) else {
+                    continue;
+                };
+                let color = from_svg_color(color);
+                let color = color.with_alpha_f32(color.a() * triangle.opacity);
 
-            ctx.draw_triangle(TriangleCommand {
-                p0: map(triangle.p0),
-                p1: map(triangle.p1),
-                p2: map(triangle.p2),
-                color,
+                ctx.draw_triangle(TriangleCommand {
+                    p0: map(triangle.p0),
+                    p1: map(triangle.p1),
+                    p2: map(triangle.p2),
+                    color,
+                    clip_rect: None,
+                });
+            }
+        }
+
+        // Only translation + uniform scale is honored for raster images -
+        // ImageCommand itself has no rotation support, so any rotation an
+        // <image>'s own transform carries is dropped for the blit's
+        // placement (its vector siblings still rotate correctly above).
+        for image in self.raster_images.iter() {
+            let (lx, ly) = image.transform.apply(image.position.0, image.position.1);
+            let (px, py) = map((lx, ly));
+            let img_scale = transform_uniform_scale(image.transform) * scale;
+
+            ctx.draw_image(ImageCommand {
+                position: (px, py),
+                size: (image.size.0 * img_scale, image.size.1 * img_scale),
+                image: image.source.clone(),
+                border_radius: None,
+                tint: (image.opacity < 1.0).then(||
+                    crate::Color::WHITE.with_alpha_f32(image.opacity)
+                ),
                 clip_rect: None,
             });
         }

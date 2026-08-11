@@ -28,7 +28,7 @@ pub use label::Label;
 pub use button::{ Button, IconPosition };
 pub use link::Link;
 pub use textbox::TextBox;
-pub use image::{ image_source_from_bytes, Image, ImageSource, ObjectFit };
+pub use image::{ image_source_from_bytes, image_source_from_rgba8, Image, ImageSource, ObjectFit };
 pub use svg::{
     Svg,
     SvgCircleBuilder,

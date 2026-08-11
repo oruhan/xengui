@@ -1,6 +1,5 @@
-use crate::{ CIRCLE_SEGMENTS, CORNER_SEGMENTS, TOLERANCE };
-
 // SPDX-License-Identifier: Apache-2.0
+use crate::{ CIRCLE_SEGMENTS, CORNER_SEGMENTS, TOLERANCE };
 use super::{
     FillRule as SvgFillRule,
     LineCap as SvgLineCap,
@@ -10,6 +9,7 @@ use super::{
     SvgColor,
     SvgDocument,
     SvgElement,
+    SvgImageSource,
     Transform2D,
 };
 use lyon::math::{ point, Point };
@@ -117,6 +117,25 @@ fn tessellate_element(
                 transform
             );
             emit_stroke(&path, attrs, opacity, scale, out);
+        }
+        SvgElement::Image { x, y, width, height, source, .. } => {
+            if let SvgImageSource::Svg(nested) = source
+                &&
+                    let Some(nested_transform) = nested_svg_transform(
+                        *x,
+                        *y,
+                        *width,
+                        *height,
+                        nested.view_box,
+                        transform
+                    )
+                {
+                    for child in &nested.elements {
+                        tessellate_element(child, nested_transform, opacity, out);
+                    }
+                }
+            // Raster (PNG/JPEG) images produce no triangles - see
+            // `collect_raster_images`, drawn by the host's own image pipeline.
         }
     }
 }
@@ -265,6 +284,13 @@ fn add_fill_aa_fringe(
         return;
     }
 
+    // Below this, an edge is treated as perfectly horizontal or vertical.
+    // MSAA (the triangle pipeline already runs at x4) plus pixel-grid
+    // snapped placement render such edges crisply on their own, so a
+    // manual soft fringe there only blurs an edge that didn't need help.
+    // Diagonal and curve-flattened edges still get the fringe below.
+    const AXIS_ALIGN_EPSILON: f32 = 0.01;
+
     for points in loops {
         if points.len() < 2 {
             continue;
@@ -276,6 +302,9 @@ fn add_fill_aa_fringe(
             let (dx, dy) = (b.0 - a.0, b.1 - a.1);
             let len = (dx * dx + dy * dy).sqrt();
             if len < 0.0001 {
+                continue;
+            }
+            if dx.abs() < AXIS_ALIGN_EPSILON || dy.abs() < AXIS_ALIGN_EPSILON {
                 continue;
             }
             let normal = (-dy / len, dx / len);
@@ -507,4 +536,108 @@ fn circle_polygon(cx: f32, cy: f32, r: f32) -> Vec<(f32, f32)> {
             (cx + t.cos() * r, cy + t.sin() * r)
         })
         .collect()
+}
+
+// Builds the transform that maps a nested SVG's own viewBox space into
+// an <image> element's x/y/width/height box, following the same
+// xMidYMid-meet (uniform scale, centered) rule the Svg/Button widgets
+// use, then composes it with the enclosing element's own transform.
+fn nested_svg_transform(
+    x: f32,
+    y: f32,
+    width: f32,
+    height: f32,
+    view_box: (f32, f32, f32, f32),
+    transform: Transform2D
+) -> Option<Transform2D> {
+    let (vb_x, vb_y, vb_w, vb_h) = view_box;
+    let w = if width > 0.0 { width } else { vb_w };
+    let h = if height > 0.0 { height } else { vb_h };
+    if w <= 0.0 || h <= 0.0 || vb_w <= 0.0 || vb_h <= 0.0 {
+        return None;
+    }
+    let s = (w / vb_w).min(h / vb_h);
+    let ox = x + (w - vb_w * s) * 0.5;
+    let oy = y + (h - vb_h * s) * 0.5;
+    Some(
+        Transform2D::translate(-vb_x, -vb_y)
+            .then(Transform2D::scale(s, s))
+            .then(Transform2D::translate(ox, oy))
+            .then(transform)
+    )
+}
+
+/// One PNG/JPEG `<image>` placement, ready for the host to draw through
+/// its own image/texture pipeline - the raster counterpart to the
+/// triangles `tessellate_document` returns for vector content.
+#[derive(Clone, Debug)]
+pub struct SvgRasterImage {
+    pub position: (f32, f32),
+    pub size: (f32, f32),
+    pub width: u32,
+    pub height: u32,
+    pub rgba: std::sync::Arc<Vec<u8>>,
+    pub opacity: f32,
+    pub transform: Transform2D,
+}
+
+pub fn collect_raster_images(doc: &SvgDocument) -> Vec<SvgRasterImage> {
+    let mut out = Vec::new();
+    for element in &doc.elements {
+        collect_raster_images_recursive(element, Transform2D::IDENTITY, 1.0, &mut out);
+    }
+    out
+}
+
+fn collect_raster_images_recursive(
+    element: &SvgElement,
+    parent_transform: Transform2D,
+    parent_opacity: f32,
+    out: &mut Vec<SvgRasterImage>
+) {
+    let transform = element.attrs().transform.then(parent_transform);
+    let opacity = parent_opacity * element.attrs().opacity;
+
+    match element {
+        SvgElement::Group { children, .. } => {
+            for child in children {
+                collect_raster_images_recursive(child, transform, opacity, out);
+            }
+        }
+        SvgElement::Image { x, y, width, height, source, .. } => {
+            match source {
+                SvgImageSource::Raster { width: iw, height: ih, rgba } => {
+                    let w = if *width > 0.0 { *width } else { *iw as f32 };
+                    let h = if *height > 0.0 { *height } else { *ih as f32 };
+                    out.push(SvgRasterImage {
+                        position: (*x, *y),
+                        size: (w, h),
+                        width: *iw,
+                        height: *ih,
+                        rgba: rgba.clone(),
+                        opacity,
+                        transform,
+                    });
+                }
+                SvgImageSource::Svg(nested) => {
+                    if
+                        let Some(nested_transform) = nested_svg_transform(
+                            *x,
+                            *y,
+                            *width,
+                            *height,
+                            nested.view_box,
+                            transform
+                        )
+                    {
+                        for child in &nested.elements {
+                            collect_raster_images_recursive(child, nested_transform, opacity, out);
+                        }
+                    }
+                }
+                SvgImageSource::Unresolved(_) => {}
+            }
+        }
+        _ => {}
+    }
 }

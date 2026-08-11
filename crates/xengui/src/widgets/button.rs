@@ -376,10 +376,12 @@ impl Widget for Button {
             let (vb_x, vb_y, vb_w, vb_h) = doc.view_box;
             if !self.icon_triangles.is_empty() && vb_w > 0.0 && vb_h > 0.0 {
                 // Same xMidYMid-meet behavior as the Svg widget: uniform
-                // scale, centered within the reserved icon box.
+                // scale, centered within the reserved icon box. Rounded so
+                // straight/axis-aligned icon edges land on the pixel grid.
                 let icon_scale = (icon_w / vb_w).min(icon_h / vb_h);
-                let icon_offset_x = icon_x + (icon_w - vb_w * icon_scale) * 0.5;
-                let icon_offset_y = icon_y + (icon_h - vb_h * icon_scale) * 0.5;
+                let icon_offset_x = (icon_x + (icon_w - vb_w * icon_scale) * 0.5).round();
+                let icon_offset_y = (icon_y + (icon_h - vb_h * icon_scale) * 0.5).round();
+
                 let inherited_color = self.icon_tint.unwrap_or(style.color.unwrap_or(Color::BLACK));
                 let inherited_svg_color = xen_svg::Color::rgba_f32(
                     inherited_color.r(),

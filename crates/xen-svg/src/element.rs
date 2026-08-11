@@ -1,6 +1,25 @@
 // SPDX-License-Identifier: Apache-2.0
 use super::{ SvgColor, Transform2D };
 use crate::Color;
+use std::sync::Arc;
+
+/// Decoded (or still-unresolved) source of an `<image>` element.
+#[derive(Clone, Debug, PartialEq)]
+pub enum SvgImageSource {
+    /// Already-decoded RGBA8 raster pixels (from a PNG/JPEG `data:` URI).
+    Raster {
+        width: u32,
+        height: u32,
+        rgba: Arc<Vec<u8>>,
+    },
+    /// A nested SVG document (from an `image/svg+xml` `data:` URI, or
+    /// resolved by the host via `SvgDocument::resolve_images`).
+    Svg(Box<super::SvgDocument>),
+    /// An `href` this crate couldn't decode on its own (anything that
+    /// isn't a `data:` URI, e.g. a bare file path) - left for the host
+    /// application to resolve via `SvgDocument::resolve_images`.
+    Unresolved(String),
+}
 
 /// One segment of an SVG path's `d` attribute, already normalized to
 /// absolute coordinates (relative commands are resolved during parsing).
@@ -99,6 +118,14 @@ pub enum SvgElement {
         y2: f32,
         attrs: SvgAttributes,
     },
+    Image {
+        x: f32,
+        y: f32,
+        width: f32,
+        height: f32,
+        source: SvgImageSource,
+        attrs: SvgAttributes,
+    },
     Group {
         children: Vec<SvgElement>,
         attrs: SvgAttributes,
@@ -112,6 +139,7 @@ impl SvgElement {
             | Self::Rect { attrs, .. }
             | Self::Circle { attrs, .. }
             | Self::Line { attrs, .. }
+            | Self::Image { attrs, .. }
             | Self::Group { attrs, .. } => attrs,
         }
     }
