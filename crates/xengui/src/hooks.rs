@@ -85,18 +85,13 @@ pub fn begin_render() {
     // Lets a render whose reconciliation gets superseded before finishing
     // be identified later, so its queued effects are never executed.
     RENDER_GENERATION.with(|g| g.set(g.get() + 1));
-    LIVE_COMPONENTS.with(|s| s.borrow_mut().clear());
-    COMPONENT_STACK.with(|s| {
-        let mut s = s.borrow_mut();
-        debug_assert!(
-            s.is_empty(),
-            "xengui hooks: component stack is not empty - begin_render/end_render may have been called unevenly"
-        );
-        s.clear();
-    });
-}
 
-pub fn end_render() {
+    // Prunes hook state against the LIVE set built up over the *entire*
+    // previous cycle (structural build, reconciliation, and first-mount
+    // cascade) - composite widgets only call component() during
+    // reconciliation/cascade, both of which run after end_render used to
+    // already fire, so pruning here (right before those calls happen
+    // again) is what keeps their state alive across renders.
     LIVE_COMPONENTS.with(|live| {
         let live = live.borrow();
         HOOK_STORE.with(|store| {
@@ -109,6 +104,22 @@ pub fn end_render() {
             });
         });
     });
+    LIVE_COMPONENTS.with(|s| s.borrow_mut().clear());
+
+    COMPONENT_STACK.with(|s| {
+        let mut s = s.borrow_mut();
+        debug_assert!(
+            s.is_empty(),
+            "xengui hooks: component stack is not empty - begin_render/end_render may have been called unevenly"
+        );
+        s.clear();
+    });
+}
+
+pub fn end_render() {
+    // Pruning now happens at the start of the next begin_render, once the
+    // previous cycle's LIVE set (which composite widgets only finish
+    // populating well after this point) is complete.
 }
 
 // Runs (and clears) every effect cleanup left behind by a component that

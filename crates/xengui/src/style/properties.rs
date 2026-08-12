@@ -151,6 +151,7 @@ pub struct Style {
     pub scrollbar_hover: Option<ScrollbarStyle>,
     pub scrollbar_pressed: Option<ScrollbarStyle>,
     pub scrollbar_gutter: Option<ScrollbarGutter>,
+    pub scrollbar_auto_hide: Option<bool>,
 
     /// Overrides `scale` for the content layer only; `None` means the
     /// content follows the same scale as the rest of the widget.
@@ -256,6 +257,7 @@ impl Style {
                 (None, None) => None,
             },
             scrollbar_gutter: patch.scrollbar_gutter.or(self.scrollbar_gutter),
+            scrollbar_auto_hide: patch.scrollbar_auto_hide.or(self.scrollbar_auto_hide),
 
             scale: patch.scale.or(self.scale),
             content_scale: patch.content_scale.or(self.content_scale),

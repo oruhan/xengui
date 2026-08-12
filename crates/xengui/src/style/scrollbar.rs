@@ -1,5 +1,12 @@
 use crate::{ Color, DEFAULT_SCROLLBAR_THUMB_THICKNESS, current_theme };
 
+// Touch-primary platforms default their scrollbar step-arrows to hidden,
+// matching the native scrollbar convention there; `StyleBuilder::scrollbar_show_arrows`
+// still overrides this per-widget on any platform.
+fn is_touch_platform() -> bool {
+    cfg!(target_os = "ios") || cfg!(target_os = "android") || cfg!(target_arch = "wasm32")
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Default)]
 pub struct ScrollbarStyle {
     pub thickness: Option<f32>,
@@ -50,7 +57,7 @@ impl ScrollbarStyle {
             thumb_border_color: self.thumb_border_color.unwrap_or(theme.scrollbar_thumb_border),
             track_border_width: self.track_border_width.unwrap_or(0.0),
             track_border_color: self.track_border_color.unwrap_or(theme.scrollbar_track_border),
-            show_arrows: self.show_arrows.unwrap_or(true),
+            show_arrows: self.show_arrows.unwrap_or(!is_touch_platform()),
         }
     }
 }

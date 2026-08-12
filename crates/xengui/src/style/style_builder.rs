@@ -451,6 +451,16 @@ pub trait StyleBuilder: Sized {
         self
     }
 
+    /// Overrides whether this View's scrollbar is shown only while
+    /// actively scrolling and fades out afterward, instead of staying
+    /// always visible. Defaults to on for touch-primary platforms and
+    /// off elsewhere.
+    fn scrollbar_auto_hide(mut self, value: bool) -> Self {
+        self.style_mut().scrollbar_auto_hide = Some(value);
+        self.mark_dirty();
+        self
+    }
+    
     fn scrollbar_thickness(mut self, thickness: f32) -> Self {
         self.style_mut().scrollbar.get_or_insert_with(ScrollbarStyle::default).thickness =
             Some(thickness);

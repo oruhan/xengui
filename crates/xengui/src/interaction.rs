@@ -159,9 +159,11 @@ impl Interaction {
                         ElementState::Pressed => {
                             self.pressed = true;
                             self.focus_visible = false;
-                            if let Some(icon) = self.hover_cursor {
-                                ctx.set_cursor_icon(icon);
-                            }
+                            // Cursor is already owned by whichever widget is
+                            // actually hovered (set via MouseEntered/MouseExited);
+                            // re-setting it here would let an ancestor that
+                            // merely claims this click for its own on_click
+                            // overwrite a still-hovered child's own cursor.
                             if self.focusable {
                                 ctx.request_focus();
                             }

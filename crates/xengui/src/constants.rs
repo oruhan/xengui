@@ -46,6 +46,14 @@ pub const SCROLL_TRANSITION: Transition = Transition::new(
 pub const SCROLLBAR_THICKNESS_TRANSITION: Transition = Transition::new(
     web_time::Duration::from_millis(160)
 ).easing(Easing::EaseOut);
+/// How long a scrollbar shown only while scrolling (see
+/// `StyleBuilder::scrollbar_auto_hide`) stays visible after the last
+/// scroll activity before it starts fading out.
+pub const SCROLLBAR_AUTO_HIDE_LINGER: Duration = Duration::from_millis(700);
+/// Fade transition applied to a scrollbar's own opacity while auto-hide is active.
+pub const SCROLLBAR_OPACITY_FADE_TRANSITION: Transition = Transition::new(
+    Duration::from_millis(220)
+).easing(Easing::EaseOut);
 
 /// Opacity applied to a `Scroll`-mode scrollbar axis that has nothing to
 /// scroll, so it stays visible but reads as disabled instead of vanishing.
@@ -58,6 +66,13 @@ pub const SCROLLBAR_THUMB_PADDING: f32 = 4.0;
 pub const SCROLLBAR_ARROW_SIZE: f32 = 6.0;
 pub const SCROLLBAR_ARROW_CAP_SEGMENTS: usize = 32;
 pub const SCROLLBAR_ARROW_CORNER_RADIUS: f32 = 2.2;
+
+/// Delay (seconds) after pressing a scrollbar arrow button before it
+/// starts repeating continuously, matching native scrollbar behavior.
+pub const ARROW_HOLD_INITIAL_DELAY: f32 = 0.35;
+/// Interval (seconds) between repeated nudges while a scrollbar arrow
+/// button is held past the initial delay.
+pub const ARROW_HOLD_REPEAT_INTERVAL: f32 = 0.06;
 
 /* ---- Scrollbar arrow press feedback ---- */
 /// Transition applied to a scrollbar arrow button's press scale.
