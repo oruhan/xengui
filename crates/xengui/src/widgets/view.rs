@@ -97,9 +97,8 @@ fn scale_arrow_triangle(tri: Triangle, rect: Rect, scale: f32) -> Triangle {
     (scale_pt(tri.0), scale_pt(tri.1), scale_pt(tri.2))
 }
 
-// Builds a smooth chevron out of two thick line segments meeting at the
-// arrow's tip, with rounded caps at every joint - the same stroke-based
-// technique ContextMenu's submenu chevron uses.
+// Builds a filled, rounded-corner triangle pointing in `direction` -
+// genuine solid triangle geometry, not a chevron outline.
 fn rounded_arrow_triangles(
     rect: (f32, f32, f32, f32),
     direction: ArrowDirection,
@@ -110,50 +109,99 @@ fn rounded_arrow_triangles(
     let cy = y + h * 0.5;
     let s = SCROLLBAR_ARROW_SIZE * sf;
 
-    let (a, tip, b) = match direction {
-        ArrowDirection::Up => ((cx - s, cy + s * 0.5), (cx, cy - s * 0.5), (cx + s, cy + s * 0.5)),
+    let (p0, p1, p2) = match direction {
+        ArrowDirection::Up =>
+            ((cx - s, cy + s * 0.55), (cx, cy - s * 0.75), (cx + s, cy + s * 0.55)),
         ArrowDirection::Down =>
-            ((cx - s, cy - s * 0.5), (cx, cy + s * 0.5), (cx + s, cy - s * 0.5)),
+            ((cx - s, cy - s * 0.55), (cx, cy + s * 0.75), (cx + s, cy - s * 0.55)),
         ArrowDirection::Left =>
-            ((cx + s * 0.5, cy - s), (cx - s * 0.5, cy), (cx + s * 0.5, cy + s)),
+            ((cx + s * 0.55, cy - s), (cx - s * 0.75, cy), (cx + s * 0.55, cy + s)),
         ArrowDirection::Right =>
-            ((cx - s * 0.5, cy - s), (cx + s * 0.5, cy), (cx - s * 0.5, cy + s)),
+            ((cx - s * 0.55, cy - s), (cx + s * 0.75, cy), (cx - s * 0.55, cy + s)),
     };
 
-    let mut tris = scrollbar_arrow_segment(a, tip, sf);
-    tris.extend(scrollbar_arrow_segment(tip, b, sf));
-    tris.extend(scrollbar_arrow_cap(a, sf));
-    tris.extend(scrollbar_arrow_cap(tip, sf));
-    tris.extend(scrollbar_arrow_cap(b, sf));
-    tris
+    let outline = rounded_triangle_outline(
+        p0,
+        p1,
+        p2,
+        SCROLLBAR_ARROW_CORNER_RADIUS * sf,
+        SCROLLBAR_ARROW_CAP_SEGMENTS
+    );
+    fan_triangulate(&outline)
 }
 
-fn scrollbar_arrow_segment(a: Point, b: Point, sf: f32) -> Vec<Triangle> {
-    let (dx, dy) = (b.0 - a.0, b.1 - a.1);
-    let len = (dx * dx + dy * dy).sqrt().max(0.0001);
-    let thickness = SCROLLBAR_ARROW_THICKNESS * sf;
-    let (nx, ny) = ((-dy / len) * thickness * 0.5, (dx / len) * thickness * 0.5);
-    let p0 = (a.0 + nx, a.1 + ny);
-    let p1 = (a.0 - nx, a.1 - ny);
-    let p2 = (b.0 + nx, b.1 + ny);
-    let p3 = (b.0 - nx, b.1 - ny);
-    vec![(p0, p1, p2), (p1, p3, p2)]
+// Rounds each corner of a triangle by replacing it with a small arc
+// tangent to both adjacent edges (inscribed-circle construction: offset
+// along each edge by the radius, arc center on the angle bisector).
+fn rounded_triangle_outline(
+    p0: Point,
+    p1: Point,
+    p2: Point,
+    radius: f32,
+    segments: usize
+) -> Vec<Point> {
+    let sub = |a: Point, b: Point| -> Point { (a.0 - b.0, a.1 - b.1) };
+    let len = |v: Point| -> f32 { (v.0 * v.0 + v.1 * v.1).sqrt().max(0.0001) };
+    let norm = |v: Point| -> Point {
+        let l = len(v);
+        (v.0 / l, v.1 / l)
+    };
+
+    let mut outline = Vec::with_capacity((segments + 1) * 3);
+
+    for &(prev, corner, next) in &[
+        (p2, p0, p1),
+        (p0, p1, p2),
+        (p1, p2, p0),
+    ] {
+        let to_prev = sub(prev, corner);
+        let to_next = sub(next, corner);
+        let dir_prev = norm(to_prev);
+        let dir_next = norm(to_next);
+
+        let r = radius.min(len(to_prev) * 0.4).min(len(to_next) * 0.4);
+
+        let a = (corner.0 + dir_prev.0 * r, corner.1 + dir_prev.1 * r);
+        let b = (corner.0 + dir_next.0 * r, corner.1 + dir_next.1 * r);
+
+        let bisector = norm((dir_prev.0 + dir_next.0, dir_prev.1 + dir_next.1));
+        let cos_half = (dir_prev.0 * bisector.0 + dir_prev.1 * bisector.1).clamp(-1.0, 1.0);
+        let sin_half = (1.0 - cos_half * cos_half).max(0.0).sqrt();
+        let center_dist = if sin_half > 0.0001 { r / sin_half } else { 0.0 };
+        let center = (corner.0 + bisector.0 * center_dist, corner.1 + bisector.1 * center_dist);
+
+        let start_angle = (a.1 - center.1).atan2(a.0 - center.0);
+        let mut end_angle = (b.1 - center.1).atan2(b.0 - center.0);
+
+        let mut delta = end_angle - start_angle;
+        while delta <= -std::f32::consts::PI {
+            delta += std::f32::consts::TAU;
+        }
+        while delta > std::f32::consts::PI {
+            delta -= std::f32::consts::TAU;
+        }
+        end_angle = start_angle + delta;
+
+        for i in 0..=segments {
+            let t = (i as f32) / (segments as f32);
+            let angle = start_angle + (end_angle - start_angle) * t;
+            outline.push((center.0 + angle.cos() * r, center.1 + angle.sin() * r));
+        }
+    }
+
+    outline
 }
 
-fn scrollbar_arrow_cap(center: Point, sf: f32) -> Vec<Triangle> {
-    let r = SCROLLBAR_ARROW_THICKNESS * sf * 0.5;
-    (0..SCROLLBAR_ARROW_CAP_SEGMENTS)
-        .map(|i| {
-            let a0 = ((i as f32) / (SCROLLBAR_ARROW_CAP_SEGMENTS as f32)) * std::f32::consts::TAU;
-            let a1 =
-                (((i + 1) as f32) / (SCROLLBAR_ARROW_CAP_SEGMENTS as f32)) * std::f32::consts::TAU;
-            (
-                center,
-                (center.0 + a0.cos() * r, center.1 + a0.sin() * r),
-                (center.0 + a1.cos() * r, center.1 + a1.sin() * r),
-            )
-        })
-        .collect()
+// Fan-triangulates a convex polygon from its centroid.
+fn fan_triangulate(polygon: &[Point]) -> Vec<Triangle> {
+    if polygon.len() < 3 {
+        return Vec::new();
+    }
+    let n = polygon.len() as f32;
+    let centroid = polygon.iter().fold((0.0, 0.0), |acc, p| (acc.0 + p.0, acc.1 + p.1));
+    let centroid = (centroid.0 / n, centroid.1 / n);
+
+    (0..polygon.len()).map(|i| (centroid, polygon[i], polygon[(i + 1) % polygon.len()])).collect()
 }
 
 pub struct View {
