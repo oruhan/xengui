@@ -259,7 +259,7 @@ impl Theme {
             scrollbar_thumb: Color::NEUTRAL_400,
             scrollbar_track: Color::NEUTRAL_100,
             scrollbar_button: Color::NEUTRAL_300,
-            scrollbar_arrow: Color::NEUTRAL_700,
+            scrollbar_arrow: Color::NEUTRAL_400,
             scrollbar_thumb_border: Color::TRANSPARENT,
             scrollbar_track_border: Color::TRANSPARENT,
 
@@ -398,7 +398,7 @@ impl Theme {
             .scrollbar_thumb(Color::NEUTRAL_400)
             .scrollbar_track(Color::NEUTRAL_100)
             .scrollbar_button(Color::NEUTRAL_300)
-            .scrollbar_arrow(Color::NEUTRAL_700)
+            .scrollbar_arrow(Color::NEUTRAL_400)
             .scrollbar_thumb_border(Color::TRANSPARENT)
             .scrollbar_track_border(Color::TRANSPARENT)
     }
@@ -504,7 +504,7 @@ impl Theme {
             .scrollbar_thumb(Color::NEUTRAL_600)
             .scrollbar_track(Color::NEUTRAL_900)
             .scrollbar_button(Color::NEUTRAL_700)
-            .scrollbar_arrow(Color::NEUTRAL_200)
+            .scrollbar_arrow(Color::NEUTRAL_600)
             .scrollbar_thumb_border(Color::TRANSPARENT)
             .scrollbar_track_border(Color::TRANSPARENT)
     }

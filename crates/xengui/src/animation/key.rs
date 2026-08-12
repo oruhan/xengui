@@ -37,6 +37,8 @@ pub enum AnimProperty {
     GapY,
     ScrollOffset,
     ScrollbarThickness,
+    ScrollbarThumbColor,
+    ScrollbarArrowColor,
 }
 
 impl AnimProperty {
