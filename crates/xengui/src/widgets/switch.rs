@@ -31,7 +31,7 @@ use crate::{
     Widget,
     WidgetBase,
     WidgetId,
-    constants::{ DEFAULT_CURSOR_ICON, DEFAULT_POINTER_CURSOR_ICON },
+    constants::{ DEFAULT_CURSOR_ICON, DEFAULT_POINTER_CURSOR_ICON, DISABLED_WIDGET_OPACITY },
 };
 use std::cell::Cell;
 use web_time::Duration;
@@ -229,6 +229,7 @@ impl StyleBuilder for Switch {
 
 crate::impl_interaction_builders!(base Switch);
 crate::impl_common_style_builders!(base Switch);
+crate::impl_themed_style_builders!(base Switch; hover_style => hover_style, pressed_style => pressed_style, disabled_style => disabled_style, focus_style => focus_style, focused_hover_style => focused_hover_style, focused_pressed_style => focused_pressed_style);
 
 impl Widget for Switch {
     crate::impl_widget_boilerplate!();
@@ -249,6 +250,7 @@ impl Widget for Switch {
         let b = self.layout_box;
         let theme = crate::current_theme();
         let t = self.progress.get();
+        let dim = if self.base.interaction.enabled { 1.0 } else { DISABLED_WIDGET_OPACITY };
 
         let track_off = self.track_off_color.unwrap_or(theme.surface_container_high);
         let track_on = self.track_on_color.unwrap_or(theme.primary);
@@ -258,8 +260,10 @@ impl Widget for Switch {
         let thumb_on = self.thumb_on_color.unwrap_or(theme.on_primary);
         let border_color = self.border_color.unwrap_or(theme.outline);
 
-        let track_color = lerp_color(track_off, track_on, t);
-        let thumb_color = lerp_color(thumb_off, thumb_on, t);
+        let track_color_base = lerp_color(track_off, track_on, t);
+        let thumb_color_base = lerp_color(thumb_off, thumb_on, t);
+        let track_color = track_color_base.with_alpha_f32(track_color_base.a() * dim);
+        let thumb_color = thumb_color_base.with_alpha_f32(thumb_color_base.a() * dim);
 
         ctx.draw_rect(RectCommand {
             position: (b.x, b.y),
@@ -267,7 +271,9 @@ impl Widget for Switch {
             background: Some(Background::Color(track_color)),
             border_radius: Some(BorderRadius::all(Length::px(b.height * 0.5))),
             border_width: (t < 0.999).then(|| Length::px(2.0 * sf * (1.0 - t))),
-            border_color: (t < 0.999).then_some(border_color),
+            border_color: (t < 0.999).then_some(
+                border_color.with_alpha_f32(border_color.a() * dim)
+            ),
             clip_rect: None,
         });
 
@@ -305,8 +311,6 @@ impl Widget for Switch {
         let icon_y = cy - icon_size * 0.5;
 
         if t > 0.6 {
-            // Icon fades in once the thumb has mostly grown to its "on"
-            // size, matching Material 3's icon-switch timing.
             let mark_alpha = ((t - 0.6) / 0.4).clamp(0.0, 1.0);
             ctx.draw_variable_icon(VariableIconCommand {
                 position: (icon_x, icon_y),
@@ -314,11 +318,10 @@ impl Widget for Switch {
                 codepoint: codepoints::CHECK,
                 font: MaterialSymbolsVariable::FONT,
                 axes: IconAxes::default().fill(1.0).weight(500.0),
-                color: track_on.with_alpha_f32(track_on.a() * mark_alpha),
+                color: track_on.with_alpha_f32(track_on.a() * mark_alpha * dim),
                 clip_rect: None,
             });
         } else if t < 0.4 {
-            // Icon fades in as the thumb shrinks back to its "off" size.
             let mark_alpha = ((0.4 - t) / 0.4).clamp(0.0, 1.0);
             ctx.draw_variable_icon(VariableIconCommand {
                 position: (icon_x, icon_y),
@@ -326,7 +329,7 @@ impl Widget for Switch {
                 codepoint: codepoints::MINUS,
                 font: MaterialSymbolsVariable::FONT,
                 axes: IconAxes::default().fill(1.0).weight(700.0),
-                color: track_off.with_alpha_f32(track_off.a() * mark_alpha),
+                color: track_off.with_alpha_f32(track_off.a() * mark_alpha * dim),
                 clip_rect: None,
             });
         }
