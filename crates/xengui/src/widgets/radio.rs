@@ -30,7 +30,7 @@ use crate::{
     Widget,
     WidgetBase,
     WidgetId,
-    constants::{ DEFAULT_CURSOR_ICON, DEFAULT_POINTER_CURSOR_ICON },
+    constants::{ DEFAULT_CURSOR_ICON, DEFAULT_POINTER_CURSOR_ICON, DISABLED_WIDGET_OPACITY },
 };
 use std::cell::Cell;
 use web_time::Duration;
@@ -172,16 +172,19 @@ impl Widget for RadioButton {
         let b = self.layout_box;
         let theme = crate::current_theme();
         let t = self.select_progress.get();
+        let dim = if self.base.interaction.enabled { 1.0 } else { DISABLED_WIDGET_OPACITY };
 
         let border = style.border.as_ref();
         let unselected_border = border.map(|bo| bo.color).unwrap_or(theme.on_surface_variant);
         let selected_border = border.map(|bo| bo.color).unwrap_or(theme.primary);
-        let ring_color = lerp_color(unselected_border, selected_border, t);
+        let ring_color_base = lerp_color(unselected_border, selected_border, t);
+        let ring_color = ring_color_base.with_alpha_f32(ring_color_base.a() * dim);
 
-        let fill = style.background
+        let fill_base = style.background
             .clone()
             .unwrap_or(Background::Color(Color::TRANSPARENT))
             .representative_color();
+        let fill = fill_base.with_alpha_f32(fill_base.a() * dim);
 
         ctx.draw_rect(RectCommand {
             position: (b.x, b.y),
@@ -196,7 +199,7 @@ impl Widget for RadioButton {
         });
 
         if t > 0.001 {
-            let dot_color = self.dot_color.unwrap_or(selected_border);
+            let dot_color_base = self.dot_color.unwrap_or(selected_border);
             let dot_d = b.width * 0.5 * t;
             let cx = b.x + b.width * 0.5;
             let cy = b.y + b.height * 0.5;
@@ -204,7 +207,9 @@ impl Widget for RadioButton {
             ctx.draw_rect(RectCommand {
                 position: (cx - dot_d * 0.5, cy - dot_d * 0.5),
                 size: (dot_d, dot_d),
-                background: Some(Background::Color(dot_color.with_alpha_f32(dot_color.a() * t))),
+                background: Some(
+                    Background::Color(dot_color_base.with_alpha_f32(dot_color_base.a() * t * dim))
+                ),
                 border_radius: Some(BorderRadius::all(Length::px(dot_d * 0.5))),
                 border_width: None,
                 border_color: None,
