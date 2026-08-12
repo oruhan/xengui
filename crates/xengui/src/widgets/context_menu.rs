@@ -1104,7 +1104,7 @@ impl ContextMenu {
             background: Some(faded_background(bg, opacity)),
             border_radius: border
                 .and_then(|b| b.radius)
-                .map(|r| Length::px(Length::px(r.max_value()).to_physical(sf)).into()),
+                .map(|r| Length::px(r.max_value() * sf).into()),
             border_width: border.map(|b| Length::px(b.top.to_physical(sf))),
             border_color: Some(border_color.with_alpha_f32(border_color.a() * opacity)),
             clip_rect: None,
@@ -1200,7 +1200,7 @@ impl ContextMenu {
                     background: Some(faded_background(Background::Color(blended_bg), opacity)),
                     border_radius: border
                         .and_then(|b| b.radius)
-                        .map(|r| Length::px(Length::px(r.max_value()).to_physical(sf)).into())
+                        .map(|r| Length::px(r.max_value() * sf).into())
                         .or(Some(BorderRadius::all(Length::px(4.0 * sf)))),
                     border_width: border.map(|b| Length::px(b.top.to_physical(sf))),
                     border_color: border.map(|b| b.color.with_alpha_f32(b.color.a() * opacity)),
