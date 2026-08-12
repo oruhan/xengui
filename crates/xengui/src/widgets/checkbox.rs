@@ -171,7 +171,10 @@ impl Checkbox {
     }
 
     fn toggle(&mut self, ctx: &mut EventCtx) {
-        self.checked = !self.checked;
+        // Coming from indeterminate, a click lands directly on unchecked -
+        // toggling `checked` here (which was already false) would flash a
+        // fully-checked frame before external state's own update lands.
+        self.checked = if self.indeterminate { false } else { !self.checked };
         self.indeterminate = false;
         self.base.dirty = true;
         if let Some(cb) = self.on_change.as_mut() {

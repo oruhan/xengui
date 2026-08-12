@@ -725,6 +725,25 @@ impl View {
             None => target.thumb_color,
         };
         self.thumb_color_anim.set(thumb_color);
+
+        let arrow_key = AnimKey {
+            widget: self.anim_id,
+            layer: AnimLayer::Root,
+            property: AnimProperty::ScrollbarArrowColor,
+        };
+        anim.set_color_target(
+            arrow_key,
+            AnimValue(target.arrow_color.to_f32_array()),
+            Some(SCROLLBAR_THICKNESS_TRANSITION)
+        );
+        let arrow_color = match anim.value(arrow_key) {
+            Some(v) => {
+                self.base.dirty = true;
+                Color::rgba_f32(v.0[0], v.0[1], v.0[2], v.0[3])
+            }
+            None => target.arrow_color,
+        };
+        self.arrow_color_anim.set([arrow_color; 4]);
     }
 
     // Reserves layout space for the scrollbar so content doesn't shift
