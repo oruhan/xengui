@@ -31,7 +31,7 @@ use crate::{
     Widget,
     WidgetBase,
     WidgetId,
-    constants::{ DEFAULT_CURSOR_ICON, DEFAULT_POINTER_CURSOR_ICON },
+    constants::{ DEFAULT_CURSOR_ICON, DEFAULT_POINTER_CURSOR_ICON, DISABLED_WIDGET_OPACITY },
 };
 use std::cell::Cell;
 use web_time::Duration;
@@ -207,6 +207,7 @@ impl Widget for Checkbox {
         let b = self.layout_box;
         let theme = crate::current_theme();
         let t = self.check_progress.get();
+        let dim = if self.base.interaction.enabled { 1.0 } else { DISABLED_WIDGET_OPACITY };
 
         let radius = style.border
             .as_ref()
@@ -227,10 +228,10 @@ impl Widget for Checkbox {
         let unchecked_border = border.map(|bo| bo.color).unwrap_or(theme.on_surface_variant);
         let checked_border = border.map(|bo| bo.color).unwrap_or(theme.primary);
 
-        // Blends fill/border color across the toggle instead of snapping
-        // instantly the moment `checked` flips.
-        let fill = lerp_color(unchecked_fill, checked_fill, t);
-        let border_color = lerp_color(unchecked_border, checked_border, t);
+        let fill_base = lerp_color(unchecked_fill, checked_fill, t);
+        let border_color_base = lerp_color(unchecked_border, checked_border, t);
+        let fill = fill_base.with_alpha_f32(fill_base.a() * dim);
+        let border_color = border_color_base.with_alpha_f32(border_color_base.a() * dim);
 
         ctx.draw_rect(RectCommand {
             position: (b.x, b.y),
@@ -262,7 +263,7 @@ impl Widget for Checkbox {
                 codepoint,
                 font: MaterialSymbolsVariable::FONT,
                 axes: IconAxes::default().fill(1.0).weight(600.0),
-                color: icon_color.with_alpha_f32(icon_color.a() * t),
+                color: icon_color.with_alpha_f32(icon_color.a() * t * dim),
                 clip_rect: None,
             });
         }
