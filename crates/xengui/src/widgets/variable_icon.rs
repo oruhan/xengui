@@ -148,6 +148,7 @@ impl Widget for VariableIcon {
         };
         self.codepoint == other.codepoint &&
             self.font.as_ptr() == other.font.as_ptr() &&
+            self.font.len() == other.font.len() &&
             self.axes == other.axes &&
             self.size == other.size &&
             self.color == other.color &&
