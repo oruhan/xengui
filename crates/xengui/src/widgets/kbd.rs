@@ -1,20 +1,34 @@
 // SPDX-License-Identifier: Apache-2.0
 use crate::{
+    AnimKey,
+    AnimLayer,
+    AnimProperty,
+    AnimValue,
     AnimationManager,
     Background,
     Border,
+    BorderRadius,
     Color,
     Constraints,
+    Cursor,
+    Easing,
     Edges,
+    ElementState,
+    EventCtx,
+    EventStatus,
+    InputEvent,
     Interaction,
     LayoutBox,
     Length,
     MeasureContext,
     MeasureResult,
+    MouseButton,
     PaintContext,
+    RectCommand,
     Style,
     StyleBuilder,
     TextCommand,
+    Transition,
     Widget,
     WidgetBase,
     WidgetContent,
@@ -23,28 +37,35 @@ use crate::{
 };
 use smol_str::SmolStr;
 use std::cell::Cell;
+use web_time::Duration;
+
+/// Vertical depth (logical px) of the 3D "well" beneath the keycap.
+const KBD_DEPTH: f32 = 3.0;
+const KBD_PRESS_TRANSITION: Transition = Transition::new(Duration::from_millis(90)).easing(
+    Easing::EaseOut
+);
 
 /// Displays a single keyboard key or shortcut (e.g. "Ctrl", "⌘K"), styled
-/// like the HTML `<kbd>` element - a small bordered badge distinct from
-/// ordinary body text.
+/// like a physical keycap that presses flush into its own base on click.
 pub struct Kbd {
     base: WidgetBase,
     anim_id: WidgetId,
     content: SmolStr,
     layout_box: LayoutBox,
     content_size: Cell<(f32, f32)>,
+    pressed: Cell<bool>,
+    press_progress: Cell<f32>,
 }
 
 impl Kbd {
     pub fn new() -> Self {
         let mut base = WidgetBase::new(Interaction::new());
 
-        // Default look: small rounded badge with a keycap-like border.
         base.style.padding = Some(Edges::symmetric(6.0, 2.0));
         base.style.font_size = Some(Length::px(13.0));
-        base.style.background = Some(Background::Color(Color::NEUTRAL_100));
+        base.style.background = Some(Background::Color(Color::NEUTRAL_50));
         base.style.border = Some(Border::new().width(1.0).color(Color::NEUTRAL_300).radius(5));
-        base.style.color = Some(Color::NEUTRAL_600);
+        base.style.color = Some(Color::NEUTRAL_700);
 
         let mut kbd = Self {
             base,
@@ -52,6 +73,8 @@ impl Kbd {
             content: SmolStr::new(""),
             layout_box: LayoutBox::default(),
             content_size: Cell::new((0.0, 0.0)),
+            pressed: Cell::new(false),
+            press_progress: Cell::new(0.0),
         };
         kbd.recompute_style();
         kbd
@@ -104,7 +127,6 @@ impl Widget for Kbd {
         let scale_factor = ctx.scale_factor;
         let style = &self.base.computed_style;
 
-        // Logical font size; TextMeasurer converts to physical internally.
         let font_size = style.font_size.unwrap_or(DEFAULT_FONT_SIZE).value();
 
         let result = ctx.text.measure(
@@ -129,22 +151,66 @@ impl Widget for Kbd {
         let height =
             result.height +
             padding.top.to_physical(scale_factor) +
-            padding.bottom.to_physical(scale_factor);
+            padding.bottom.to_physical(scale_factor) +
+            KBD_DEPTH * scale_factor;
 
         let (width, height) = constraints.constrain_size(width, height);
         MeasureResult::new(width, height)
     }
 
     fn paint(&self, ctx: &mut PaintContext) {
-        self.paint_box(ctx);
-        self.paint_outline(ctx);
-
         let style = &self.base.computed_style;
-        let padding = style.padding.unwrap_or_default();
         let sf = ctx.scale_factor;
+        let b = self.layout_box;
+        let t = self.press_progress.get();
 
-        let text_x = self.layout_box.x + padding.left.to_physical(sf);
-        let text_y = self.layout_box.y + padding.top.to_physical(sf);
+        let depth = KBD_DEPTH * sf;
+        let lift = depth * (1.0 - t);
+
+        let radius = style.border
+            .as_ref()
+            .and_then(|bo| bo.radius)
+            .map(|r| r.max_value() * sf)
+            .unwrap_or(5.0 * sf);
+
+        let base_color = style.border
+            .as_ref()
+            .map(|bo| bo.color)
+            .unwrap_or(Color::NEUTRAL_400);
+        let well_color = Color::rgba_f32(
+            base_color.r() * 0.75,
+            base_color.g() * 0.75,
+            base_color.b() * 0.75,
+            base_color.a()
+        );
+
+        // The keycap's own resting base - always flush with the bottom of
+        // the box; the cap slides down onto it while pressed.
+        ctx.draw_rect(RectCommand {
+            position: (b.x, b.y + depth),
+            size: (b.width, (b.height - depth).max(0.0)),
+            background: Some(Background::Color(well_color)),
+            border_radius: Some(BorderRadius::all(Length::px(radius))),
+            border_width: None,
+            border_color: None,
+            clip_rect: None,
+        });
+
+        let cap_height = (b.height - depth).max(1.0);
+
+        ctx.draw_rect(RectCommand {
+            position: (b.x, b.y + lift),
+            size: (b.width, cap_height),
+            background: style.background.clone(),
+            border_radius: Some(BorderRadius::all(Length::px(radius))),
+            border_color: style.border.as_ref().map(|bo| bo.color),
+            border_width: style.border.as_ref().map(|bo| Length::px(bo.top.to_physical(sf))),
+            clip_rect: None,
+        });
+
+        let padding = style.padding.unwrap_or_default();
+        let text_x = b.x + padding.left.to_physical(sf);
+        let text_y = b.y + lift + padding.top.to_physical(sf);
 
         let mut text_style = style.clone();
         text_style.font_size.get_or_insert(Length::px(13.0));
@@ -156,6 +222,46 @@ impl Widget for Kbd {
             max_width: None,
             clip_rect: None,
         });
+    }
+
+    fn event(&mut self, event: &InputEvent, ctx: &mut EventCtx) -> EventStatus {
+        match event {
+            InputEvent::MouseEntered => {
+                ctx.set_cursor_icon(Cursor::Pointer);
+                EventStatus::Ignored
+            }
+            InputEvent::MouseExited => {
+                if self.pressed.get() {
+                    self.pressed.set(false);
+                    self.base.dirty = true;
+                    ctx.request_redraw();
+                }
+                EventStatus::Ignored
+            }
+            InputEvent::MouseInput {
+                state: ElementState::Pressed,
+                button: MouseButton::Left,
+                ..
+            } => {
+                self.pressed.set(true);
+                self.base.dirty = true;
+                ctx.request_redraw();
+                EventStatus::Handled
+            }
+            InputEvent::MouseInput {
+                state: ElementState::Released,
+                button: MouseButton::Left,
+                ..
+            } => {
+                if self.pressed.get() {
+                    self.pressed.set(false);
+                    self.base.dirty = true;
+                    ctx.request_redraw();
+                }
+                EventStatus::Handled
+            }
+            _ => EventStatus::Ignored,
+        }
     }
 
     fn content_eq(&self, other: &dyn Widget) -> bool {
@@ -171,11 +277,28 @@ impl Widget for Kbd {
         if crate::animate_computed_style(self.anim_id, &mut self.base.computed_style, anim) {
             self.base.dirty = true;
         }
+
+        let target = if self.pressed.get() { 1.0 } else { 0.0 };
+        let key = AnimKey {
+            widget: self.anim_id,
+            layer: AnimLayer::Root,
+            property: AnimProperty::Scale,
+        };
+        anim.set_target(key, AnimValue([target, 0.0, 0.0, 0.0]), Some(KBD_PRESS_TRANSITION));
+        match anim.value(key) {
+            Some(v) => {
+                self.press_progress.set(v.0[0]);
+                self.base.dirty = true;
+            }
+            None => self.press_progress.set(target),
+        }
     }
 
     fn transfer_measured_state(&mut self, old: &dyn Widget) {
         if let Some(old) = old.as_any().downcast_ref::<Kbd>() {
             self.content_size.set(old.content_size.get());
+            self.pressed.set(old.pressed.get());
+            self.press_progress.set(old.press_progress.get());
         }
     }
 

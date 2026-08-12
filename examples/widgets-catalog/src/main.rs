@@ -246,7 +246,11 @@ fn section_textbox(theme: &Theme, text_value: &str, set_text_value: SetState<Str
         tb.padding(Edges::all(8.0))
             .background(theme.surface)
             .border(Border::all(1.0, theme.outline).radius(8.0))
-            .focus_style(|s, theme: &Theme| s.border(Border::all(1.0, theme.primary).radius(8.0)))
+            .focus_style(|s, theme: &Theme| {
+                s.border(Border::all(1.5, theme.primary).radius(8.0)).outline(
+                    Outline::new(1.5, theme.primary, Some(BorderRadius::all(8.0)), 0.0)
+                )
+            })
     };
 
     let live = styled(

@@ -474,14 +474,14 @@ impl Widget for Label {
 
     fn cascade_style(&mut self, parent: &Style, anim: &mut AnimationManager) {
         self.base.inherited_style = parent.clone();
-        self.base.recompute_style();
+        self.recompute_style();
         if crate::animate_computed_style(self.anim_id, &mut self.base.computed_style, anim) {
             self.base.dirty = true;
         }
     }
 
     fn after_interaction_transfer(&mut self) {
-        self.base.recompute_style();
+        self.recompute_style();
     }
 
     fn transfer_measured_state(&mut self, old: &dyn Widget) {

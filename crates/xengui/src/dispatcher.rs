@@ -1,18 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 use crate::{
-    ElementState,
-    EventCtx,
-    InputEvent,
-    InputState,
-    KeyboardEvent,
-    ModifiersState,
-    MouseButton,
-    Widget,
-    cancel_auto_scroll_recursive,
-    collect_focusable_paths,
-    dispatch_positional,
-    dispatch_to_path,
-    hit_test_path,
+    ElementState, EventCtx, InputEvent, InputState, KeyboardEvent, ModifiersState, MouseButton, Widget, cancel_auto_scroll_recursive, collect_focusable_paths, dispatch_positional, dispatch_to_path, hit_test_path, resolve_hover_cursor,
 };
 
 /// High-level pointer/keyboard/focus dispatcher built on top of the
@@ -37,9 +25,6 @@ impl Dispatcher {
 
         let new_hover = hit_test_path(tree, point);
         if new_hover != self.state.hovered_path {
-            // Compares full ancestor chains (not just the leaf) so a
-            // wrapping widget (e.g. a View around a Label) still gets its
-            // own MouseEntered/MouseExited and can react to hover.
             let old_chain: Vec<String> = self.state.hovered_path
                 .as_deref()
                 .map(crate::input::ancestor_paths)
@@ -63,8 +48,6 @@ impl Dispatcher {
             self.state.hovered_path = new_hover.clone();
         }
 
-        // While a button is held, movement stays captured by the pressed
-        // widget even after the cursor leaves its bounds.
         let move_target = self.state.pressed_path.clone().or(new_hover);
         if let Some(path) = &move_target {
             dispatch_positional(
@@ -73,6 +56,18 @@ impl Dispatcher {
                 &(InputEvent::MouseMoved { position: point }),
                 &mut ctx
             );
+        }
+
+        // Re-resolved every move, not only on hover-leaf change, so a
+        // stationary hover over an inactive child doesn't leave the
+        // pointer cursor drifting back to the platform default.
+        if
+            let Some(path) = self.state.pressed_path
+                .as_ref()
+                .or(self.state.hovered_path.as_ref()) &&
+            let Some(cursor) = resolve_hover_cursor(tree, path)
+        {
+            ctx.set_cursor_icon(cursor);
         }
 
         ctx

@@ -6,6 +6,7 @@ use crate::{
     AnimValue,
     AnimationManager,
     Background,
+    Border,
     BorderRadius,
     BoxShadow,
     Color,
@@ -48,6 +49,9 @@ const DEFAULT_GAP: f32 = 6.0;
 const FADE_TRANSITION: Transition = Transition::new(Duration::from_millis(120)).easing(
     Easing::EaseOut
 );
+const SCALE_TRANSITION: Transition = Transition::new(Duration::from_millis(140)).easing(
+    Easing::EaseOut
+);
 const TOOLTIP_PADDING_X: f32 = 8.0;
 const TOOLTIP_PADDING_Y: f32 = 5.0;
 
@@ -71,11 +75,13 @@ pub struct Tooltip {
     text_color: Option<Color>,
     padding: Option<Edges>,
     border_radius: Option<Length>,
+    border: Option<Border>,
     font_size: Option<Length>,
 
     hover_start: Cell<Option<Instant>>,
     showing: Cell<bool>,
     opacity_anim: Cell<f32>,
+    scale_progress: Cell<f32>,
     label_size: Cell<(f32, f32)>,
 }
 
@@ -96,11 +102,13 @@ impl Tooltip {
             text_color: None,
             padding: None,
             border_radius: None,
+            border: None,
             font_size: None,
 
             hover_start: Cell::new(None),
             showing: Cell::new(false),
             opacity_anim: Cell::new(0.0),
+            scale_progress: Cell::new(1.0),
             label_size: Cell::new((0.0, 0.0)),
         }
     }
@@ -149,6 +157,11 @@ impl Tooltip {
 
     pub fn border_radius(mut self, radius: impl Into<Length>) -> Self {
         self.border_radius = Some(radius.into());
+        self
+    }
+
+    pub fn border(mut self, border: Border) -> Self {
+        self.border = Some(border);
         self
     }
 
@@ -283,13 +296,19 @@ impl Widget for Tooltip {
         let sf = ctx.scale_factor;
         let size = self.label_size.get();
         let (x, y) = self.box_position(self.layout_box, size);
+        let scale = self.scale_progress.get();
 
-        let bg = self.background.clone().unwrap_or(Background::Color(theme.inverse_surface));
+        let raw_box = LayoutBox { x, y, width: size.0, height: size.1 };
+        let popup_box = crate::scaled_layout_box(raw_box, scale);
+
+        let bg = self.background
+            .clone()
+            .unwrap_or(Background::Color(theme.surface_container_highest));
         let bg_color = bg.representative_color();
-        let radius = self.border_radius.unwrap_or(Length::px(8.0)).to_physical(sf);
+        let radius = self.border_radius.unwrap_or(Length::px(8.0)).to_physical(sf) * scale;
+        let border = self.border.unwrap_or_else(|| Border::all(1.0, theme.outline_variant));
 
         if let Some(shadows) = &self.base.computed_style.box_shadow {
-            let popup_box = LayoutBox { x, y, width: size.0, height: size.1 };
             for shadow in shadows
                 .iter()
                 .rev()
@@ -301,19 +320,17 @@ impl Widget for Tooltip {
         }
 
         ctx.draw_rect(RectCommand {
-            position: (x, y),
-            size,
+            position: (popup_box.x, popup_box.y),
+            size: (popup_box.width, popup_box.height),
             background: Some(Background::Color(bg_color.with_alpha_f32(bg_color.a() * opacity))),
             border_radius: Some(BorderRadius::all(Length::px(radius))),
-            border_width: None,
-            border_color: None,
+            border_width: Some(Length::px(border.top.to_physical(sf) * scale)),
+            border_color: Some(border.color.with_alpha_f32(border.color.a() * opacity)),
             clip_rect: None,
         });
 
         let padding = self.effective_padding();
-        let text_color = self.text_color
-            .unwrap_or(theme.inverse_on_surface)
-            .with_alpha_f32(opacity);
+        let text_color = self.text_color.unwrap_or(theme.on_surface).with_alpha_f32(opacity);
 
         let mut text_style = self.base.computed_style.clone();
         text_style.font_size.get_or_insert(self.font_size.unwrap_or(DEFAULT_FONT_SIZE));
@@ -321,7 +338,10 @@ impl Widget for Tooltip {
 
         ctx.draw_text(TextCommand {
             text: self.text.clone(),
-            position: (x + padding.left.to_physical(sf), y + padding.top.to_physical(sf)),
+            position: (
+                popup_box.x + padding.left.to_physical(sf) * scale,
+                popup_box.y + padding.top.to_physical(sf) * scale,
+            ),
             style: text_style,
             max_width: None,
             clip_rect: None,
@@ -405,6 +425,7 @@ impl Widget for Tooltip {
             self.padding == other.padding &&
             self.border_radius == other.border_radius &&
             self.font_size == other.font_size &&
+            self.border == other.border &&
             self.base.style == other.base.style
     }
 
@@ -418,13 +439,24 @@ impl Widget for Tooltip {
             layer: AnimLayer::Root,
             property: AnimProperty::Opacity,
         };
-        // Honors the standard transition/transition_opacity builder if the
-        // user set one, falling back to the built-in fade otherwise.
         let transition = self.base.computed_style.transition_overrides.opacity
             .or(self.base.computed_style.transition)
             .unwrap_or(FADE_TRANSITION);
         anim.set_target(key, AnimValue([target, 0.0, 0.0, 0.0]), Some(transition));
         self.opacity_anim.set(anim.value(key).map_or(target, |v| v.0[0]));
+
+        let scale_target = if self.showing.get() { 1.0 } else { 0.92 };
+        let scale_key = AnimKey {
+            widget: self.anim_id,
+            layer: AnimLayer::Root,
+            property: AnimProperty::Scale,
+        };
+        anim.set_target(
+            scale_key,
+            AnimValue([scale_target, 0.0, 0.0, 0.0]),
+            Some(SCALE_TRANSITION)
+        );
+        self.scale_progress.set(anim.value(scale_key).map_or(scale_target, |v| v.0[0]));
 
         for child in self.children.iter_mut() {
             child.cascade_style(&self.base.computed_style, anim);
@@ -449,6 +481,7 @@ impl Widget for Tooltip {
             self.hover_start.set(old.hover_start.get());
             self.showing.set(old.showing.get());
             self.opacity_anim.set(old.opacity_anim.get());
+            self.scale_progress.set(old.scale_progress.get());
             self.label_size.set(old.label_size.get());
         }
     }

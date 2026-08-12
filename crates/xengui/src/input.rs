@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-use crate::Widget;
+use crate::{Cursor, Widget};
 use std::future::Future;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -380,6 +380,31 @@ fn collect_focusable_recursive(widget: &dyn Widget, path: &str, out: &mut Vec<St
 // True if `path` is `ancestor` itself or one of its descendants.
 pub fn path_is_within(path: &str, ancestor: &str) -> bool {
     path == ancestor || path.starts_with(&format!("{ancestor}."))
+}
+
+// Walks the hover path from root to leaf and returns the deepest widget's
+// own hover cursor, so a plain (non-interactive) child inside a clickable
+// ancestor doesn't shadow that ancestor's cursor.
+pub fn resolve_hover_cursor(tree: &[Box<dyn Widget>], path: &str) -> Option<Cursor> {
+    let mut current: &[Box<dyn Widget>] = tree;
+    let mut resolved = None;
+
+    for segment in path.split('.') {
+        let widget = if let Some(key) = segment.strip_prefix('k') {
+            current.iter().find(|w| w.get_key().is_some_and(|k| k.as_str() == key))?
+        } else {
+            let idx: usize = segment.parse().ok()?;
+            current.get(idx)?
+        };
+
+        if let Some(cursor) = widget.interaction().and_then(|i| i.hover_cursor) {
+            resolved = Some(cursor);
+        }
+
+        current = widget.children();
+    }
+
+    resolved
 }
 
 pub fn dispatch_positional(

@@ -14,7 +14,7 @@ pub const DEFAULT_CURSOR_ICON: Cursor = Cursor::Default;
 /// Default pointer cursor icon
 pub const DEFAULT_POINTER_CURSOR_ICON: Cursor = Cursor::Pointer;
 /// Default link color
-pub const DEFAULT_LINK_COLOR: Color = Color::BLUE_400;
+pub const DEFAULT_LINK_COLOR: Color = Color::BLUE_300;
 
 /// Maximum distance (in logical/DP units) between two consecutive taps or
 /// clicks for them to count as part of the same multi-click sequence
@@ -96,10 +96,10 @@ pub const MOMENTUM_MIN_SPEED: f32 = 4.0;
 /* ---- AutoScroll (middle-click pan) ---- */
 /// Radius (logical/DP units) around the activation point within which
 /// cursor movement produces no scrolling, matching native AutoScroll.
-pub const AUTO_SCROLL_DEAD_ZONE_DP: f32 = 3.0;
+pub const AUTO_SCROLL_DEAD_ZONE_DP: f32 = 8.0;
 /// Cursor distance (logical/DP units) past the dead zone at which
 /// AutoScroll reaches its maximum speed.
-pub const AUTO_SCROLL_RANGE_DP: f32 = 160.0;
+pub const AUTO_SCROLL_RANGE_DP: f32 = 180.0;
 /// Maximum AutoScroll speed, in logical px/sec, reached at `AUTO_SCROLL_RANGE_DP`.
 pub const AUTO_SCROLL_MAX_SPEED: f32 = 1900.0;
 
