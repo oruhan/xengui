@@ -929,7 +929,8 @@ impl<'a> RenderBackend for WgpuFrame<'a> {
         &mut self,
         cmds: &[DrawCommand],
         chain: &FilterChain,
-        bounds: (f32, f32, f32, f32)
+        bounds: (f32, f32, f32, f32),
+        clip_rect: Option<(f32, f32, f32, f32)>
     ) {
         let (bx, by, bw, bh) = bounds;
         let (pad_left, pad_top, pad_right, pad_bottom) = box_shadow_overflow(cmds, bounds);
@@ -996,7 +997,7 @@ impl<'a> RenderBackend for WgpuFrame<'a> {
             &filtered.view,
             &self.view,
             dest_rect,
-            None,
+            clip_rect,
             self.width,
             self.height,
             (0.0, 0.0, 1.0, 1.0)

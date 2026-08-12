@@ -59,6 +59,10 @@ pub struct Checkbox {
     indeterminate: bool,
     size: f32,
     check_color: Option<Color>,
+    check_codepoint: char,
+    indeterminate_codepoint: char,
+    icons_enabled: bool,
+    check_icon_axes: Option<IconAxes>,
     on_change: Option<ChangeCallback>,
     // 0.0 (unchecked) -> 1.0 (checked), animated on every toggle and
     // driving both the fill/border color blend and the checkmark draw-in.
@@ -79,6 +83,10 @@ impl Checkbox {
             indeterminate: false,
             size: 18.0,
             check_color: None,
+            check_codepoint: codepoints::CHECK,
+            indeterminate_codepoint: codepoints::REMOVE,
+            icons_enabled: true,
+            check_icon_axes: None,
             on_change: None,
             check_progress: Cell::new(0.0),
         };
@@ -113,30 +121,36 @@ impl Checkbox {
         self
     }
 
-    /*/// Overrides the icon drawn while checked. Defaults to xengui-icons's
-    /// check icon; accepts any SVG source, including another
-    /// `xengui-icons` constant.
-    pub fn icon(mut self, svg_source: &str) -> Self {
-        self.check_icon.set_svg(svg_source);
+    /// Overrides the codepoint drawn while checked. Defaults to
+    /// xengui-icons's check icon.
+    pub fn check_icon(mut self, codepoint: char) -> Self {
+        self.check_codepoint = codepoint;
         self.mark_dirty();
         self
     }
 
-    /// Overrides the icon drawn while indeterminate. Defaults to
-    /// xengui-icons's minus icon.
-    pub fn indeterminate_icon(mut self, svg_source: &str) -> Self {
-        self.indeterminate_icon.set_svg(svg_source);
+    /// Overrides the codepoint drawn while indeterminate. Defaults to
+    /// xengui-icons's minus/remove icon.
+    pub fn indeterminate_icon(mut self, codepoint: char) -> Self {
+        self.indeterminate_codepoint = codepoint;
         self.mark_dirty();
         self
     }
 
     /// Hides the check/indeterminate icon entirely, leaving only the box.
     pub fn icons_enabled(mut self, enabled: bool) -> Self {
-        self.check_icon.set_enabled(enabled);
-        self.indeterminate_icon.set_enabled(enabled);
+        self.icons_enabled = enabled;
         self.mark_dirty();
         self
-    }*/
+    }
+
+    /// Overrides the variable-font axes (weight/fill/grade/opsz) used to
+    /// render the check/indeterminate icon.
+    pub fn icon_axes(mut self, axes: IconAxes) -> Self {
+        self.check_icon_axes = Some(axes);
+        self.mark_dirty();
+        self
+    }
 
     pub fn on_change(mut self, f: impl FnMut(bool, &mut EventCtx) + 'static) -> Self {
         self.on_change = Some(Box::new(f));
@@ -245,24 +259,29 @@ impl Widget for Checkbox {
             clip_rect: None,
         });
 
-        if t > 0.001 {
+        if self.icons_enabled && t > 0.001 {
             let icon_color = self.check_color.unwrap_or(theme.on_primary);
             let icon_size = b.width * 0.76 + 2.5 * sf;
-            let icon_box = LayoutBox {
-                x: b.x + (b.width - icon_size) * 0.5,
-                y: b.y + (b.height - icon_size) * 0.5,
-                width: icon_size,
-                height: icon_size,
-            };
+            // Snapped to the pixel grid so the icon's own rounding inside
+            // the pipeline can't drift relative to the (also rounded) box.
+            let icon_x = (b.x + (b.width - icon_size) * 0.5).round();
+            let icon_y = (b.y + (b.height - icon_size) * 0.5).round();
 
-            let codepoint = if self.indeterminate { codepoints::REMOVE } else { codepoints::CHECK };
+            let codepoint = if self.indeterminate {
+                self.indeterminate_codepoint
+            } else {
+                self.check_codepoint
+            };
+            let axes = self.check_icon_axes.unwrap_or_else(||
+                IconAxes::default().fill(1.0).weight(600.0)
+            );
 
             ctx.draw_variable_icon(VariableIconCommand {
-                position: (icon_box.x, icon_box.y),
-                size: (icon_box.width, icon_box.height),
+                position: (icon_x, icon_y),
+                size: (icon_size, icon_size),
                 codepoint,
                 font: MaterialSymbolsVariable::FONT,
-                axes: IconAxes::default().fill(1.0).weight(600.0),
+                axes,
                 color: icon_color.with_alpha_f32(icon_color.a() * t * dim),
                 clip_rect: None,
             });
@@ -323,6 +342,10 @@ impl Widget for Checkbox {
             self.indeterminate == other.indeterminate &&
             self.size == other.size &&
             self.check_color == other.check_color &&
+            self.check_codepoint == other.check_codepoint &&
+            self.indeterminate_codepoint == other.indeterminate_codepoint &&
+            self.icons_enabled == other.icons_enabled &&
+            self.check_icon_axes == other.check_icon_axes &&
             self.base.style == other.base.style &&
             self.base.hover_style == other.base.hover_style &&
             self.base.pressed_style == other.base.pressed_style &&

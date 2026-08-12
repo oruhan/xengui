@@ -81,8 +81,9 @@ pub struct Switch {
     progress: Cell<f32>,
     thumb_size: Cell<f32>,
     on_change: Option<ChangeCallback>,
-    /*icon_on: IconSlot,
-    icon_off: IconSlot,*/
+    icon_on_codepoint: char,
+    icon_off_codepoint: char,
+    icons_enabled: bool,
 }
 
 impl Switch {
@@ -105,8 +106,9 @@ impl Switch {
             progress: Cell::new(0.0),
             thumb_size: Cell::new(THUMB),
             on_change: None,
-            /*icon_on: IconSlot::default_check(),
-            icon_off: IconSlot::default_minus(),*/
+            icon_on_codepoint: codepoints::CHECK,
+            icon_off_codepoint: codepoints::MINUS,
+            icons_enabled: true,
         };
 
         switch.recompute_style();
@@ -162,30 +164,28 @@ impl Switch {
         self
     }
 
-    /*/// Overrides the icon shown once the thumb settles into the "on"
-    /// state. Defaults to xengui-icons's check icon; accepts any SVG
-    /// source, including another `xengui-icons` constant.
-    pub fn icon_on(mut self, svg_source: &str) -> Self {
-        self.icon_on.set_svg(svg_source);
+    /// Overrides the codepoint drawn once the thumb settles into the "on"
+    /// state. Defaults to xengui-icons's check icon.
+    pub fn icon_on(mut self, codepoint: char) -> Self {
+        self.icon_on_codepoint = codepoint;
         self.mark_dirty();
         self
     }
 
-    /// Overrides the icon shown once the thumb settles into the "off"
+    /// Overrides the codepoint drawn once the thumb settles into the "off"
     /// state. Defaults to xengui-icons's minus icon.
-    pub fn icon_off(mut self, svg_source: &str) -> Self {
-        self.icon_off.set_svg(svg_source);
+    pub fn icon_off(mut self, codepoint: char) -> Self {
+        self.icon_off_codepoint = codepoint;
         self.mark_dirty();
         self
     }
 
     /// Hides both on/off thumb icons entirely.
     pub fn icons_enabled(mut self, enabled: bool) -> Self {
-        self.icon_on.set_enabled(enabled);
-        self.icon_off.set_enabled(enabled);
+        self.icons_enabled = enabled;
         self.mark_dirty();
         self
-    }*/
+    }
 
     fn recompute_style(&mut self) {
         self.base.recompute_style();
@@ -307,31 +307,38 @@ impl Widget for Switch {
         });
 
         let icon_size = thumb_d * 0.72;
-        let icon_x = cx - icon_size * 0.5;
-        let icon_y = cy - icon_size * 0.5;
+        // Derived from the already-rounded thumb rect, not the raw
+        // (unrounded) cx/cy - otherwise the icon can sit a fraction of a
+        // pixel off from the thumb it's supposed to be centered inside.
+        let thumb_center_x = thumb_position.0 + thumb_d * 0.5;
+        let thumb_center_y = thumb_position.1 + thumb_d * 0.5;
+        let icon_x = thumb_center_x - icon_size * 0.5;
+        let icon_y = thumb_center_y - icon_size * 0.5;
 
-        if t > 0.6 {
-            let mark_alpha = ((t - 0.6) / 0.4).clamp(0.0, 1.0);
-            ctx.draw_variable_icon(VariableIconCommand {
-                position: (icon_x, icon_y),
-                size: (icon_size, icon_size),
-                codepoint: codepoints::CHECK,
-                font: MaterialSymbolsVariable::FONT,
-                axes: IconAxes::default().fill(1.0).weight(500.0),
-                color: track_on.with_alpha_f32(track_on.a() * mark_alpha * dim),
-                clip_rect: None,
-            });
-        } else if t < 0.4 {
-            let mark_alpha = ((0.4 - t) / 0.4).clamp(0.0, 1.0);
-            ctx.draw_variable_icon(VariableIconCommand {
-                position: (icon_x, icon_y),
-                size: (icon_size, icon_size),
-                codepoint: codepoints::MINUS,
-                font: MaterialSymbolsVariable::FONT,
-                axes: IconAxes::default().fill(1.0).weight(700.0),
-                color: track_off.with_alpha_f32(track_off.a() * mark_alpha * dim),
-                clip_rect: None,
-            });
+        if self.icons_enabled {
+            if t > 0.6 {
+                let mark_alpha = ((t - 0.6) / 0.4).clamp(0.0, 1.0);
+                ctx.draw_variable_icon(VariableIconCommand {
+                    position: (icon_x, icon_y),
+                    size: (icon_size, icon_size),
+                    codepoint: self.icon_on_codepoint,
+                    font: MaterialSymbolsVariable::FONT,
+                    axes: IconAxes::default().fill(1.0).weight(500.0),
+                    color: track_on.with_alpha_f32(track_on.a() * mark_alpha * dim),
+                    clip_rect: None,
+                });
+            } else if t < 0.4 {
+                let mark_alpha = ((0.4 - t) / 0.4).clamp(0.0, 1.0);
+                ctx.draw_variable_icon(VariableIconCommand {
+                    position: (icon_x, icon_y),
+                    size: (icon_size, icon_size),
+                    codepoint: self.icon_off_codepoint,
+                    font: MaterialSymbolsVariable::FONT,
+                    axes: IconAxes::default().fill(1.0).weight(700.0),
+                    color: track_off.with_alpha_f32(track_off.a() * mark_alpha * dim),
+                    clip_rect: None,
+                });
+            }
         }
 
         self.paint_outline(ctx);
@@ -401,6 +408,9 @@ impl Widget for Switch {
             self.thumb_on_color == other.thumb_on_color &&
             self.thumb_off_color == other.thumb_off_color &&
             self.border_color == other.border_color &&
+            self.icon_on_codepoint == other.icon_on_codepoint &&
+            self.icon_off_codepoint == other.icon_off_codepoint &&
+            self.icons_enabled == other.icons_enabled &&
             self.base.style == other.base.style
     }
 

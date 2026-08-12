@@ -39,7 +39,8 @@ pub trait RenderBackend {
         &mut self,
         cmds: &[crate::DrawCommand],
         chain: &crate::FilterChain,
-        bounds: (f32, f32, f32, f32)
+        bounds: (f32, f32, f32, f32),
+        clip_rect: Option<(f32, f32, f32, f32)>
     );
 
     /// Captures whatever has already been painted within `bounds` at this

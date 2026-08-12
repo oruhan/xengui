@@ -250,7 +250,12 @@ impl FrameRenderer {
                     // each is its own isolated offscreen pass, so it's
                     // dispatched immediately rather than buffered.
                     backend.flush_text();
-                    backend.draw_filtered(&filtered.commands, &filtered.chain, filtered.bounds);
+                    backend.draw_filtered(
+                        &filtered.commands,
+                        &filtered.chain,
+                        filtered.bounds,
+                        filtered.clip_rect
+                    );
                 }
                 DrawCommand::BackdropFilter(cmd) => {
                     if current_kind != Some(RunKind::BackdropFilter) {
