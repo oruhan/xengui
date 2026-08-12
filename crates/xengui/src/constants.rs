@@ -111,3 +111,8 @@ pub const MAX_GRADIENT_STOPS: usize = 512;
 
 /* ----- ContextMenu ----- */
 pub const ITEM_FONT_SIZE: Length = Length::px(13.0);
+
+/// Opacity multiplier applied to Checkbox/Switch/RadioButton colors while
+/// `Interaction::enabled` is false, so the disabled state reads visually
+/// dimmed instead of looking identical to an active widget.
+pub const DISABLED_WIDGET_OPACITY: f32 = 0.5;
