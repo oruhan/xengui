@@ -727,55 +727,6 @@ impl View {
         self.thumb_color_anim.set(thumb_color);
     }
 
-    // Each arrow button animates its own color independently, based on
-    // whether that specific button (not the scrollbar as a whole) is
-    // hovered or pressed.
-    fn animate_scrollbar_arrow_colors(&mut self, anim: &mut AnimationManager) {
-        let pressed = self.pressed_arrow.get();
-        let hovered = self.hovered_arrow.get();
-
-        let idle_color = self.resolved_scrollbar().arrow_color;
-        let hover_color = self.resolved_scrollbar_for_state(true, false).arrow_color;
-        let press_color = self.resolved_scrollbar_for_state(false, true).arrow_color;
-
-        let arrows = [
-            ScrollbarArrow::Up,
-            ScrollbarArrow::Down,
-            ScrollbarArrow::Left,
-            ScrollbarArrow::Right,
-        ];
-
-        let mut colors = self.arrow_color_anim.get();
-        for (i, arrow) in arrows.iter().enumerate() {
-            let target = if pressed == Some(*arrow) {
-                press_color
-            } else if hovered == Some(*arrow) {
-                hover_color
-            } else {
-                idle_color
-            };
-
-            let key = AnimKey {
-                widget: self.arrow_anim_ids[i],
-                layer: AnimLayer::Root,
-                property: AnimProperty::ScrollbarArrowColor,
-            };
-            anim.set_color_target(
-                key,
-                AnimValue(target.to_f32_array()),
-                Some(SCROLLBAR_THICKNESS_TRANSITION)
-            );
-            colors[i] = match anim.value(key) {
-                Some(v) => {
-                    self.base.dirty = true;
-                    Color::rgba_f32(v.0[0], v.0[1], v.0[2], v.0[3])
-                }
-                None => target,
-            };
-        }
-        self.arrow_color_anim.set(colors);
-    }
-
     // Reserves layout space for the scrollbar so content doesn't shift
     // when it appears/disappears, matching CSS's `scrollbar-gutter`.
     // Stable/StableBothEdges reserve purely from the static overflow mode
@@ -2102,18 +2053,26 @@ impl Widget for View {
             let target = self.scroll_target.get();
             let axis_dim = (if active_y { 1.0 } else { SCROLLBAR_DISABLED_OPACITY }) * fade;
             let scales = self.arrow_scale.get();
-            let arrow_color = self.arrow_color_anim.get();
+            let arrow_colors = self.arrow_color_anim.get();
 
-            for (rect, dir, edge_disabled, scale) in [
-                (up, ArrowDirection::Up, target.1 <= 0.0, scales[ScrollbarArrow::Up as usize]),
+            for (rect, dir, edge_disabled, scale, color_idx) in [
+                (
+                    up,
+                    ArrowDirection::Up,
+                    target.1 <= 0.0,
+                    scales[ScrollbarArrow::Up as usize],
+                    ScrollbarArrow::Up as usize,
+                ),
                 (
                     down,
                     ArrowDirection::Down,
                     target.1 >= self.max_scroll_y(),
                     scales[ScrollbarArrow::Down as usize],
+                    ScrollbarArrow::Down as usize,
                 ),
             ] {
                 let dim = axis_dim * (if edge_disabled { 0.35 } else { 1.0 });
+                let arrow_color = arrow_colors[color_idx];
                 let color = arrow_color.with_alpha_f32(arrow_color.a() * dim);
 
                 for (p0, p1, p2) in rounded_arrow_triangles(rect, dir, ctx.scale_factor) {
@@ -2133,23 +2092,26 @@ impl Widget for View {
             let target = self.scroll_target.get();
             let axis_dim = (if active_x { 1.0 } else { SCROLLBAR_DISABLED_OPACITY }) * fade;
             let scales = self.arrow_scale.get();
-            let arrow_color = self.arrow_color_anim.get();
+            let arrow_colors = self.arrow_color_anim.get();
 
-            for (rect, dir, edge_disabled, scale) in [
+            for (rect, dir, edge_disabled, scale, color_idx) in [
                 (
                     left,
                     ArrowDirection::Left,
                     target.0 <= 0.0,
                     scales[ScrollbarArrow::Left as usize],
+                    ScrollbarArrow::Left as usize,
                 ),
                 (
                     right,
                     ArrowDirection::Right,
                     target.0 >= self.max_scroll_x(),
                     scales[ScrollbarArrow::Right as usize],
+                    ScrollbarArrow::Right as usize,
                 ),
             ] {
                 let dim = axis_dim * (if edge_disabled { 0.35 } else { 1.0 });
+                let arrow_color = arrow_colors[color_idx];
                 let color = arrow_color.with_alpha_f32(arrow_color.a() * dim);
 
                 for (p0, p1, p2) in rounded_arrow_triangles(rect, dir, ctx.scale_factor) {
