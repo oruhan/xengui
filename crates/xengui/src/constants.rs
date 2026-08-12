@@ -36,7 +36,7 @@ pub const MULTI_CLICK_INTERVAL: Duration = Duration::from_millis(400);
 /// Scrollbar thumb thickness while neither hovered nor pressed.
 pub const DEFAULT_SCROLLBAR_THUMB_THICKNESS: f32 = 5.0;
 /// Scrollbar thumb thickness while hovered or pressed, unless overridden.
-pub const DEFAULT_SCROLLBAR_THUMB_HOVER_THICKNESS: f32 = 5.0;
+pub const DEFAULT_SCROLLBAR_THUMB_HOVER_THICKNESS: f32 = 7.0;
 
 // Eased transition applied to scroll position when animating toward a
 // wheel/nudge target; drag updates bypass this and snap instantly.
