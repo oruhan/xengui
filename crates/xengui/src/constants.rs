@@ -56,8 +56,8 @@ pub const SCROLLBAR_DISABLED_OPACITY: f32 = 0.35;
 pub const SCROLLBAR_THUMB_PADDING: f32 = 4.0;
 
 pub const SCROLLBAR_ARROW_SIZE: f32 = 6.0;
-pub const SCROLLBAR_ARROW_CAP_SEGMENTS: usize = 24;
-pub const SCROLLBAR_ARROW_CORNER_RADIUS: f32 = 1.8;
+pub const SCROLLBAR_ARROW_CAP_SEGMENTS: usize = 32;
+pub const SCROLLBAR_ARROW_CORNER_RADIUS: f32 = 2.2;
 
 /* ---- Scrollbar arrow press feedback ---- */
 /// Transition applied to a scrollbar arrow button's press scale.

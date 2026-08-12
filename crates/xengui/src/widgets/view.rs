@@ -400,6 +400,10 @@ impl View {
         base
     }
 
+    fn arrows_shown(&self) -> bool {
+        self.active_scrollbar().show_arrows
+    }
+
     fn resolved_overscroll(&self) -> Overscroll {
         self.base.computed_style.overscroll.unwrap_or_default()
     }
@@ -750,15 +754,13 @@ impl View {
     // Hit area for scrollbar hover detection; uses the hover thickness so
     // a thin, unhovered bar is still easy to reach with the pointer.
     fn point_in_scrollbar(&self, point: (f32, f32)) -> bool {
-        // A shown-but-inactive `Scroll` axis (no overflow) doesn't
-        // intercept the pointer, so it passes through to the content.
         let (active_x, active_y) = self.scrollbar_active();
         if !active_x && !active_y {
             return false;
         }
 
         let b = self.layout_box;
-        let t = self.resolved_scrollbar_for_state(true, false).thickness * self.scale_factor.get();
+        let t = self.track_thickness();
         let right_inset = self.scrollbar_right_inset.get();
         let bottom_inset = self.scrollbar_bottom_inset.get();
 
@@ -836,7 +838,11 @@ impl View {
         let b = self.layout_box;
         let t = self.active_scrollbar().thickness;
         let full_h = if has_x { b.height - t } else { b.height };
-        Some((b.y + t, (full_h - 2.0 * t).max(0.0)))
+        if self.arrows_shown() {
+            Some((b.y + t, (full_h - 2.0 * t).max(0.0)))
+        } else {
+            Some((b.y, full_h))
+        }
     }
 
     fn horizontal_track_bounds(&self) -> Option<(f32, f32)> {
@@ -847,7 +853,11 @@ impl View {
         let b = self.layout_box;
         let t = self.active_scrollbar().thickness;
         let full_w = if has_y { b.width - t } else { b.width };
-        Some((b.x + t, (full_w - 2.0 * t).max(0.0)))
+        if self.arrows_shown() {
+            Some((b.x + t, (full_w - 2.0 * t).max(0.0)))
+        } else {
+            Some((b.x, full_w))
+        }
     }
 
     fn vertical_thumb_rect(&self) -> Option<(f32, f32, f32, f32)> {
@@ -940,6 +950,9 @@ impl View {
     }
 
     fn vertical_buttons(&self) -> Option<(Rect, Rect)> {
+        if !self.arrows_shown() {
+            return None;
+        }
         let (_, has_y) = self.scrollbar_visibility();
         if !has_y {
             return None;
@@ -956,6 +969,9 @@ impl View {
     }
 
     fn horizontal_buttons(&self) -> Option<(Rect, Rect)> {
+        if !self.arrows_shown() {
+            return None;
+        }
         let (has_x, _) = self.scrollbar_visibility();
         if !has_x {
             return None;

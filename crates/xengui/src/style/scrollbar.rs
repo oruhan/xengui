@@ -13,6 +13,7 @@ pub struct ScrollbarStyle {
     pub thumb_border_color: Option<Color>,
     pub track_border_width: Option<f32>,
     pub track_border_color: Option<Color>,
+    pub show_arrows: Option<bool>,
 }
 
 impl ScrollbarStyle {
@@ -29,6 +30,7 @@ impl ScrollbarStyle {
             thumb_border_color: patch.thumb_border_color.or(self.thumb_border_color),
             track_border_width: patch.track_border_width.or(self.track_border_width),
             track_border_color: patch.track_border_color.or(self.track_border_color),
+            show_arrows: patch.show_arrows.or(self.show_arrows),
         }
     }
 
@@ -48,6 +50,7 @@ impl ScrollbarStyle {
             thumb_border_color: self.thumb_border_color.unwrap_or(theme.scrollbar_thumb_border),
             track_border_width: self.track_border_width.unwrap_or(0.0),
             track_border_color: self.track_border_color.unwrap_or(theme.scrollbar_track_border),
+            show_arrows: self.show_arrows.unwrap_or(true),
         }
     }
 }
@@ -65,12 +68,10 @@ pub struct ResolvedScrollbar {
     pub thumb_border_color: Color,
     pub track_border_width: f32,
     pub track_border_color: Color,
+    pub show_arrows: bool,
 }
 
 impl ResolvedScrollbar {
-    // Applies a hover/pressed patch on top of an already-resolved base;
-    // only thickness needs an external fallback since every other field
-    // already has a resolved value from the base to fall back to.
     pub fn patched(&self, patch: &ScrollbarStyle, default_thickness: f32) -> Self {
         Self {
             thickness: patch.thickness.unwrap_or(default_thickness),
@@ -84,6 +85,7 @@ impl ResolvedScrollbar {
             thumb_border_color: patch.thumb_border_color.unwrap_or(self.thumb_border_color),
             track_border_width: patch.track_border_width.unwrap_or(self.track_border_width),
             track_border_color: patch.track_border_color.unwrap_or(self.track_border_color),
+            show_arrows: patch.show_arrows.unwrap_or(self.show_arrows),
         }
     }
 }

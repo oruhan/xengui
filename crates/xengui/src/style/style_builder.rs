@@ -1,6 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 use crate::{
-    BoxShadow, BoxSizing, Overflow, Overscroll, ScrollbarGutter, TransitionProperty, properties::StyleValue, style::{ FontStyle, FontWeight, IntoThemed, LetterSpacing },
+    BoxShadow,
+    BoxSizing,
+    Overflow,
+    Overscroll,
+    ScrollbarGutter,
+    TransitionProperty,
+    properties::StyleValue,
+    style::{ FontStyle, FontWeight, IntoThemed, LetterSpacing },
 };
 
 use super::{
@@ -106,97 +113,73 @@ pub trait StyleBuilder: Sized {
 
     fn cursor(mut self, cursor: Cursor) -> Self {
         self.style_mut().cursor = Some(cursor);
-
         self.mark_dirty();
-
         self
     }
 
     fn background<M>(mut self, background: impl IntoThemed<Background, M>) -> Self {
         self.style_mut().background = Some(background.resolve_themed());
-
         self.mark_dirty();
-
         self
     }
 
     fn font_size<M>(mut self, size: impl IntoThemed<Length, M>) -> Self {
         self.style_mut().font_size = Some(size.resolve_themed());
-
         self.mark_dirty();
-
         self
     }
 
     fn font_weight(mut self, weight: FontWeight) -> Self {
         self.style_mut().font_weight = Some(weight);
-
         self.mark_dirty();
-
         self
     }
 
     fn font_style(mut self, style: FontStyle) -> Self {
         self.style_mut().font_style = Some(style);
-
         self.mark_dirty();
-
         self
     }
 
     fn letter_spacing(mut self, spacing: impl Into<LetterSpacing>) -> Self {
         self.style_mut().letter_spacing = Some(spacing.into());
-
         self.mark_dirty();
-
         self
     }
 
     fn text_align(mut self, align: TextAlign) -> Self {
         self.style_mut().text_align = Some(align);
-
         self.mark_dirty();
-
         self
     }
 
     fn text_decoration(mut self, decoration: TextDecoration) -> Self {
         self.style_mut().text_decoration = Some(decoration);
-
         self.mark_dirty();
-
         self
     }
 
     fn line_height(mut self, height: impl Into<LineHeight>) -> Self {
         self.style_mut().line_height = Some(height.into());
-
         self.mark_dirty();
-
         self
     }
 
     fn margin<M>(mut self, margin: impl IntoThemed<Edges, M>) -> Self {
         self.style_mut().margin = Some(margin.resolve_themed());
-
         self.mark_dirty();
-
         self
     }
 
     fn border<M>(mut self, border: impl IntoThemed<Border, M>) -> Self {
         self.style_mut().border = Some(border.resolve_themed());
-
         self.mark_dirty();
-
         self
     }
 
     fn outline<M>(mut self, outline: impl IntoThemed<StyleValue<Outline>, M>) -> Self {
         self.style_mut().outline = outline.resolve_themed();
-
         self.mark_dirty();
-
         self
     }
 
@@ -254,9 +237,7 @@ pub trait StyleBuilder: Sized {
         self.style_mut().min_size.get_or_insert_with(Default::default).width = Some(
             width.resolve_themed()
         );
-
         self.mark_dirty();
-
         self
     }
 
@@ -264,9 +245,7 @@ pub trait StyleBuilder: Sized {
         self.style_mut().min_size.get_or_insert_with(Default::default).height = Some(
             height.resolve_themed()
         );
-
         self.mark_dirty();
-
         self
     }
 
@@ -276,9 +255,7 @@ pub trait StyleBuilder: Sized {
         self.style_mut().min_size = Some(
             Size::new(width.resolve_themed(), height.resolve_themed())
         );
-
         self.mark_dirty();
-
         self
     }
 
@@ -286,9 +263,7 @@ pub trait StyleBuilder: Sized {
         self.style_mut().max_size.get_or_insert_with(Default::default).width = Some(
             width.resolve_themed()
         );
-
         self.mark_dirty();
-
         self
     }
 
@@ -296,9 +271,7 @@ pub trait StyleBuilder: Sized {
         self.style_mut().max_size.get_or_insert_with(Default::default).height = Some(
             height.resolve_themed()
         );
-
         self.mark_dirty();
-
         self
     }
 
@@ -308,17 +281,13 @@ pub trait StyleBuilder: Sized {
         self.style_mut().max_size = Some(
             Size::new(width.resolve_themed(), height.resolve_themed())
         );
-
         self.mark_dirty();
-
         self
     }
 
     fn display(mut self, display: Display) -> Self {
         self.style_mut().display = Some(display);
-
         self.mark_dirty();
-
         self
     }
 
@@ -434,17 +403,13 @@ pub trait StyleBuilder: Sized {
 
     fn justify_content(mut self, justify: JustifyContent) -> Self {
         self.style_mut().justify_content = Some(justify);
-
         self.mark_dirty();
-
         self
     }
 
     fn align_content(mut self, align: JustifyContent) -> Self {
         self.style_mut().align_content = Some(align);
-
         self.mark_dirty();
-
         self
     }
 
@@ -452,67 +417,58 @@ pub trait StyleBuilder: Sized {
         where W: IntoThemed<Length, MW>, H: IntoThemed<Length, MH>
     {
         self.style_mut().gap = Some((horizontal.resolve_themed(), vertical.resolve_themed()));
-
         self.mark_dirty();
-
         self
     }
 
     fn grid_template_columns(mut self, columns: impl Into<Vec<GridTrack>>) -> Self {
         self.style_mut().grid_template_columns = Some(columns.into());
-
         self.mark_dirty();
-
         self
     }
 
     fn grid_template_rows(mut self, rows: impl Into<Vec<GridTrack>>) -> Self {
         self.style_mut().grid_template_rows = Some(rows.into());
-
         self.mark_dirty();
-
         self
     }
 
     fn grid_column(mut self, column: GridPlacement) -> Self {
         self.style_mut().grid_column = Some(column);
-
         self.mark_dirty();
-
         self
     }
 
     fn grid_row(mut self, row: GridPlacement) -> Self {
         self.style_mut().grid_row = Some(row);
-
         self.mark_dirty();
-
         self
     }
 
     fn scrollbar_gutter(mut self, gutter: ScrollbarGutter) -> Self {
         self.style_mut().scrollbar_gutter = Some(gutter);
-
         self.mark_dirty();
-
         self
     }
 
     fn scrollbar_thickness(mut self, thickness: f32) -> Self {
         self.style_mut().scrollbar.get_or_insert_with(ScrollbarStyle::default).thickness =
             Some(thickness);
-
         self.mark_dirty();
+        self
+    }
 
+    fn scrollbar_show_arrows(mut self, value: bool) -> Self {
+        self.style_mut().scrollbar.get_or_insert_with(ScrollbarStyle::default).show_arrows =
+            Some(value);
+        self.mark_dirty();
         self
     }
 
     fn scrollbar_min_thumb_length(mut self, length: f32) -> Self {
         self.style_mut().scrollbar.get_or_insert_with(ScrollbarStyle::default).min_thumb_length =
             Some(length);
-
         self.mark_dirty();
-
         self
     }
 
