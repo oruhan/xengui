@@ -68,6 +68,12 @@ fn section_buttons(theme: &Theme, click_count: i32, set_click_count: SetState<i3
         .pressed_style(|s, _theme: &Theme| s.scale(0.97))
         .on_click(move |_ctx| set_click_count.set(click_count + 1));
 
+    let test = Button::new()
+        .label("Test")
+        .background(Color::NEUTRAL_700)
+        .focus_style(|ctx: StylePatch, _theme: &Theme| ctx.background(Color::AMBER_500))
+        .pressed_style(|ctx: StylePatch, _theme: &Theme| ctx.background(Color::RED_500));
+
     let icon_start = Button::new()
         .label("Icon start")
         .icon(WAND_ICON)
@@ -109,6 +115,7 @@ fn section_buttons(theme: &Theme, click_count: i32, set_click_count: SetState<i3
             .child(icon_start)
             .child(icon_end)
             .child(disabled)
+            .child(test)
     )
 }
 

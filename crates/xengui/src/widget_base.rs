@@ -60,15 +60,20 @@ impl WidgetBase {
 
         let mut computed = base;
 
+        // Priority (lowest -> highest): hover, focus, pressed, then the
+        // most-specific combined patch. Pressed sits above focus so a
+        // held-down control never loses its press feedback to a focus
+        // ring style; the combined patches still win over either single
+        // state since they're the most specific match.
         if hovered && let Some(patch) = &self.hover_style {
             computed = computed.overlay(patch);
         }
 
-        if pressed && let Some(patch) = &self.pressed_style {
+        if focused && let Some(patch) = &self.focus_style {
             computed = computed.overlay(patch);
         }
 
-        if focused && let Some(patch) = &self.focus_style {
+        if pressed && let Some(patch) = &self.pressed_style {
             computed = computed.overlay(patch);
         }
 

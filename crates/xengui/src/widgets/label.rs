@@ -106,9 +106,9 @@ impl Label {
     }
 
     // Widget-specific extra step (hover cursor) stays local; the shared
-    // style-overlay logic lives in WidgetBase::recompute_style. Note the
-    // priority order changes here from `pressed > focused > hovered` to
-    // WidgetBase's canonical `pressed > hovered > focused`.
+    // style-overlay logic lives in WidgetBase::recompute_style, whose
+    // canonical priority is hover -> focus -> pressed -> combined (see
+    // WidgetBase::recompute_style).
     fn recompute_style(&mut self) {
         self.base.recompute_style();
         // Only claims a hover cursor when it actually needs one (text
