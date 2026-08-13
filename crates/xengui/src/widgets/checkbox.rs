@@ -57,6 +57,7 @@ pub struct Checkbox {
     layout_box: LayoutBox,
     checked: bool,
     indeterminate: bool,
+    display_indeterminate: Cell<bool>,
     size: f32,
     check_color: Option<Color>,
     check_codepoint: char,
@@ -81,6 +82,7 @@ impl Checkbox {
             layout_box: LayoutBox::default(),
             checked: false,
             indeterminate: false,
+            display_indeterminate: Cell::new(false),
             size: 18.0,
             check_color: None,
             check_codepoint: codepoints::CHECK,
@@ -270,11 +272,12 @@ impl Widget for Checkbox {
             let icon_x = (b.x + (b.width - icon_size) * 0.5).round();
             let icon_y = (b.y + (b.height - icon_size) * 0.5).round();
 
-            let codepoint = if self.indeterminate {
+            let codepoint = if self.display_indeterminate.get() {
                 self.indeterminate_codepoint
             } else {
                 self.check_codepoint
             };
+
             let axes = self.check_icon_axes.unwrap_or_else(||
                 IconAxes::default().fill(1.0).weight(600.0)
             );
@@ -296,6 +299,24 @@ impl Widget for Checkbox {
     fn event(&mut self, event: &InputEvent, ctx: &mut EventCtx) -> EventStatus {
         if !self.base.interaction.is_active() {
             return EventStatus::Ignored;
+        }
+
+        if let InputEvent::AnimationTick { .. } = event {
+            if let Some(id) = &self.base.id {
+                for action in crate::dom::take_actions(id) {
+                    match action {
+                        crate::dom::DomAction::Click => self.toggle(ctx),
+                        crate::dom::DomAction::SetChecked(value) => {
+                            self.checked = value;
+                            self.indeterminate = false;
+                            self.base.dirty = true;
+                            ctx.request_redraw();
+                        }
+                        _ => {}
+                    }
+                }
+            }
+            return EventStatus::Handled;
         }
 
         let is_click = match event {
@@ -385,6 +406,15 @@ impl Widget for Checkbox {
                 self.check_progress.set(target);
             }
         }
+
+        // Keeps showing the indeterminate glyph through the whole fade-out when
+        // leaving that state, instead of switching to the checkmark glyph the
+        // instant `indeterminate` clears while the fill is still animating away.
+        if self.indeterminate {
+            self.display_indeterminate.set(true);
+        } else if self.check_progress.get() <= 0.001 {
+            self.display_indeterminate.set(false);
+        }
     }
 
     fn after_interaction_transfer(&mut self) {
@@ -394,6 +424,7 @@ impl Widget for Checkbox {
     fn transfer_measured_state(&mut self, old: &dyn Widget) {
         if let Some(old) = old.as_any().downcast_ref::<Checkbox>() {
             self.check_progress.set(old.check_progress.get());
+            self.display_indeterminate.set(old.display_indeterminate.get());
         }
     }
 
@@ -405,6 +436,12 @@ impl Widget for Checkbox {
             self.anim_id = old.anim_id;
         }
     }
+
+    fn wants_animation_frame(&self) -> bool {
+        self.base.interaction.enabled &&
+            self.base.id.as_deref().is_some_and(crate::dom::has_pending)
+    }
+
     fn anim_id(&self) -> WidgetId {
         self.anim_id
     }

@@ -4,6 +4,8 @@ use smol_str::SmolStr;
 
 pub struct WidgetBase {
     pub key: Option<SmolStr>,
+    /// Global identifier, usable with `xengui::dom` to trigger this widget from anywhere
+    pub id: Option<SmolStr>,
     pub dirty: bool,
 
     pub style: Style,
@@ -23,6 +25,7 @@ impl WidgetBase {
     pub fn new(interaction: Interaction) -> Self {
         Self {
             key: None,
+            id: None,
             dirty: true,
 
             style: Style::default(),

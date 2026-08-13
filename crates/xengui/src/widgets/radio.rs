@@ -229,6 +229,24 @@ impl Widget for RadioButton {
             return EventStatus::Ignored;
         }
 
+        if let InputEvent::AnimationTick { .. } = event {
+            if let Some(id) = &self.base.id {
+                for action in crate::dom::take_actions(id) {
+                    match action {
+                        crate::dom::DomAction::Click | crate::dom::DomAction::SetChecked(true) =>
+                            self.select(ctx),
+                        crate::dom::DomAction::SetChecked(false) => {
+                            self.selected = false;
+                            self.base.dirty = true;
+                            ctx.request_redraw();
+                        }
+                        _ => {}
+                    }
+                }
+            }
+            return EventStatus::Handled;
+        }
+
         let is_click = match event {
             InputEvent::MouseInput {
                 state: ElementState::Released,
@@ -323,6 +341,11 @@ impl Widget for RadioButton {
         if let Some(old) = old.as_any().downcast_ref::<RadioButton>() {
             self.anim_id = old.anim_id;
         }
+    }
+
+    fn wants_animation_frame(&self) -> bool {
+        self.base.interaction.enabled &&
+            self.base.id.as_deref().is_some_and(crate::dom::has_pending)
     }
 
     fn anim_id(&self) -> WidgetId {

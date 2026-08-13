@@ -20,6 +20,7 @@ pub mod context;
 pub mod reconciler;
 pub mod redraw;
 pub mod task;
+pub mod dom;
 pub mod types;
 
 pub use layout::*;

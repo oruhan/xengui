@@ -148,6 +148,14 @@ macro_rules! impl_common_style_builders {
                 self
             }
 
+            /// Global identifier for this widget, usable with `xengui::dom` to
+            /// trigger it from anywhere (e.g. `dom::click("submitBtn")`), the same
+            /// way HTML's `id` + JS's `getElementById(id).click()` work.
+            pub fn id(mut self, id: impl Into<smol_str::SmolStr>) -> Self {
+               self.base.id = Some(id.into());
+              self
+            }
+
             pub fn font(mut self, font: impl Into<smol_str::SmolStr>) -> Self {
                 self.base.style.font = Some(font.into());
                 self.mark_dirty();

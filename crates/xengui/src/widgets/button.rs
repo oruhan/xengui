@@ -461,6 +461,20 @@ impl Widget for Button {
             return EventStatus::Ignored;
         }
 
+        if let InputEvent::AnimationTick { .. } = event {
+            if let Some(id) = &self.base.id {
+                for action in crate::dom::take_actions(id) {
+                    if
+                        matches!(action, crate::dom::DomAction::Click) &&
+                        let Some(cb) = self.base.interaction.on_click.as_mut()
+                    {
+                        cb(ctx);
+                    }
+                }
+            }
+            return EventStatus::Handled;
+        }
+
         let before_style = self.base.computed_style.clone();
         let before_focus_visible = self.base.interaction.focus_visible;
 
@@ -523,6 +537,11 @@ impl Widget for Button {
             self.content_size.set(old.content_size.get());
             self.icon_render_size.set(old.icon_render_size.get());
         }
+    }
+
+    fn wants_animation_frame(&self) -> bool {
+        self.base.interaction.enabled &&
+            self.base.id.as_deref().is_some_and(crate::dom::has_pending)
     }
 
     fn transfer_interaction_state(&mut self, old: &dyn Widget) {

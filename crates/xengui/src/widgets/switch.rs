@@ -353,6 +353,23 @@ impl Widget for Switch {
             return EventStatus::Ignored;
         }
 
+        if let InputEvent::AnimationTick { .. } = event {
+            if let Some(id) = &self.base.id {
+                for action in crate::dom::take_actions(id) {
+                    match action {
+                        crate::dom::DomAction::Click => self.toggle(ctx),
+                        crate::dom::DomAction::SetChecked(value) => {
+                            self.checked = value;
+                            self.base.dirty = true;
+                            ctx.request_redraw();
+                        }
+                        _ => {}
+                    }
+                }
+            }
+            return EventStatus::Handled;
+        }
+
         let is_click = match event {
             InputEvent::MouseInput {
                 state: ElementState::Released,
@@ -467,6 +484,11 @@ impl Widget for Switch {
             self.progress.set(old.progress.get());
             self.thumb_size.set(old.thumb_size.get());
         }
+    }
+
+    fn wants_animation_frame(&self) -> bool {
+        self.base.interaction.enabled &&
+            self.base.id.as_deref().is_some_and(crate::dom::has_pending)
     }
 
     fn transfer_interaction_state(&mut self, old: &dyn Widget) {

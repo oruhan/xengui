@@ -1121,6 +1121,26 @@ impl Widget for TextBox {
         // (always relevant on WASM, where the read is asynchronous).
         self.poll_clipboard_paste(ctx);
 
+        if let InputEvent::AnimationTick { .. } = event {
+            if let Some(id) = &self.base.id {
+                for action in crate::dom::take_actions(id) {
+                    match action {
+                        crate::dom::DomAction::Click | crate::dom::DomAction::Focus =>
+                            ctx.request_focus(),
+                        crate::dom::DomAction::SetValue(value) => {
+                            self.content = value;
+                            self.cursor_index = self.content.chars().count();
+                            self.selection_anchor = None;
+                            self.base.dirty = true;
+                            ctx.request_redraw();
+                        }
+                        _ => {}
+                    }
+                }
+            }
+            return EventStatus::Handled;
+        }
+
         if let InputEvent::ModifiersChanged(modifiers) = event {
             self.current_modifiers.set(*modifiers);
             return EventStatus::Ignored;
@@ -1313,6 +1333,11 @@ impl Widget for TextBox {
             self.undo_stack = old_tb.undo_stack.clone();
             self.redo_stack = old_tb.redo_stack.clone();
         }
+    }
+
+    fn wants_animation_frame(&self) -> bool {
+        self.base.interaction.enabled &&
+            self.base.id.as_deref().is_some_and(crate::dom::has_pending)
     }
 
     fn transfer_measured_state(&mut self, old: &dyn Widget) {

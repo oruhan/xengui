@@ -105,6 +105,19 @@ impl Label {
         self
     }
 
+    /// Associates this label with another widget registered under the same
+    /// id via `.id(...)` - clicking the label activates that widget, like
+    /// HTML's `<label for="...">`.
+    pub fn for_control(mut self, id: impl Into<smol_str::SmolStr>) -> Self {
+        let id = id.into();
+        if self.base.style.cursor.is_none() {
+            self.base.style.cursor = Some(Cursor::Pointer);
+        }
+        self.base.interaction.on_click = Some(Box::new(move |_ctx| crate::dom::click(&id)));
+        self.mark_dirty();
+        self
+    }
+
     // Widget-specific extra step (hover cursor) stays local; the shared
     // style-overlay logic lives in WidgetBase::recompute_style, whose
     // canonical priority is hover -> focus -> pressed -> combined (see
