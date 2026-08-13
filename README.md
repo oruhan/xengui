@@ -23,7 +23,7 @@
 
 ---
 
-XenGui (pronounced `/ˈzɛn.ɡuː.aɪ/`) is a retained-mode rendering GUI implementation in pure **Rust**, built on the `wgpu` graphics API and `winit` window management. It combines a hooks-based retained-mode model with a Flexbox/Grid layout engine (powered by `taffy`) and a batched wgpu rendering pipeline, running natively on Windows, macOS, and Linux, as well as in the browser via WebAssembly.
+XenGui is a retained-mode rendering GUI implementation in pure **Rust**, built on the `wgpu` graphics API and `winit` window management. It combines a hooks-based retained-mode model with a Flexbox/Grid layout engine (powered by `taffy`) and a batched wgpu rendering pipeline, running natively on Windows, macOS, and Linux, as well as in the browser via WebAssembly.
 
 > [!IMPORTANT]
 > XenGui is currently an early development release. APIs are still evolving and may change without notice between versions. Use with caution in production projects and expect breaking changes until a stable `1.0.0` release.
@@ -31,25 +31,28 @@ XenGui (pronounced `/ˈzɛn.ɡuː.aɪ/`) is a retained-mode rendering GUI implem
 ## Example
 
 ```rust
+let (counter, set_counter) = use_state::<i32>(0);
+
 View::new()
     .display(Display::Flex)
     .flex_direction(FlexDirection::Column)
     .align_items(Align::Center)
     .justify_content(JustifyContent::Center)
-    .width(Length::Percent(100.0))
-    .height(Length::Percent(100.0))
-    .background(Color::WHITE)
+    .width(pct!(100))
+    .height(pct!(100))
+    .background(|theme| theme.background)
     .child(
         Label::new()
             .label(format!("Count: {counter}"))
             .font_size(20)
-            .color(Color::NEUTRAL_700)
+            .color(|theme| theme.on_background)
         )
     .child(
         Button::new()
             .label("Increment")
             .padding(Edges::symmetric(12, 8))
-            .background(Color::NEUTRAL_200)
+            .background(|theme| theme.primary)
+            .color(|theme| theme.on_primary)
             .on_click(move |_ctx| set_counter.update(|v| *v += 1))
     );
 ```
@@ -76,7 +79,7 @@ XenGui is split across several focused crates:
 | [`xen-animation`](crates/xen-animation) | Framework-agnostic animation and transition library.                                     |
 | [`xen-clipboard`](crates/xen-clipboard) | Cross-platform clipboard library.                                                        |
 | [`xen-svg`](crates/xen-svg)             | Platform-agnostic SVG parser and triangle tessellator.                                   |
-| [`xengui-icons`](crates/xengui-icons) | Prebuilt [Lucide](https://lucide.dev) icon widgets for XenGui.                           |
+| [`xengui-icons`](crates/xengui-icons)   | Prebuilt [Lucide](https://lucide.dev) icon widgets for XenGui.                           |
 
 ## Installation
 
@@ -115,20 +118,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .flex_direction(FlexDirection::Column)
                 .align_items(Align::Center)
                 .justify_content(JustifyContent::Center)
-                .width(Length::Percent(100.0))
-                .height(Length::Percent(100.0))
-                .background(Color::WHITE)
+                .width(pct!(100))
+                .height(pct!(100))
+                .background(|theme| theme.background)
                 .child(
                     Label::new()
                         .label(format!("Count: {counter}"))
                         .font_size(20)
-                        .color(Color::NEUTRAL_700)
+                        .color(|theme| theme.on_background)
                 )
                 .child(
                     Button::new()
                         .label("Increment")
                         .padding(Edges::symmetric(12, 8))
-                        .background(Color::NEUTRAL_200)
+                        .background(|theme| theme.primary)
+                        .color(|theme| theme.on_primary)
                         .on_click(move |_ctx| set_counter.update(|v| *v += 1))
                 )
         )
