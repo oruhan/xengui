@@ -1007,6 +1007,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     set_indeterminate.clone()
                 )
             )
+            .child(
+                Row::new()
+                    .child(Checkbox::new().checked(checked).id("eula_accept"))
+                    .child(Label::new().label("I Accept the EULA").for_control("eula_accept"))
+            )
             .child(section_switch(&theme, switch_on, set_switch_on.clone()))
             .child(section_radio(&theme, radio_selected, set_radio_selected.clone()))
             .child(section_textbox(&theme, &text_value, set_text_value.clone()))
