@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-use crate::{Cursor, Widget};
+use crate::{ Cursor, Widget };
 use std::future::Future;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -473,18 +473,36 @@ fn widget_wants_animation_recursive(widget: &dyn Widget) -> bool {
 }
 
 pub fn dispatch_animation_tick(tree: &mut [Box<dyn Widget>], dt: f32, ctx: &mut EventCtx) {
-    for widget in tree.iter_mut() {
-        dispatch_animation_tick_recursive(widget.as_mut(), dt, ctx);
+    for (i, widget) in tree.iter_mut().enumerate() {
+        let segment = path_segment(widget.as_ref(), i);
+        dispatch_animation_tick_recursive(widget.as_mut(), &segment, dt, ctx);
     }
 }
 
-fn dispatch_animation_tick_recursive(widget: &mut dyn Widget, dt: f32, ctx: &mut EventCtx) {
+fn dispatch_animation_tick_recursive(
+    widget: &mut dyn Widget,
+    path: &str,
+    dt: f32,
+    ctx: &mut EventCtx
+) {
     if widget.wants_animation_frame() {
         widget.event(&(InputEvent::AnimationTick { dt }), ctx);
+
+        // AnimationTick has no ancestor-chain lookup of its own, unlike
+        // dispatch_positional, so a focus request raised from it must be
+        // resolved against this path explicitly.
+        if ctx.take_focus_request() {
+            ctx.focus_target = Some(path.to_string());
+        }
+        if ctx.take_release_focus_request() {
+            ctx.clear_focus = true;
+        }
     }
     if let Some(children) = widget.children_mut() {
-        for child in children.iter_mut() {
-            dispatch_animation_tick_recursive(child.as_mut(), dt, ctx);
+        for (i, child) in children.iter_mut().enumerate() {
+            let segment = path_segment(child.as_ref(), i);
+            let child_path = format!("{path}.{segment}");
+            dispatch_animation_tick_recursive(child.as_mut(), &child_path, dt, ctx);
         }
     }
 }

@@ -6,7 +6,6 @@ use crate::{
     AnimValue,
     AnimationManager,
     Background,
-    Border,
     BorderRadius,
     Color,
     Constraints,
@@ -59,13 +58,13 @@ pub struct Kbd {
 
 impl Kbd {
     pub fn new() -> Self {
-        let mut base = WidgetBase::new(Interaction::new());
+        let mut interaction = Interaction::new();
+        interaction.hover_cursor = Some(Cursor::Pointer);
+
+        let mut base = WidgetBase::new(interaction);
 
         base.style.padding = Some(Edges::symmetric(6.0, 2.0));
         base.style.font_size = Some(Length::px(13.0));
-        base.style.background = Some(Background::Color(Color::NEUTRAL_50));
-        base.style.border = Some(Border::new().width(1.0).color(Color::NEUTRAL_300).radius(5));
-        base.style.color = Some(Color::NEUTRAL_700);
 
         let mut kbd = Self {
             base,
@@ -163,9 +162,18 @@ impl Widget for Kbd {
         let sf = ctx.scale_factor;
         let b = self.layout_box;
         let t = self.press_progress.get();
+        let theme = crate::current_theme();
+        let hovered = self.base.interaction.hovered;
 
         let depth = KBD_DEPTH * sf;
-        let lift = depth * (1.0 - t);
+        // t=0 (idle) keeps the cap raised at the top; t=1 (pressed) sinks
+        // it down flush with the well beneath it.
+        let lift = depth * t;
+
+        let (border_color, border_width) = match style.border.as_ref() {
+            Some(bo) => (bo.color, bo.top.to_physical(sf)),
+            None => (if hovered { theme.outline } else { theme.outline_variant }, 1.0 * sf),
+        };
 
         let radius = style.border
             .as_ref()
@@ -173,19 +181,13 @@ impl Widget for Kbd {
             .map(|r| r.max_value() * sf)
             .unwrap_or(5.0 * sf);
 
-        let base_color = style.border
-            .as_ref()
-            .map(|bo| bo.color)
-            .unwrap_or(Color::NEUTRAL_400);
         let well_color = Color::rgba_f32(
-            base_color.r() * 0.75,
-            base_color.g() * 0.75,
-            base_color.b() * 0.75,
-            base_color.a()
+            border_color.r() * 0.75,
+            border_color.g() * 0.75,
+            border_color.b() * 0.75,
+            border_color.a()
         );
 
-        // The keycap's own resting base - always flush with the bottom of
-        // the box; the cap slides down onto it while pressed.
         ctx.draw_rect(RectCommand {
             position: (b.x, b.y + depth),
             size: (b.width, (b.height - depth).max(0.0)),
@@ -198,13 +200,23 @@ impl Widget for Kbd {
 
         let cap_height = (b.height - depth).max(1.0);
 
+        let cap_background = style.background
+            .clone()
+            .unwrap_or(Background::Color(
+                    if hovered {
+                        theme.surface_container_high
+                    } else {
+                        theme.surface_container
+                    }
+                ));
+
         ctx.draw_rect(RectCommand {
             position: (b.x, b.y + lift),
             size: (b.width, cap_height),
-            background: style.background.clone(),
+            background: Some(cap_background),
             border_radius: Some(BorderRadius::all(Length::px(radius))),
-            border_color: style.border.as_ref().map(|bo| bo.color),
-            border_width: style.border.as_ref().map(|bo| Length::px(bo.top.to_physical(sf))),
+            border_color: Some(border_color),
+            border_width: Some(Length::px(border_width)),
             clip_rect: None,
         });
 
@@ -214,6 +226,13 @@ impl Widget for Kbd {
 
         let mut text_style = style.clone();
         text_style.font_size.get_or_insert(Length::px(13.0));
+        text_style.color.get_or_insert(
+            if hovered {
+                theme.on_surface
+            } else {
+                theme.on_surface_variant
+            }
+        );
 
         ctx.draw_text(TextCommand {
             text: self.content.clone(),
@@ -225,18 +244,24 @@ impl Widget for Kbd {
     }
 
     fn event(&mut self, event: &InputEvent, ctx: &mut EventCtx) -> EventStatus {
+        if !self.base.interaction.is_active() {
+            return EventStatus::Ignored;
+        }
+
+        let status = self.base.interaction.handle(event, ctx);
+        let mut handled = matches!(status, EventStatus::Handled);
+
         match event {
             InputEvent::MouseEntered => {
-                ctx.set_cursor_icon(Cursor::Pointer);
-                EventStatus::Ignored
+                self.base.dirty = true;
+                ctx.request_redraw();
+                handled = true;
             }
             InputEvent::MouseExited => {
-                if self.pressed.get() {
-                    self.pressed.set(false);
-                    self.base.dirty = true;
-                    ctx.request_redraw();
-                }
-                EventStatus::Ignored
+                self.pressed.set(false);
+                self.base.dirty = true;
+                ctx.request_redraw();
+                handled = true;
             }
             InputEvent::MouseInput {
                 state: ElementState::Pressed,
@@ -246,7 +271,7 @@ impl Widget for Kbd {
                 self.pressed.set(true);
                 self.base.dirty = true;
                 ctx.request_redraw();
-                EventStatus::Handled
+                handled = true;
             }
             InputEvent::MouseInput {
                 state: ElementState::Released,
@@ -258,9 +283,15 @@ impl Widget for Kbd {
                     self.base.dirty = true;
                     ctx.request_redraw();
                 }
-                EventStatus::Handled
+                handled = true;
             }
-            _ => EventStatus::Ignored,
+            _ => {}
+        }
+
+        if handled {
+            EventStatus::Handled
+        } else {
+            EventStatus::Ignored
         }
     }
 
