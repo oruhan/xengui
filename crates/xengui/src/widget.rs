@@ -127,7 +127,11 @@ pub trait Widget: Any {
     fn paint_box(&self, ctx: &mut PaintContext) {
         let style = self.computed_style();
         let sf = ctx.scale_factor;
-        let layout = *self.layout_box();
+        let layout = match style.scale {
+            Some(scale) if (scale - 1.0).abs() > f32::EPSILON =>
+                scaled_layout_box(*self.layout_box(), scale),
+            _ => *self.layout_box(),
+        };
         let radius = style.border
             .as_ref()
             .and_then(|b| b.radius)
@@ -562,8 +566,8 @@ pub fn scaled_layout_box(rect: LayoutBox, scale: f32) -> LayoutBox {
     let w = rect.width * scale;
     let h = rect.height * scale;
     LayoutBox {
-        x: cx - w * 0.5,
-        y: cy - h * 0.5,
+        x: (cx - w * 0.5).round(),
+        y: (cy - h * 0.5).round(),
         width: w,
         height: h,
     }

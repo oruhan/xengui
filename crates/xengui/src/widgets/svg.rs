@@ -601,7 +601,14 @@ impl Widget for Svg {
             return;
         }
 
-        let b = self.layout_box;
+        let style = &self.base.computed_style;
+        let content_scale = style.content_scale.unwrap_or(style.scale.unwrap_or(1.0));
+        let b = if (content_scale - 1.0).abs() > f32::EPSILON {
+            crate::scaled_layout_box(self.layout_box, content_scale)
+        } else {
+            self.layout_box
+        };
+
         let scale = (b.width / vb_w).min(b.height / vb_h);
         let offset_x = (b.x + (b.width - vb_w * scale) * 0.5).round();
         let offset_y = (b.y + (b.height - vb_h * scale) * 0.5).round();
@@ -710,9 +717,12 @@ impl Widget for Svg {
         *self.document == *other.document && self.base.style == other.base.style
     }
 
-    fn cascade_style(&mut self, parent: &Style, _anim: &mut AnimationManager) {
+    fn cascade_style(&mut self, parent: &Style, anim: &mut AnimationManager) {
         self.base.inherited_style = parent.clone();
         self.recompute_style();
+        if crate::animate_computed_style(self.anim_id, &mut self.base.computed_style, anim) {
+            self.base.dirty = true;
+        }
     }
 
     fn transfer_measured_state(&mut self, old: &dyn Widget) {
