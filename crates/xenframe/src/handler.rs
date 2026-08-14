@@ -798,11 +798,12 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
                     self.apply_event_ctx(ctx);
                 }
 
-                if let Some(anchor) = self.input.text_drag_anchor {
-                    update_global_text_selection(&mut self.root, anchor, point);
-                    if let Some(window) = &self.window {
-                        window.request_redraw();
-                    }
+                if
+                    let Some(anchor) = self.input.text_drag_anchor &&
+                    update_global_text_selection(&mut self.root, anchor, point) &&
+                    let Some(window) = &self.window
+                {
+                    window.request_redraw();
                 }
             }
             WindowEvent::CursorLeft { .. } => {

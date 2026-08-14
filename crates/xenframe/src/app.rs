@@ -554,11 +554,12 @@ impl App {
                     self.apply_event_ctx(pan_ctx);
                 }
 
-                if let Some(anchor) = self.input.text_drag_anchor {
-                    update_global_text_selection(&mut self.root, anchor, point);
-                    if let Some(window) = &self.window {
-                        window.request_redraw();
-                    }
+                if
+                    let Some(anchor) = self.input.text_drag_anchor &&
+                    update_global_text_selection(&mut self.root, anchor, point) &&
+                    let Some(window) = &self.window
+                {
+                    window.request_redraw();
                 }
 
                 if let Some((_, start_point, _)) = self.pending_long_press {
