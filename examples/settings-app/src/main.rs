@@ -189,6 +189,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                         .color(|theme: &Theme| theme.on_background)
                                 )
                                 .child(
+                                    VariableIcon::new(codepoints::AC_UNIT)
+                                        .size(32.0)
+                                        .color(Color::WHITE)
+                                        .axes(
+                                            IconAxes::default()
+                                                .weight(500.0)
+                                                .grade(0.0)
+                                                .optical_size(32.0)
+                                                .fill(0.0)
+                                        )
+                                )
+                                .child(
                                     Button::new()
                                         .align_items(Align::Center)
                                         .justify_content(JustifyContent::Center)
