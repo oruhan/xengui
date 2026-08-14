@@ -35,6 +35,7 @@ impl LayoutEngine {
         // Lets Length::ViewportWidth/ViewportHeight resolve against the
         // current frame's viewport size during measurement and layout.
         crate::set_viewport_size(viewport_width, viewport_height);
+        crate::set_current_breakpoint_from_width(viewport_width / ctx.scale_factor);
 
         Self::cascade(tree, ctx);
         let mut taffy: TaffyTree<()> = TaffyTree::new();
