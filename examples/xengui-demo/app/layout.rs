@@ -44,7 +44,11 @@ pub fn layout(_params: &RouteParams, child: Box<dyn Widget>) -> Box<dyn Widget> 
                             .border(|theme: &Theme|
                                 Border::bottom(1, theme.outline.with_alpha(200))
                             )
-                            .padding(Edges::symmetric(120, 0))
+                            .padding(
+                                Responsive::new(Edges::symmetric(16, 0)).md(
+                                    Edges::symmetric(120, 0)
+                                )
+                            )
                             .child(
                                 Button::new()
                                     .icon(
@@ -71,7 +75,13 @@ pub fn layout(_params: &RouteParams, child: Box<dyn Widget>) -> Box<dyn Widget> 
                             )
                             .child(
                                 View::new()
-                                    .display(Display::Flex)
+                                    .display(
+                                        if responsive_bool(Breakpoint::Md, true) {
+                                            Display::Flex
+                                        } else {
+                                            Display::None
+                                        }
+                                    )
                                     .flex_direction(FlexDirection::Row)
                                     .background(Color::TRANSPARENT)
                                     .gap(8, 0)
