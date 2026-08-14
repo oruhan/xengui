@@ -1089,6 +1089,14 @@ impl View {
         ctx.request_redraw();
     }
 
+    // scroll_step is authored in logical px; every other Length in this
+    // widget's layout goes through to_physical(scale_factor), so wheel/
+    // arrow-button scroll distance must too, or it drifts relative to
+    // content whenever the platform's own scale_factor differs.
+    fn scroll_step_physical(&self) -> f32 {
+        self.scroll_step * self.scale_factor.get()
+    }
+
     fn nudge(&mut self, dx: f32, dy: f32, ctx: &mut EventCtx) {
         let current = self.scroll_target.get();
         let next = self.clamp_offset((current.0 + dx, current.1 + dy));
@@ -1159,6 +1167,8 @@ impl View {
             return false;
         }
 
+        let scroll_step = scroll_step * self.scale_factor.get();
+
         let (raw_dx, raw_dy) = match delta {
             MouseScrollDelta::LineDelta(x, y) => (-x * scroll_step, -y * scroll_step),
             MouseScrollDelta::PixelDelta(x, y) => (-x as f32, -y as f32),
@@ -1224,7 +1234,7 @@ impl View {
                             self.pressed_arrow.set(Some(ScrollbarArrow::Up));
                             self.arrow_hold_time.set(0.0);
                             self.arrow_repeat_timer.set(0.0);
-                            self.nudge(0.0, -self.scroll_step, ctx);
+                            self.nudge(0.0, -self.scroll_step_physical(), ctx);
                         }
                         ctx.request_redraw();
                         return true;
@@ -1234,7 +1244,7 @@ impl View {
                             self.pressed_arrow.set(Some(ScrollbarArrow::Down));
                             self.arrow_hold_time.set(0.0);
                             self.arrow_repeat_timer.set(0.0);
-                            self.nudge(0.0, self.scroll_step, ctx);
+                            self.nudge(0.0, self.scroll_step_physical(), ctx);
                         }
                         ctx.request_redraw();
                         return true;
@@ -1246,7 +1256,7 @@ impl View {
                             self.pressed_arrow.set(Some(ScrollbarArrow::Left));
                             self.arrow_hold_time.set(0.0);
                             self.arrow_repeat_timer.set(0.0);
-                            self.nudge(-self.scroll_step, 0.0, ctx);
+                            self.nudge(-self.scroll_step_physical(), 0.0, ctx);
                         }
                         ctx.request_redraw();
                         return true;
@@ -1256,7 +1266,7 @@ impl View {
                             self.pressed_arrow.set(Some(ScrollbarArrow::Right));
                             self.arrow_hold_time.set(0.0);
                             self.arrow_repeat_timer.set(0.0);
-                            self.nudge(self.scroll_step, 0.0, ctx);
+                            self.nudge(self.scroll_step_physical(), 0.0, ctx);
                         }
                         ctx.request_redraw();
                         return true;
@@ -1738,11 +1748,12 @@ impl View {
         while repeat_timer >= ARROW_HOLD_REPEAT_INTERVAL {
             repeat_timer -= ARROW_HOLD_REPEAT_INTERVAL;
 
+            let step = self.scroll_step_physical();
             let (dx, dy) = match arrow {
-                ScrollbarArrow::Up => (0.0, -self.scroll_step),
-                ScrollbarArrow::Down => (0.0, self.scroll_step),
-                ScrollbarArrow::Left => (-self.scroll_step, 0.0),
-                ScrollbarArrow::Right => (self.scroll_step, 0.0),
+                ScrollbarArrow::Up => (0.0, -step),
+                ScrollbarArrow::Down => (0.0, step),
+                ScrollbarArrow::Left => (-step, 0.0),
+                ScrollbarArrow::Right => (step, 0.0),
             };
 
             let before = self.scroll_target.get();
