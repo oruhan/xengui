@@ -16,6 +16,7 @@ pub mod composite;
 pub mod animation;
 pub mod constants;
 pub mod dispatcher;
+pub mod platform;
 pub mod context;
 pub mod reconciler;
 pub mod redraw;
@@ -71,6 +72,7 @@ pub use input::{
 };
 pub use constants::*;
 pub use dispatcher::Dispatcher;
+pub use platform::{ is_touch_platform, set_is_touch_platform };
 pub use context::{ provide_context, use_context, with_context, ContextGuard };
 pub use style::{
     current_theme,

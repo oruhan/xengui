@@ -22,6 +22,7 @@ use xengui::{
     any_wants_animation,
     clear_text_selection_recursive,
     dispatch_animation_tick,
+    dispatch_hover_transition,
     dispatch_positional,
     dispatch_to_path,
     find_widget_mut,
@@ -153,6 +154,8 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
 
         #[cfg(target_arch = "wasm32")]
         {
+            xengui::set_is_touch_platform(crate::web::detect_touch_platform());
+
             // Reads the browser's actual color-scheme preference on startup
             // instead of hardcoding Dark.
             let prefers_dark = web_sys
@@ -771,22 +774,17 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
 
                 let new_hover = hit_test_path(&self.root, point);
                 if new_hover != self.input.hovered_path {
-                    if let Some(old) = self.input.hovered_path.take() {
-                        let mut ctx = EventCtx::new();
-                        dispatch_to_path(&mut self.root, &old, &InputEvent::MouseExited, &mut ctx);
-                        self.apply_event_ctx(ctx);
-                    }
-                    if let Some(new) = &new_hover {
-                        let mut ctx = EventCtx::new();
-                        dispatch_to_path(&mut self.root, new, &InputEvent::MouseEntered, &mut ctx);
-                        self.apply_event_ctx(ctx);
-                    }
+                    let mut ctx = EventCtx::new();
+                    dispatch_hover_transition(
+                        &mut self.root,
+                        self.input.hovered_path.as_deref(),
+                        new_hover.as_deref(),
+                        &mut ctx
+                    );
+                    self.apply_event_ctx(ctx);
                     self.input.hovered_path = new_hover.clone();
                 }
 
-                // While a button is held, movement is captured by the widget that was
-                // pressed, so drags (e.g. a scrollbar thumb) keep tracking the cursor
-                // even after it leaves that widget's bounds.
                 let move_target = self.input.pressed_path.clone().or(new_hover);
 
                 if let Some(path) = &move_target {
@@ -802,8 +800,6 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
 
                 if let Some(anchor) = self.input.text_drag_anchor {
                     update_global_text_selection(&mut self.root, anchor, point);
-                    // Label/Link selection is driven outside the widget event
-                    // system, so it needs an explicit redraw request here.
                     if let Some(window) = &self.window {
                         window.request_redraw();
                     }
@@ -813,7 +809,7 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
                 self.input.cursor_pos = None;
                 if let Some(old) = self.input.hovered_path.take() {
                     let mut ctx = EventCtx::new();
-                    dispatch_to_path(&mut self.root, &old, &InputEvent::MouseExited, &mut ctx);
+                    dispatch_hover_transition(&mut self.root, Some(&old), None, &mut ctx);
                     self.apply_event_ctx(ctx);
                 }
             }
@@ -1111,9 +1107,10 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
                 // hover-styled state until the next CursorMoved.
                 if let Some(path) = self.input.hovered_path.take() {
                     let mut ctx = EventCtx::new();
-                    dispatch_to_path(&mut self.root, &path, &InputEvent::MouseExited, &mut ctx);
+                    dispatch_hover_transition(&mut self.root, Some(&path), None, &mut ctx);
                     self.apply_event_ctx(ctx);
                 }
+
                 self.input.cursor_pos = None;
             }
             _ => (),

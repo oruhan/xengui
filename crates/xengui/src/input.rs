@@ -259,7 +259,7 @@ impl EventCtx {
     }
 }
 
-pub(crate) fn ancestor_paths(path: &str) -> Vec<String> {
+pub fn ancestor_paths(path: &str) -> Vec<String> {
     let parts: Vec<&str> = path.split('.').collect();
     (1..=parts.len()).map(|n| parts[..n].join(".")).collect()
 }
@@ -455,6 +455,32 @@ pub fn dispatch_to_path(
             status
         }
         None => EventStatus::Ignored,
+    }
+}
+
+/// Transitions hover state from `old_path` to `new_path`, dispatching
+/// MouseExited/MouseEntered to every ancestor exclusive to one side of
+/// the change - not just the leaf that was actually hit. Without this, a
+/// non-interactive child (e.g. an icon) wrapped by a clickable ancestor
+/// never sets that ancestor's own `hovered` flag.
+pub fn dispatch_hover_transition(
+    tree: &mut [Box<dyn Widget>],
+    old_path: Option<&str>,
+    new_path: Option<&str>,
+    ctx: &mut EventCtx
+) {
+    let old_chain: Vec<String> = old_path.map(ancestor_paths).unwrap_or_default();
+    let new_chain: Vec<String> = new_path.map(ancestor_paths).unwrap_or_default();
+
+    for path in &old_chain {
+        if !new_chain.contains(path) {
+            dispatch_to_path(tree, path, &InputEvent::MouseExited, ctx);
+        }
+    }
+    for path in &new_chain {
+        if !old_chain.contains(path) {
+            dispatch_to_path(tree, path, &InputEvent::MouseEntered, ctx);
+        }
     }
 }
 

@@ -67,7 +67,7 @@ fn platform_default_overscroll() -> Overscroll {
         Overscroll::Bounce
     } else if cfg!(target_os = "android") {
         Overscroll::Stretch
-    } else if cfg!(target_arch = "wasm32") {
+    } else if cfg!(target_arch = "wasm32") && crate::platform::is_touch_platform() {
         Overscroll::Bounce
     } else {
         Overscroll::Disabled
@@ -78,7 +78,7 @@ fn platform_default_overscroll() -> Overscroll {
 // scrolling by default, fading it out afterward; desktop keeps it
 // always visible unless the user opts in via `scrollbar_auto_hide`.
 fn platform_default_scrollbar_auto_hide() -> bool {
-    cfg!(target_os = "ios") || cfg!(target_os = "android") || cfg!(target_arch = "wasm32")
+    crate::platform::is_touch_platform()
 }
 
 fn point_in_rect(point: (f32, f32), rect: (f32, f32, f32, f32)) -> bool {
@@ -581,7 +581,10 @@ impl View {
         let active_gesture =
             self.scrollbar_drag.get().is_some() ||
             self.scrollbar_hovered.get() ||
-            self.touch_pan.get().is_some() ||
+            // A touch that merely started (e.g. tapping a button inside a
+            // scrollable view) shouldn't flash the scrollbar - only an
+            // actual drag counts as scroll activity.
+            self.touch_pan.get().is_some_and(|s| s.dragging) ||
             self.momentum.get().is_some() ||
             self.auto_scroll.get().is_some() ||
             self.pressed_arrow.get().is_some();
@@ -1642,16 +1645,21 @@ impl View {
                 self.touch_pan.set(Some(state));
 
                 let current = self.scroll_offset.get();
-                let (next_x, hit_x) = self.react_to_bounds(
-                    current.0 - dx,
-                    self.max_scroll_x(),
-                    true
-                );
-                let (next_y, hit_y) = self.react_to_bounds(
-                    current.1 - dy,
-                    self.max_scroll_y(),
-                    true
-                );
+                // A disabled axis must never move or rubber-band, even
+                // when the drag has a component along it - otherwise a
+                // mostly-vertical drag also nudges/bounces the page
+                // horizontally on a page that only scrolls on Y (or the
+                // reverse).
+                let (next_x, hit_x) = if self.is_scrollable_x() {
+                    self.react_to_bounds(current.0 - dx, self.max_scroll_x(), true)
+                } else {
+                    (current.0, false)
+                };
+                let (next_y, hit_y) = if self.is_scrollable_y() {
+                    self.react_to_bounds(current.1 - dy, self.max_scroll_y(), true)
+                } else {
+                    (current.1, false)
+                };
                 if hit_x {
                     self.note_edge_hit(
                         if dx > 0.0 {
@@ -2174,6 +2182,19 @@ impl Widget for View {
             }
             if self.pressed_arrow.get().is_some() {
                 self.tick_arrow_hold(*dt, ctx);
+            }
+
+            // The fade itself only advances inside cascade_style, which
+            // only runs on an actual repaint - without this, it never
+            // gets scheduled and the bar stays stuck visible.
+            let fading = self.scrollbar_opacity_animating.get();
+            let within_linger =
+                self.effective_auto_hide() &&
+                self.last_scroll_activity
+                    .get()
+                    .is_some_and(|t| Instant::now().duration_since(t) < SCROLLBAR_AUTO_HIDE_LINGER);
+            if fading || within_linger {
+                ctx.request_redraw();
             }
         }
 

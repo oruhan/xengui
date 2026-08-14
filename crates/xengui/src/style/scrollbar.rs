@@ -4,7 +4,7 @@ use crate::{ Color, DEFAULT_SCROLLBAR_THUMB_THICKNESS, current_theme };
 // matching the native scrollbar convention there; `StyleBuilder::scrollbar_show_arrows`
 // still overrides this per-widget on any platform.
 fn is_touch_platform() -> bool {
-    cfg!(target_os = "ios") || cfg!(target_os = "android") || cfg!(target_arch = "wasm32")
+    crate::platform::is_touch_platform()
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Default)]

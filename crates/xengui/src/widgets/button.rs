@@ -372,15 +372,40 @@ impl Widget for Button {
         let icon_y = content_y + (combined_h - icon_h).max(0.0) * 0.5;
         let text_y = content_y + (combined_h - text_h).max(0.0) * 0.5;
 
+        // Shared pivot the icon and label both scale around, so a
+        // press-scale animation shrinks the whole content block toward
+        // one center instead of each part drifting toward its own.
+        let content_scale = style.content_scale.unwrap_or(scale);
+        let pivot_x = content_x + combined_w * 0.5;
+        let pivot_y = content_y + combined_h * 0.5;
+
         if has_icon && let Some(doc) = &self.icon_document {
             let (vb_x, vb_y, vb_w, vb_h) = doc.view_box;
             if !self.icon_triangles.is_empty() && vb_w > 0.0 && vb_h > 0.0 {
-                // Same xMidYMid-meet behavior as the Svg widget: uniform
-                // scale, centered within the reserved icon box. Rounded so
-                // straight/axis-aligned icon edges land on the pixel grid.
-                let icon_scale = (icon_w / vb_w).min(icon_h / vb_h);
-                let icon_offset_x = (icon_x + (icon_w - vb_w * icon_scale) * 0.5).round();
-                let icon_offset_y = (icon_y + (icon_h - vb_h * icon_scale) * 0.5).round();
+                let icon_center_x = icon_x + icon_w * 0.5;
+                let icon_center_y = icon_y + icon_h * 0.5;
+                let scaled_icon_w = icon_w * content_scale;
+                let scaled_icon_h = icon_h * content_scale;
+                let scaled_icon_x = (
+                    pivot_x +
+                    (icon_center_x - pivot_x) * content_scale -
+                    scaled_icon_w * 0.5
+                ).round();
+                let scaled_icon_y = (
+                    pivot_y +
+                    (icon_center_y - pivot_y) * content_scale -
+                    scaled_icon_h * 0.5
+                ).round();
+
+                let icon_scale = (scaled_icon_w / vb_w).min(scaled_icon_h / vb_h);
+                let icon_offset_x = (
+                    scaled_icon_x +
+                    (scaled_icon_w - vb_w * icon_scale) * 0.5
+                ).round();
+                let icon_offset_y = (
+                    scaled_icon_y +
+                    (scaled_icon_h - vb_h * icon_scale) * 0.5
+                ).round();
 
                 let inherited_color = self.icon_tint.unwrap_or(style.color.unwrap_or(Color::BLACK));
                 let inherited_svg_color = xen_svg::Color::rgba_f32(
@@ -415,22 +440,11 @@ impl Widget for Button {
             }
         }
 
-        let content_scale = style.content_scale.unwrap_or(scale);
-
-        // Scaled around the padded content box's own center (the same
-        // pivot `background_box` uses above) rather than the label's own
-        // sub-box center, so it can't drift relative to the button when
-        // padding or an icon makes its natural position off-center.
-        let pivot_x = content_x + combined_w * 0.5;
-        let pivot_y = content_y + combined_h * 0.5;
         let text_center_x = text_x + text_w * 0.5;
         let text_center_y = text_y + text_h * 0.5;
         let scaled_text_w = text_w * content_scale;
         let scaled_text_h = text_h * content_scale;
         let content_box = LayoutBox {
-            // Rounded so the glyph rasterizer's own baseline snapping can't
-            // land on a different pixel row than the previous frame for a
-            // sub-pixel-different (but visually unchanged) position.
             x: (pivot_x + (text_center_x - pivot_x) * content_scale - scaled_text_w * 0.5).round(),
             y: (pivot_y + (text_center_y - pivot_y) * content_scale - scaled_text_h * 0.5).round(),
             width: scaled_text_w,
@@ -447,10 +461,6 @@ impl Widget for Button {
             text: self.content.clone(),
             position: (content_box.x, content_box.y),
             style: text_style,
-            // A small epsilon absorbs floating-point rounding between this
-            // approximation and the label's real shaped width at the
-            // scaled font size, so it can't wrap onto a second line and
-            // break the single-line vertical centering above.
             max_width: Some(draw_max_width * content_scale + 0.5),
             clip_rect: None,
         });

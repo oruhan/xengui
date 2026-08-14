@@ -22,6 +22,7 @@ use xengui::{
     clear_text_selection_recursive,
     collect_focusable_paths,
     collect_selected_text_recursive,
+    dispatch_hover_transition,
     dispatch_positional,
     dispatch_to_path,
     hit_test_path,
@@ -270,22 +271,16 @@ impl App {
         let mut ctx = EventCtx::new();
         let old_hover = self.input.hovered_path.take();
 
-        // The previously hovered path may no longer exist in the current
-        // tree at all (e.g. its whole subtree was swapped out by a route
-        // change), in which case dispatching MouseExited to it below is a
-        // silent no-op and never reaches the cursor-resetting branch
-        // inside Interaction::handle. Resetting to Default here first
-        // guarantees the cursor always matches the widget actually under
-        // the pointer, regardless of whether the old widget survived.
         if old_hover.is_some() {
             ctx.set_cursor_icon(Cursor::Default);
         }
-        if let Some(old) = &old_hover {
-            dispatch_to_path(&mut self.root, old, &InputEvent::MouseExited, &mut ctx);
-        }
-        if let Some(new) = &new_hover {
-            dispatch_to_path(&mut self.root, new, &InputEvent::MouseEntered, &mut ctx);
-        }
+
+        dispatch_hover_transition(
+            &mut self.root,
+            old_hover.as_deref(),
+            new_hover.as_deref(),
+            &mut ctx
+        );
 
         self.apply_event_ctx(ctx);
         self.input.hovered_path = new_hover;
@@ -486,15 +481,14 @@ impl App {
                     }
                 }
 
-                if let Some(old) = self.input.hovered_path.take() {
+                {
                     let mut ctx = EventCtx::new();
-                    dispatch_to_path(&mut self.root, &old, &InputEvent::MouseExited, &mut ctx);
-                    self.apply_event_ctx(ctx);
-                }
-
-                if let Some(new) = &path {
-                    let mut ctx = EventCtx::new();
-                    dispatch_to_path(&mut self.root, new, &InputEvent::MouseEntered, &mut ctx);
+                    dispatch_hover_transition(
+                        &mut self.root,
+                        self.input.hovered_path.as_deref(),
+                        path.as_deref(),
+                        &mut ctx
+                    );
                     self.apply_event_ctx(ctx);
                 }
                 self.input.hovered_path = path.clone();
@@ -605,7 +599,7 @@ impl App {
 
                 if let Some(old) = self.input.hovered_path.take() {
                     let mut ctx = EventCtx::new();
-                    dispatch_to_path(&mut self.root, &old, &InputEvent::MouseExited, &mut ctx);
+                    dispatch_hover_transition(&mut self.root, Some(&old), None, &mut ctx);
                     self.apply_event_ctx(ctx);
                 }
 
@@ -629,9 +623,10 @@ impl App {
 
                 if let Some(old) = self.input.hovered_path.take() {
                     let mut ctx = EventCtx::new();
-                    dispatch_to_path(&mut self.root, &old, &InputEvent::MouseExited, &mut ctx);
+                    dispatch_hover_transition(&mut self.root, Some(&old), None, &mut ctx);
                     self.apply_event_ctx(ctx);
                 }
+
                 self.input.pressed_path = None;
                 self.input.cursor_pos = None;
                 self.input.text_drag_anchor = None;

@@ -33,3 +33,26 @@ pub fn viewport_size() -> Option<(f64, f64)> {
     let h = window.inner_height().ok()?.as_f64()?;
     Some((w, h))
 }
+
+/// Best-effort touch-primary detection for the browser this app is
+/// running in - wasm32 alone doesn't distinguish a mobile browser from a
+/// desktop one, so scrollbar arrow visibility and other touch-vs-pointer
+/// defaults need this instead of assuming touch from the target alone.
+pub fn detect_touch_platform() -> bool {
+    let Some(window) = web_sys::window() else {
+        return false;
+    };
+    let has_touch_points = window.navigator().max_touch_points() > 0;
+
+    // Narrows a touch-enabled desktop/laptop screen down to devices that
+    // are actually touch-primary (no mouse/trackpad), matching CSS's own
+    // `(pointer: coarse)` media feature.
+    let coarse_pointer = window
+        .match_media("(pointer: coarse) and (hover: none)")
+        .ok()
+        .flatten()
+        .map(|mql| mql.matches())
+        .unwrap_or(false);
+
+    has_touch_points && coarse_pointer
+}

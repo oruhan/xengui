@@ -1,6 +1,20 @@
 // SPDX-License-Identifier: Apache-2.0
 use crate::{
-    ElementState, EventCtx, InputEvent, InputState, KeyboardEvent, ModifiersState, MouseButton, Widget, cancel_auto_scroll_recursive, collect_focusable_paths, dispatch_positional, dispatch_to_path, hit_test_path, resolve_hover_cursor,
+    ElementState,
+    EventCtx,
+    InputEvent,
+    InputState,
+    KeyboardEvent,
+    ModifiersState,
+    MouseButton,
+    Widget,
+    cancel_auto_scroll_recursive,
+    collect_focusable_paths,
+    dispatch_hover_transition,
+    dispatch_positional,
+    dispatch_to_path,
+    hit_test_path,
+    resolve_hover_cursor,
 };
 
 /// High-level pointer/keyboard/focus dispatcher built on top of the
@@ -25,26 +39,12 @@ impl Dispatcher {
 
         let new_hover = hit_test_path(tree, point);
         if new_hover != self.state.hovered_path {
-            let old_chain: Vec<String> = self.state.hovered_path
-                .as_deref()
-                .map(crate::input::ancestor_paths)
-                .unwrap_or_default();
-            let new_chain: Vec<String> = new_hover
-                .as_deref()
-                .map(crate::input::ancestor_paths)
-                .unwrap_or_default();
-
-            for path in &old_chain {
-                if !new_chain.contains(path) {
-                    dispatch_to_path(tree, path, &InputEvent::MouseExited, &mut ctx);
-                }
-            }
-            for path in &new_chain {
-                if !old_chain.contains(path) {
-                    dispatch_to_path(tree, path, &InputEvent::MouseEntered, &mut ctx);
-                }
-            }
-
+            dispatch_hover_transition(
+                tree,
+                self.state.hovered_path.as_deref(),
+                new_hover.as_deref(),
+                &mut ctx
+            );
             self.state.hovered_path = new_hover.clone();
         }
 
@@ -58,9 +58,6 @@ impl Dispatcher {
             );
         }
 
-        // Re-resolved every move, not only on hover-leaf change, so a
-        // stationary hover over an inactive child doesn't leave the
-        // pointer cursor drifting back to the platform default.
         if
             let Some(path) = self.state.pressed_path
                 .as_ref()

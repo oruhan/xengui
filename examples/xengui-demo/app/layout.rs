@@ -46,22 +46,28 @@ pub fn layout(_params: &RouteParams, child: Box<dyn Widget>) -> Box<dyn Widget> 
                             )
                             .padding(Edges::symmetric(120, 0))
                             .child(
-                                View::new()
-                                    .cursor(Cursor::Pointer)
-                                    .on_click(|_ctx| xen_router::push("/"))
-                                    .child(
-                                        Svg::from_bytes(
-                                            include_bytes!(
-                                                concat!(
-                                                    env!("CARGO_MANIFEST_DIR"),
-                                                    "/assets/XenGui_header.svg"
-                                                )
+                                Button::new()
+                                    .icon(
+                                        include_str!(
+                                            concat!(
+                                                env!("CARGO_MANIFEST_DIR"),
+                                                "/assets/XenGui_header.svg"
                                             )
                                         )
-                                            .width(100)
-                                            .height(100)
-                                            .background(Color::TRANSPARENT)
                                     )
+                                    .icon_size(100.0, 100.0)
+                                    .transition_all(
+                                        Transition::new(Duration::from_millis(150)).easing(
+                                            Easing::EaseInOut
+                                        )
+                                    )
+                                    .hover_style(|ctx: StylePatch, _theme: &Theme|
+                                        ctx.color(Color::BLUE_400)
+                                    )
+                                    .pressed_style(|ctx: StylePatch, _theme: &Theme|
+                                        ctx.scale(0.96)
+                                    )
+                                    .on_click(|_ctx| xen_router::push("/"))
                             )
                             .child(
                                 View::new()
@@ -209,17 +215,28 @@ pub fn layout(_params: &RouteParams, child: Box<dyn Widget>) -> Box<dyn Widget> 
                                             .align_items(Align::Start)
                                             .gap(0, 12)
                                             .child(
-                                                Svg::from_bytes(
-                                                    include_bytes!(
-                                                        concat!(
-                                                            env!("CARGO_MANIFEST_DIR"),
-                                                            "/assets/XenGui_header.svg"
+                                                Button::new()
+                                                    .icon(
+                                                        include_str!(
+                                                            concat!(
+                                                                env!("CARGO_MANIFEST_DIR"),
+                                                                "/assets/XenGui_header.svg"
+                                                            )
                                                         )
                                                     )
-                                                )
-                                                    .width(110)
-                                                    .height(30)
-                                                    .background(Color::TRANSPARENT)
+                                                    .icon_size(100.0, 100.0)
+                                                    .transition_all(
+                                                        Transition::new(
+                                                            Duration::from_millis(150)
+                                                        ).easing(Easing::EaseInOut)
+                                                    )
+                                                    .hover_style(|ctx: StylePatch, _theme: &Theme|
+                                                        ctx.color(Color::BLUE_400)
+                                                    )
+                                                    .pressed_style(|ctx: StylePatch, _theme: &Theme|
+                                                        ctx.scale(0.96)
+                                                    )
+                                                    .on_click(|_ctx| xen_router::push("/"))
                                             )
                                             .child(
                                                 Label::new()
