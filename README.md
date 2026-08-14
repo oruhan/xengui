@@ -79,7 +79,7 @@ XenGui is split across several focused crates:
 | [`xen-animation`](crates/xen-animation) | Framework-agnostic animation and transition library.                                     |
 | [`xen-clipboard`](crates/xen-clipboard) | Cross-platform clipboard library.                                                        |
 | [`xen-svg`](crates/xen-svg)             | Platform-agnostic SVG parser and triangle tessellator.                                   |
-| [`xengui-icons`](crates/xengui-icons)   | Prebuilt [Lucide](https://lucide.dev) icon widgets for XenGui.                           |
+| [`xengui-icons`](crates/xengui-icons)   | Framework-agnostic various icon fonts.                           |
 
 ## Installation
 

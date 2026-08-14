@@ -27,25 +27,28 @@ The core, retained-mode GUI library at the heart of the XenGui ecosystem.
 ## Example
 
 ```rust
+let (counter, set_counter) = use_state::<i32>(0);
+
 View::new()
     .display(Display::Flex)
     .flex_direction(FlexDirection::Column)
     .align_items(Align::Center)
     .justify_content(JustifyContent::Center)
-    .width(Length::Percent(100.0))
-    .height(Length::Percent(100.0))
-    .background(Color::WHITE)
+    .width(pct!(100))
+    .height(pct!(100))
+    .background(|theme| theme.background)
     .child(
         Label::new()
             .label(format!("Count: {counter}"))
             .font_size(20)
-            .color(Color::NEUTRAL_700)
+            .color(|theme| theme.on_background)
         )
     .child(
         Button::new()
             .label("Increment")
             .padding(Edges::symmetric(12, 8))
-            .background(Color::NEUTRAL_200)
+            .background(|theme| theme.primary)
+            .color(|theme| theme.on_primary)
             .on_click(move |_ctx| set_counter.update(|v| *v += 1))
     );
 ```
