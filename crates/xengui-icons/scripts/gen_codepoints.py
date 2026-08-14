@@ -110,7 +110,7 @@ def main():
         for alias_name, target_name in sorted(ALIASES.items()):
             if target_name in entries_by_name:
                 f.write(f"pub const {alias_name}: char = {target_name};\n")
-        f.write("}\n")
+        f.write("\n")
 
     print(f"wrote {len(entries)} codepoints (+{len(ALIASES)} aliases) to {OUTPUT_PATH}")
 
