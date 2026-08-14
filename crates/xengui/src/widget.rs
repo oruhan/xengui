@@ -127,11 +127,11 @@ pub trait Widget: Any {
     fn paint_box(&self, ctx: &mut PaintContext) {
         let style = self.computed_style();
         let sf = ctx.scale_factor;
-        let layout = match style.scale {
-            Some(scale) if (scale - 1.0).abs() > f32::EPSILON =>
-                scaled_layout_box(*self.layout_box(), scale),
-            _ => *self.layout_box(),
-        };
+        // Always routed through scaled_layout_box (even at scale 1.0) so
+        // every widget's box position is rounded through the same single
+        // site, instead of drifting in/out of subpixel alignment depending
+        // on whether a scale happens to be set.
+        let layout = scaled_layout_box(*self.layout_box(), style.scale.unwrap_or(1.0));
         let radius = style.border
             .as_ref()
             .and_then(|b| b.radius)

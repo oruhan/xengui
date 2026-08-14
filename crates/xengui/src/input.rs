@@ -577,22 +577,28 @@ pub fn update_global_text_selection(
     tree: &mut [Box<dyn Widget>],
     anchor: (f32, f32),
     current: (f32, f32)
-) {
+) -> bool {
     let (start, end) = if (anchor.1, anchor.0) <= (current.1, current.0) {
         (anchor, current)
     } else {
         (current, anchor)
     };
-    update_global_text_selection_recursive(tree, start, end);
+    update_global_text_selection_recursive(tree, start, end)
 }
 
+// Returns whether any widget's selection actually changed, so callers can
+// skip requesting a redraw when the drag moved but nothing selectable was
+// underneath it (e.g. dragging across a plain View).
 fn update_global_text_selection_recursive(
     widgets: &mut [Box<dyn Widget>],
     start: (f32, f32),
     end: (f32, f32)
-) {
+) -> bool {
+    let mut changed = false;
+
     for widget in widgets.iter_mut() {
         if widget.selectable_text().is_some() {
+            let before = widget.text_selection();
             let b = *widget.layout_box();
             let top = b.y;
             let bottom = b.y + b.height;
@@ -615,12 +621,18 @@ fn update_global_text_selection_recursive(
 
                 widget.set_text_selection(Some((from, to)));
             }
+
+            if widget.text_selection() != before {
+                changed = true;
+            }
         }
 
         if let Some(children) = widget.children_mut() {
-            update_global_text_selection_recursive(children, start, end);
+            changed |= update_global_text_selection_recursive(children, start, end);
         }
     }
+
+    changed
 }
 
 pub fn collect_selected_text_recursive(tree: &[Box<dyn Widget>], out: &mut String) {

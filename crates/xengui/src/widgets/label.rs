@@ -441,6 +441,9 @@ impl Widget for Label {
 
     fn set_text_selection(&mut self, range: Option<(usize, usize)>) {
         let (anchor, cursor) = range.map_or((None, None), |(s, e)| (Some(s), Some(e)));
+        if self.selection_anchor.get() == anchor && self.selection_cursor.get() == cursor {
+            return;
+        }
         self.selection_anchor.set(anchor);
         self.selection_cursor.set(cursor);
         self.base.dirty = true;

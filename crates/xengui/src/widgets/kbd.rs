@@ -160,9 +160,10 @@ impl Widget for Kbd {
     fn paint(&self, ctx: &mut PaintContext) {
         let style = &self.base.computed_style;
         let sf = ctx.scale_factor;
-        let b = self.layout_box;
+        let b = crate::scaled_layout_box(self.layout_box, style.scale.unwrap_or(1.0));
         let t = self.press_progress.get();
         let theme = crate::current_theme();
+
         let hovered = self.base.interaction.hovered;
 
         let depth = KBD_DEPTH * sf;
@@ -202,13 +203,15 @@ impl Widget for Kbd {
 
         let cap_background = style.background
             .clone()
-            .unwrap_or(Background::Color(
+            .unwrap_or(
+                Background::Color(
                     if hovered {
                         theme.surface_container_high
                     } else {
                         theme.surface_container
                     }
-                ));
+                )
+            );
 
         ctx.draw_rect(RectCommand {
             position: (b.x, b.y + lift),

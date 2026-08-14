@@ -603,11 +603,9 @@ impl Widget for Svg {
 
         let style = &self.base.computed_style;
         let content_scale = style.content_scale.unwrap_or(style.scale.unwrap_or(1.0));
-        let b = if (content_scale - 1.0).abs() > f32::EPSILON {
-            crate::scaled_layout_box(self.layout_box, content_scale)
-        } else {
-            self.layout_box
-        };
+        // Same single rounding site as every other widget - avoids the
+        // separate ad-hoc .round() this used to do on offset_x/offset_y.
+        let b = crate::scaled_layout_box(self.layout_box, content_scale);
 
         let scale = (b.width / vb_w).min(b.height / vb_h);
         let offset_x = (b.x + (b.width - vb_w * scale) * 0.5).round();

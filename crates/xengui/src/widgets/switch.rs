@@ -246,9 +246,11 @@ impl Widget for Switch {
     }
 
     fn paint(&self, ctx: &mut PaintContext) {
+        let style = &self.base.computed_style;
         let sf = ctx.scale_factor * self.size;
-        let b = self.layout_box;
+        let b = crate::scaled_layout_box(self.layout_box, style.scale.unwrap_or(1.0));
         let theme = crate::current_theme();
+
         let t = self.progress.get();
         let dim = if self.base.interaction.enabled { 1.0 } else { DISABLED_WIDGET_OPACITY };
 
