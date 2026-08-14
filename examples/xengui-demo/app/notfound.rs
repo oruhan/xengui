@@ -1,7 +1,6 @@
-use xen_router::RouteParams;
 use xengui::*;
 
-pub fn page(_params: &RouteParams) -> Box<dyn Widget> {
+pub fn not_found() -> Box<dyn Widget> {
     Box::new(
         View::new()
             .font("Inter")
