@@ -90,6 +90,39 @@
         outline: none;
         -webkit-tap-highlight-color: transparent;
       }
+
+      #xengui-loader {
+        position: fixed;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: #fff;
+        z-index: 999999;
+        transition: opacity 0.25s ease;
+      }
+      @media (prefers-color-scheme: dark) {
+        #xengui-loader {
+          background: #0a0a0a;
+        }
+      }
+      #xengui-loader.xengui-loader-hidden {
+        opacity: 0;
+        pointer-events: none;
+      }
+      #xengui-loader .xengui-spinner {
+        width: 40px;
+        height: 40px;
+        border-radius: 50%;
+        border: 3px solid rgba(43, 127, 255, 0.25);
+        border-top-color: #2b7fff;
+        animation: xengui-spin 0.8s linear infinite;
+      }
+      @keyframes xengui-spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
     </style>
     <script>
       // pass native web hotkeys
@@ -115,11 +148,39 @@
     </script>
   </head>
   <body oncontextmenu="return false;">
+    <div id="xengui-loader"><div class="xengui-spinner"></div></div>
     <noscript>This app requires WebAssembly enabled in your browser.</noscript>
     <script>
       if ("serviceWorker" in navigator) {
         navigator.serviceWorker.register("/sw.js");
       }
+
+      // Hides the boot loader once the app's own <canvas> is mounted -
+      // xenframe only creates it after wasm init and the first frame.
+      (function () {
+        var loader = document.getElementById("xengui-loader");
+        if (!loader) return;
+
+        function hideLoader() {
+          loader.classList.add("xengui-loader-hidden");
+          setTimeout(function () {
+            loader.remove();
+          }, 300);
+        }
+
+        if (document.querySelector("canvas")) {
+          hideLoader();
+          return;
+        }
+
+        var observer = new MutationObserver(function () {
+          if (document.querySelector("canvas")) {
+            hideLoader();
+            observer.disconnect();
+          }
+        });
+        observer.observe(document.body, { childList: true, subtree: true });
+      })();
     </script>
   </body>
 </html>
