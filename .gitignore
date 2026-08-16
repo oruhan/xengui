@@ -1,3 +1,4 @@
 /target
 examples/*/dist/
+apps/*/dist/
 examples/playground
