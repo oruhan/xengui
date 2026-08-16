@@ -3695,25 +3695,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "xengui-demo"
-version = "0.1.1"
-dependencies = [
- "console_error_panic_hook",
- "console_log",
- "env_logger",
- "log",
- "web-sys",
- "web-time",
- "xen-clipboard",
- "xen-router",
- "xen-router-build",
- "xenframe",
- "xengui",
- "xengui-icons",
- "xengui-wgpu",
-]
-
-[[package]]
 name = "xengui-icons"
 version = "0.1.0"
 dependencies = [
@@ -3736,6 +3717,25 @@ dependencies = [
  "wgpu",
  "woff2-patched",
  "xengui",
+]
+
+[[package]]
+name = "xengui_website"
+version = "0.1.1"
+dependencies = [
+ "console_error_panic_hook",
+ "console_log",
+ "env_logger",
+ "log",
+ "web-sys",
+ "web-time",
+ "xen-clipboard",
+ "xen-router",
+ "xen-router-build",
+ "xenframe",
+ "xengui",
+ "xengui-icons",
+ "xengui-wgpu",
 ]
 
 [[package]]
