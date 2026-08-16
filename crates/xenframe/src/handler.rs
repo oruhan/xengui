@@ -704,6 +704,26 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
                         self.schedule_render();
                     }
                 }
+
+                // Ticks tree-wide animations (momentum, overscroll spring-back,
+                // scrollbar fades, ...) right here, using the real time since the
+                // last presented frame, instead of a separate clock driven by
+                // ControlFlow::Poll in about_to_wait - keeps motion paced to
+                // whatever the display actually presents.
+                if any_wants_animation(&self.root) {
+                    let now = Instant::now();
+                    let dt = now
+                        .duration_since(self.next_animation.unwrap_or(now))
+                        .as_secs_f32()
+                        .min(0.05);
+                    let mut anim_ctx = EventCtx::new();
+                    dispatch_animation_tick(&mut self.root, dt, &mut anim_ctx);
+                    self.apply_event_ctx(anim_ctx);
+                    self.next_animation = Some(now);
+                } else {
+                    self.next_animation = None;
+                }
+
                 if let Some(renderer) = &mut self.renderer {
                     let theme = crate::window::system_theme(self.config.theme);
                     let scale_factor = self.window
@@ -717,6 +737,15 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
                     if !self.is_visible && let Some(window) = &self.window {
                         window.set_visible(true);
                         self.is_visible = true;
+                    }
+
+                    // Keeps requesting frames while anything still wants to animate,
+                    // so ControlFlow::Wait doesn't stall mid-animation.
+                    if
+                        (any_wants_animation(&self.root) || renderer.is_animating()) &&
+                        let Some(window) = &self.window
+                    {
+                        window.request_redraw();
                     }
                 }
 
@@ -1177,25 +1206,20 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
         }
 
         if let Some(renderer) = &self.renderer && renderer.is_animating() {
-            event_loop.set_control_flow(ControlFlow::Poll);
             if let Some(window) = &self.window {
                 window.request_redraw();
             }
+            event_loop.set_control_flow(ControlFlow::Wait);
             return;
         }
 
-        // Tree-wide animations (e.g. smooth scrolling) run independently of
-        // keyboard focus, so this is checked before the blink logic below.
+        // Tree-wide animations are now ticked from RedrawRequested (see
+        // handler.rs), so this branch only needs to keep the redraw loop alive.
         if any_wants_animation(&self.root) {
-            let now = Instant::now();
-            let dt = now.duration_since(self.next_animation.unwrap_or(now)).as_secs_f32().min(0.05);
-
-            let mut ctx = EventCtx::new();
-            dispatch_animation_tick(&mut self.root, dt, &mut ctx);
-            self.apply_event_ctx(ctx);
-
-            self.next_animation = Some(now);
-            event_loop.set_control_flow(ControlFlow::Poll);
+            if let Some(window) = &self.window {
+                window.request_redraw();
+            }
+            event_loop.set_control_flow(ControlFlow::Wait);
             return;
         }
         self.next_animation = None;
