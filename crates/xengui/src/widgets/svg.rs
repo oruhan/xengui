@@ -29,12 +29,13 @@ use xen_svg::{
     SvgDocument,
     SvgDrawOp,
     SvgElement,
-    SvgImageSource,
     SvgTriangle,
     Transform2D,
     collect_draw_ops,
     parse_svg,
 };
+#[cfg(not(target_arch = "wasm32"))]
+use xen_svg::SvgImageSource;
 
 macro_rules! impl_svg_attrs_builder {
     ($ty:ident) => {
