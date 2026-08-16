@@ -313,4 +313,52 @@ impl Style {
 
         out
     }
+
+    /// Whether `other` differs from `self` in a way that would change this
+    /// widget's own taffy layout node - size, box model, flex/grid
+    /// placement, or text metrics feeding intrinsic measurement - as
+    /// opposed to purely visual properties (colors, shadows, cursor,
+    /// outline, ...).
+    pub fn layout_affecting_diff(&self, other: &Style) -> bool {
+        self.display != other.display ||
+            self.position != other.position ||
+            self.top != other.top ||
+            self.right != other.right ||
+            self.bottom != other.bottom ||
+            self.left != other.left ||
+            self.size != other.size ||
+            self.min_size != other.min_size ||
+            self.max_size != other.max_size ||
+            self.box_sizing != other.box_sizing ||
+            self.padding != other.padding ||
+            self.margin != other.margin ||
+            border_width_diff(self.border, other.border) ||
+            self.overflow_x != other.overflow_x ||
+            self.overflow_y != other.overflow_y ||
+            self.flex_direction != other.flex_direction ||
+            self.flex_wrap != other.flex_wrap ||
+            self.flex_grow != other.flex_grow ||
+            self.flex_shrink != other.flex_shrink ||
+            self.flex_basis != other.flex_basis ||
+            self.align_items != other.align_items ||
+            self.align_self != other.align_self ||
+            self.justify_content != other.justify_content ||
+            self.align_content != other.align_content ||
+            self.gap != other.gap ||
+            self.grid_template_columns != other.grid_template_columns ||
+            self.grid_template_rows != other.grid_template_rows ||
+            self.grid_column != other.grid_column ||
+            self.grid_row != other.grid_row ||
+            self.font != other.font ||
+            self.font_size != other.font_size ||
+            self.font_weight != other.font_weight ||
+            self.font_style != other.font_style ||
+            self.letter_spacing != other.letter_spacing ||
+            self.line_height != other.line_height
+    }
+}
+
+fn border_width_diff(a: Option<Border>, b: Option<Border>) -> bool {
+    let widths = |border: Option<Border>| border.map(|b| (b.top, b.right, b.bottom, b.left));
+    widths(a) != widths(b)
 }

@@ -523,7 +523,6 @@ impl View {
             match anim.value(key) {
                 Some(v) => {
                     values[i] = v.0[0];
-                    self.base.dirty = true;
                 }
                 None => {
                     values[i] = 0.0;
@@ -560,7 +559,6 @@ impl View {
             match anim.value(key) {
                 Some(v) => {
                     *scale = v.0[0];
-                    self.base.dirty = true;
                 }
                 None => {
                     *scale = target;
@@ -613,7 +611,6 @@ impl View {
             Some(v) => {
                 self.scrollbar_opacity_anim.set(v.0[0]);
                 self.scrollbar_opacity_animating.set(true);
-                self.base.dirty = true;
             }
             None => {
                 self.scrollbar_opacity_anim.set(target);
@@ -699,7 +696,6 @@ impl View {
         match anim.value(key) {
             Some(v) => {
                 self.scrollbar_thickness_anim.set(v.0[0]);
-                self.base.dirty = true;
             }
             None => self.scrollbar_thickness_anim.set(target),
         }
@@ -724,10 +720,7 @@ impl View {
             Some(SCROLLBAR_THICKNESS_TRANSITION)
         );
         let thumb_color = match anim.value(thumb_key) {
-            Some(v) => {
-                self.base.dirty = true;
-                Color::rgba_f32(v.0[0], v.0[1], v.0[2], v.0[3])
-            }
+            Some(v) => Color::rgba_f32(v.0[0], v.0[1], v.0[2], v.0[3]),
             None => target.thumb_color,
         };
         self.thumb_color_anim.set(thumb_color);
@@ -743,10 +736,7 @@ impl View {
             Some(SCROLLBAR_THICKNESS_TRANSITION)
         );
         let arrow_color = match anim.value(arrow_key) {
-            Some(v) => {
-                self.base.dirty = true;
-                Color::rgba_f32(v.0[0], v.0[1], v.0[2], v.0[3])
-            }
+            Some(v) => Color::rgba_f32(v.0[0], v.0[1], v.0[2], v.0[3]),
             None => target.arrow_color,
         };
         self.arrow_color_anim.set([arrow_color; 4]);

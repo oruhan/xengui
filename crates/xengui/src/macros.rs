@@ -229,6 +229,14 @@ macro_rules! impl_widget_boilerplate {
             self.base.dirty = dirty;
         }
 
+        fn is_layout_dirty(&self) -> bool {
+            self.base.layout_dirty
+        }
+
+        fn set_layout_dirty(&mut self, value: bool) {
+            self.base.layout_dirty = value;
+        }
+
         fn style(&self) -> &$crate::Style {
             &self.base.style
         }

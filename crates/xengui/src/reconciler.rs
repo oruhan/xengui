@@ -221,6 +221,7 @@ impl WorkLoop {
             new_node.transfer_measured_state(old_node.as_ref());
             new_node.layout(*old_node.layout_box());
             new_node.set_dirty(false);
+            new_node.set_layout_dirty(false);
         }
 
         let has_children = new_node.children_mut().is_some_and(|c| !c.is_empty());

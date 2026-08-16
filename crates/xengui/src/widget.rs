@@ -54,6 +54,19 @@ pub trait Widget: Any {
 
     fn set_dirty(&mut self, dirty: bool);
 
+    /// Whether this widget's dirtiness stems from something that would
+    /// change its taffy layout node, as opposed to a purely visual
+    /// repaint. Defaults to mirroring `is_dirty()` for widgets that don't
+    /// track this separately; widgets backed by `WidgetBase` track it
+    /// precisely instead (see `WidgetBase::layout_dirty`).
+    fn is_layout_dirty(&self) -> bool {
+        self.is_dirty()
+    }
+
+    /// Clears the layout-dirty flag once a full layout pass has run.
+    /// No-op by default; only meaningful alongside a real `is_layout_dirty` override.
+    fn set_layout_dirty(&mut self, _value: bool) {}
+
     fn style(&self) -> &Style;
 
     fn style_mut(&mut self) -> &mut Style;

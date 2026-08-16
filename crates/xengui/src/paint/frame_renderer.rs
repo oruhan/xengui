@@ -80,7 +80,7 @@ impl FrameRenderer {
 
         let needs_full_layout =
             std::mem::take(&mut self.force_layout) ||
-            tree_is_dirty(tree) ||
+            tree_needs_layout(tree) ||
             self.anim.active_keys().any(|k| k.property.affects_layout());
 
         let mut layout_ctx = LayoutContext {
@@ -98,6 +98,7 @@ impl FrameRenderer {
                 height as f32
             );
             LayoutEngine::sync_scroll_offsets(tree);
+            reset_layout_dirty_recursive(tree);
         } else {
             LayoutEngine::cascade(tree, &mut layout_ctx);
             // Scrolling never changes box sizes, so reposition the
@@ -795,14 +796,23 @@ fn reset_dirty_recursive(widget: &mut dyn Widget) {
     }
 }
 
-fn tree_is_dirty(tree: &[Box<dyn Widget>]) -> bool {
-    tree.iter().any(|w| widget_dirty_recursive(w.as_ref()))
+fn tree_needs_layout(tree: &[Box<dyn Widget>]) -> bool {
+    tree.iter().any(|w| widget_needs_layout_recursive(w.as_ref()))
 }
 
-fn widget_dirty_recursive(widget: &dyn Widget) -> bool {
-    widget.is_dirty() ||
+fn widget_needs_layout_recursive(widget: &dyn Widget) -> bool {
+    widget.is_layout_dirty() ||
         widget
             .children()
             .iter()
-            .any(|c| widget_dirty_recursive(c.as_ref()))
+            .any(|c| widget_needs_layout_recursive(c.as_ref()))
+}
+
+fn reset_layout_dirty_recursive(tree: &mut [Box<dyn Widget>]) {
+    for widget in tree.iter_mut() {
+        widget.set_layout_dirty(false);
+        if let Some(children) = widget.children_mut() {
+            reset_layout_dirty_recursive(children);
+        }
+    }
 }

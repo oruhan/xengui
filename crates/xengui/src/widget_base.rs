@@ -7,6 +7,11 @@ pub struct WidgetBase {
     /// Global identifier, usable with `xengui::dom` to trigger this widget from anywhere
     pub id: Option<SmolStr>,
     pub dirty: bool,
+    /// Set when a style recompute actually changes something affecting
+    /// this widget's own taffy layout node, tracked separately from
+    /// `dirty` so a purely visual hover/press style swap never forces a
+    /// full tree relayout.
+    pub layout_dirty: bool,
 
     pub style: Style,
     pub inherited_style: Style,
@@ -27,6 +32,7 @@ impl WidgetBase {
             key: None,
             id: None,
             dirty: true,
+            layout_dirty: true,
 
             style: Style::default(),
             inherited_style: Style::default(),
@@ -50,10 +56,11 @@ impl WidgetBase {
         let base = self.inherited_style.inherit_style(&self.style);
 
         if !self.interaction.enabled {
-            self.computed_style = match &self.disabled_style {
+            let computed = match &self.disabled_style {
                 Some(patch) => base.overlay(patch),
                 None => base,
             };
+            self.commit_computed_style(computed);
             return;
         }
 
@@ -88,6 +95,13 @@ impl WidgetBase {
             computed = computed.overlay(patch);
         }
 
+        self.commit_computed_style(computed);
+    }
+
+    fn commit_computed_style(&mut self, computed: Style) {
+        if self.computed_style.layout_affecting_diff(&computed) {
+            self.layout_dirty = true;
+        }
         self.computed_style = computed;
     }
 
