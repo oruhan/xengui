@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://xengui.vercel.app/sitemap.xml

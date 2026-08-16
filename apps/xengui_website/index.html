@@ -1,0 +1,186 @@
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover"
+    />
+    <title>XenGui | Cross-platform UI in Rust</title>
+    <meta
+      name="description"
+      content="XenGui is a Rust UI framework designed for desktop, embedded, and web applications. Build efficient, native-feeling interfaces with a unified codebase."
+    />
+    <!-- PWA -->
+    <link rel="manifest" href="/manifest.webmanifest" />
+
+    <!-- Theme -->
+    <!-- light mode -->
+    <meta
+      name="theme-color"
+      content="#ffffff"
+      media="(prefers-color-scheme: light)"
+    />
+    <!-- dark mode -->
+    <meta
+      name="theme-color"
+      content="#0a0a0a"
+      media="(prefers-color-scheme: dark)"
+    />
+
+    <!-- iOS -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+
+    <meta
+      name="apple-mobile-web-app-status-bar-style"
+      content="black-translucent"
+    />
+
+    <meta name="apple-mobile-web-app-title" content="XenGui" />
+
+    <link rel="apple-touch-icon" href="./xengui_icon_180.png" />
+
+    <!-- Favicon -->
+    <link rel="icon" type="image/svg+xml" href="./xengui_favicon.svg" />
+
+    <link data-trunk rel="copy-file" href="./assets/sw.js" />
+    <link data-trunk rel="copy-file" href="./assets/manifest.webmanifest" />
+    <link data-trunk rel="copy-file" href="./assets/xengui_favicon.svg" />
+    <link data-trunk rel="copy-file" href="./assets/xengui_icon.svg" />
+    <link data-trunk rel="copy-file" href="./assets/xengui_icon_180.png" />
+    <link data-trunk rel="copy-file" href="./assets/xengui_icon_192.png" />
+    <link data-trunk rel="copy-file" href="./assets/xengui_icon_512.png" />
+
+    <style>
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        background: #fff;
+        color: #0a0a0a;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        html,
+        body {
+          background: #0a0a0a;
+          color: #fff;
+        }
+      }
+
+      body {
+        position: fixed;
+        inset: 0;
+      }
+
+      canvas {
+        display: block;
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+      }
+      canvas:focus {
+        outline: none;
+        -webkit-tap-highlight-color: transparent;
+      }
+
+      #xengui-loader {
+        position: fixed;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: #fff;
+        z-index: 999999;
+        transition: opacity 0.25s ease;
+      }
+      @media (prefers-color-scheme: dark) {
+        #xengui-loader {
+          background: #0a0a0a;
+        }
+      }
+      #xengui-loader.xengui-loader-hidden {
+        opacity: 0;
+        pointer-events: none;
+      }
+      #xengui-loader .xengui-spinner {
+        width: 40px;
+        height: 40px;
+        border-radius: 50%;
+        border: 3px solid rgba(43, 127, 255, 0.25);
+        border-top-color: #2b7fff;
+        animation: xengui-spin 0.8s linear infinite;
+      }
+      @keyframes xengui-spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+    </style>
+    <script>
+      // pass native web hotkeys
+      window.addEventListener(
+        "keydown",
+        function (e) {
+          const isDevTools =
+            e.key === "F12" ||
+            e.key === "F11" ||
+            e.key === "Escape" ||
+            ((e.ctrlKey || e.metaKey) &&
+              e.shiftKey &&
+              (e.key === "I" || e.key === "i"));
+          const isReload =
+            (e.ctrlKey || e.metaKey) && (e.key === "r" || e.key === "R");
+          const isF5 = e.key === "F5";
+          if (isDevTools || isReload || isF5) {
+            e.stopPropagation();
+          }
+        },
+        true
+      );
+    </script>
+  </head>
+  <body oncontextmenu="return false;">
+    <div id="xengui-loader"><div class="xengui-spinner"></div></div>
+    <noscript>This app requires WebAssembly enabled in your browser.</noscript>
+    <script>
+      if ("serviceWorker" in navigator) {
+        navigator.serviceWorker.register("/sw.js");
+      }
+
+      // Hides the boot loader once the app's own <canvas> is mounted -
+      // xenframe only creates it after wasm init and the first frame.
+      (function () {
+        var loader = document.getElementById("xengui-loader");
+        if (!loader) return;
+
+        function hideLoader() {
+          loader.classList.add("xengui-loader-hidden");
+          setTimeout(function () {
+            loader.remove();
+          }, 300);
+        }
+
+        if (document.querySelector("canvas")) {
+          hideLoader();
+          return;
+        }
+
+        var observer = new MutationObserver(function () {
+          if (document.querySelector("canvas")) {
+            hideLoader();
+            observer.disconnect();
+          }
+        });
+        observer.observe(document.body, { childList: true, subtree: true });
+      })();
+    </script>
+  </body>
+</html>
