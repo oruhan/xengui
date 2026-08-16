@@ -300,7 +300,16 @@ impl App {
         let current = xengui::current_breakpoint();
         if current != self.last_breakpoint {
             self.last_breakpoint = current;
-            hooks::mark_dirty_and_redraw();
+            // Every call site here already does heavy synchronous work
+            // of its own (a full render_frame/resize just ran), so
+            // rebuilding immediately keeps Responsive<T> in sync with
+            // the real viewport size on every resize step, instead of
+            // lagging one RedrawRequested cycle behind.
+            self.schedule_render();
+            while self.pump_reconciliation() {}
+            if let Some(window) = &self.window {
+                window.request_redraw();
+            }
         }
     }
 }

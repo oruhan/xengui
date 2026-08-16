@@ -435,9 +435,23 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
             }
         }
 
+        // App::render() builds the initial tree before any window exists,
+        // so Responsive<T> values resolve against the default
+        // Breakpoint::Base on that very first build. Recomputing it here,
+        // before the window is ever shown, avoids a one-frame flash of
+        // the wrong breakpoint on startup.
+        let initial_logical_width = window
+            .inner_size()
+            .to_logical::<f32>(window.scale_factor()).width;
+        xengui::set_current_breakpoint_from_width(initial_logical_width);
+        let breakpoint_changed = xengui::current_breakpoint() != self.last_breakpoint;
+        if breakpoint_changed {
+            self.last_breakpoint = xengui::current_breakpoint();
+        }
+
         // Applies dark_theme/light_theme selection now that the real OS
         // appearance is known, before the window is ever shown.
-        if self.sync_active_theme_with_system() {
+        if self.sync_active_theme_with_system() || breakpoint_changed {
             self.schedule_render();
             while self.pump_reconciliation() {}
         }
