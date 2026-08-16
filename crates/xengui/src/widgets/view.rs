@@ -1799,13 +1799,11 @@ impl View {
         let max_x = self.max_scroll_x();
         let max_y = self.max_scroll_y();
 
-        // Momentum always integrates against the hard bounds - any
-        // rubber-bounce is a separate, explicit hand-off (below) instead
-        // of something momentum has to keep reconciling every tick.
-        let clamped_x = raw_x.clamp(0.0, max_x);
-        let clamped_y = raw_y.clamp(0.0, max_y);
-        let hit_x = clamped_x != raw_x;
-        let hit_y = clamped_y != raw_y;
+        // Eases into the rubber-band zone the same way an active drag does,
+        // instead of hard-clamping the fling dead at the boundary and only
+        // then playing a disconnected bounce-back once it settles.
+        let (next_x, hit_x) = self.react_to_bounds(raw_x, max_x, true);
+        let (next_y, hit_y) = self.react_to_bounds(raw_y, max_y, true);
 
         if hit_x {
             self.note_edge_hit(
@@ -1828,8 +1826,8 @@ impl View {
             );
         }
 
-        self.scroll_offset.set((clamped_x, clamped_y));
-        self.scroll_target.set((clamped_x, clamped_y));
+        self.scroll_offset.set((next_x, next_y));
+        self.scroll_target.set((next_x, next_y));
         self.note_scroll_activity();
         ctx.request_redraw();
 
@@ -1841,9 +1839,13 @@ impl View {
         let min_speed = MOMENTUM_MIN_SPEED * sf;
         let settled = state.velocity.0.abs() < min_speed && state.velocity.1.abs() < min_speed;
 
+        let out_of_bounds = next_x < 0.0 || next_x > max_x || next_y < 0.0 || next_y > max_y;
+
         if settled {
             self.momentum.set(None);
-            if
+            if out_of_bounds {
+                self.spring_back_if_needed(ctx);
+            } else if
                 (hit_x || hit_y) &&
                 matches!(self.effective_overscroll(), Overscroll::Bounce | Overscroll::Stretch)
             {
