@@ -578,12 +578,15 @@ impl View {
             return;
         }
 
+        // Touch has no real hover concept; a synthetic MouseMoved landing on
+        // the track mid-swipe can otherwise flip `scrollbar_hovered` true and
+        // leave the bar stuck visible forever, since nothing on touch ever
+        // sends a matching "unhover".
+        let hover_counts = self.scrollbar_hovered.get() && !crate::platform::is_touch_platform();
+
         let active_gesture =
             self.scrollbar_drag.get().is_some() ||
-            self.scrollbar_hovered.get() ||
-            // A touch that merely started (e.g. tapping a button inside a
-            // scrollable view) shouldn't flash the scrollbar - only an
-            // actual drag counts as scroll activity.
+            hover_counts ||
             self.touch_pan.get().is_some_and(|s| s.dragging) ||
             self.momentum.get().is_some() ||
             self.auto_scroll.get().is_some() ||
@@ -916,31 +919,26 @@ impl View {
         let b = self.layout_box;
         let t = self.active_scrollbar().thickness;
         let full_h = if has_x { b.height - t } else { b.height };
-        if self.arrows_shown() {
-            Some((b.y + t, (full_h - 2.0 * t).max(0.0)))
-        } else {
-            Some((b.y, full_h))
-        }
+        // Always reserve the same end padding whether or not arrow buttons
+        // are actually drawn, so a touch scrollbar (no arrows) still keeps
+        // its thumb clear of the track's rounded ends instead of running
+        // flush edge-to-edge.
+        Some((b.y + t, (full_h - 2.0 * t).max(0.0)))
     }
 
     fn horizontal_track_bounds(&self) -> Option<(f32, f32)> {
-        let (has_x, has_y) = self.scrollbar_visibility();
+        let (has_x, _) = self.scrollbar_visibility();
         if !has_x {
             return None;
         }
         let b = self.layout_box;
         let t = self.active_scrollbar().thickness;
+        let (_, has_y) = self.scrollbar_visibility();
         let full_w = if has_y { b.width - t } else { b.width };
-        if self.arrows_shown() {
-            Some((b.x + t, (full_w - 2.0 * t).max(0.0)))
-        } else {
-            Some((b.x, full_w))
-        }
+        Some((b.x + t, (full_w - 2.0 * t).max(0.0)))
     }
 
     fn vertical_thumb_rect(&self) -> Option<(f32, f32, f32, f32)> {
-        // No real overflow: the track still gets painted (see
-        // paint_overlay), but no thumb is drawn on top of it.
         if self.max_scroll_y() <= 0.0 {
             return None;
         }
@@ -951,7 +949,11 @@ impl View {
 
         let thumb_h = ((track_h * b.height) / content_h).max(sb.min_thumb_length).min(track_h);
         let max_offset = self.max_scroll_y();
-        let progress = if max_offset > 0.0 { self.scroll_offset.get().1 / max_offset } else { 0.0 };
+        // Clamped before computing progress so the thumb pins to the track's
+        // edge during overscroll instead of sliding past it, while the
+        // content itself keeps rubber-banding beyond its real scroll range.
+        let clamped_offset = self.scroll_offset.get().1.clamp(0.0, max_offset);
+        let progress = if max_offset > 0.0 { clamped_offset / max_offset } else { 0.0 };
         let thumb_y = track_y + progress * (track_h - thumb_h);
 
         let thumb_w = (self.current_scrollbar_thickness() * self.scale_factor.get()).min(
@@ -962,9 +964,6 @@ impl View {
         Some((thumb_x, thumb_y, thumb_w, thumb_h))
     }
 
-    // Spans the scrollbar's full track thickness instead of the (possibly
-    // still animating-in) visual thumb width, so pressing anywhere across
-    // the scrollbar's width grabs the thumb, matching native scrollbars.
     fn vertical_thumb_hit_rect(&self) -> Option<(f32, f32, f32, f32)> {
         if self.max_scroll_y() <= 0.0 {
             return None;
@@ -976,7 +975,8 @@ impl View {
 
         let thumb_h = ((track_h * b.height) / content_h).max(sb.min_thumb_length).min(track_h);
         let max_offset = self.max_scroll_y();
-        let progress = if max_offset > 0.0 { self.scroll_offset.get().1 / max_offset } else { 0.0 };
+        let clamped_offset = self.scroll_offset.get().1.clamp(0.0, max_offset);
+        let progress = if max_offset > 0.0 { clamped_offset / max_offset } else { 0.0 };
         let thumb_y = track_y + progress * (track_h - thumb_h);
 
         let right_inset = self.scrollbar_right_inset.get();
@@ -985,8 +985,6 @@ impl View {
     }
 
     fn horizontal_thumb_rect(&self) -> Option<(f32, f32, f32, f32)> {
-        // No real overflow: the track still gets painted (see
-        // paint_overlay), but no thumb is drawn on top of it.
         if self.max_scroll_x() <= 0.0 {
             return None;
         }
@@ -997,7 +995,8 @@ impl View {
 
         let thumb_w = ((track_w * b.width) / content_w).max(sb.min_thumb_length).min(track_w);
         let max_offset = self.max_scroll_x();
-        let progress = if max_offset > 0.0 { self.scroll_offset.get().0 / max_offset } else { 0.0 };
+        let clamped_offset = self.scroll_offset.get().0.clamp(0.0, max_offset);
+        let progress = if max_offset > 0.0 { clamped_offset / max_offset } else { 0.0 };
         let thumb_x = track_x + progress * (track_w - thumb_w);
 
         let thumb_h = (self.current_scrollbar_thickness() * self.scale_factor.get()).min(
@@ -1019,7 +1018,8 @@ impl View {
 
         let thumb_w = ((track_w * b.width) / content_w).max(sb.min_thumb_length).min(track_w);
         let max_offset = self.max_scroll_x();
-        let progress = if max_offset > 0.0 { self.scroll_offset.get().0 / max_offset } else { 0.0 };
+        let clamped_offset = self.scroll_offset.get().0.clamp(0.0, max_offset);
+        let progress = if max_offset > 0.0 { clamped_offset / max_offset } else { 0.0 };
         let thumb_x = track_x + progress * (track_w - thumb_w);
 
         let bottom_inset = self.scrollbar_bottom_inset.get();
@@ -1305,50 +1305,55 @@ impl View {
                     return true;
                 }
 
-                // Clicking an empty stretch of track jumps the thumb straight
-                // to that point instead of requiring a drag or repeated nudges.
-                if active_y && let Some((track_y, track_h)) = self.vertical_track_bounds() {
-                    let t = self.active_scrollbar().thickness;
-                    let b = self.layout_box;
-                    let right_inset = self.scrollbar_right_inset.get();
-                    if
-                        point_in_rect(position, (
-                            b.x + b.width - right_inset - t,
-                            track_y,
-                            t,
-                            track_h,
-                        ))
-                    {
-                        self.pending_track_drag.set(Some(true));
-                        if let Some(target_y) = self.vertical_track_offset_for(position.1) {
-                            let next = self.clamp_offset((target.0, target_y));
-                            if next != target {
-                                self.start_scroll_animation(next, ctx);
+                // Clicking an empty stretch of track jumps the thumb straight to that
+                // point instead of requiring a drag - this "click-to-jump" behavior is
+                // desktop-only. Touch scrollbars only respond to dragging the thumb
+                // itself; a track tap doing nothing is the native mobile convention
+                // (Android/iOS never jump-scroll from a track tap).
+                if !crate::platform::is_touch_platform() {
+                    if active_y && let Some((track_y, track_h)) = self.vertical_track_bounds() {
+                        let t = self.active_scrollbar().thickness;
+                        let b = self.layout_box;
+                        let right_inset = self.scrollbar_right_inset.get();
+                        if
+                            point_in_rect(position, (
+                                b.x + b.width - right_inset - t,
+                                track_y,
+                                t,
+                                track_h,
+                            ))
+                        {
+                            self.pending_track_drag.set(Some(true));
+                            if let Some(target_y) = self.vertical_track_offset_for(position.1) {
+                                let next = self.clamp_offset((target.0, target_y));
+                                if next != target {
+                                    self.start_scroll_animation(next, ctx);
+                                }
                             }
+                            return true;
                         }
-                        return true;
                     }
-                }
-                if active_x && let Some((track_x, track_w)) = self.horizontal_track_bounds() {
-                    let t = self.active_scrollbar().thickness;
-                    let b = self.layout_box;
-                    let bottom_inset = self.scrollbar_bottom_inset.get();
-                    if
-                        point_in_rect(position, (
-                            track_x,
-                            b.y + b.height - bottom_inset - t,
-                            track_w,
-                            t,
-                        ))
-                    {
-                        self.pending_track_drag.set(Some(false));
-                        if let Some(target_x) = self.horizontal_track_offset_for(position.0) {
-                            let next = self.clamp_offset((target_x, target.1));
-                            if next != target {
-                                self.start_scroll_animation(next, ctx);
+                    if active_x && let Some((track_x, track_w)) = self.horizontal_track_bounds() {
+                        let t = self.active_scrollbar().thickness;
+                        let b = self.layout_box;
+                        let bottom_inset = self.scrollbar_bottom_inset.get();
+                        if
+                            point_in_rect(position, (
+                                track_x,
+                                b.y + b.height - bottom_inset - t,
+                                track_w,
+                                t,
+                            ))
+                        {
+                            self.pending_track_drag.set(Some(false));
+                            if let Some(target_x) = self.horizontal_track_offset_for(position.0) {
+                                let next = self.clamp_offset((target_x, target.1));
+                                if next != target {
+                                    self.start_scroll_animation(next, ctx);
+                                }
                             }
+                            return true;
                         }
-                        return true;
                     }
                 }
 
@@ -1593,7 +1598,12 @@ impl View {
 
         match phase {
             TouchPanPhase::Start => {
-                if !(self.is_scrollable_x() || self.is_scrollable_y()) {
+                // Only a view with real overflow (not just an overflow:auto/scroll
+                // *mode* on content that already fits) may claim the pan gesture -
+                // otherwise an inert scrollable wrapper still rubber-bands on touch
+                // even though it never shows a scrollbar.
+                let (active_x, active_y) = self.scrollbar_active();
+                if !active_x && !active_y {
                     return None;
                 }
                 self.cancel_conflicting_gestures();
