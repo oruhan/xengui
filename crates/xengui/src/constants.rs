@@ -92,6 +92,10 @@ pub const TOUCH_PAN_THRESHOLD_DP: f32 = 6.0;
 pub const MOMENTUM_FRICTION: f32 = 4.2;
 /// Momentum stops ticking once its speed drops below this (px/sec).
 pub const MOMENTUM_MIN_SPEED: f32 = 4.0;
+/// Extra friction multiplier applied while a fling is coasting inside
+/// the rubber-band zone, so it settles in far fewer frames instead of
+/// decaying at the same rate it does within bounds.
+pub const MOMENTUM_OVERSCROLL_FRICTION_MULTIPLIER: f32 = 3.0;
 
 /* ---- AutoScroll (middle-click pan) ---- */
 /// Radius (logical/DP units) around the activation point within which

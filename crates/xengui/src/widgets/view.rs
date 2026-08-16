@@ -1831,15 +1831,24 @@ impl View {
         self.note_scroll_activity();
         ctx.request_redraw();
 
-        let decay = (-MOMENTUM_FRICTION * dt).exp();
+        let out_of_bounds = next_x < 0.0 || next_x > max_x || next_y < 0.0 || next_y > max_y;
+
+        // Rubber-band range never hits (hit_x/hit_y) while allow_rubber_band
+        // is true, so without this the tick loop keeps coasting at the same
+        // rate inside and outside the bounds - many extra frames of
+        // reflow_scroll/paint on every overscroll fling.
+        let friction = if out_of_bounds {
+            MOMENTUM_FRICTION * MOMENTUM_OVERSCROLL_FRICTION_MULTIPLIER
+        } else {
+            MOMENTUM_FRICTION
+        };
+        let decay = (-friction * dt).exp();
         state.velocity.0 *= if hit_x { 0.0 } else { decay };
         state.velocity.1 *= if hit_y { 0.0 } else { decay };
 
         let sf = self.scale_factor.get();
         let min_speed = MOMENTUM_MIN_SPEED * sf;
         let settled = state.velocity.0.abs() < min_speed && state.velocity.1.abs() < min_speed;
-
-        let out_of_bounds = next_x < 0.0 || next_x > max_x || next_y < 0.0 || next_y > max_y;
 
         if settled {
             self.momentum.set(None);
