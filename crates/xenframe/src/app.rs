@@ -11,6 +11,7 @@ use xengui::{
     Cursor,
     ElementState,
     EventCtx,
+    EventStatus,
     InputEvent,
     InputState,
     MouseButton,
@@ -538,20 +539,23 @@ impl App {
                     suppress_drag = ctx.take_suppress_text_drag();
                     self.apply_event_ctx(ctx);
 
-                    // Dispatched alongside the mouse-shaped press above so a
-                    // scrollable ancestor can claim this as a pan gesture
-                    // without affecting ordinary tap/click handling.
+                    // Dispatched alongside the mouse-shaped press above so a scrollable
+                    // ancestor can claim this as a pan gesture. A claimed pan gesture
+                    // must also suppress the cross-widget text-selection drag below -
+                    // scrolling the page must never highlight the text being swiped past.
                     let mut pan_ctx = EventCtx::new();
-                    dispatch_positional(
+                    let pan_status = dispatch_positional(
                         &mut self.root,
                         path,
                         &(InputEvent::TouchPan { phase: TouchPanPhase::Start, position: point }),
                         &mut pan_ctx
                     );
                     self.apply_event_ctx(pan_ctx);
+                    suppress_drag |= pan_status == EventStatus::Handled;
                 }
 
                 self.input.text_drag_anchor = if suppress_drag { None } else { Some(point) };
+
                 self.pending_long_press = path.map(|p| (
                     Instant::now() + TOUCH_LONG_PRESS_DURATION,
                     point,
