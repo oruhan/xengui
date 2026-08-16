@@ -610,7 +610,7 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
             XenEvent::RendererReady(renderer) => {
                 self.renderer = Some(*renderer);
                 log::info!("web gpu context successfully attached to event loop");
-                if let Some(window) = &self.window {
+                if let Some(window) = self.window.clone() {
                     let size = window.inner_size();
                     let theme = crate::window::system_theme(self.config.theme);
                     let scale_factor = window.scale_factor() as f32;
@@ -643,12 +643,15 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
                     .is_some_and(Theme::is_auto);
 
                 if system_switched || active_is_auto {
-                    self.schedule_render();
-                    while self.pump_reconciliation() {}
-                } else {
-                    mark_tree_dirty(&mut self.root);
+                    // Same reasoning as WindowEvent::ThemeChanged and the
+                    // F12 devtools toggle - defer the rebuild instead of
+                    // running schedule_render/pump_reconciliation
+                    // synchronously here.
+                    hooks::mark_dirty_and_redraw();
+                    return;
                 }
 
+                mark_tree_dirty(&mut self.root);
                 if let Some(window) = &self.window {
                     window.request_redraw();
                 }
@@ -718,20 +721,25 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
                     self.resize_synced(new_size.width, new_size.height);
                 }
                 #[cfg(not(target_os = "windows"))]
-                if let Some(renderer) = &mut self.renderer {
+                {
                     let theme = crate::window::system_theme(self.config.theme);
                     let scale_factor = self.window
                         .as_ref()
                         .map_or(1.0, |w| w.scale_factor() as f32);
-                    renderer.resize(
-                        &mut self.root,
-                        theme,
-                        scale_factor,
-                        new_size.width,
-                        new_size.height
-                    );
+
+                    if let Some(renderer) = &mut self.renderer {
+                        renderer.resize(
+                            &mut self.root,
+                            theme,
+                            scale_factor,
+                            new_size.width,
+                            new_size.height
+                        );
+                    }
+
                     self.recalc_hover_at_cursor();
                     self.recheck_breakpoint();
+
                     if !self.is_visible && let Some(window) = &self.window {
                         window.set_visible(true);
                         self.is_visible = true;
@@ -757,16 +765,20 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
 
                 if system_switched || active_is_auto {
                     // Auto colors, or a full active_theme swap, were baked in
-                    // at the last render pass, so rebuild the tree instead of
-                    // just repainting it.
-                    self.schedule_render();
-                    while self.pump_reconciliation() {}
-                } else {
-                    // Every descendant needs to repaint, not just the root -
-                    // otherwise a Label whose own dirty flag never flips
-                    // keeps its cached (pre-theme-change) draw commands.
-                    mark_tree_dirty(&mut self.root);
+                    // at the last render pass, so the tree needs a real
+                    // rebuild - deferred to the next RedrawRequested instead
+                    // of forcing schedule_render/pump_reconciliation
+                    // synchronously from inside this window event dispatch,
+                    // which on wasm can double-borrow winit's own window
+                    // RefCell and panic (see the F12 devtools toggle above).
+                    hooks::mark_dirty_and_redraw();
+                    return;
                 }
+
+                // Every descendant needs to repaint, not just the root -
+                // otherwise a Label whose own dirty flag never flips
+                // keeps its cached (pre-theme-change) draw commands.
+                mark_tree_dirty(&mut self.root);
                 if let Some(window) = &self.window {
                     window.request_redraw();
                 }
@@ -877,9 +889,8 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
                         w.interaction().is_some_and(|i| i.drag_region)
                     )
                 {
-                    let scale_factor = self.window
-                        .as_ref()
-                        .map_or(1.0, |w| w.scale_factor() as f32);
+                    let window = self.window.clone();
+                    let scale_factor = window.as_ref().map_or(1.0, |w| w.scale_factor() as f32);
                     let click_distance = MULTI_CLICK_DISTANCE_DP * scale_factor;
 
                     let is_double_click = self.last_titlebar_click.is_some_and(|(t, p)| {
@@ -889,7 +900,7 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
                     });
                     self.last_titlebar_click = Some((Instant::now(), point));
 
-                    if let Some(window) = &self.window {
+                    if let Some(window) = &window {
                         if is_double_click {
                             window.set_maximized(!window.is_maximized());
                         } else {
