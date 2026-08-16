@@ -1473,7 +1473,13 @@ impl View {
                 // Only real overflow (not just an overflow:scroll/auto
                 // *mode* with nothing to scroll) should activate AutoScroll.
                 let (active_x, active_y) = self.scrollbar_active();
-                if self.auto_scroll_enabled && self.hit_test(*position) && (active_x || active_y) {
+                let scrollable = self.is_scrollable_x() || self.is_scrollable_y();
+                if
+                    self.auto_scroll_enabled &&
+                    scrollable &&
+                    self.hit_test(*position) &&
+                    (active_x || active_y)
+                {
                     self.cancel_conflicting_gestures();
                     let cursor = self.autoscroll_cursor();
                     self.auto_scroll.set(
@@ -1588,10 +1594,11 @@ impl View {
 
         match phase {
             TouchPanPhase::Start => {
-                // Only a view with real overflow (not just an overflow:auto/scroll
-                // *mode* on content that already fits) may claim the pan gesture -
-                // otherwise an inert scrollable wrapper still rubber-bands on touch
-                // even though it never shows a scrollbar.
+                // A view must actually opt into scrolling (overflow: auto/scroll)
+                // before it may claim the pan gesture.
+                if !self.is_scrollable_x() && !self.is_scrollable_y() {
+                    return None;
+                }
                 let (active_x, active_y) = self.scrollbar_active();
                 if !active_x && !active_y {
                     return None;
