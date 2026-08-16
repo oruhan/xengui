@@ -724,13 +724,16 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
                     self.next_animation = None;
                 }
 
-                if let Some(renderer) = &mut self.renderer {
+                if self.renderer.is_some() {
                     let theme = crate::window::system_theme(self.config.theme);
                     let scale_factor = self.window
                         .as_ref()
                         .map_or(1.0, |w| w.scale_factor() as f32);
 
-                    renderer.render_frame(&mut self.root, theme, scale_factor);
+                    if let Some(renderer) = &mut self.renderer {
+                        renderer.render_frame(&mut self.root, theme, scale_factor);
+                    }
+
                     self.recalc_hover_at_cursor();
                     self.recheck_breakpoint();
 
@@ -741,8 +744,9 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
 
                     // Keeps requesting frames while anything still wants to animate,
                     // so ControlFlow::Wait doesn't stall mid-animation.
+                    let is_animating = self.renderer.as_ref().is_some_and(|r| r.is_animating());
                     if
-                        (any_wants_animation(&self.root) || renderer.is_animating()) &&
+                        (any_wants_animation(&self.root) || is_animating) &&
                         let Some(window) = &self.window
                     {
                         window.request_redraw();
