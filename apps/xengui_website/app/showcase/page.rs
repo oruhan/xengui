@@ -285,9 +285,9 @@ impl Render for ShowcasePage {
                 .display(Display::Flex)
                 .flex_direction(FlexDirection::Row)
                 .width(pct!(100.0))
-                //.height(pct!(100.0))
+                .height(pct!(100.0))
                 .child(sidebar)
-                .child(main)
+                .child(main.height(pct!(100.0)))
         )
     }
 }
