@@ -79,6 +79,10 @@ pub struct App {
     pub(crate) devtools_panel_width: Rc<Cell<f32>>,
     pub(crate) devtools_ever_opened: bool,
     pub(crate) devtools_close_requested: Rc<Cell<bool>>,
+    // Last breakpoint a full tree rebuild resolved Responsive<T> values
+    // against; compared every frame so a resize (layout-only) can still
+    // trigger a rebuild once the active breakpoint actually changes.
+    pub(crate) last_breakpoint: xengui::Breakpoint,
     #[cfg(target_os = "windows")]
     pub(crate) last_rendered_size: Option<(u32, u32)>,
 
@@ -121,6 +125,7 @@ impl App {
             devtools_panel_width: Rc::new(Cell::new(420.0)),
             devtools_ever_opened: false,
             devtools_close_requested: Rc::new(Cell::new(false)),
+            last_breakpoint: xengui::Breakpoint::Base,
 
             #[cfg(target_os = "windows")]
             last_rendered_size: None,
@@ -284,6 +289,19 @@ impl App {
 
         self.apply_event_ctx(ctx);
         self.input.hovered_path = new_hover;
+    }
+
+    // Responsive<T> values are resolved once, at widget-build time; a
+    // layout-only pass (plain resize) updates xengui's own breakpoint
+    // state without ever giving the already-built tree a chance to
+    // re-resolve against it, so any breakpoint transition must force a
+    // real rebuild through the normal dirty/redraw cycle.
+    pub(crate) fn recheck_breakpoint(&mut self) {
+        let current = xengui::current_breakpoint();
+        if current != self.last_breakpoint {
+            self.last_breakpoint = current;
+            hooks::mark_dirty_and_redraw();
+        }
     }
 }
 
@@ -703,6 +721,7 @@ impl App {
         xengui::devtools::record_size("resize_synced:render_begin", width, height);
         renderer.resize(&mut self.root, theme, scale_factor, width, height);
         self.recalc_hover_at_cursor();
+        self.recheck_breakpoint();
         xengui::devtools::record_size("resize_synced:render_end", width, height);
 
         if !self.is_visible && let Some(window) = &self.window {

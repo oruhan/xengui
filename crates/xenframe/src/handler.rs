@@ -626,6 +626,7 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
                             size.height
                         );
                     }
+                    self.recheck_breakpoint();
                     window.request_redraw();
                 }
             }
@@ -694,6 +695,7 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
 
                     renderer.render_frame(&mut self.root, theme, scale_factor);
                     self.recalc_hover_at_cursor();
+                    self.recheck_breakpoint();
 
                     if !self.is_visible && let Some(window) = &self.window {
                         window.set_visible(true);
@@ -729,6 +731,7 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
                         new_size.height
                     );
                     self.recalc_hover_at_cursor();
+                    self.recheck_breakpoint();
                     if !self.is_visible && let Some(window) = &self.window {
                         window.set_visible(true);
                         self.is_visible = true;
@@ -977,11 +980,12 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
                 {
                     self.devtools_open = !self.devtools_open;
                     xengui::devtools::set_enabled(self.devtools_open);
-                    self.schedule_render();
-                    while self.pump_reconciliation() {}
-                    if let Some(window) = &self.window {
-                        window.request_redraw();
-                    }
+                    // Defers the actual tree rebuild to the next RedrawRequested
+                    // instead of forcing schedule_render/pump_reconciliation and
+                    // an extra request_redraw synchronously from inside this
+                    // keyboard event dispatch - on wasm that reentrant chain
+                    // double-borrows winit's own window RefCell and panics.
+                    hooks::mark_dirty_and_redraw();
                     return;
                 }
 
