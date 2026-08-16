@@ -8,30 +8,7 @@ use web_time::Instant;
 use winit::event_loop::{ ControlFlow, EventLoop };
 use winit::window::Window;
 use xengui::{
-    Cursor,
-    ElementState,
-    EventCtx,
-    EventStatus,
-    InputEvent,
-    InputState,
-    MouseButton,
-    StyleBuilder,
-    TOUCH_LONG_PRESS_DURATION,
-    TOUCH_LONG_PRESS_MOVE_TOLERANCE_DP,
-    TouchPanPhase,
-    Widget,
-    clear_text_selection_recursive,
-    collect_focusable_paths,
-    collect_selected_text_recursive,
-    dispatch_hover_transition,
-    dispatch_positional,
-    dispatch_to_path,
-    hit_test_path,
-    hooks,
-    path_is_within,
-    reconciler,
-    style,
-    update_global_text_selection,
+    Cursor, ElementState, EventCtx, EventStatus, InputEvent, InputState, MouseButton, StyleBuilder, TOUCH_LONG_PRESS_DURATION, TOUCH_LONG_PRESS_MOVE_TOLERANCE_DP, TouchPanPhase, Widget, clear_text_selection_recursive, collect_focusable_paths, collect_selected_text_recursive, dispatch_hover_transition, dispatch_positional, dispatch_positional_capturing, dispatch_to_path, hit_test_path, hooks, path_is_within, reconciler, style, update_global_text_selection,
 };
 use xengui_wgpu::WgpuWindowRenderer;
 
@@ -72,6 +49,7 @@ pub struct App {
     pub(crate) reconcile_work: Option<reconciler::WorkLoop>,
     pub(crate) clipboard: xen_clipboard::Clipboard,
     pub(crate) pending_long_press: Option<(Instant, (f32, f32), String)>,
+    pub(crate) touch_pan_owner: Option<String>,
     pub(crate) last_titlebar_click: Option<(Instant, (f32, f32))>,
     // DevTools: toggled with F12, panel width persists across rebuilds
     // via a shared handle since the App reconstructs the whole tree
@@ -120,6 +98,7 @@ impl App {
             reconcile_work: None,
             clipboard: xen_clipboard::Clipboard::new(),
             pending_long_press: None,
+            touch_pan_owner: None,
             last_titlebar_click: None,
 
             devtools_open: false,
@@ -491,6 +470,7 @@ impl App {
                 clear_text_selection_recursive(&mut self.root);
                 self.input.cursor_pos = Some(point);
                 let path = hit_test_path(&self.root, point);
+                self.touch_pan_owner = None;
 
                 if let Some(focused) = self.input.focused_path.clone() {
                     let stays_focused = path
@@ -540,11 +520,15 @@ impl App {
                     self.apply_event_ctx(ctx);
 
                     // Dispatched alongside the mouse-shaped press above so a scrollable
-                    // ancestor can claim this as a pan gesture. A claimed pan gesture
-                    // must also suppress the cross-widget text-selection drag below -
-                    // scrolling the page must never highlight the text being swiped past.
+                    // ancestor can claim this as a pan gesture, even when the touch
+                    // started on an interactive child (Button, Label, ...) nested deep
+                    // under it. The claiming widget's own path is cached so every later
+                    // Move/End event of this gesture reaches it directly instead of
+                    // re-walking the whole ancestor chain from the original leaf - that
+                    // walk (plus each ancestor's own event() work) is what made drag
+                    // scrolling feel stuck/stuttery inside complex widget trees.
                     let mut pan_ctx = EventCtx::new();
-                    let pan_status = dispatch_positional(
+                    let (pan_status, pan_owner) = dispatch_positional_capturing(
                         &mut self.root,
                         path,
                         &(InputEvent::TouchPan { phase: TouchPanPhase::Start, position: point }),
@@ -552,6 +536,7 @@ impl App {
                     );
                     self.apply_event_ctx(pan_ctx);
                     suppress_drag |= pan_status == EventStatus::Handled;
+                    self.touch_pan_owner = pan_owner;
                 }
 
                 self.input.text_drag_anchor = if suppress_drag { None } else { Some(point) };
@@ -574,11 +559,15 @@ impl App {
                         &mut ctx
                     );
                     self.apply_event_ctx(ctx);
+                }
 
+                // Goes straight to the widget that claimed the gesture on Start
+                // instead of bubbling from the original leaf again on every frame.
+                if let Some(owner) = self.touch_pan_owner.clone() {
                     let mut pan_ctx = EventCtx::new();
-                    dispatch_positional(
+                    dispatch_to_path(
                         &mut self.root,
-                        &path,
+                        &owner,
                         &(InputEvent::TouchPan { phase: TouchPanPhase::Move, position: point }),
                         &mut pan_ctx
                     );
@@ -618,11 +607,13 @@ impl App {
                         &mut ctx
                     );
                     self.apply_event_ctx(ctx);
+                }
 
+                if let Some(owner) = self.touch_pan_owner.take() {
                     let mut pan_ctx = EventCtx::new();
-                    dispatch_positional(
+                    dispatch_to_path(
                         &mut self.root,
-                        &path,
+                        &owner,
                         &(InputEvent::TouchPan { phase: TouchPanPhase::End, position: point }),
                         &mut pan_ctx
                     );
@@ -642,11 +633,11 @@ impl App {
             }
 
             TouchPhase::Cancelled => {
-                if let Some(path) = self.input.hovered_path.clone() {
+                if let Some(owner) = self.touch_pan_owner.take() {
                     let mut pan_ctx = EventCtx::new();
-                    dispatch_positional(
+                    dispatch_to_path(
                         &mut self.root,
-                        &path,
+                        &owner,
                         &(InputEvent::TouchPan { phase: TouchPanPhase::Cancel, position: point }),
                         &mut pan_ctx
                     );

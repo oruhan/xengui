@@ -413,6 +413,20 @@ pub fn dispatch_positional(
     event: &InputEvent,
     ctx: &mut EventCtx
 ) -> EventStatus {
+    dispatch_positional_capturing(tree, leaf_path, event, ctx).0
+}
+
+/// Same bubbling as `dispatch_positional`, but also returns the exact
+/// ancestor path that consumed the event - lets a caller (e.g. touch pan
+/// gesture tracking) cache that path and reach the same widget directly
+/// via `dispatch_to_path` on later events of the same gesture, instead of
+/// re-walking the whole ancestor chain from the original leaf every time.
+pub fn dispatch_positional_capturing(
+    tree: &mut [Box<dyn Widget>],
+    leaf_path: &str,
+    event: &InputEvent,
+    ctx: &mut EventCtx
+) -> (EventStatus, Option<String>) {
     for path in ancestor_paths(leaf_path).into_iter().rev() {
         let Some(widget) = find_widget_mut(tree, &path) else {
             continue;
@@ -433,10 +447,10 @@ pub fn dispatch_positional(
         }
 
         if status == EventStatus::Handled {
-            return EventStatus::Handled;
+            return (EventStatus::Handled, Some(path));
         }
     }
-    EventStatus::Ignored
+    (EventStatus::Ignored, None)
 }
 
 pub fn dispatch_to_path(
