@@ -16,6 +16,7 @@ pub mod kbd;
 pub mod switch;
 pub mod table;
 pub mod radio;
+pub mod slider;
 /* DevTools */
 pub mod devtools_panel;
 pub mod split_handle;
@@ -46,6 +47,7 @@ pub use kbd::Kbd;
 pub use switch::Switch;
 pub use table::{ Table, TableColumn, TableRow };
 pub use radio::RadioButton;
+pub use slider::Slider;
 /* DevTools */
 pub use devtools_panel::*;
 pub use split_handle::*;

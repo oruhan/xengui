@@ -38,5 +38,6 @@ pub use window_controls::{
     drag_window,
     is_window_maximized,
     minimize_window,
+    set_window_title,
     toggle_maximize_window,
 };

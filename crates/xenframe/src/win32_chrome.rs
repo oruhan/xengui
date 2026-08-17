@@ -50,6 +50,12 @@ use windows_sys::Win32::Graphics::Dwm::{
 };
 use windows_sys::Win32::UI::Controls::MARGINS;
 use windows_sys::Win32::Graphics::Dwm::DwmFlush;
+use windows_sys::Win32::Graphics::Gdi::{
+    GetMonitorInfoW,
+    MonitorFromWindow,
+    MONITORINFO,
+    MONITOR_DEFAULTTONEAREST,
+};
 
 const SUBCLASS_ID: usize = 1;
 const RESIZE_TIMER_ID: usize = 1;
@@ -92,6 +98,23 @@ unsafe extern "system" fn custom_chrome_subclass(
         WM_NCCALCSIZE if wparam != 0 => {
             let params = unsafe { &mut *(lparam as *mut NCCALCSIZE_PARAMS) };
             if (unsafe { IsZoomed(hwnd) }) != 0 {
+                // A maximized borderless window is still sized by Windows as
+                // if it had a standard frame, which pushes several pixels of
+                // the window past every edge of the monitor - DWM then clips
+                // that overflow, showing up as content cropped a few px from
+                // each side. Sizing the client rect to the monitor's work
+                // area (instead of GetWindowRect's own frame-inflated rect)
+                // keeps the maximized window flush with the screen.
+                let monitor = unsafe { MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST) };
+                if (monitor as isize) != 0 {
+                    let mut info: MONITORINFO = unsafe { std::mem::zeroed() };
+                    info.cbSize = std::mem::size_of::<MONITORINFO>() as u32;
+                    if (unsafe { GetMonitorInfoW(monitor, &mut info) }) != 0 {
+                        params.rgrc[0] = info.rcWork;
+                        return WVR_REDRAW as LRESULT;
+                    }
+                }
+
                 let mut rect = RECT { left: 0, top: 0, right: 0, bottom: 0 };
                 unsafe {
                     GetWindowRect(hwnd, &mut rect);

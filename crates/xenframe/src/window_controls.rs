@@ -32,6 +32,13 @@ pub fn drag_window() {
     });
 }
 
+/// Updates the OS window title - lets application code reflect dynamic
+/// state (e.g. the currently playing track) in the taskbar/native title
+/// bar, independent of any custom in-app titlebar UI.
+pub fn set_window_title(title: &str) {
+    with_window(|w| w.set_title(title));
+}
+
 pub fn minimize_window() {
     with_window(|w| w.set_minimized(true));
 }

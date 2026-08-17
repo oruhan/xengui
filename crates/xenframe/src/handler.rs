@@ -100,7 +100,8 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
                     )
                 )
                 .with_resizable(self.config.resizable)
-                .with_decorations(self.config.decorations);
+                .with_decorations(self.config.decorations)
+                .with_maximized(self.config.start_maximized);
         }
 
         #[cfg(target_arch = "wasm32")]
@@ -117,6 +118,11 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
         );
 
         crate::window_controls::set_active_window(window.clone());
+
+        #[cfg(not(target_arch = "wasm32"))]
+        if self.config.start_minimized {
+            window.set_minimized(true);
+        }
 
         #[cfg(target_os = "windows")]
         if !self.config.decorations {

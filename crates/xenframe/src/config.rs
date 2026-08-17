@@ -47,6 +47,15 @@ pub struct AppConfig {
     #[cfg(not(target_arch = "wasm32"))]
     pub decorations: bool,
 
+    /// Starts the window maximized - a normal windowed maximize where the
+    /// taskbar stays visible, not an exclusive/borderless fullscreen mode.
+    #[cfg(not(target_arch = "wasm32"))]
+    pub start_maximized: bool,
+
+    /// Starts the window minimized.
+    #[cfg(not(target_arch = "wasm32"))]
+    pub start_minimized: bool,
+
     /// Native window theme hint used by the operating system.
     pub theme: Option<winit::window::Theme>,
 
@@ -115,6 +124,11 @@ impl Default for AppConfig {
 
             #[cfg(not(target_arch = "wasm32"))]
             decorations: true,
+
+            #[cfg(not(target_arch = "wasm32"))]
+            start_maximized: false,
+            #[cfg(not(target_arch = "wasm32"))]
+            start_minimized: false,
 
             fonts: Vec::new(),
 
