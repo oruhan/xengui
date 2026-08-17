@@ -23,6 +23,7 @@ use xengui::{
     clear_text_selection_recursive,
     collect_focusable_paths,
     collect_selected_text_recursive,
+    dispatch_focus_within_transition,
     dispatch_hover_transition,
     dispatch_positional,
     dispatch_positional_capturing,
@@ -350,9 +351,11 @@ impl App {
     pub(crate) fn apply_event_ctx(&mut self, mut ctx: EventCtx) {
         if let Some(new_focus) = ctx.focus_target.take() {
             if self.input.focused_path.as_deref() != Some(new_focus.as_str()) {
-                if let Some(old) = self.input.focused_path.take() {
+                let old_focus = self.input.focused_path.take();
+
+                if let Some(old) = &old_focus {
                     let mut sub_ctx = EventCtx::new();
-                    dispatch_to_path(&mut self.root, &old, &InputEvent::FocusLost, &mut sub_ctx);
+                    dispatch_to_path(&mut self.root, old, &InputEvent::FocusLost, &mut sub_ctx);
                 }
 
                 let mut sub_ctx = EventCtx::new();
@@ -361,6 +364,13 @@ impl App {
                     &mut self.root,
                     &new_focus,
                     &(InputEvent::FocusGained { via_keyboard: false }),
+                    &mut sub_ctx
+                );
+
+                dispatch_focus_within_transition(
+                    &mut self.root,
+                    old_focus.as_deref(),
+                    Some(&new_focus),
                     &mut sub_ctx
                 );
 
@@ -379,6 +389,7 @@ impl App {
         } else if ctx.clear_focus && let Some(old) = self.input.focused_path.take() {
             let mut sub_ctx = EventCtx::new();
             dispatch_to_path(&mut self.root, &old, &InputEvent::FocusLost, &mut sub_ctx);
+            dispatch_focus_within_transition(&mut self.root, Some(&old), None, &mut sub_ctx);
             #[cfg(target_arch = "wasm32")]
             self.hide_native_input();
         }
@@ -421,9 +432,11 @@ impl App {
             (Some(i), true) => (i + focusable.len() - 1) % focusable.len(),
         };
 
-        if let Some(old) = self.input.focused_path.take() {
+        let old_focus = self.input.focused_path.take();
+
+        if let Some(old) = &old_focus {
             let mut ctx = EventCtx::new();
-            dispatch_to_path(&mut self.root, &old, &InputEvent::FocusLost, &mut ctx);
+            dispatch_to_path(&mut self.root, old, &InputEvent::FocusLost, &mut ctx);
             #[cfg(target_arch = "wasm32")]
             self.hide_native_input();
             self.apply_event_ctx(ctx);
@@ -435,6 +448,12 @@ impl App {
             &mut self.root,
             &new_path,
             &(InputEvent::FocusGained { via_keyboard: true }),
+            &mut ctx
+        );
+        dispatch_focus_within_transition(
+            &mut self.root,
+            old_focus.as_deref(),
+            Some(&new_path),
             &mut ctx
         );
         self.input.focused_path = Some(new_path.to_string());
@@ -511,7 +530,15 @@ impl App {
                             &InputEvent::FocusLost,
                             &mut ctx
                         );
+                        dispatch_focus_within_transition(
+                            &mut self.root,
+                            Some(&focused),
+                            None,
+                            &mut ctx
+                        );
                         self.input.focused_path = None;
+                        #[cfg(target_arch = "wasm32")]
+                        self.hide_native_input();
                         self.apply_event_ctx(ctx);
                     }
                 }

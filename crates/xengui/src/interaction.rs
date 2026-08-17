@@ -31,6 +31,7 @@ pub struct Interaction {
     pub pressed: bool,
     pub focused: bool,
     pub focus_visible: bool,
+    pub focus_within: bool,
 
     pub on_mouse_enter: Option<Callback>,
     pub on_mouse_leave: Option<Callback>,
@@ -53,6 +54,7 @@ impl Interaction {
             pressed: false,
             focused: false,
             focus_visible: false,
+            focus_within: false,
             on_mouse_enter: None,
             on_mouse_leave: None,
             on_hover: None,
@@ -86,8 +88,9 @@ impl Interaction {
         self.pressed = old.pressed;
         self.focused = old.focused;
         self.focus_visible = old.focus_visible;
+        self.focus_within = old.focus_within;
     }
-
+    
     fn is_activation_key(key: Key) -> bool {
         matches!(key, Key::Enter | Key::Space)
     }

@@ -1900,6 +1900,7 @@ dependencies = [
  "ico",
  "image 0.24.9",
  "log",
+ "smol_str 0.3.6",
  "web-time",
  "winres",
  "xen-clipboard",

@@ -143,6 +143,7 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
 
             if
                 let WindowPosition::Center = self.config.position &&
+                !self.config.start_maximized &&
                 let Some(monitor) = window.current_monitor()
             {
                 use winit::dpi::PhysicalPosition;
@@ -942,9 +943,15 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
                 }
 
                 let is_drag_region = path.as_deref().is_some_and(|p| {
-                    // Walks every ancestor (not just the exact widget the
-                    // click hit) so a drag region still works when the
-                    // press lands on a label or icon nested inside it.
+                    // The exact widget under the cursor gets priority: if it
+                    // has its own click handling (e.g. a titlebar button),
+                    // an ancestor's drag region must not swallow the click.
+                    let hit_is_clickable = find_widget_mut(&mut self.root, p).is_some_and(|w|
+                        w.interaction().is_some_and(|i| i.on_click.is_some())
+                    );
+                    if hit_is_clickable {
+                        return false;
+                    }
                     xengui
                         ::ancestor_paths(p)
                         .iter()

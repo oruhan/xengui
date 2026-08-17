@@ -20,6 +20,7 @@ pub struct WidgetBase {
     pub pressed_style: Option<Style>,
     pub disabled_style: Option<Style>,
     pub focus_style: Option<Style>,
+    pub focus_within_style: Option<Style>,
     pub focused_hover_style: Option<Style>,
     pub focused_pressed_style: Option<Style>,
 
@@ -41,6 +42,7 @@ impl WidgetBase {
             pressed_style: None,
             disabled_style: None,
             focus_style: None,
+            focus_within_style: None,
             focused_hover_style: None,
             focused_pressed_style: None,
 
@@ -76,6 +78,10 @@ impl WidgetBase {
         // ring style; the combined patches still win over either single
         // state since they're the most specific match.
         if hovered && let Some(patch) = &self.hover_style {
+            computed = computed.overlay(patch);
+        }
+
+        if self.interaction.focus_within && let Some(patch) = &self.focus_within_style {
             computed = computed.overlay(patch);
         }
 

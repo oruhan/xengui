@@ -1,5 +1,4 @@
 // SPDX-License-Identifier: Apache-2.0
-
 pub trait WidgetContent: Sized {
     fn with_content(self, content: impl Into<smol_str::SmolStr>) -> Self;
 }

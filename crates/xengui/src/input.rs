@@ -187,6 +187,7 @@ pub enum InputEvent {
         phase: TouchPanPhase,
         position: (f32, f32),
     },
+    FocusWithinChanged(bool),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -494,6 +495,30 @@ pub fn dispatch_hover_transition(
     for path in &new_chain {
         if !old_chain.contains(path) {
             dispatch_to_path(tree, path, &InputEvent::MouseEntered, ctx);
+        }
+    }
+}
+
+/// Bubbles a `focus_within` flag up every ancestor exclusive to one side
+/// of the change, the same way `dispatch_hover_transition` bubbles hover -
+/// lets a container react when any descendant gains/loses focus.
+pub fn dispatch_focus_within_transition(
+    tree: &mut [Box<dyn Widget>],
+    old_path: Option<&str>,
+    new_path: Option<&str>,
+    ctx: &mut EventCtx
+) {
+    let old_chain: Vec<String> = old_path.map(ancestor_paths).unwrap_or_default();
+    let new_chain: Vec<String> = new_path.map(ancestor_paths).unwrap_or_default();
+
+    for path in &old_chain {
+        if !new_chain.contains(path) {
+            dispatch_to_path(tree, path, &InputEvent::FocusWithinChanged(false), ctx);
+        }
+    }
+    for path in &new_chain {
+        if !old_chain.contains(path) {
+            dispatch_to_path(tree, path, &InputEvent::FocusWithinChanged(true), ctx);
         }
     }
 }

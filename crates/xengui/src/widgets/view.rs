@@ -1976,7 +1976,7 @@ impl StyleBuilder for View {
 
 crate::impl_interaction_builders!(base View);
 crate::impl_common_style_builders!(base View);
-crate::impl_themed_style_builders!(base View; hover_style => hover_style, pressed_style => pressed_style, disabled_style => disabled_style, focus_style => focus_style, focused_hover_style => focused_hover_style, focused_pressed_style => focused_pressed_style);
+crate::impl_themed_style_builders!(base View; hover_style => hover_style, pressed_style => pressed_style, disabled_style => disabled_style, focus_style => focus_style, focus_within_style => focus_within_style, focused_hover_style => focused_hover_style, focused_pressed_style => focused_pressed_style);
 
 impl Widget for View {
     crate::impl_widget_boilerplate!();
@@ -2223,6 +2223,18 @@ impl Widget for View {
         }
         if let Some(status) = self.handle_touch_pan(event, ctx) {
             return status;
+        }
+
+        if let Some(status) = self.handle_touch_pan(event, ctx) {
+            return status;
+        }
+
+        if let InputEvent::FocusWithinChanged(within) = event {
+            self.base.interaction.focus_within = *within;
+            self.base.dirty = true;
+            self.recompute_style();
+            ctx.request_redraw();
+            return EventStatus::Handled;
         }
 
         if let InputEvent::AnimationTick { dt } = event {

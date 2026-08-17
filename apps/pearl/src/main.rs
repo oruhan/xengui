@@ -2,6 +2,9 @@
 // hide console window on windows subsystem
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod components;
+use components::{ AlbumArt, IconButton };
+
 use web_time::Duration;
 use xenframe::{ App, AppConfig };
 
@@ -80,17 +83,17 @@ fn pearl_theme() -> Theme {
         .on_tertiary(Color::PURPLE_950)
         .tertiary_container(Color::PURPLE_900)
         .on_tertiary_container(Color::PURPLE_100)
-        .outline(Color::rgb(74, 62, 92))
-        .outline_variant(Color::rgb(48, 40, 60))
-        .surface(Color::rgb(20, 17, 26))
-        .surface_bright(Color::rgb(40, 34, 50))
-        .surface_dim(Color::rgb(12, 10, 16))
-        .surface_container_lowest(Color::rgb(10, 8, 14))
-        .surface_container_low(Color::rgb(22, 19, 29))
-        .surface_container(Color::rgb(28, 24, 36))
-        .surface_container_high(Color::rgb(36, 31, 46))
-        .surface_container_highest(Color::rgb(44, 38, 56))
-        .background(Color::rgb(14, 12, 18))
+        .outline(Color::rgb(58, 48, 72))
+        .outline_variant(Color::rgb(36, 30, 46))
+        .surface(Color::rgb(13, 11, 17))
+        .surface_bright(Color::rgb(28, 24, 36))
+        .surface_dim(Color::rgb(7, 6, 10))
+        .surface_container_lowest(Color::rgb(5, 4, 8))
+        .surface_container_low(Color::rgb(14, 12, 19))
+        .surface_container(Color::rgb(18, 15, 24))
+        .surface_container_high(Color::rgb(24, 20, 31))
+        .surface_container_highest(Color::rgb(30, 26, 39))
+        .background(Color::rgb(8, 7, 11))
         .on_background(Color::VIOLET_50)
         .on_surface(Color::VIOLET_50)
         .on_surface_variant(Color::VIOLET_200)
@@ -101,33 +104,6 @@ fn pearl_theme() -> Theme {
 
 fn format_duration(total_secs: u32) -> String {
     format!("{}:{:02}", total_secs / 60, total_secs % 60)
-}
-
-// ---------------------------------------------------------------------
-// Small reusable pieces (all icon-based, no hardcoded SVGs)
-// ---------------------------------------------------------------------
-
-fn icon_button(
-    codepoint: char,
-    color: Color,
-    size: f32,
-    on_click: impl FnMut(&mut EventCtx) + 'static
-) -> View {
-    View::new()
-        .width(px!(size))
-        .height(px!(size))
-        .align_items(Align::Center)
-        .justify_content(JustifyContent::Center)
-        .background(Color::TRANSPARENT)
-        .color(color)
-        .border(Border::all(0.0, Color::TRANSPARENT).radius(size * 0.5))
-        .transition_all(Transition::new(Duration::from_millis(140)).easing(Easing::EaseOut))
-        .hover_style(|s, theme: &Theme| s.background(theme.surface_container_high))
-        .pressed_style(|s, theme: &Theme|
-            s.background(theme.surface_container_highest).scale(0.88).content_scale(1.0)
-        )
-        .child(VariableIcon::new(codepoint).size(size * 0.5))
-        .on_click(on_click)
 }
 
 fn play_pause_button(
@@ -204,18 +180,6 @@ fn brand_logo(theme: &Theme) -> View {
         .child(VariableIcon::new(codepoints::MUSIC_NOTE).size(13.0))
 }
 
-fn album_art_block(size: f32, icon_size: f32, color: Color) -> View {
-    View::new()
-        .width(px!(size))
-        .height(px!(size))
-        .align_items(Align::Center)
-        .justify_content(JustifyContent::Center)
-        .background(color)
-        .color(Color::WHITE.with_alpha_f32(0.92))
-        .border(Border::all(0.0, Color::TRANSPARENT).radius(8.0))
-        .child(VariableIcon::new(codepoints::MUSIC_NOTE).size(icon_size))
-}
-
 // Search bar has a static 1px border; the inner TextBox gets its own
 // focus outline since the framework has no CSS `:focus-within` equivalent
 // to react to a child's focus from the wrapping container.
@@ -228,6 +192,12 @@ fn search_box(theme: &Theme) -> View {
         .padding(Edges::symmetric(16.0, 9.0))
         .background(theme.surface_container_high)
         .border(Border::all(1.0, theme.outline_variant).radius(24.0))
+        .transition_all(Transition::new(Duration::from_millis(140)).easing(Easing::EaseOut))
+        .focus_within_style(|s, theme: &Theme|
+            s
+                .border(Border::all(1.5, theme.primary).radius(24.0))
+                .outline(Outline::new(1.0, theme.primary.with_alpha(70), None, 2.0))
+        )
         .child(VariableIcon::new(codepoints::SEARCH).size(16.0).color(theme.on_surface_variant))
         .child(
             TextBox::new()
@@ -239,9 +209,6 @@ fn search_box(theme: &Theme) -> View {
                 .outline(StyleValue::None)
                 .padding(Edges::all(0.0))
                 .color(theme.on_surface)
-                .focus_style(|s, theme: &Theme|
-                    s.outline(Outline::new(1.0, theme.primary, None, 2.0))
-                )
         )
 }
 
@@ -282,18 +249,53 @@ fn nav_item(
         .on_click(on_click)
 }
 
-fn playlists_list(
-    theme: &Theme,
-    playlists: &[Playlist],
+fn playlist_row(
+    theme: Theme,
+    playlist: Playlist,
     set_playlists: SetState<Vec<Playlist>>
-) -> View {
-    let mut list = Column::new().flex_grow(1.0).overflow_y(Overflow::Auto).gap(0.0, 2.0);
+) -> Box<dyn Widget> {
+    let id = playlist.id;
 
-    for playlist in playlists {
-        let id = playlist.id;
+    component(format!("playlist_row_{id}"), move || {
+        let (editing, set_editing) = use_state(false);
+        let (draft, set_draft) = use_state(playlist.name.to_string());
+
         let set_playlists_del = set_playlists.clone();
+        let set_playlists_rename = set_playlists.clone();
+        let set_editing_start = set_editing.clone();
 
-        let row = Row::new()
+        let name_widget: Box<dyn Widget> = if editing {
+            Box::new(
+                TextBox::new()
+                    .value(draft.clone())
+                    .font_size(px!(13.0))
+                    .padding(Edges::all(0.0))
+                    .background(Color::TRANSPARENT)
+                    .border(Border::all(0.0, Color::TRANSPARENT))
+                    .outline(StyleValue::None)
+                    .color(theme.on_surface)
+                    .on_change(move |value, _ctx| set_draft.set(value.to_string()))
+                    .on_submit(move |value, ctx| {
+                        let new_name = value.to_string();
+                        set_playlists_rename.update(move |list| {
+                            if let Some(p) = list.iter_mut().find(|p| p.id == id) {
+                                p.name = new_name.clone();
+                            }
+                        });
+                        set_editing.set(false);
+                        ctx.request_redraw();
+                    })
+            )
+        } else {
+            Box::new(
+                Label::new()
+                    .label(playlist.name.clone())
+                    .font_size(px!(13.0))
+                    .color(theme.on_surface)
+            )
+        };
+
+        let mut row = Row::new()
             .key(format!("playlist_{id}"))
             .align_items(Align::Center)
             .gap(10.0, 0.0)
@@ -312,12 +314,7 @@ fn playlists_list(
                 Column::new()
                     .flex_grow(1.0)
                     .gap(0.0, 1.0)
-                    .child(
-                        Label::new()
-                            .label(playlist.name.clone())
-                            .font_size(px!(13.0))
-                            .color(theme.on_surface)
-                    )
+                    .child_boxed(name_widget)
                     .child(
                         Label::new()
                             .label(format!("{} songs", playlist.track_count))
@@ -326,15 +323,41 @@ fn playlists_list(
                     )
             )
             .child(
-                icon_button(codepoints::CLOSE, theme.on_surface_variant, 26.0, move |ctx| {
-                    set_playlists_del.update(move |list| list.retain(|p| p.id != id));
-                    ctx.request_redraw();
-                })
+                IconButton::new(codepoints::EDIT)
+                    .color(theme.on_surface_variant)
+                    .size(26.0)
+                    .on_click(move |ctx| {
+                        set_editing_start.set(true);
+                        ctx.request_redraw();
+                    })
+            )
+            .child(
+                IconButton::new(codepoints::CLOSE)
+                    .color(theme.on_surface_variant)
+                    .size(26.0)
+                    .on_click(move |ctx| {
+                        set_playlists_del.update(move |list| list.retain(|p| p.id != id));
+                        ctx.request_redraw();
+                    })
             );
 
-        list = list.child(row);
-    }
+        row = row.on_click(move |_ctx| xen_router::push(format!("/playlist/{id}")));
 
+        Box::new(row) as Box<dyn Widget>
+    })
+}
+
+fn playlists_list(
+    theme: &Theme,
+    playlists: &[Playlist],
+    set_playlists: SetState<Vec<Playlist>>
+) -> View {
+    let mut list = Column::new().flex_grow(1.0).overflow_y(Overflow::Auto).gap(0.0, 2.0);
+    for playlist in playlists {
+        list = list.child_boxed(
+            playlist_row(theme.clone(), playlist.clone(), set_playlists.clone())
+        );
+    }
     list
 }
 
@@ -514,7 +537,8 @@ fn song_row(
     set_is_playing: SetState<bool>,
     set_progress: SetState<f32>
 ) -> View {
-    let art = album_art_block(42.0, 16.0, track.art_color);
+    let art = AlbumArt::new(track.art_color).size(42.0).icon_size(16.0);
+
     let title_color = if is_current { theme.primary } else { theme.on_surface };
 
     let texts = Column::new()
@@ -729,6 +753,94 @@ fn build_library_page(theme: &Theme, playlists: &[Playlist]) -> Box<dyn Widget> 
     )
 }
 
+fn build_playlist_page(theme: &Theme, playlist: &Playlist, tracks: &[Track]) -> Box<dyn Widget> {
+    let header = Row::new()
+        .width(pct!(100.0))
+        .align_items(Align::Center)
+        .gap(16.0, 0.0)
+        .padding(Edges::only(24.0, 22.0, 24.0, 14.0))
+        .child(AlbumArt::new(playlist.color).size(88.0).icon_size(34.0))
+        .child(
+            Column::new()
+                .gap(0.0, 4.0)
+                .child(
+                    Label::new()
+                        .label("PLAYLIST")
+                        .font_size(px!(11.0))
+                        .font_weight(FontWeight::SemiBold)
+                        .color(theme.on_surface_variant)
+                )
+                .child(
+                    Label::new()
+                        .label(playlist.name.clone())
+                        .font_size(px!(24.0))
+                        .font_weight(FontWeight::Bold)
+                        .color(theme.on_background)
+                )
+                .child(
+                    Label::new()
+                        .label(format!("{} songs", playlist.track_count.max(tracks.len() as u32)))
+                        .font_size(px!(12.5))
+                        .color(theme.on_surface_variant)
+                )
+        );
+
+    let mut list = Column::new()
+        .width(pct!(100.0))
+        .gap(2.0, 2.0)
+        .padding(Edges::only(24.0, 0.0, 24.0, 96.0));
+
+    // Sample data has no real per-playlist track association yet, so every
+    // playlist page previews the same shared library for now.
+    for (index, track) in tracks.iter().enumerate() {
+        list = list.child(
+            Row::new()
+                .key(format!("pl_track_{index}"))
+                .width(pct!(100.0))
+                .align_items(Align::Center)
+                .gap(12.0, 0.0)
+                .padding(Edges::symmetric(12.0, 8.0))
+                .border(Border::all(0.0, Color::TRANSPARENT).radius(10.0))
+                .transition_all(Transition::new(Duration::from_millis(140)).easing(Easing::EaseOut))
+                .hover_background(theme.surface_container_high)
+                .child(AlbumArt::new(track.art_color).size(42.0).icon_size(16.0))
+                .child(
+                    Column::new()
+                        .flex_grow(1.0)
+                        .gap(0.0, 2.0)
+                        .child(
+                            Label::new()
+                                .label(track.title.clone())
+                                .font_size(px!(13.5))
+                                .color(theme.on_surface)
+                        )
+                        .child(
+                            Label::new()
+                                .label(track.artist.clone())
+                                .font_size(px!(12.0))
+                                .color(theme.on_surface_variant)
+                        )
+                )
+                .child(
+                    Label::new()
+                        .label(format_duration(track.duration_secs))
+                        .font_size(px!(12.0))
+                        .color(theme.on_surface_variant)
+                )
+        );
+    }
+
+    Box::new(
+        Column::new()
+            .flex_grow(1.0)
+            .height(pct!(100.0))
+            .overflow_y(Overflow::Auto)
+            .background(theme.background)
+            .child(header)
+            .child(list)
+    )
+}
+
 // ---------------------------------------------------------------------
 // Bottom player bar
 // ---------------------------------------------------------------------
@@ -758,7 +870,7 @@ fn build_player_bar(
         .width(px!(300.0))
         .align_items(Align::Center)
         .gap(12.0, 0.0)
-        .child(album_art_block(52.0, 20.0, track.art_color))
+        .child(AlbumArt::new(track.art_color).size(52.0).icon_size(20.0))
         .child(
             Column::new()
                 .gap(0.0, 2.0)
@@ -775,7 +887,7 @@ fn build_player_bar(
                         .color(theme.on_surface_variant)
                 )
         )
-        .child(icon_button(codepoints::FAVORITE, theme.on_surface_variant, 34.0, |_ctx| {}));
+        .child(IconButton::new(codepoints::FAVORITE).color(theme.on_surface_variant).size(34.0));
 
     let shuffle_color = if shuffle_on { theme.primary } else { theme.on_surface_variant };
     let repeat_color = if repeat_on { theme.primary } else { theme.on_surface_variant };
@@ -820,11 +932,31 @@ fn build_player_bar(
     let transport = Row::new()
         .align_items(Align::Center)
         .gap(16.0, 0.0)
-        .child(icon_button(codepoints::SHUFFLE, shuffle_color, 32.0, toggle_shuffle))
-        .child(icon_button(codepoints::SKIP_PREVIOUS, theme.on_surface, 32.0, prev_track))
+        .child(
+            IconButton::new(codepoints::SHUFFLE)
+                .color(shuffle_color)
+                .size(32.0)
+                .on_click(toggle_shuffle)
+        )
+        .child(
+            IconButton::new(codepoints::SKIP_PREVIOUS)
+                .color(theme.on_surface)
+                .size(32.0)
+                .on_click(prev_track)
+        )
         .child(play_pause_button(theme, is_playing, toggle_play))
-        .child(icon_button(codepoints::SKIP_NEXT, theme.on_surface, 32.0, next_track))
-        .child(icon_button(codepoints::REPEAT, repeat_color, 32.0, toggle_repeat));
+        .child(
+            IconButton::new(codepoints::SKIP_NEXT)
+                .color(theme.on_surface)
+                .size(32.0)
+                .on_click(next_track)
+        )
+        .child(
+            IconButton::new(codepoints::REPEAT)
+                .color(repeat_color)
+                .size(32.0)
+                .on_click(toggle_repeat)
+        );
 
     let elapsed = (progress * (track.duration_secs as f32)) as u32;
 
@@ -893,7 +1025,12 @@ fn build_player_bar(
             .justify_content(JustifyContent::End)
             .align_items(Align::Center)
             .gap(8.0, 0.0)
-            .child(icon_button(volume_icon, theme.on_surface_variant, 32.0, toggle_mute))
+            .child(
+                IconButton::new(volume_icon)
+                    .color(theme.on_surface_variant)
+                    .size(32.0)
+                    .on_click(toggle_mute)
+            )
             .child(
                 Slider::new()
                     .value(volume)
@@ -910,6 +1047,47 @@ fn build_player_bar(
     }
 
     bar
+}
+
+fn build_mini_player(
+    theme: &Theme,
+    track: &Track,
+    is_playing: bool,
+    toggle_play: impl Fn(&mut EventCtx) + 'static
+) -> View {
+    Row::new()
+        .width(pct!(100.0))
+        .height(px!(60.0))
+        .min_height(px!(60.0))
+        .align_items(Align::Center)
+        .gap(10.0, 0.0)
+        .padding(Edges::symmetric(12.0, 0.0))
+        .background(theme.surface_container)
+        .border(Border::top(1.0, theme.outline_variant))
+        .child(AlbumArt::new(track.art_color).size(40.0).icon_size(16.0))
+        .child(
+            Column::new()
+                .flex_grow(1.0)
+                .gap(0.0, 2.0)
+                .child(
+                    Label::new()
+                        .label(track.title.clone())
+                        .font_size(px!(12.5))
+                        .color(theme.on_surface)
+                )
+                .child(
+                    Label::new()
+                        .label(track.artist.clone())
+                        .font_size(px!(11.0))
+                        .color(theme.on_surface_variant)
+                )
+        )
+        .child(
+            IconButton::new(if is_playing { codepoints::PAUSE } else { codepoints::PLAY_ARROW })
+                .color(theme.on_surface)
+                .size(38.0)
+                .on_click(toggle_play)
+        )
 }
 
 // ---------------------------------------------------------------------
@@ -1030,6 +1208,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     )
                 })
                 .route("/search", move |_params| { build_search_page(&theme_search) })
+                .route("/playlist/:id", {
+                    let theme_playlist = theme.clone();
+                    let playlists_playlist = playlists.clone();
+                    let tracks_playlist = tracks.clone();
+                    move |params| {
+                        let id: u32 = params
+                            .get("id")
+                            .and_then(|s| s.parse().ok())
+                            .unwrap_or(0);
+                        match playlists_playlist.iter().find(|p| p.id == id) {
+                            Some(playlist) =>
+                                build_playlist_page(&theme_playlist, playlist, &tracks_playlist),
+                            None => Box::new(View::new()) as Box<dyn Widget>,
+                        }
+                    }
+                })
                 .route("/library", move |_params| {
                     build_library_page(&theme_library, &playlists_library)
                 })
@@ -1053,32 +1247,46 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         body = body.child_boxed(content);
 
-        let player_bar = build_player_bar(
-            &theme,
-            &tracks,
-            current_track,
-            is_playing,
-            progress,
-            volume,
-            shuffle_on,
-            repeat_on,
-            show_sidebar,
-            set_current_track.clone(),
-            set_is_playing.clone(),
-            set_progress.clone(),
-            set_volume.clone(),
-            set_shuffle_on.clone(),
-            set_repeat_on.clone()
-        );
-
         let mut main_view = Column::new()
             .width(pct!(100.0))
             .height(pct!(100.0))
             .background(theme.background)
             .font("Nunito")
             .child(titlebar)
-            .child(body)
-            .child(player_bar);
+            .child(body);
+
+        if show_sidebar {
+            let player_bar = build_player_bar(
+                &theme,
+                &tracks,
+                current_track,
+                is_playing,
+                progress,
+                volume,
+                shuffle_on,
+                repeat_on,
+                show_sidebar,
+                set_current_track.clone(),
+                set_is_playing.clone(),
+                set_progress.clone(),
+                set_volume.clone(),
+                set_shuffle_on.clone(),
+                set_repeat_on.clone()
+            );
+            main_view = main_view.child(player_bar);
+        } else {
+            let set_is_playing_mini = set_is_playing.clone();
+            let mini_player = build_mini_player(
+                &theme,
+                &tracks[current_track],
+                is_playing,
+                move |ctx| {
+                    set_is_playing_mini.set(!is_playing);
+                    ctx.request_redraw();
+                }
+            );
+            main_view = main_view.child(mini_player);
+        }
 
         if !show_sidebar {
             let active_index = match current_path.as_str() {
