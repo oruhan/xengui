@@ -19,4 +19,4 @@ if ! command -v trunk &> /dev/null; then
     chmod +x "$CARGO_HOME/bin/trunk"
 fi
 
-trunk build --config ./Trunk.toml --release
+trunk build --config ./apps/pearl/Trunk.toml --release
