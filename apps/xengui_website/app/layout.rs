@@ -29,7 +29,7 @@ pub fn layout(_params: &RouteParams, child: Box<dyn Widget>) -> Box<dyn Widget> 
                             .justify_content(JustifyContent::SpaceBetween)
                             .width(pct!(100))
                             .height(px!(55))
-                            .backdrop_filter(Filter::Blur(Length::px(8.0)))
+                            /*.backdrop_filter(Filter::Blur(Length::px(8.0)))*/
                             .background(|theme: &Theme|
                                 theme.surface_container_lowest.with_alpha(200)
                             )
