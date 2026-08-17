@@ -411,7 +411,19 @@ fn translate_subtree(
     }
 
     let b = *widget.layout_box();
-    let mut moved = LayoutBox { x: b.x + dx, y: b.y + dy, width: b.width, height: b.height };
+    // Snap to the same pixel grid apply_layout uses for a full layout pass.
+    // Without this, overscroll's rubber-band curve (a continuous, fractional
+    // function) accumulates sub-pixel positions frame over frame, so the
+    // scissor/AA rounding done downstream (scissor_for_clip, the rect SDF
+    // shaders) lands on a different pixel boundary every frame even when the
+    // visual position barely changed - read as edge flicker/ghosting during
+    // the bounce.
+    let mut moved = LayoutBox {
+        x: (b.x + dx).round(),
+        y: (b.y + dy).round(),
+        width: b.width,
+        height: b.height,
+    };
 
     if position == Position::Sticky && let Some(container) = scroll_viewport {
         let style = widget.computed_style();
