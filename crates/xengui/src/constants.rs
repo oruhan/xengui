@@ -121,6 +121,24 @@ pub const OVERSCROLL_RETURN_TRANSITION: Transition = Transition::new(
 pub const OVERSCROLL_GLOW_FADE_TRANSITION: Transition = Transition::new(
     web_time::Duration::from_millis(385)
 ).easing(Easing::Linear);
+/// Visual travel (px) a `Stretch`-mode drag/fling asymptotically
+/// approaches - shorter than `OVERSCROLL_RUBBER_BAND_RANGE`, matching
+/// Android's stretch overscroll, which resists further than a loose
+/// rubber-band bounce.
+pub const STRETCH_RUBBER_BAND_RANGE: f32 = 48.0;
+/// Extra friction multiplier applied while a fling coasts inside the
+/// rubber-band zone under `Overscroll::Stretch` - snappier than
+/// `MOMENTUM_OVERSCROLL_FRICTION_MULTIPLIER` so the stretch settles
+/// quickly instead of lingering like a bounce.
+pub const STRETCH_OVERSCROLL_FRICTION_MULTIPLIER: f32 = 4.5;
+/// Eased transition used to spring a `Stretch`-mode overscrolled offset
+/// back to bounds - snappier than `OVERSCROLL_RETURN_TRANSITION`.
+pub const STRETCH_RETURN_TRANSITION: Transition = Transition::new(
+    web_time::Duration::from_millis(180)
+).easing(Easing::EaseOut);
+/// Thickness (px) of the full-span edge-glow band for `Overscroll::Glow`,
+/// drawn across the whole hit edge instead of anchored to the gesture point.
+pub const OVERSCROLL_GLOW_BAND_THICKNESS: f32 = 3.0;
 
 /* ---- Gradient ----- */
 // Bounded by the rect pipeline's vertex-attribute budget (see

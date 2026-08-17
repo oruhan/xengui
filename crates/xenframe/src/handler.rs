@@ -941,13 +941,24 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
                     }
                 }
 
+                let is_drag_region = path.as_deref().is_some_and(|p| {
+                    // Walks every ancestor (not just the exact widget the
+                    // click hit) so a drag region still works when the
+                    // press lands on a label or icon nested inside it.
+                    xengui
+                        ::ancestor_paths(p)
+                        .iter()
+                        .any(|ancestor| {
+                            find_widget_mut(&mut self.root, ancestor).is_some_and(|w|
+                                w.interaction().is_some_and(|i| i.drag_region)
+                            )
+                        })
+                });
+
                 if
                     state == winit::event::ElementState::Pressed &&
                     button == winit::event::MouseButton::Left &&
-                    let Some(p) = &path &&
-                    find_widget_mut(&mut self.root, p).is_some_and(|w|
-                        w.interaction().is_some_and(|i| i.drag_region)
-                    )
+                    is_drag_region
                 {
                     let window = self.window.clone();
                     let scale_factor = window.as_ref().map_or(1.0, |w| w.scale_factor() as f32);

@@ -262,10 +262,6 @@ pub struct View {
     // to snap that edge's animated value back up to full intensity.
     glow_pending_hit: Cell<[bool; 4]>,
     glow_anim_ids: [WidgetId; 4],
-    // Screen-space point of the most recent scroll/drag interaction, used
-    // to anchor the overscroll glow to the finger/pointer like GTK does,
-    // instead of spanning the whole edge uniformly.
-    last_interaction_point: Cell<(f32, f32)>,
     // When true, `set_content_size` snaps vertical scroll straight to the
     // bottom instead of preserving whatever offset the view already had
     pin_scroll_bottom: bool,
@@ -325,7 +321,6 @@ impl View {
                 WidgetId::new_unique(),
                 WidgetId::new_unique(),
             ],
-            last_interaction_point: Cell::new((0.0, 0.0)),
             pin_scroll_bottom: false,
         };
         view = view
@@ -342,6 +337,11 @@ impl View {
 
     pub fn child(mut self, child: impl Widget + 'static) -> Self {
         self.children.push(Box::new(child));
+        self
+    }
+
+    pub fn child_boxed(mut self, child: Box<dyn Widget>) -> Self {
+        self.children.push(child);
         self
     }
 
@@ -471,7 +471,15 @@ impl View {
             allow_rubber_band && matches!(mode, Overscroll::Bounce | Overscroll::Stretch);
 
         if rubber_bandable {
-            let range = OVERSCROLL_RUBBER_BAND_RANGE * self.scale_factor.get();
+            // Stretch resists further than Bounce - a shorter travel range
+            // matches Android's tighter, snappier stretch instead of iOS's
+            // looser springy bounce.
+            let base_range = if mode == Overscroll::Stretch {
+                STRETCH_RUBBER_BAND_RANGE
+            } else {
+                OVERSCROLL_RUBBER_BAND_RANGE
+            };
+            let range = base_range * self.scale_factor.get();
             let value = if raw < 0.0 {
                 -Self::rubber_band(-raw, range)
             } else {
@@ -483,7 +491,7 @@ impl View {
         }
     }
 
-    fn note_edge_hit(&self, side: EdgeSide, point: Option<(f32, f32)>, ctx: &mut EventCtx) {
+    fn note_edge_hit(&self, side: EdgeSide, ctx: &mut EventCtx) {
         if self.effective_overscroll() != Overscroll::Glow {
             return;
         }
@@ -496,9 +504,6 @@ impl View {
         let mut pending = self.glow_pending_hit.get();
         pending[idx] = true;
         self.glow_pending_hit.set(pending);
-        if let Some(point) = point {
-            self.last_interaction_point.set(point);
-        }
         ctx.request_redraw();
     }
 
@@ -814,7 +819,13 @@ impl View {
         let transition = if direct_manipulation {
             None
         } else if overscrolled {
-            Some(OVERSCROLL_RETURN_TRANSITION)
+            Some(
+                if self.effective_overscroll() == Overscroll::Stretch {
+                    STRETCH_RETURN_TRANSITION
+                } else {
+                    OVERSCROLL_RETURN_TRANSITION
+                }
+            )
         } else {
             Some(SCROLL_TRANSITION)
         };
@@ -1196,26 +1207,10 @@ impl View {
         let (next_y, hit_y) = self.react_to_bounds(current.1 + dy, self.max_scroll_y(), true);
 
         if hit_x {
-            self.note_edge_hit(
-                if dx < 0.0 {
-                    EdgeSide::Left
-                } else {
-                    EdgeSide::Right
-                },
-                Some(position),
-                ctx
-            );
+            self.note_edge_hit(if dx < 0.0 { EdgeSide::Left } else { EdgeSide::Right }, ctx);
         }
         if hit_y {
-            self.note_edge_hit(
-                if dy < 0.0 {
-                    EdgeSide::Top
-                } else {
-                    EdgeSide::Bottom
-                },
-                Some(position),
-                ctx
-            );
+            self.note_edge_hit(if dy < 0.0 { EdgeSide::Top } else { EdgeSide::Bottom }, ctx);
         }
 
         let next = (next_x, next_y);
@@ -1596,26 +1591,10 @@ impl View {
         let (next_y, hit_y) = self.react_to_bounds(current.1 + vy * dt, self.max_scroll_y(), false);
 
         if hit_x {
-            self.note_edge_hit(
-                if vx < 0.0 {
-                    EdgeSide::Left
-                } else {
-                    EdgeSide::Right
-                },
-                Some(state.current),
-                ctx
-            );
+            self.note_edge_hit(if vx < 0.0 { EdgeSide::Left } else { EdgeSide::Right }, ctx);
         }
         if hit_y {
-            self.note_edge_hit(
-                if vy < 0.0 {
-                    EdgeSide::Top
-                } else {
-                    EdgeSide::Bottom
-                },
-                Some(state.current),
-                ctx
-            );
+            self.note_edge_hit(if vy < 0.0 { EdgeSide::Top } else { EdgeSide::Bottom }, ctx);
         }
 
         let next = (next_x, next_y);
@@ -1717,7 +1696,6 @@ impl View {
                         } else {
                             EdgeSide::Right
                         },
-                        Some(*position),
                         ctx
                     );
                 }
@@ -1728,7 +1706,6 @@ impl View {
                         } else {
                             EdgeSide::Bottom
                         },
-                        Some(*position),
                         ctx
                     );
                 }
@@ -1857,7 +1834,6 @@ impl View {
                 } else {
                     EdgeSide::Right
                 },
-                None,
                 ctx
             );
         }
@@ -1868,7 +1844,6 @@ impl View {
                 } else {
                     EdgeSide::Bottom
                 },
-                None,
                 ctx
             );
         }
@@ -1885,7 +1860,12 @@ impl View {
         // rate inside and outside the bounds - many extra frames of
         // reflow_scroll/paint on every overscroll fling.
         let friction = if out_of_bounds {
-            MOMENTUM_FRICTION * MOMENTUM_OVERSCROLL_FRICTION_MULTIPLIER
+            let multiplier = if self.effective_overscroll() == Overscroll::Stretch {
+                STRETCH_OVERSCROLL_FRICTION_MULTIPLIER
+            } else {
+                MOMENTUM_OVERSCROLL_FRICTION_MULTIPLIER
+            };
+            MOMENTUM_FRICTION * multiplier
         } else {
             MOMENTUM_FRICTION
         };
@@ -1936,10 +1916,10 @@ impl View {
         self.spring_back_if_needed(ctx);
     }
 
-    // Renders a soft radial highlight anchored to the drag/scroll point at
-    // whichever edges recently hit their scroll bound under
-    // `Overscroll::Glow`, matching GTK's own overscroll indicator instead
-    // of a flat translucent band spanning the whole edge.
+    // Renders a thin, full-span band along whichever edge(s) recently hit
+    // their scroll bound under `Overscroll::Glow`, instead of a radial
+    // highlight anchored to the drag/scroll point - matches the classic
+    // Android edge-glow silhouette, sized down for a lighter, modern look.
     fn paint_overscroll_glow(&self, ctx: &mut PaintContext) {
         let glow = self.overscroll_glow.get();
         if glow.iter().all(|v| *v <= 0.0) {
@@ -1949,23 +1929,20 @@ impl View {
         let b = self.layout_box;
         let sf = self.scale_factor.get();
         let color = crate::current_theme().primary;
-        let (point_x, point_y) = self.last_interaction_point.get();
+        let thickness = OVERSCROLL_GLOW_BAND_THICKNESS * sf;
 
-        let radius = 130.0 * sf;
-        let size = radius * 2.0;
-
-        let mut draw_glow = |alpha: f32, center: (f32, f32)| {
+        let mut draw_band = |alpha: f32, position: (f32, f32), size: (f32, f32), angle_deg: f32| {
             if alpha <= 0.0 {
                 return;
             }
             let stops = vec![
-                GradientStop::new(color.with_alpha_f32(color.a() * alpha * 0.5), 0.0),
+                GradientStop::new(color.with_alpha_f32(color.a() * alpha * 0.55), 0.0),
                 GradientStop::new(color.with_alpha_f32(0.0), 1.0)
             ];
             ctx.draw_rect(RectCommand {
-                position: (center.0 - radius, center.1 - radius),
-                size: (size, size),
-                background: Some(Background::RadialGradient(RadialGradient::new(stops))),
+                position,
+                size,
+                background: Some(Background::LinearGradient(LinearGradient::new(angle_deg, stops))),
                 border_radius: None,
                 border_width: None,
                 border_color: None,
@@ -1973,10 +1950,10 @@ impl View {
             });
         };
 
-        draw_glow(glow[0], (point_x.clamp(b.x, b.x + b.width), b.y));
-        draw_glow(glow[1], (b.x + b.width, point_y.clamp(b.y, b.y + b.height)));
-        draw_glow(glow[2], (point_x.clamp(b.x, b.x + b.width), b.y + b.height));
-        draw_glow(glow[3], (b.x, point_y.clamp(b.y, b.y + b.height)));
+        draw_band(glow[0], (b.x, b.y), (b.width, thickness), 90.0);
+        draw_band(glow[1], (b.x + b.width - thickness, b.y), (thickness, b.height), 180.0);
+        draw_band(glow[2], (b.x, b.y + b.height - thickness), (b.width, thickness), 270.0);
+        draw_band(glow[3], (b.x, b.y), (thickness, b.height), 0.0);
     }
 }
 
@@ -2463,7 +2440,6 @@ impl Widget for View {
             self.momentum.set(old.momentum.get());
             self.overscroll_glow.set(old.overscroll_glow.get());
             self.glow_pending_hit.set(old.glow_pending_hit.get());
-            self.last_interaction_point.set(old.last_interaction_point.get());
             self.scrollbar_opacity_anim.set(old.scrollbar_opacity_anim.get());
             self.scrollbar_opacity_animating.set(old.scrollbar_opacity_animating.get());
             self.last_scroll_activity.set(old.last_scroll_activity.get());
