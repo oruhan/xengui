@@ -955,9 +955,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut app = App::new(config);
 
     app.with_font(
-        "Noto_Sans",
+        "Nunito",
         include_bytes!(
-            concat!(env!("CARGO_MANIFEST_DIR"), "/fonts/NotoSans-VariableFont.ttf")
+            concat!(env!("CARGO_MANIFEST_DIR"), "/fonts/Nunito-VariableFont_wght.ttf")
         ).to_vec()
     );
 
