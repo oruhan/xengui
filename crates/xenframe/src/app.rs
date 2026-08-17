@@ -83,6 +83,10 @@ pub struct App {
     pub(crate) devtools_panel_width: Rc<Cell<f32>>,
     pub(crate) devtools_ever_opened: bool,
     pub(crate) devtools_close_requested: Rc<Cell<bool>>,
+    // Applied together with the window's first set_visible(true) call
+    // (see reveal_window), never via WindowAttributes::with_maximized -
+    // some platforms show an invisible-but-maximized window anyway.
+    pub(crate) pending_maximize: bool,
     // Last breakpoint a full tree rebuild resolved Responsive<T> values
     // against; compared every frame so a resize (layout-only) can still
     // trigger a rebuild once the active breakpoint actually changes.
@@ -130,6 +134,7 @@ impl App {
             devtools_panel_width: Rc::new(Cell::new(420.0)),
             devtools_ever_opened: false,
             devtools_close_requested: Rc::new(Cell::new(false)),
+            pending_maximize: false,
             last_breakpoint: xengui::Breakpoint::Base,
 
             #[cfg(target_os = "windows")]
@@ -230,6 +235,24 @@ impl App {
 
         let new_tree = vec![new_root];
         self.reconcile_work = Some(reconciler::WorkLoop::new(new_tree, &self.root));
+    }
+
+    /// Reveals the OS window for the first time - only once a real frame
+    /// has actually been rendered - applying any pending maximize request
+    /// at the exact same moment, so the window can never be shown by the
+    /// OS before it has real content.
+    pub(crate) fn reveal_window(&mut self) {
+        if self.is_visible {
+            return;
+        }
+        let Some(window) = &self.window else {
+            return;
+        };
+        if std::mem::take(&mut self.pending_maximize) {
+            window.set_maximized(true);
+        }
+        window.set_visible(true);
+        self.is_visible = true;
     }
 
     // Advances any in-progress reconciliation by one time slice. Returns
@@ -788,9 +811,8 @@ impl App {
         self.recheck_breakpoint();
         xengui::devtools::record_size("resize_synced:render_end", width, height);
 
-        if !self.is_visible && let Some(window) = &self.window {
-            window.set_visible(true);
-            self.is_visible = true;
+        if !self.is_visible {
+            self.reveal_window();
         }
     }
 }

@@ -5,9 +5,51 @@
     <meta charset="utf-8" />
     <meta
       name="viewport"
-      content="width=device-width, initial-scale=1.0, maximum-scale=1.0"
+      content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover"
     />
-    <title>Pearl</title>
+    <title>Pearl | Offline Music Player</title>
+    <meta name="description" content="Pearl | Offline Music Player" />
+    <!-- PWA -->
+    <link rel="manifest" href="/manifest.webmanifest" />
+
+    <!-- Theme -->
+    <!-- light mode -->
+    <meta
+      name="theme-color"
+      content="#ffffff"
+      media="(prefers-color-scheme: light)"
+    />
+    <!-- dark mode -->
+    <meta
+      name="theme-color"
+      content="#0a0a0a"
+      media="(prefers-color-scheme: dark)"
+    />
+
+    <!-- iOS -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+
+    <meta
+      name="apple-mobile-web-app-status-bar-style"
+      content="black-translucent"
+    />
+
+    <meta name="apple-mobile-web-app-title" content="Pearl" />
+
+    <link rel="apple-touch-icon" href="./pearl_icon_180.png" />
+
+    <!-- Favicon -->
+    <link rel="icon" type="image/svg+xml" href="./pearl_favicon.svg" />
+
+    <link data-trunk rel="copy-file" href="./assets/sw.js" />
+    <link data-trunk rel="copy-file" href="./assets/manifest.webmanifest" />
+    <link data-trunk rel="copy-file" href="./assets/pearl_favicon.svg" />
+    <link data-trunk rel="copy-file" href="./assets/pearl_icon.svg" />
+    <link data-trunk rel="copy-file" href="./assets/pearl_icon_180.png" />
+    <link data-trunk rel="copy-file" href="./assets/pearl_icon_192.png" />
+    <link data-trunk rel="copy-file" href="./assets/pearl_icon_512.png" />
+
     <style>
       html,
       body {

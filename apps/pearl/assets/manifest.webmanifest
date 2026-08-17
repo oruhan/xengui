@@ -1,0 +1,27 @@
+{
+  "name": "Pearl",
+  "short_name": "Pearl",
+  "description": "Pearl | Offline Music Player",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#000",
+  "theme_color": "#000",
+  "icons": [
+    {
+      "src": "/pearl_icon_192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/pearl_icon_512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    },
+    {
+      "src": "/pearl_icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ]
+}
