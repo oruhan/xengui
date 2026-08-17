@@ -70,7 +70,7 @@ fn platform_default_overscroll() -> Overscroll {
     } else if cfg!(target_arch = "wasm32") && crate::platform::is_touch_platform() {
         Overscroll::Bounce
     } else {
-        Overscroll::Disabled
+        Overscroll::Glow
     }
 }
 
@@ -1184,8 +1184,9 @@ impl View {
         self.cancel_conflicting_gestures();
 
         let current = self.scroll_target.get();
-        let (next_x, hit_x) = self.react_to_bounds(current.0 + dx, self.max_scroll_x(), false);
-        let (next_y, hit_y) = self.react_to_bounds(current.1 + dy, self.max_scroll_y(), false);
+        let (next_x, hit_x) = self.react_to_bounds(current.0 + dx, self.max_scroll_x(), true);
+        let (next_y, hit_y) = self.react_to_bounds(current.1 + dy, self.max_scroll_y(), true);
+
         if hit_x {
             self.note_edge_hit(if dx < 0.0 { EdgeSide::Left } else { EdgeSide::Right }, ctx);
         }
