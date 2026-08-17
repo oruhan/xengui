@@ -113,6 +113,13 @@ impl Widget for VariableIcon {
         MeasureResult::new(w, h)
     }
 
+    fn hit_test(&self, _point: (f32, f32)) -> bool {
+        // Purely decorative - pointer events must always fall through to
+        // whatever interactive ancestor (a button, an icon button) wraps
+        // this icon, never stop here.
+        false
+    }
+
     fn paint(&self, ctx: &mut PaintContext) {
         self.paint_box(ctx);
         self.paint_outline(ctx);

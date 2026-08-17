@@ -461,6 +461,36 @@ fn build_sidebar(
 // drags the window too, not just an empty stretch of the bar.
 // ---------------------------------------------------------------------
 
+#[cfg(not(target_arch = "wasm32"))]
+fn window_controls_row(theme: &Theme) -> View {
+    Row::new()
+        .height(pct!(100.0))
+        .child(
+            window_control_button(
+                codepoints::MINIMIZE,
+                theme.on_surface_variant,
+                theme.surface_container_high,
+                |_ctx| xenframe::minimize_window()
+            )
+        )
+        .child(
+            window_control_button(
+                codepoints::MAXIMIZE,
+                theme.on_surface_variant,
+                theme.surface_container_high,
+                |_ctx| xenframe::toggle_maximize_window()
+            )
+        )
+        .child(window_close_button(theme.on_surface_variant))
+}
+
+// Browser has no native window chrome to control - the titlebar itself
+// still renders, just without minimize/maximize/close.
+#[cfg(target_arch = "wasm32")]
+fn window_controls_row(_theme: &Theme) -> Row {
+    Row::new().height(pct!(100.0))
+}
+
 fn build_titlebar(theme: &Theme, current: &Track) -> View {
     let brand = Row::new()
         .align_items(Align::Center)
@@ -491,32 +521,15 @@ fn build_titlebar(theme: &Theme, current: &Track) -> View {
                 .color(theme.on_surface_variant)
         );
 
-    let controls = Row::new()
-        .height(pct!(100.0))
-        .child(
-            window_control_button(
-                codepoints::MINIMIZE,
-                theme.on_surface_variant,
-                theme.surface_container_high,
-                |_ctx| xenframe::minimize_window()
-            )
-        )
-        .child(
-            window_control_button(
-                codepoints::MAXIMIZE,
-                theme.on_surface_variant,
-                theme.surface_container_high,
-                |_ctx| xenframe::toggle_maximize_window()
-            )
-        )
-        .child(window_close_button(theme.on_surface_variant));
+    let controls = window_controls_row(theme);
 
     Row::new()
         .width(pct!(100.0))
         .height(px!(40.0))
         .min_height(px!(40.0))
         .align_items(Align::Center)
-        .background(theme.surface_container)
+        .background(theme.surface_container.with_alpha_f32(0.75))
+        .backdrop_filter(Filter::Blur(px!(16.0)))
         .border(Border::bottom(1.0, theme.outline_variant))
         .window_drag_region(true)
         .child(brand)
@@ -1053,17 +1066,22 @@ fn build_mini_player(
     theme: &Theme,
     track: &Track,
     is_playing: bool,
+    progress: f32,
     toggle_play: impl Fn(&mut EventCtx) + 'static
 ) -> View {
-    Row::new()
+    let seek = Slider::new()
+        .value(progress)
+        .width(pct!(100.0))
+        .fill_color(theme.primary)
+        .track_color(theme.surface_container_highest.with_alpha_f32(0.6));
+
+    let info_row = Row::new()
         .width(pct!(100.0))
         .height(px!(60.0))
         .min_height(px!(60.0))
         .align_items(Align::Center)
         .gap(10.0, 0.0)
         .padding(Edges::symmetric(12.0, 0.0))
-        .background(theme.surface_container)
-        .border(Border::top(1.0, theme.outline_variant))
         .child(AlbumArt::new(track.art_color).size(40.0).icon_size(16.0))
         .child(
             Column::new()
@@ -1087,7 +1105,15 @@ fn build_mini_player(
                 .color(theme.on_surface)
                 .size(38.0)
                 .on_click(toggle_play)
-        )
+        );
+
+    Column::new()
+        .width(pct!(100.0))
+        .background(theme.surface_container.with_alpha_f32(0.72))
+        .backdrop_filter(Filter::Blur(px!(18.0)))
+        .border(Border::all(1.0, theme.outline_variant.with_alpha_f32(0.5)).radius(16.0))
+        .child(seek)
+        .child(info_row)
 }
 
 // ---------------------------------------------------------------------
@@ -1275,20 +1301,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             );
             main_view = main_view.child(player_bar);
         } else {
-            let set_is_playing_mini = set_is_playing.clone();
-            let mini_player = build_mini_player(
-                &theme,
-                &tracks[current_track],
-                is_playing,
-                move |ctx| {
-                    set_is_playing_mini.set(!is_playing);
-                    ctx.request_redraw();
-                }
-            );
-            main_view = main_view.child(mini_player);
-        }
-
-        if !show_sidebar {
             let active_index = match current_path.as_str() {
                 "/search" => 1,
                 "/library" => 2,
@@ -1309,16 +1321,31 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     xen_router::push(path);
                 });
 
-            let floating_nav = View::new()
+            let set_is_playing_mini = set_is_playing.clone();
+            let mini_player = build_mini_player(
+                &theme,
+                &tracks[current_track],
+                is_playing,
+                progress,
+                move |ctx| {
+                    set_is_playing_mini.set(!is_playing);
+                    ctx.request_redraw();
+                }
+            );
+
+            // Mini player sits directly above the pill nav, sharing one
+            // fixed bottom-anchored stack so they always move together.
+            let floating_stack = Column::new()
                 .position(Position::Fixed)
                 .bottom(px!(16.0))
                 .left(px!(0.0))
                 .width(pct!(100.0))
-                .display(Display::Flex)
-                .justify_content(JustifyContent::Center)
+                .align_items(Align::Center)
+                .gap(0.0, 10.0)
+                .child(mini_player)
                 .child(nav);
 
-            main_view = main_view.child(floating_nav);
+            main_view = main_view.child(floating_stack);
         }
 
         Box::new(main_view)

@@ -129,8 +129,10 @@ pub fn style_to_taffy(style: &Style, scale_factor: f32, has_children: bool) -> T
         if let Some(w) = size.width {
             let px = dim(w, scale_factor);
             t.size.width = px;
-            // Explicit width acts as a hard floor unless the user set their own min-width.
-            if style.min_size.and_then(|s| s.width).is_none() {
+            // A hard pixel width acts as a floor; a percentage width must
+            // stay shrinkable, or a paired max-width can never clamp it
+            // (min-width always wins over max-width in flex sizing).
+            if style.min_size.and_then(|s| s.width).is_none() && matches!(w, crate::Length::Px(_)) {
                 t.min_size.width = px;
                 if style.flex_shrink.is_none() {
                     t.flex_shrink = 0.0;
@@ -140,7 +142,7 @@ pub fn style_to_taffy(style: &Style, scale_factor: f32, has_children: bool) -> T
         if let Some(h) = size.height {
             let px = dim(h, scale_factor);
             t.size.height = px;
-            if style.min_size.and_then(|s| s.height).is_none() {
+            if style.min_size.and_then(|s| s.height).is_none() && matches!(h, crate::Length::Px(_)) {
                 t.min_size.height = px;
                 if style.flex_shrink.is_none() {
                     t.flex_shrink = 0.0;

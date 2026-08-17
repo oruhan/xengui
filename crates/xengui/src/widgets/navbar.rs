@@ -12,7 +12,9 @@ use crate::{
     Display,
     Easing,
     Edges,
+    Filter,
     FlexDirection,
+    FontWeight,
     Interaction,
     JustifyContent,
     Label,
@@ -27,7 +29,6 @@ use crate::{
     Widget,
     WidgetBase,
     WidgetId,
-    FontWeight,
     pct,
 };
 use smol_str::SmolStr;
@@ -112,8 +113,13 @@ impl Render for NavigationBar {
             .align_items(Align::Center)
             .justify_content(JustifyContent::SpaceEvenly)
             .padding(Edges::symmetric(10.0, 10.0))
-            .background(theme.surface_container_high)
-            .border(Border::all(0.0, Color::TRANSPARENT).radius(BorderRadius::all(28.0)))
+            .background(theme.surface_container_high.with_alpha_f32(0.65))
+            .backdrop_filter(Filter::Blur(Length::px(24.0)))
+            .border(
+                Border::all(1.0, theme.outline_variant.with_alpha_f32(0.4)).radius(
+                    BorderRadius::all(28.0)
+                )
+            )
             .box_shadow(BoxShadow::new(0.0, 6.0, 20.0, Color::BLACK.with_alpha(70)));
 
         for (index, item) in self.items.iter().enumerate() {

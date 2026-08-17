@@ -22,6 +22,7 @@ use xengui::{
     any_wants_animation,
     clear_text_selection_recursive,
     dispatch_animation_tick,
+    dispatch_focus_within_transition,
     dispatch_hover_transition,
     dispatch_positional,
     dispatch_to_path,
@@ -936,6 +937,12 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
                                 &InputEvent::FocusLost,
                                 &mut ctx
                             );
+                            dispatch_focus_within_transition(
+                                &mut self.root,
+                                Some(&focused),
+                                None,
+                                &mut ctx
+                            );
                             self.input.focused_path = None;
                             #[cfg(target_arch = "wasm32")]
                             self.hide_native_input();
@@ -945,17 +952,22 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
                 }
 
                 let is_drag_region = path.as_deref().is_some_and(|p| {
-                    // The exact widget under the cursor gets priority: if it
-                    // has its own click handling (e.g. a titlebar button),
-                    // an ancestor's drag region must not swallow the click.
-                    let hit_is_clickable = find_widget_mut(&mut self.root, p).is_some_and(|w|
-                        w.interaction().is_some_and(|i| i.on_click.is_some())
-                    );
+                    // Check the whole ancestor chain, not just the exact
+                    // hit leaf - the leaf hit can be a decorative child
+                    // (e.g. an icon) whose own on_click is unset even
+                    // though a wrapping button's is.
+                    let ancestors = xengui::ancestor_paths(p);
+                    let hit_is_clickable = ancestors
+                        .iter()
+                        .any(|ancestor| {
+                            find_widget_mut(&mut self.root, ancestor).is_some_and(|w|
+                                w.interaction().is_some_and(|i| i.on_click.is_some())
+                            )
+                        });
                     if hit_is_clickable {
                         return false;
                     }
-                    xengui
-                        ::ancestor_paths(p)
+                    ancestors
                         .iter()
                         .any(|ancestor| {
                             find_widget_mut(&mut self.root, ancestor).is_some_and(|w|
