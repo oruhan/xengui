@@ -1075,6 +1075,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .width(pct!(100.0))
             .height(pct!(100.0))
             .background(theme.background)
+            .font("Nunito")
             .child(titlebar)
             .child(body)
             .child(player_bar);
