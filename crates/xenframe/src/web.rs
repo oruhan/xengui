@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 #![cfg(target_arch = "wasm32")]
-
 //! Browser-specific bootstrap helpers for running a xenframe `App` in wasm.
 //! Call `init_panic_hook` (and optionally `init_logger`) once, before
 //! creating the `App` - typically from a `#[wasm_bindgen(start)]` function
 //! in the host crate.
+use std::cell::Cell;
 
 /// Forwards Rust panics to `console.error` with a full stack trace instead
 /// of the browser's default opaque "unreachable executed" message. Safe to
@@ -55,4 +55,20 @@ pub fn detect_touch_platform() -> bool {
         .unwrap_or(false);
 
     has_touch_points && coarse_pointer
+}
+
+thread_local! {
+    static TOUCH_ACTIVE: Cell<bool> = const { Cell::new(false) };
+}
+
+/// Whether a touch gesture is currently pressed on the canvas. Canvas
+/// resize logic checks this to defer resizing the WebGPU surface until
+/// the gesture ends, since a mid-drag resize is what causes visible
+/// stutter on mobile browsers.
+pub fn set_touch_active(active: bool) {
+    TOUCH_ACTIVE.with(|cell| cell.set(active));
+}
+
+pub fn is_touch_active() -> bool {
+    TOUCH_ACTIVE.with(Cell::get)
 }

@@ -70,7 +70,7 @@ fn platform_default_overscroll() -> Overscroll {
     } else if cfg!(target_arch = "wasm32") && crate::platform::is_touch_platform() {
         Overscroll::Bounce
     } else {
-        Overscroll::Glow
+        Overscroll::Stretch
     }
 }
 
@@ -262,6 +262,10 @@ pub struct View {
     // to snap that edge's animated value back up to full intensity.
     glow_pending_hit: Cell<[bool; 4]>,
     glow_anim_ids: [WidgetId; 4],
+    // Screen-space point of the most recent scroll/drag interaction, used
+    // to anchor the overscroll glow to the finger/pointer like GTK does,
+    // instead of spanning the whole edge uniformly.
+    last_interaction_point: Cell<(f32, f32)>,
     // When true, `set_content_size` snaps vertical scroll straight to the
     // bottom instead of preserving whatever offset the view already had
     pin_scroll_bottom: bool,
@@ -321,6 +325,7 @@ impl View {
                 WidgetId::new_unique(),
                 WidgetId::new_unique(),
             ],
+            last_interaction_point: Cell::new((0.0, 0.0)),
             pin_scroll_bottom: false,
         };
         view = view
@@ -478,7 +483,7 @@ impl View {
         }
     }
 
-    fn note_edge_hit(&self, side: EdgeSide, ctx: &mut EventCtx) {
+    fn note_edge_hit(&self, side: EdgeSide, point: Option<(f32, f32)>, ctx: &mut EventCtx) {
         if self.effective_overscroll() != Overscroll::Glow {
             return;
         }
@@ -491,6 +496,9 @@ impl View {
         let mut pending = self.glow_pending_hit.get();
         pending[idx] = true;
         self.glow_pending_hit.set(pending);
+        if let Some(point) = point {
+            self.last_interaction_point.set(point);
+        }
         ctx.request_redraw();
     }
 
@@ -1188,10 +1196,26 @@ impl View {
         let (next_y, hit_y) = self.react_to_bounds(current.1 + dy, self.max_scroll_y(), true);
 
         if hit_x {
-            self.note_edge_hit(if dx < 0.0 { EdgeSide::Left } else { EdgeSide::Right }, ctx);
+            self.note_edge_hit(
+                if dx < 0.0 {
+                    EdgeSide::Left
+                } else {
+                    EdgeSide::Right
+                },
+                Some(position),
+                ctx
+            );
         }
         if hit_y {
-            self.note_edge_hit(if dy < 0.0 { EdgeSide::Top } else { EdgeSide::Bottom }, ctx);
+            self.note_edge_hit(
+                if dy < 0.0 {
+                    EdgeSide::Top
+                } else {
+                    EdgeSide::Bottom
+                },
+                Some(position),
+                ctx
+            );
         }
 
         let next = (next_x, next_y);
@@ -1570,11 +1594,28 @@ impl View {
         let current = self.scroll_offset.get();
         let (next_x, hit_x) = self.react_to_bounds(current.0 + vx * dt, self.max_scroll_x(), false);
         let (next_y, hit_y) = self.react_to_bounds(current.1 + vy * dt, self.max_scroll_y(), false);
+
         if hit_x {
-            self.note_edge_hit(if vx < 0.0 { EdgeSide::Left } else { EdgeSide::Right }, ctx);
+            self.note_edge_hit(
+                if vx < 0.0 {
+                    EdgeSide::Left
+                } else {
+                    EdgeSide::Right
+                },
+                Some(state.current),
+                ctx
+            );
         }
         if hit_y {
-            self.note_edge_hit(if vy < 0.0 { EdgeSide::Top } else { EdgeSide::Bottom }, ctx);
+            self.note_edge_hit(
+                if vy < 0.0 {
+                    EdgeSide::Top
+                } else {
+                    EdgeSide::Bottom
+                },
+                Some(state.current),
+                ctx
+            );
         }
 
         let next = (next_x, next_y);
@@ -1668,6 +1709,7 @@ impl View {
                 } else {
                     (current.1, false)
                 };
+
                 if hit_x {
                     self.note_edge_hit(
                         if dx > 0.0 {
@@ -1675,6 +1717,7 @@ impl View {
                         } else {
                             EdgeSide::Right
                         },
+                        Some(*position),
                         ctx
                     );
                 }
@@ -1685,6 +1728,7 @@ impl View {
                         } else {
                             EdgeSide::Bottom
                         },
+                        Some(*position),
                         ctx
                     );
                 }
@@ -1813,6 +1857,7 @@ impl View {
                 } else {
                     EdgeSide::Right
                 },
+                None,
                 ctx
             );
         }
@@ -1823,6 +1868,7 @@ impl View {
                 } else {
                     EdgeSide::Bottom
                 },
+                None,
                 ctx
             );
         }
@@ -1890,10 +1936,10 @@ impl View {
         self.spring_back_if_needed(ctx);
     }
 
-    // Renders a soft translucent band at whichever edges recently hit
-    // their scroll bound under `Overscroll::Glow` (a flat fade instead of
-    // a true radial gradient, since the paint primitives here don't have
-    // a gradient shader).
+    // Renders a soft radial highlight anchored to the drag/scroll point at
+    // whichever edges recently hit their scroll bound under
+    // `Overscroll::Glow`, matching GTK's own overscroll indicator instead
+    // of a flat translucent band spanning the whole edge.
     fn paint_overscroll_glow(&self, ctx: &mut PaintContext) {
         let glow = self.overscroll_glow.get();
         if glow.iter().all(|v| *v <= 0.0) {
@@ -1902,28 +1948,35 @@ impl View {
 
         let b = self.layout_box;
         let sf = self.scale_factor.get();
-        let band = 48.0 * sf;
         let color = crate::current_theme().primary;
+        let (point_x, point_y) = self.last_interaction_point.get();
 
-        let mut draw_band = |alpha: f32, position: (f32, f32), size: (f32, f32)| {
+        let radius = 130.0 * sf;
+        let size = radius * 2.0;
+
+        let mut draw_glow = |alpha: f32, center: (f32, f32)| {
             if alpha <= 0.0 {
                 return;
             }
+            let stops = vec![
+                GradientStop::new(color.with_alpha_f32(color.a() * alpha * 0.5), 0.0),
+                GradientStop::new(color.with_alpha_f32(0.0), 1.0)
+            ];
             ctx.draw_rect(RectCommand {
-                position,
-                size,
-                background: Some(Background::Color(color.with_alpha_f32(color.a() * alpha * 0.35))),
+                position: (center.0 - radius, center.1 - radius),
+                size: (size, size),
+                background: Some(Background::RadialGradient(RadialGradient::new(stops))),
                 border_radius: None,
                 border_width: None,
                 border_color: None,
-                clip_rect: None,
+                clip_rect: Some((b.x, b.y, b.width, b.height)),
             });
         };
 
-        draw_band(glow[0], (b.x, b.y), (b.width, band));
-        draw_band(glow[1], (b.x + b.width - band, b.y), (band, b.height));
-        draw_band(glow[2], (b.x, b.y + b.height - band), (b.width, band));
-        draw_band(glow[3], (b.x, b.y), (band, b.height));
+        draw_glow(glow[0], (point_x.clamp(b.x, b.x + b.width), b.y));
+        draw_glow(glow[1], (b.x + b.width, point_y.clamp(b.y, b.y + b.height)));
+        draw_glow(glow[2], (point_x.clamp(b.x, b.x + b.width), b.y + b.height));
+        draw_glow(glow[3], (b.x, point_y.clamp(b.y, b.y + b.height)));
     }
 }
 
@@ -2410,6 +2463,7 @@ impl Widget for View {
             self.momentum.set(old.momentum.get());
             self.overscroll_glow.set(old.overscroll_glow.get());
             self.glow_pending_hit.set(old.glow_pending_hit.get());
+            self.last_interaction_point.set(old.last_interaction_point.get());
             self.scrollbar_opacity_anim.set(old.scrollbar_opacity_anim.get());
             self.scrollbar_opacity_animating.set(old.scrollbar_opacity_animating.get());
             self.last_scroll_activity.set(old.last_scroll_activity.get());

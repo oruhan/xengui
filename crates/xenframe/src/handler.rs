@@ -196,6 +196,17 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
                     return;
                 }
 
+                // A touch gesture (e.g. pull-to-scroll) can momentarily change
+                // the visual viewport's height as the browser's dynamic toolbar
+                // collapses; resizing the WebGPU surface while the finger is
+                // still down is what produces visible stutter, so resizing is
+                // deferred until the touch ends - the browser fires another
+                // resize/scroll event once the gesture settles, which resyncs
+                // the canvas at that point instead.
+                if crate::web::is_touch_active() {
+                    return;
+                }
+
                 use xen_animation::{ AnimValue, Easing, Transition };
 
                 let current = window.inner_size().to_logical::<f64>(window.scale_factor());
@@ -409,20 +420,16 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
                         vv_closure.forget();
 
                         let window_for_vv_scroll = window.clone();
-                        let initial_resize_done_clone2 = initial_resize_done.clone();
-                        let anim_manager_clone2 = anim_manager.clone();
-                        let anim_running_clone2 = anim_running.clone();
-                        let anim_target_clone2 = anim_target.clone();
 
                         let vv_scroll_closure = wasm_bindgen::closure::Closure::<dyn FnMut()>::new(
                             move || {
-                                sync_canvas_to_viewport(
-                                    &window_for_vv_scroll,
-                                    initial_resize_done_clone2.clone(),
-                                    anim_manager_clone2.clone(),
-                                    anim_running_clone2.clone(),
-                                    anim_target_clone2.clone()
-                                );
+                                // Visual viewport "scroll" fires continuously while
+                                // the page pans under the toolbar during a touch
+                                // drag; only the canvas's on-screen position needs
+                                // to track that, not its size - routing this
+                                // through the full resize path is what caused the
+                                // scroll stutter.
+                                sync_canvas_position(&window_for_vv_scroll);
                             }
                         );
                         let _ = vv.add_event_listener_with_callback(

@@ -8,7 +8,31 @@ use web_time::Instant;
 use winit::event_loop::{ ControlFlow, EventLoop };
 use winit::window::Window;
 use xengui::{
-    Cursor, ElementState, EventCtx, EventStatus, InputEvent, InputState, MouseButton, StyleBuilder, TOUCH_LONG_PRESS_DURATION, TOUCH_LONG_PRESS_MOVE_TOLERANCE_DP, TouchPanPhase, Widget, clear_text_selection_recursive, collect_focusable_paths, collect_selected_text_recursive, dispatch_hover_transition, dispatch_positional, dispatch_positional_capturing, dispatch_to_path, hit_test_path, hooks, path_is_within, reconciler, style, update_global_text_selection,
+    Cursor,
+    ElementState,
+    EventCtx,
+    EventStatus,
+    InputEvent,
+    InputState,
+    MouseButton,
+    StyleBuilder,
+    TOUCH_LONG_PRESS_DURATION,
+    TOUCH_LONG_PRESS_MOVE_TOLERANCE_DP,
+    TouchPanPhase,
+    Widget,
+    clear_text_selection_recursive,
+    collect_focusable_paths,
+    collect_selected_text_recursive,
+    dispatch_hover_transition,
+    dispatch_positional,
+    dispatch_positional_capturing,
+    dispatch_to_path,
+    hit_test_path,
+    hooks,
+    path_is_within,
+    reconciler,
+    style,
+    update_global_text_selection,
 };
 use xengui_wgpu::WgpuWindowRenderer;
 
@@ -467,6 +491,9 @@ impl App {
 
         match touch.phase {
             TouchPhase::Started => {
+                #[cfg(target_arch = "wasm32")]
+                crate::web::set_touch_active(true);
+
                 clear_text_selection_recursive(&mut self.root);
                 self.input.cursor_pos = Some(point);
                 let path = hit_test_path(&self.root, point);
@@ -594,6 +621,9 @@ impl App {
             }
 
             TouchPhase::Ended => {
+                #[cfg(target_arch = "wasm32")]
+                crate::web::set_touch_active(false);
+
                 if let Some(path) = self.input.hovered_path.clone() {
                     let mut ctx = EventCtx::new();
                     dispatch_positional(
@@ -633,6 +663,9 @@ impl App {
             }
 
             TouchPhase::Cancelled => {
+                #[cfg(target_arch = "wasm32")]
+                crate::web::set_touch_active(false);
+
                 if let Some(owner) = self.touch_pan_owner.take() {
                     let mut pan_ctx = EventCtx::new();
                     dispatch_to_path(
