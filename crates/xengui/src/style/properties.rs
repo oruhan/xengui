@@ -1,13 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 use smol_str::SmolStr;
 use crate::{
-    BoxShadow,
-    BoxSizing,
-    Cursor,
-    FilterChain,
-    Overscroll,
-    ScrollbarGutter,
-    TransitionProperty,
+    BoxShadow, BoxSizing, Cursor, FilterChain, Overscroll, ScrollbarGutter, TransformOrigin, TransitionProperty,
 };
 use super::{
     Outline,
@@ -153,6 +147,9 @@ pub struct Style {
     pub scrollbar_gutter: Option<ScrollbarGutter>,
     pub scrollbar_auto_hide: Option<bool>,
 
+    /// The point around which CSS transforms are applied.
+    /// Defaults to the widget center (`50% 50%`) when `None`.
+    pub transform_origin: Option<TransformOrigin>,
     /// Overrides `scale` for the content layer only; `None` means the
     /// content follows the same scale as the rest of the widget.
     pub scale: Option<f32>,
@@ -259,6 +256,7 @@ impl Style {
             scrollbar_gutter: patch.scrollbar_gutter.or(self.scrollbar_gutter),
             scrollbar_auto_hide: patch.scrollbar_auto_hide.or(self.scrollbar_auto_hide),
 
+            transform_origin: patch.transform_origin.or(self.transform_origin),
             scale: patch.scale.or(self.scale),
             content_scale: patch.content_scale.or(self.content_scale),
             transition: patch.transition.or(self.transition),

@@ -25,6 +25,7 @@ pub mod theme;
 pub mod system_theme;
 pub mod border_radius;
 pub mod responsive;
+pub mod transform_origin;
 
 pub use background::{ Background, GradientStop, LinearGradient, RadialGradient };
 pub use border::Border;
@@ -65,3 +66,4 @@ pub use theme::{
     ThemeMode,
 };
 pub use responsive::*;
+pub use transform_origin::{ TransformOrigin, TransformOriginAxis };

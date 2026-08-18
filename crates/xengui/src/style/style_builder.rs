@@ -1,13 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 use crate::{
-    BoxShadow,
-    BoxSizing,
-    Overflow,
-    Overscroll,
-    ScrollbarGutter,
-    TransitionProperty,
-    properties::StyleValue,
-    style::{ FontStyle, FontWeight, IntoThemed, LetterSpacing },
+    BoxShadow, BoxSizing, Overflow, Overscroll, ScrollbarGutter, TransformOrigin, TransitionProperty, properties::StyleValue, style::{ FontStyle, FontWeight, IntoThemed, LetterSpacing },
 };
 
 use super::{
@@ -460,7 +453,7 @@ pub trait StyleBuilder: Sized {
         self.mark_dirty();
         self
     }
-    
+
     fn scrollbar_thickness(mut self, thickness: f32) -> Self {
         self.style_mut().scrollbar.get_or_insert_with(ScrollbarStyle::default).thickness =
             Some(thickness);
@@ -602,126 +595,98 @@ pub trait StyleBuilder: Sized {
 
     fn scrollbar_hover_track_border_color<M>(mut self, color: impl IntoThemed<Color, M>) -> Self {
         self
-
             .style_mut()
-
             .scrollbar_hover.get_or_insert_with(ScrollbarStyle::default).track_border_color = Some(
             color.resolve_themed()
         );
-
         self.mark_dirty();
-
         self
     }
 
     fn scrollbar_hover_button_color<M>(mut self, color: impl IntoThemed<Color, M>) -> Self {
         self.style_mut().scrollbar_hover.get_or_insert_with(ScrollbarStyle::default).button_color =
             Some(color.resolve_themed());
-
         self.mark_dirty();
-
         self
     }
 
     fn scrollbar_hover_arrow_color<M>(mut self, color: impl IntoThemed<Color, M>) -> Self {
         self.style_mut().scrollbar_hover.get_or_insert_with(ScrollbarStyle::default).arrow_color =
             Some(color.resolve_themed());
-
         self.mark_dirty();
-
         self
     }
 
     // Active while the thumb is being dragged; unset fields fall back to
-
     // the hover style, then the default.
-
     fn scrollbar_pressed_thickness(mut self, thickness: f32) -> Self {
         self.style_mut().scrollbar_pressed.get_or_insert_with(ScrollbarStyle::default).thickness =
             Some(thickness);
-
         self.mark_dirty();
-
         self
     }
 
     fn scrollbar_pressed_min_thumb_length(mut self, length: f32) -> Self {
         self
-
             .style_mut()
-
             .scrollbar_pressed.get_or_insert_with(ScrollbarStyle::default).min_thumb_length =
             Some(length);
-
         self.mark_dirty();
-
         self
     }
 
     fn scrollbar_pressed_thumb_color<M>(mut self, color: impl IntoThemed<Color, M>) -> Self {
         self.style_mut().scrollbar_pressed.get_or_insert_with(ScrollbarStyle::default).thumb_color =
             Some(color.resolve_themed());
-
         self.mark_dirty();
-
         self
     }
 
     fn scrollbar_pressed_thumb_border_color<M>(mut self, color: impl IntoThemed<Color, M>) -> Self {
         self
-
             .style_mut()
-
             .scrollbar_pressed.get_or_insert_with(ScrollbarStyle::default).thumb_border_color =
             Some(color.resolve_themed());
-
         self.mark_dirty();
-
         self
     }
 
     fn scrollbar_pressed_track_color<M>(mut self, color: impl IntoThemed<Color, M>) -> Self {
         self.style_mut().scrollbar_pressed.get_or_insert_with(ScrollbarStyle::default).track_color =
             Some(color.resolve_themed());
-
         self.mark_dirty();
-
         self
     }
 
     fn scrollbar_pressed_track_border_color<M>(mut self, color: impl IntoThemed<Color, M>) -> Self {
         self
-
             .style_mut()
-
             .scrollbar_pressed.get_or_insert_with(ScrollbarStyle::default).track_border_color =
             Some(color.resolve_themed());
-
         self.mark_dirty();
-
         self
     }
 
     fn scrollbar_pressed_button_color<M>(mut self, color: impl IntoThemed<Color, M>) -> Self {
         self
-
             .style_mut()
-
             .scrollbar_pressed.get_or_insert_with(ScrollbarStyle::default).button_color = Some(
             color.resolve_themed()
         );
-
         self.mark_dirty();
-
         self
     }
 
     fn scrollbar_pressed_arrow_color<M>(mut self, color: impl IntoThemed<Color, M>) -> Self {
         self.style_mut().scrollbar_pressed.get_or_insert_with(ScrollbarStyle::default).arrow_color =
             Some(color.resolve_themed());
-
         self.mark_dirty();
+        self
+    }
 
+    fn transform_origin(mut self, origin: TransformOrigin) -> Self {
+        self.style_mut().transform_origin = Some(origin);
+        self.mark_dirty();
         self
     }
 
