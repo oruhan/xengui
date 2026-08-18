@@ -10,21 +10,18 @@ pub struct TransformOrigin {
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum TransformOriginAxis {
-    /// Absolute pixel offset from the widget's top-left corner.
     Px(f32),
-    /// Percentage of the widget's width (x-axis) or height (y-axis).
     Percent(f32),
 }
 
 impl TransformOrigin {
-    /// Center of the widget on both axes — CSS default (`50% 50%`).
     pub const CENTER: Self = Self {
         x: TransformOriginAxis::Percent(50.0),
         y: TransformOriginAxis::Percent(50.0),
     };
 
-    pub const TOP_LEFT: Self = Self {
-        x: TransformOriginAxis::Percent(0.0),
+    pub const TOP: Self = Self {
+        x: TransformOriginAxis::Percent(50.0),
         y: TransformOriginAxis::Percent(0.0),
     };
 
@@ -33,9 +30,9 @@ impl TransformOrigin {
         y: TransformOriginAxis::Percent(0.0),
     };
 
-    pub const BOTTOM_LEFT: Self = Self {
-        x: TransformOriginAxis::Percent(0.0),
-        y: TransformOriginAxis::Percent(100.0),
+    pub const RIGHT: Self = Self {
+        x: TransformOriginAxis::Percent(100.0),
+        y: TransformOriginAxis::Percent(50.0),
     };
 
     pub const BOTTOM_RIGHT: Self = Self {
@@ -43,9 +40,25 @@ impl TransformOrigin {
         y: TransformOriginAxis::Percent(100.0),
     };
 
-    pub fn new(x: TransformOriginAxis, y: TransformOriginAxis) -> Self {
-        Self { x, y }
-    }
+    pub const BOTTOM: Self = Self {
+        x: TransformOriginAxis::Percent(50.0),
+        y: TransformOriginAxis::Percent(100.0),
+    };
+
+    pub const BOTTOM_LEFT: Self = Self {
+        x: TransformOriginAxis::Percent(0.0),
+        y: TransformOriginAxis::Percent(100.0),
+    };
+
+    pub const LEFT: Self = Self {
+        x: TransformOriginAxis::Percent(0.0),
+        y: TransformOriginAxis::Percent(50.0),
+    };
+
+    pub const TOP_LEFT: Self = Self {
+        x: TransformOriginAxis::Percent(0.0),
+        y: TransformOriginAxis::Percent(0.0),
+    };
 
     pub fn percent(x: f32, y: f32) -> Self {
         Self {
@@ -61,8 +74,7 @@ impl TransformOrigin {
         }
     }
 
-    /// Resolves the origin to physical pixel offsets relative to the
-    /// widget's top-left corner, given the widget's rendered size.
+    /// Resolves to physical pixel offsets relative to the widget's top-left corner.
     pub fn resolve(&self, widget_width: f32, widget_height: f32) -> (f32, f32) {
         let x = match self.x {
             TransformOriginAxis::Px(v) => v,
