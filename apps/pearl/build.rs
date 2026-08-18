@@ -6,11 +6,11 @@ use image::io::Reader as ImageReader;
 use image::imageops::FilterType;
 
 fn main() {
-    // Rerun the build if icon.png changes
-    println!("cargo:rerun-if-changed=assets/icon.png");
+    // Rerun the build if app_icon.png changes
+    println!("cargo:rerun-if-changed=assets/app_icon.png");
 
-    let input_path = "assets/icon.png";
-    let output_path = "assets/icon.ico";
+    let input_path = "assets/app_icon.png";
+    let output_path = "assets/app_icon.ico";
 
     if Path::new(input_path).exists() {
         // Read the PNG and convert it to RGBA

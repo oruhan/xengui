@@ -7,8 +7,8 @@
       name="viewport"
       content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover"
     />
-    <title>Pearl | Offline Music Player</title>
-    <meta name="description" content="Pearl | Offline Music Player" />
+    <title>Pearl | Music Player</title>
+    <meta name="description" content="Music Player" />
     <!-- PWA -->
     <link rel="manifest" href="/manifest.webmanifest" />
 
@@ -22,7 +22,7 @@
     <!-- dark mode -->
     <meta
       name="theme-color"
-      content="#120f18"
+      content="#000000"
       media="(prefers-color-scheme: dark)"
     />
 
@@ -37,16 +37,14 @@
 
     <meta name="apple-mobile-web-app-title" content="Pearl" />
 
-    <link rel="apple-touch-icon" href="./pearl_icon_180.png" />
+    <link rel="apple-touch-icon" href="./pearl_icon_192.png" />
 
     <!-- Favicon -->
-    <link rel="icon" type="image/svg+xml" href="./pearl_favicon.svg" />
+    <link rel="icon" type="image/svg+xml" href="./pearl_icon_192.png" />
 
     <link data-trunk rel="copy-file" href="./assets/sw.js" />
     <link data-trunk rel="copy-file" href="./assets/manifest.webmanifest" />
-    <link data-trunk rel="copy-file" href="./assets/pearl_favicon.svg" />
-    <link data-trunk rel="copy-file" href="./assets/pearl_icon.svg" />
-    <link data-trunk rel="copy-file" href="./assets/pearl_icon_180.png" />
+    <link data-trunk rel="copy-file" href="./assets/pearl_icon.png" />
     <link data-trunk rel="copy-file" href="./assets/pearl_icon_192.png" />
     <link data-trunk rel="copy-file" href="./assets/pearl_icon_512.png" />
 
@@ -58,8 +56,8 @@
         width: 100%;
         height: 100%;
         overflow: hidden;
-        background: #fff;
-        color: #120f18;
+        background: #ffffff;
+        color: #000000;
         overscroll-behavior: none;
         touch-action: none;
       }
@@ -71,7 +69,7 @@
       @media (prefers-color-scheme: dark) {
         html,
         body {
-          background: #120f18;
+          background: #000000;
           color: #fff;
         }
       }
@@ -100,13 +98,13 @@
         display: flex;
         align-items: center;
         justify-content: center;
-        background: #fff;
+        background: #ffffff;
         z-index: 999999;
         transition: opacity 0.25s ease;
       }
       @media (prefers-color-scheme: dark) {
         #xengui-loader {
-          background: #08070b;
+          background: #000000;
         }
       }
       #xengui-loader.xengui-loader-hidden {

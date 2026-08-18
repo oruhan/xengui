@@ -4,7 +4,7 @@
 use std::rc::Rc;
 use web_time::Duration;
 use xengui::*;
-use xengui_icons::codepoints;
+use xengui_icons::{ IconAxes, codepoints };
 
 pub struct IconButton {
     base: WidgetBase,
@@ -14,6 +14,7 @@ pub struct IconButton {
     codepoint: char,
     color: Color,
     size: f32,
+    axes: IconAxes,
     on_click: Option<Rc<dyn Fn(&mut EventCtx)>>,
 }
 
@@ -27,6 +28,7 @@ impl IconButton {
             codepoint,
             color: Color::WHITE,
             size: 32.0,
+            axes: IconAxes::default(),
             on_click: None,
         }
     }
@@ -38,6 +40,11 @@ impl IconButton {
 
     pub fn size(mut self, size: f32) -> Self {
         self.size = size;
+        self
+    }
+
+    pub fn axes(mut self, axes: IconAxes) -> Self {
+        self.axes = axes;
         self
     }
 
@@ -75,7 +82,7 @@ impl Render for IconButton {
                 .pressed_style(|s, theme: &Theme|
                     s.background(theme.surface_container_highest).scale(0.88).content_scale(1.0)
                 )
-                .child(VariableIcon::new(self.codepoint).size(icon_size))
+                .child(VariableIcon::new(self.codepoint).size(icon_size).axes(self.axes))
                 .on_click(move |ctx| {
                     if let Some(f) = &on_click {
                         f(ctx);
@@ -140,7 +147,7 @@ impl Render for AlbumArt {
                 .justify_content(JustifyContent::Center)
                 .background(self.color)
                 .color(Color::WHITE.with_alpha_f32(0.92))
-                .border(Border::all(0.0, Color::TRANSPARENT).radius(8.0))
+                .border(Border::all(0.0, Color::TRANSPARENT).radius(12.0))
                 .child(VariableIcon::new(codepoints::MUSIC_NOTE).size(self.icon_size))
         )
     }

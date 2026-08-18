@@ -1,7 +1,7 @@
 {
   "name": "Pearl",
   "short_name": "Pearl",
-  "description": "Pearl | Offline Music Player",
+  "description": "Pearl | Music Player",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
@@ -19,9 +19,9 @@
       "type": "image/png"
     },
     {
-      "src": "/pearl_icon.svg",
+      "src": "/pearl_icon.png",
       "sizes": "any",
-      "type": "image/svg+xml"
+      "type": "image/png"
     }
   ]
 }
