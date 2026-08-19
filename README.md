@@ -50,7 +50,7 @@ View::new()
     .child(
         Button::new()
             .label("Increment")
-            .padding(Edges::symmetric(12, 8))
+            .padding(Edges::symmetric(12, 6))
             .background(|theme| theme.primary)
             .color(|theme| theme.on_primary)
             .on_click(move |_ctx| set_counter.update(|v| *v += 1))
