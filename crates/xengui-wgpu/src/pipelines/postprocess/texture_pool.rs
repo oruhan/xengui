@@ -22,9 +22,16 @@ impl Clone for PooledTexture {
     }
 }
 
+// Free-list cap and idle timeout keep the pool from growing forever when
+// many distinct sizes pass through it (e.g. continuous window resizing).
+const MAX_FREE_TEXTURES: usize = 32;
+const MAX_IDLE_FRAMES: u32 = 120;
+
 pub struct TexturePool {
     format: wgpu::TextureFormat,
-    free: Vec<PooledTexture>,
+    // Each entry's second field counts frames since it was last used;
+    // reset to 0 whenever it's handed out again via `acquire`.
+    free: Vec<(PooledTexture, u32)>,
     used_this_frame: Vec<PooledTexture>,
 }
 
@@ -34,14 +41,30 @@ impl TexturePool {
     }
 
     pub fn reset_frame(&mut self) {
-        self.free.append(&mut self.used_this_frame);
+        for texture in self.used_this_frame.drain(..) {
+            self.free.push((texture, 0));
+        }
+
+        for (_, idle_frames) in self.free.iter_mut() {
+            *idle_frames += 1;
+        }
+        self.free.retain(|(_, idle_frames)| *idle_frames <= MAX_IDLE_FRAMES);
+
+        if self.free.len() > MAX_FREE_TEXTURES {
+            self.free.sort_by_key(|(_, idle_frames)| std::cmp::Reverse(*idle_frames));
+            self.free.truncate(MAX_FREE_TEXTURES);
+        }
     }
 
     pub fn acquire(&mut self, device: &wgpu::Device, width: u32, height: u32) -> PooledTexture {
-        if let Some(idx) = self.free.iter().position(|t| t.width == width && t.height == height) {
-            let tex = self.free.remove(idx);
-            self.used_this_frame.push(tex.clone());
-            return tex;
+        if
+            let Some(idx) = self.free
+                .iter()
+                .position(|(t, _)| t.width == width && t.height == height)
+        {
+            let (texture, _) = self.free.remove(idx);
+            self.used_this_frame.push(texture.clone());
+            return texture;
         }
 
         let texture = device.create_texture(

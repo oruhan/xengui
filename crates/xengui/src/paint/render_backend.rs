@@ -54,7 +54,8 @@ pub trait RenderBackend {
         &mut self,
         _chain: &crate::FilterChain,
         _bounds: (f32, f32, f32, f32),
-        _clip_rect: Option<(f32, f32, f32, f32)>
+        _clip_rect: Option<(f32, f32, f32, f32)>,
+        _radius: [f32; 4]
     ) {}
 
     /// Drains underline/strike/overline rects queued by `draw_text` calls

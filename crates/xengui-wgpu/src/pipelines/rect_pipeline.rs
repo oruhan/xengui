@@ -306,6 +306,13 @@ impl RectPipeline {
 
         let mut vertices = Vec::with_capacity(cmds.len() * VERTICES_PER_RECT);
 
+        // Extra headroom (physical px) rasterized beyond each rect's true
+        // edge, so a shape whose antialiasing fringe would otherwise land
+        // exactly on the quad boundary - most visibly a full circle inscribed
+        // in its own box, e.g. the Switch thumb - has room to fade to
+        // transparent instead of hard-clipping into a flat facet.
+        const AA_PAD: f32 = 1.5;
+
         for (i, cmd) in cmds.iter().enumerate() {
             let fill_color = cmd.background
                 .as_ref()
@@ -319,10 +326,6 @@ impl RectPipeline {
             let half_w = w * 0.5;
             let half_h = h * 0.5;
 
-            // Per-corner radii, clamped by BorderRadius::to_physical_array
-            // against overlap the same way CSS does - scale_factor is
-            // already baked into `w`/`h` (physical px) at this point, so
-            // pass 1.0 here instead of re-scaling.
             let radius = cmd.border_radius
                 .map(|r| r.to_physical_array(1.0, w, h))
                 .unwrap_or([0.0; 4]);
@@ -332,11 +335,16 @@ impl RectPipeline {
                 .map(|c| c.to_f32_array())
                 .unwrap_or([0.0, 0.0, 0.0, 0.0]);
 
+            // half_size stays the shape's real (unpadded) bounds - only the
+            // rasterized quad grows by AA_PAD, so the SDF is unaffected and
+            // just gets evaluated a bit past its own edge.
             let half_size = [half_w, half_h];
-            let p0 = ndc(x, y);
-            let p1 = ndc(x + w, y);
-            let p2 = ndc(x, y + h);
-            let p3 = ndc(x + w, y + h);
+            let outer_w = half_w + AA_PAD;
+            let outer_h = half_h + AA_PAD;
+            let p0 = ndc(x - AA_PAD, y - AA_PAD);
+            let p1 = ndc(x + w + AA_PAD, y - AA_PAD);
+            let p2 = ndc(x - AA_PAD, y + h + AA_PAD);
+            let p3 = ndc(x + w + AA_PAD, y + h + AA_PAD);
 
             let local = |lx: f32, ly: f32| [lx, ly];
 
@@ -353,12 +361,12 @@ impl RectPipeline {
 
             vertices.extend_from_slice(
                 &[
-                    mk(p0, local(-half_w, -half_h)),
-                    mk(p1, local(half_w, -half_h)),
-                    mk(p2, local(-half_w, half_h)),
-                    mk(p2, local(-half_w, half_h)),
-                    mk(p1, local(half_w, -half_h)),
-                    mk(p3, local(half_w, half_h)),
+                    mk(p0, local(-outer_w, -outer_h)),
+                    mk(p1, local(outer_w, -outer_h)),
+                    mk(p2, local(-outer_w, outer_h)),
+                    mk(p2, local(-outer_w, outer_h)),
+                    mk(p1, local(outer_w, -outer_h)),
+                    mk(p3, local(outer_w, outer_h)),
                 ]
             );
         }

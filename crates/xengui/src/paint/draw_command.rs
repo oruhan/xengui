@@ -121,6 +121,7 @@ pub struct BackdropFilterCommand {
     pub chain: crate::FilterChain,
     pub bounds: (f32, f32, f32, f32),
     pub clip_rect: Option<(f32, f32, f32, f32)>,
+    pub radius: [f32; 4],
 }
 
 #[derive(Clone, Debug)]

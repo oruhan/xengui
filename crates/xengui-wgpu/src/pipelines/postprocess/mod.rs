@@ -293,7 +293,8 @@ impl PostProcessEngine {
         clip_rect: Option<(f32, f32, f32, f32)>,
         target_width: u32,
         target_height: u32,
-        source_uv_rect: (f32, f32, f32, f32)
+        source_uv_rect: (f32, f32, f32, f32),
+        radius: [f32; 4]
     ) {
         self.blit.run_over(
             device,
@@ -305,7 +306,8 @@ impl PostProcessEngine {
             clip_rect,
             target_width,
             target_height,
-            source_uv_rect
+            source_uv_rect,
+            radius
         );
     }
 
@@ -420,7 +422,8 @@ impl PostProcessEngine {
             None,
             w,
             h,
-            (0.0, 0.0, 1.0, 1.0)
+            (0.0, 0.0, 1.0, 1.0),
+            [0.0; 4]
         );
 
         composited

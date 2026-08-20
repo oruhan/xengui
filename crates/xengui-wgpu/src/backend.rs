@@ -41,10 +41,6 @@ pub struct WgpuPipelines {
     /// was built with. `1` means MSAA is disabled entirely (either
     /// requested that way, or the adapter didn't support anything higher).
     sample_count: u32,
-    /// Owned multisampled color target, `None` when `sample_count == 1`.
-    /// Recreated on resize.
-    msaa_texture: Option<wgpu::Texture>,
-    msaa_view: Option<wgpu::TextureView>,
     // Everything is painted into this offscreen target instead of the
     // swapchain directly, so a backdrop-filter widget can read back
     // already-painted content mid-frame - not possible against a
@@ -107,8 +103,6 @@ impl WgpuPipelines {
             postprocess: PostProcessEngine::new(device, surface_format),
             surface_format,
             sample_count,
-            msaa_texture: None,
-            msaa_view: None,
             triangle_sample_count,
             triangle_msaa_seed: BlitPass::new(device, surface_format, triangle_sample_count),
             triangle_msaa_texture: None,
@@ -197,40 +191,6 @@ impl WgpuPipelines {
     /// offscreen textures) was built against.
     pub fn surface_format(&self) -> wgpu::TextureFormat {
         self.surface_format
-    }
-
-    /// (Re)allocates the MSAA color target for the given surface size.
-    /// A no-op when MSAA is disabled (`sample_count == 1`).
-    pub fn resize_msaa(
-        &mut self,
-        device: &wgpu::Device,
-        format: wgpu::TextureFormat,
-        width: u32,
-        height: u32
-    ) {
-        if self.sample_count <= 1 {
-            self.msaa_texture = None;
-            self.msaa_view = None;
-            return;
-        }
-        let texture = device.create_texture(
-            &(wgpu::TextureDescriptor {
-                label: Some("xengui msaa color target"),
-                size: wgpu::Extent3d {
-                    width: width.max(1),
-                    height: height.max(1),
-                    depth_or_array_layers: 1,
-                },
-                mip_level_count: 1,
-                sample_count: self.sample_count,
-                dimension: wgpu::TextureDimension::D2,
-                format,
-                usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
-                view_formats: &[],
-            })
-        );
-        self.msaa_view = Some(texture.create_view(&Default::default()));
-        self.msaa_texture = Some(texture);
     }
 
     pub fn sample_count(&self) -> u32 {
@@ -1000,7 +960,8 @@ impl<'a> RenderBackend for WgpuFrame<'a> {
             clip_rect,
             self.width,
             self.height,
-            (0.0, 0.0, 1.0, 1.0)
+            (0.0, 0.0, 1.0, 1.0),
+            [0.0; 4]
         );
     }
 
@@ -1008,7 +969,8 @@ impl<'a> RenderBackend for WgpuFrame<'a> {
         &mut self,
         chain: &FilterChain,
         bounds: (f32, f32, f32, f32),
-        clip_rect: Option<(f32, f32, f32, f32)>
+        clip_rect: Option<(f32, f32, f32, f32)>,
+        radius: [f32; 4]
     ) {
         let padding_px = padding_for_chain(chain, self.scale_factor);
         let screen_w = self.width as f32;
@@ -1111,7 +1073,8 @@ impl<'a> RenderBackend for WgpuFrame<'a> {
             clip_rect,
             self.width,
             self.height,
-            source_uv_rect
+            source_uv_rect,
+            radius
         );
     }
 

@@ -251,6 +251,7 @@ fn nav_item(
         .gap(14.0, 0.0)
         .width(pct!(100.0))
         .color(fg)
+        .transform_origin(TransformOrigin::CENTER)
         .padding(Edges::symmetric(14.0, 10.0))
         .border(Border::all(0.0, Color::TRANSPARENT).radius(20.0))
         .background(bg)

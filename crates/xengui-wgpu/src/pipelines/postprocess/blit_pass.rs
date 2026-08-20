@@ -14,7 +14,10 @@ struct GpuBlitParams {
     _pad0: f32,
     offset: [f32; 2],
     scale: [f32; 2],
+    dest_pos: [f32; 2],
+    dest_half_size: [f32; 2],
     _pad1: [f32; 2],
+    radius: [f32; 4],
 }
 
 /// A fullscreen-triangle "copy with optional offset/tint" pass, the
@@ -188,6 +191,7 @@ impl BlitPass {
             offset_uv,
             scale_uv,
             tint,
+            [0.0; 4],
             false
         );
     }
@@ -214,7 +218,8 @@ impl BlitPass {
         clip_rect: Option<(f32, f32, f32, f32)>,
         target_width: u32,
         target_height: u32,
-        source_uv_rect: (f32, f32, f32, f32)
+        source_uv_rect: (f32, f32, f32, f32),
+        radius: [f32; 4]
     ) {
         let (offset_u, offset_v, scale_u, scale_v) = source_uv_rect;
         self.dispatch(
@@ -230,6 +235,7 @@ impl BlitPass {
             (offset_u, offset_v),
             (scale_u, scale_v),
             None,
+            radius,
             true
         );
     }
@@ -249,19 +255,25 @@ impl BlitPass {
         offset_uv: (f32, f32),
         scale_uv: (f32, f32),
         tint: Option<Color>,
+        radius: [f32; 4],
         blend_over: bool
     ) {
         let (tint_rgba, tint_mix) = match tint {
             Some(c) => (c.to_f32_array(), 1.0),
             None => ([0.0, 0.0, 0.0, 1.0], 0.0),
         };
+        let dest_half_size = [dest_rect.2 * 0.5, dest_rect.3 * 0.5];
+        let dest_pos = [dest_rect.0 + dest_half_size[0], dest_rect.1 + dest_half_size[1]];
         let params = GpuBlitParams {
             tint: tint_rgba,
             tint_mix,
             _pad0: 0.0,
             offset: [offset_uv.0, offset_uv.1],
             scale: [scale_uv.0, scale_uv.1],
+            dest_pos,
+            dest_half_size,
             _pad1: [0.0; 2],
+            radius,
         };
         queue.write_buffer(&self.uniform_buffer, 0, bytemuck::bytes_of(&params));
 
