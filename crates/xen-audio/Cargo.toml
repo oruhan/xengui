@@ -1,0 +1,15 @@
+[package]
+name = "xen-audio"
+version = "0.1.0"
+edition = { workspace = true }
+rust-version = { workspace = true }
+authors = ["randseas <waultbank@gmail.com>"]
+description = "platform-agnostic local audio playback for xengui apps"
+license = "Apache-2.0"
+
+[dependencies]
+web-time = { workspace = true }
+log = { workspace = true }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+rodio = { workspace = true, features = ["symphonia-all"] }

@@ -6,6 +6,8 @@ use web_time::Duration;
 use xengui::*;
 use xengui_icons::{ IconAxes, codepoints };
 
+/* ------ Icon Button ------ */
+
 pub struct IconButton {
     base: WidgetBase,
     layout_box: LayoutBox,
@@ -94,6 +96,8 @@ impl Render for IconButton {
 
 xengui::impl_composite_widget!(IconButton);
 
+/* ------ AlbumArt ------ */
+
 pub struct AlbumArt {
     base: WidgetBase,
     layout_box: LayoutBox,
@@ -154,3 +158,63 @@ impl Render for AlbumArt {
 }
 
 xengui::impl_composite_widget!(AlbumArt);
+
+/* ------ PlaybackTicker ------ */
+
+pub struct PlaybackTicker {
+    base: WidgetBase,
+    layout_box: LayoutBox,
+    active: bool,
+    on_tick: Rc<dyn Fn()>,
+}
+
+impl PlaybackTicker {
+    pub fn new(active: bool, on_tick: impl Fn() + 'static) -> Self {
+        Self {
+            base: WidgetBase::new(Interaction::new()),
+            layout_box: LayoutBox::default(),
+            active,
+            on_tick: Rc::new(on_tick),
+        }
+    }
+}
+
+impl StyleBuilder for PlaybackTicker {
+    fn style_mut(&mut self) -> &mut Style {
+        &mut self.base.style
+    }
+}
+
+impl Widget for PlaybackTicker {
+    xengui::impl_widget_boilerplate!();
+
+    fn debug_name(&self) -> &'static str {
+        "Widget#PlaybackTicker"
+    }
+
+    fn measure(&self, _ctx: &mut MeasureContext, _constraints: Constraints) -> MeasureResult {
+        MeasureResult::new(0.0, 0.0)
+    }
+
+    fn paint(&self, _ctx: &mut PaintContext) {}
+
+    fn wants_animation_frame(&self) -> bool {
+        self.active
+    }
+
+    fn event(&mut self, event: &InputEvent, ctx: &mut EventCtx) -> EventStatus {
+        if matches!(event, InputEvent::AnimationTick { .. }) {
+            (self.on_tick)();
+            ctx.request_redraw();
+            return EventStatus::Handled;
+        }
+        EventStatus::Ignored
+    }
+
+    fn content_eq(&self, other: &dyn Widget) -> bool {
+        other
+            .as_any()
+            .downcast_ref::<PlaybackTicker>()
+            .is_some_and(|o| self.active == o.active)
+    }
+}

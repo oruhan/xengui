@@ -4,6 +4,7 @@
 
 mod components;
 use components::{ AlbumArt, IconButton };
+mod library;
 
 use web_time::Duration;
 use xenframe::{ App, AppConfig };
@@ -13,12 +14,19 @@ use xenframe::WindowPosition;
 use xengui::{ properties::StyleValue, * };
 use xengui_icons::{ IconAxes, codepoints };
 
+use std::cell::RefCell;
+use std::rc::Rc;
+use xen_audio::{ AudioBackend, RodioBackend };
+
+use crate::components::PlaybackTicker;
+
 // ---------------------------------------------------------------------
 // Sample data
 // ---------------------------------------------------------------------
 
 #[derive(Clone, PartialEq)]
 struct Track {
+    path: std::path::PathBuf,
     title: String,
     artist: String,
     album: String,
@@ -33,45 +41,6 @@ struct Playlist {
     name: String,
     color: Color,
     track_count: u32,
-}
-
-fn sample_tracks() -> Vec<Track> {
-    let raw: [(&str, &str, &str, bool, u32, Color); 8] = [
-        ("Thunder", "Imagine Dragons", "Evolve", false, 214, Color::VIOLET_400),
-        ("Starboy (feat. Daft Punk)", "The Weeknd", "Starboy", true, 187, Color::AMBER_400),
-        ("Everlong", "Foo Fighters", "The Colour And The Shape", false, 245, Color::CYAN_400),
-        ("Bohemian Rhapsody", "Queen", "A Night at The Opera", false, 198, Color::ROSE_400),
-        ("Killer Queen", "Queen", "Queen Rock Montreal", false, 230, Color::PURPLE_400),
-        ("Kyoto (feat. Sirah)", "Skrillex", "Bangarang EP", true, 176, Color::ORANGE_400),
-        (
-            "Miss You (Bonus Track)",
-            "Oliver Tree & Robin Schulz",
-            "Alone In A Crowd",
-            false,
-            205,
-            Color::TEAL_400,
-        ),
-        ("Hurt", "Oliver Tree", "Ugly Is Beautiful", true, 221, Color::PINK_400),
-    ];
-
-    raw.into_iter()
-        .map(|(title, artist, album, explicit_content, duration_secs, art_color)| Track {
-            title: title.to_string(),
-            artist: artist.to_string(),
-            album: album.to_string(),
-            explicit_content,
-            duration_secs,
-            art_color,
-        })
-        .collect()
-}
-
-fn sample_playlists() -> Vec<Playlist> {
-    vec![
-        Playlist { id: 1, name: "Liked Songs".into(), color: Color::VIOLET_400, track_count: 0 },
-        Playlist { id: 2, name: "Playlist 1".into(), color: Color::PURPLE_400, track_count: 0 },
-        Playlist { id: 3, name: "Playlist 2".into(), color: Color::INDIGO_400, track_count: 0 }
-    ]
 }
 
 // Violet-based Material 3 dark palette; every derived color follows from
@@ -1087,6 +1056,17 @@ fn build_player_bar(
                     set_progress.set(value);
                     ctx.request_redraw();
                 })
+                .on_commit({
+                    let backend = backend.clone();
+                    let duration_secs = track.duration_secs;
+                    move |value, ctx| {
+                        let secs = value * (duration_secs as f32);
+                        if let Err(e) = backend.borrow_mut().seek(Duration::from_secs_f32(secs)) {
+                            log::warn!("pearl: seek failed: {e}");
+                        }
+                        ctx.request_redraw();
+                    }
+                })
         )
         .child(
             Label::new()
@@ -1171,7 +1151,18 @@ fn build_mini_player(
         .bottom(0)
         .width(pct!(100.0))
         .fill_color(theme.primary)
-        .track_color(theme.surface_container_highest.with_alpha_f32(0.8));
+        .track_color(theme.surface_container_highest.with_alpha_f32(0.8))
+        .on_commit({
+            let backend = backend.clone();
+            let duration_secs = track.duration_secs;
+            move |value, ctx| {
+                let secs = value * (duration_secs as f32);
+                if let Err(e) = backend.borrow_mut().seek(Duration::from_secs_f32(secs)) {
+                    log::warn!("pearl: seek failed: {e}");
+                }
+                ctx.request_redraw();
+            }
+        });
 
     let info_row = Row::new()
         .width(pct!(100.0))
@@ -1264,8 +1255,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         ).to_vec()
     );
 
-    let tracks = sample_tracks();
-
     app.render(move || {
         let theme = xengui::current_theme();
 
@@ -1300,6 +1289,94 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
             },
             [dep_key]
+        );
+
+        let (backend, _) = use_state(
+            Rc::new(RefCell::new(RodioBackend::new().expect("no audio output device")))
+        );
+
+        let (tracks, set_tracks) = use_state(Vec::<Track>::new());
+
+        use_effect(
+            {
+                let set_tracks = set_tracks.clone();
+                let backend = backend.clone();
+                move || {
+                    xengui::task::spawn(async move {
+                        let config = xengui::task::spawn_blocking(
+                            library::load_or_init_config
+                        ).await;
+                        let scanned = xengui::task::spawn_blocking({
+                            let paths = config.library.scan_paths.clone();
+                            move || library::scan_library(&paths)
+                        }).await;
+
+                        backend.borrow_mut().set_volume(config.playback.default_volume);
+
+                        let tracks: Vec<Track> = scanned
+                            .into_iter()
+                            .map(|s| Track {
+                                path: s.path,
+                                title: s.title,
+                                artist: s.artist,
+                                album: s.album,
+                                explicit_content: false,
+                                duration_secs: s.duration_secs,
+                                art_color: s.art_color,
+                            })
+                            .collect();
+
+                        set_tracks.set(tracks);
+                    });
+                }
+            },
+            ()
+        );
+
+        use_effect(
+            {
+                let backend = backend.clone();
+                move || {
+                    if is_playing {
+                        backend.borrow_mut().play();
+                    } else {
+                        backend.borrow_mut().pause();
+                    }
+                }
+            },
+            [is_playing]
+        );
+
+        use_effect(
+            {
+                let backend = backend.clone();
+                let is_playing = is_playing;
+                let path = tracks.get(current_track).map(|t| t.path.clone());
+                move || {
+                    let Some(path) = path else {
+                        return;
+                    };
+                    let mut b = backend.borrow_mut();
+                    if let Err(e) = b.load_from_path(&path) {
+                        log::error!("pearl: track load failed: {e}");
+                        return;
+                    }
+                    if is_playing {
+                        b.play();
+                    }
+                }
+            },
+            [current_track]
+        );
+
+        use_effect(
+            {
+                let backend = backend.clone();
+                move || {
+                    backend.borrow_mut().set_volume(volume);
+                }
+            },
+            [volume.to_bits()]
         );
 
         // Sidebar only shows at Md+; below that we switch to the floating
@@ -1445,6 +1522,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .child(nav);
 
             main_view = main_view.child(floating_stack);
+
+            main_view = main_view.child(
+                PlaybackTicker::new(is_playing, {
+                    let backend = backend.clone();
+                    let set_progress = set_progress.clone();
+                    let duration = tracks
+                        .get(current_track)
+                        .map(|t| t.duration_secs)
+                        .unwrap_or(1)
+                        .max(1) as f32;
+                    move || {
+                        let pos = backend.borrow().position().as_secs_f32();
+                        set_progress.set((pos / duration).clamp(0.0, 1.0));
+                    }
+                })
+            );
         }
 
         Box::new(main_view)
