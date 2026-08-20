@@ -51,17 +51,6 @@ struct Playlist {
     deletable: bool,
 }
 
-#[derive(Clone, PartialEq)]
-struct PlaylistsSnapshot(Vec<Playlist>, u32, bool);
-
-fn color_to_rgb(c: Color) -> [u8; 3] {
-    [(c.r() * 255.0).round() as u8, (c.g() * 255.0).round() as u8, (c.b() * 255.0).round() as u8]
-}
-
-fn rgb_to_color(rgb: [u8; 3]) -> Color {
-    Color::rgb(rgb[0], rgb[1], rgb[2])
-}
-
 fn sample_playlists() -> Vec<Playlist> {
     vec![Playlist {
         id: 0,
@@ -70,19 +59,6 @@ fn sample_playlists() -> Vec<Playlist> {
         track_count: 0,
         deletable: false,
     }]
-}
-
-fn placeholder_track() -> Track {
-    Track {
-        path: std::path::PathBuf::new(),
-        title: "No Track".to_string(),
-        artist: "-".to_string(),
-        album: "-".to_string(),
-        explicit_content: false,
-        duration_secs: 1,
-        art_color: Color::NEUTRAL_500,
-        cover: None,
-    }
 }
 
 // Violet-based Material 3 dark palette; every derived color follows from
@@ -1403,7 +1379,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 explicit_content: false,
                                 duration_secs: s.duration_secs,
                                 art_color: s.art_color,
-                                cover: s.cover,
+                                cover: s.cover.map(|(w, h, rgba)|
+                                    image_source_from_rgba8(rgba, w, h)
+                                ),
                             })
                             .collect();
 
@@ -1431,7 +1409,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         use_effect(
             {
                 let backend = backend.clone();
-                let is_playing = is_playing;
                 let path = tracks.get(current_track).map(|t| t.path.clone());
                 move || {
                     let Some(path) = path else {

@@ -207,17 +207,3 @@ pub fn load_or_init_config() -> LibraryConfig {
     write_config(&path, &config);
     config
 }
-
-/// Blocking; call through `xengui::task::spawn_blocking`.
-pub fn save_playlists(items: Vec<PlaylistEntry>, next_id: u32) {
-    let Some(path) = config_path() else {
-        return;
-    };
-    let mut config = std::fs
-        ::read_to_string(&path)
-        .ok()
-        .and_then(|text| toml::from_str::<LibraryConfig>(&text).ok())
-        .unwrap_or_default();
-    config.playlists = PlaylistsSection { next_id, items };
-    write_config(&path, &config);
-}
