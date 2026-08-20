@@ -2,28 +2,7 @@
 use smol_str::SmolStr;
 
 use crate::{
-    AnimationManager,
-    Background,
-    Border,
-    BorderRadius,
-    BoxShadow,
-    BoxShadowCommand,
-    Color,
-    Constraints,
-    EventCtx,
-    EventStatus,
-    InputEvent,
-    Interaction,
-    LayoutBox,
-    Length,
-    MeasureContext,
-    MeasureResult,
-    Outline,
-    PaintContext,
-    RectCommand,
-    Style,
-    WidgetId,
-    properties::StyleValue,
+    AnimationManager, Background, Border, BorderRadius, BoxShadow, BoxShadowCommand, Color, Constraints, EventCtx, EventStatus, InputEvent, Interaction, LayoutBox, Length, MeasureContext, MeasureResult, Outline, PaintContext, RectCommand, Style, TransformOrigin, WidgetId, properties::StyleValue,
 };
 use std::any::Any;
 
@@ -140,11 +119,16 @@ pub trait Widget: Any {
     fn paint_box(&self, ctx: &mut PaintContext) {
         let style = self.computed_style();
         let sf = ctx.scale_factor;
-        // Always routed through scaled_layout_box (even at scale 1.0) so
-        // every widget's box position is rounded through the same single
-        // site, instead of drifting in/out of subpixel alignment depending
-        // on whether a scale happens to be set.
-        let layout = scaled_layout_box(*self.layout_box(), style.scale.unwrap_or(1.0));
+        // Always routed through scaled_layout_box_with_origin (even at
+        // scale 1.0) so every widget's box position is rounded through
+        // the same single site, instead of drifting in/out of subpixel
+        // alignment depending on whether a scale happens to be set.
+        let layout = scaled_layout_box_with_origin(
+            *self.layout_box(),
+            style.scale.unwrap_or(1.0),
+            style.transform_origin.unwrap_or_default(),
+            sf
+        );
         let radius = style.border
             .as_ref()
             .and_then(|b| b.radius)
@@ -583,6 +567,26 @@ pub fn scaled_layout_box(rect: LayoutBox, scale: f32) -> LayoutBox {
         y: (cy - h * 0.5).round(),
         width: w,
         height: h,
+    }
+}
+
+/// Like `scaled_layout_box`, but scales around an explicit pivot instead
+/// of always the widget's own center - lets `Style::transform_origin`
+/// (e.g. a corner or an off-center point) actually take effect. A point
+/// `p` transforms as `pivot + (p - pivot) * scale`; applied to the box's
+/// own top-left corner this reduces to `rect.pos + origin * (1 - scale)`.
+pub fn scaled_layout_box_with_origin(
+    rect: LayoutBox,
+    scale: f32,
+    origin: TransformOrigin,
+    scale_factor: f32
+) -> LayoutBox {
+    let (ox, oy) = origin.resolve(rect.width, rect.height, scale_factor);
+    LayoutBox {
+        x: (rect.x + ox * (1.0 - scale)).round(),
+        y: (rect.y + oy * (1.0 - scale)).round(),
+        width: rect.width * scale,
+        height: rect.height * scale,
     }
 }
 

@@ -248,7 +248,12 @@ impl Widget for Switch {
     fn paint(&self, ctx: &mut PaintContext) {
         let style = &self.base.computed_style;
         let sf = ctx.scale_factor * self.size;
-        let b = crate::scaled_layout_box(self.layout_box, style.scale.unwrap_or(1.0));
+        let b = crate::scaled_layout_box_with_origin(
+            self.layout_box,
+            style.scale.unwrap_or(1.0),
+            style.transform_origin.unwrap_or_default(),
+            ctx.scale_factor
+        );
         let theme = crate::current_theme();
 
         let t = self.progress.get();

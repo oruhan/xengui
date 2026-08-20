@@ -295,7 +295,12 @@ impl Widget for Button {
         let sf = ctx.scale_factor;
 
         let scale = style.scale.unwrap_or(1.0);
-        let background_box = crate::scaled_layout_box(self.layout_box, scale);
+        let background_box = crate::scaled_layout_box_with_origin(
+            self.layout_box,
+            scale,
+            style.transform_origin.unwrap_or_default(),
+            sf
+        );
         let radius = style.border
             .as_ref()
             .and_then(|b| b.radius)

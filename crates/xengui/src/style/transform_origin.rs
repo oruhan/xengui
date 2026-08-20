@@ -75,13 +75,13 @@ impl TransformOrigin {
     }
 
     /// Resolves to physical pixel offsets relative to the widget's top-left corner.
-    pub fn resolve(&self, widget_width: f32, widget_height: f32) -> (f32, f32) {
+    pub fn resolve(&self, widget_width: f32, widget_height: f32, scale_factor: f32) -> (f32, f32) {
         let x = match self.x {
-            TransformOriginAxis::Px(v) => v,
+            TransformOriginAxis::Px(v) => v * scale_factor,
             TransformOriginAxis::Percent(p) => widget_width * (p / 100.0),
         };
         let y = match self.y {
-            TransformOriginAxis::Px(v) => v,
+            TransformOriginAxis::Px(v) => v * scale_factor,
             TransformOriginAxis::Percent(p) => widget_height * (p / 100.0),
         };
         (x, y)

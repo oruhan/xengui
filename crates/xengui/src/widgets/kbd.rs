@@ -160,7 +160,12 @@ impl Widget for Kbd {
     fn paint(&self, ctx: &mut PaintContext) {
         let style = &self.base.computed_style;
         let sf = ctx.scale_factor;
-        let b = crate::scaled_layout_box(self.layout_box, style.scale.unwrap_or(1.0));
+        let b = crate::scaled_layout_box_with_origin(
+            self.layout_box,
+            style.scale.unwrap_or(1.0),
+            style.transform_origin.unwrap_or_default(),
+            sf
+        );
         let t = self.press_progress.get();
         let theme = crate::current_theme();
 
