@@ -548,7 +548,7 @@ fn build_titlebar(theme: &Theme, current: &Track) -> View {
                 .color(theme.on_surface_variant)
         );
 
-    //let controls = window_controls_row(theme);
+    let controls = window_controls_row(theme);
 
     Row::new()
         .width(pct!(100.0))
@@ -561,6 +561,7 @@ fn build_titlebar(theme: &Theme, current: &Track) -> View {
         .window_drag_region(true)
         .child(brand)
         .child(center)
+        .child(controls)
 }
 
 // ---------------------------------------------------------------------
