@@ -728,22 +728,26 @@ fn build_home_page(
     current_track: usize,
     set_current_track: SetState<usize>,
     set_is_playing: SetState<bool>,
-    set_progress: SetState<f32>
+    set_progress: SetState<f32>,
+    loading: bool
 ) -> Box<dyn Widget> {
     if tracks.is_empty() {
+        let (icon, title, subtitle) = if loading {
+            (codepoints::AUTORENEW, "Loading your library", "Scanning your music folder...")
+        } else {
+            (
+                codepoints::MUSIC_OFF,
+                "No songs found",
+                "Add a music folder in settings to start listening.",
+            )
+        };
+
         return Box::new(
             Column::new()
                 .flex_grow(1.0)
                 .min_height(pct!(100.0))
                 .background(theme.background)
-                .child(
-                    empty_state(
-                        theme,
-                        codepoints::MUSIC_OFF,
-                        "No songs found",
-                        "Add a music folder in settings to start listening."
-                    )
-                )
+                .child(empty_state(theme, icon, title, subtitle))
         );
     }
 
@@ -1577,36 +1581,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         // bottom nav bubble, matching a phone/tablet-friendly layout.
         let show_sidebar = xengui::responsive_bool(xengui::Breakpoint::Md, true);
 
-        if !library_loaded || tracks.get(current_track).is_none() {
-            let status_text = if library_loaded {
-                "No songs found. Add some music to your library folder to get started."
-            } else {
-                "Loading your library..."
-            };
-
-            return Box::new(
-                Column::new()
-                    .width(pct!(100.0))
-                    .height(pct!(100.0))
-                    .background(theme.background)
-                    .font("Nunito")
-                    .child(build_titlebar(&theme, None))
-                    .child(
-                        Column::new()
-                            .flex_grow(1.0)
-                            .width(pct!(100.0))
-                            .align_items(Align::Center)
-                            .justify_content(JustifyContent::Center)
-                            .child(
-                                Label::new()
-                                    .label(status_text)
-                                    .font_size(px!(15.0))
-                                    .color(theme.on_surface_variant)
-                            )
-                    )
-            ) as Box<dyn Widget>;
-        }
-
+        // Chrome (titlebar, sidebar/nav bar) always renders regardless of
+        // library load state or track count - only the home page's own
+        // content reflects loading/empty state.
         let current = tracks.get(current_track).cloned();
         let titlebar = build_titlebar(&theme, current.as_ref());
 
@@ -1632,7 +1609,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         current_track,
                         set_current_track_home.clone(),
                         set_is_playing_home.clone(),
-                        set_progress_home.clone()
+                        set_progress_home.clone(),
+                        !library_loaded
                     )
                 })
                 .route("/search", move |_params| { build_search_page(&theme_search) })

@@ -99,6 +99,15 @@ const PLACEHOLDER_COLORS: [Color; 6] = [
     Color::PINK_400,
 ];
 
+fn color_for_title(title: &str) -> Color {
+    let index =
+        title
+            .bytes()
+            .map(|b| b as usize)
+            .sum::<usize>() % PLACEHOLDER_COLORS.len();
+    PLACEHOLDER_COLORS[index]
+}
+
 /// Blocking; call through `xengui::task::spawn_blocking`.
 pub fn scan_library(scan_paths: &[String]) -> Vec<ScannedTrack> {
     let extensions = ["mp3", "m4a", "flac", "wav", "ogg", "opus", "webm"];
@@ -143,18 +152,35 @@ fn read_track_tags(path: &Path, media_kind: MediaKind) -> Option<ScannedTrack> {
     use lofty::file::{ AudioFile, TaggedFileExt };
     use lofty::tag::Accessor;
 
-    let tagged = lofty::read_from_path(path).ok()?;
+    let fallback_title = || {
+        path.file_stem()
+            .map(|s| s.to_string_lossy().to_string())
+            .unwrap_or_default()
+    };
+
+    // lofty has no container support for some formats (e.g. WebM/Matroska),
+    // so a failed read must not drop the track from the library entirely -
+    // it still gets listed, just without real tags/duration/cover.
+    let Ok(tagged) = lofty::read_from_path(path) else {
+        let title = fallback_title();
+        return Some(ScannedTrack {
+            path: path.to_path_buf(),
+            art_color: color_for_title(&title),
+            title,
+            artist: "Unknown Artist".to_string(),
+            album: "Unknown Album".to_string(),
+            duration_secs: 0,
+            cover: None,
+            media_kind,
+        });
+    };
+
     let tag = tagged.primary_tag().or_else(|| tagged.first_tag());
 
     let title = tag
         .and_then(|t| t.title())
         .map(|s| s.to_string())
-        .unwrap_or_else(||
-            path
-                .file_stem()
-                .map(|s| s.to_string_lossy().to_string())
-                .unwrap_or_default()
-        );
+        .unwrap_or_else(fallback_title);
     let artist = tag
         .and_then(|t| t.artist())
         .map(|s| s.to_string())
@@ -178,19 +204,13 @@ fn read_track_tags(path: &Path, media_kind: MediaKind) -> Option<ScannedTrack> {
                 })
         });
 
-    let color_index =
-        title
-            .bytes()
-            .map(|b| b as usize)
-            .sum::<usize>() % PLACEHOLDER_COLORS.len();
-
     Some(ScannedTrack {
         path: path.to_path_buf(),
+        art_color: color_for_title(&title),
         title,
         artist,
         album,
         duration_secs,
-        art_color: PLACEHOLDER_COLORS[color_index],
         cover,
         media_kind,
     })
@@ -229,10 +249,7 @@ pub fn spawn_library_watcher(scan_paths: Vec<String>) -> mpsc::Receiver<Vec<Scan
             }
         }
 
-        loop {
-            let Ok(_first) = fs_rx.recv() else {
-                break;
-            };
+        while fs_rx.recv().is_ok() {
             while fs_rx.recv_timeout(Duration::from_millis(500)).is_ok() {}
 
             if tx.send(scan_library(&scan_paths)).is_err() {
