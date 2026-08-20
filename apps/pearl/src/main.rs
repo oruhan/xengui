@@ -34,6 +34,9 @@ struct Track {
     duration_secs: u32,
     art_color: Color,
     cover: Option<ImageSource>,
+    // Lets a future player pick an audio-only or video-capable playback
+    // path per track instead of assuming every source is audio-only.
+    media_kind: library::MediaKind,
 }
 
 impl PartialEq for Track {
@@ -102,6 +105,81 @@ fn pearl_theme() -> Theme {
 
 fn format_duration(total_secs: u32) -> String {
     format!("{}:{:02}", total_secs / 60, total_secs % 60)
+}
+
+fn empty_state(theme: &Theme, codepoint: char, title: &str, subtitle: &str) -> View {
+    Column::new()
+        .flex_grow(1.0)
+        .width(pct!(100.0))
+        .align_items(Align::Center)
+        .justify_content(JustifyContent::Center)
+        .gap(0.0, 10.0)
+        .padding(Edges::symmetric(24.0, 48.0))
+        .child(
+            View::new()
+                .width(px!(64.0))
+                .height(px!(64.0))
+                .align_items(Align::Center)
+                .justify_content(JustifyContent::Center)
+                .background(theme.surface_container_high)
+                .color(theme.on_surface_variant)
+                .border(Border::all(0.0, Color::TRANSPARENT).radius(32.0))
+                .child(VariableIcon::new(codepoint).size(28.0))
+        )
+        .child(
+            Label::new()
+                .label(title.to_string())
+                .font_size(px!(16.0))
+                .font_weight(FontWeight::SemiBold)
+                .color(theme.on_surface)
+        )
+        .child(
+            Label::new()
+                .label(subtitle.to_string())
+                .font_size(px!(13.0))
+                .color(theme.on_surface_variant)
+        )
+}
+
+fn build_tracks(scanned: Vec<library::ScannedTrack>) -> Vec<Track> {
+    scanned
+        .into_iter()
+        .map(|s| Track {
+            path: s.path,
+            title: s.title,
+            artist: s.artist,
+            album: s.album,
+            explicit_content: false,
+            duration_secs: s.duration_secs,
+            art_color: s.art_color,
+            cover: s.cover.map(|(w, h, rgba)| image_source_from_rgba8(rgba, w, h)),
+            media_kind: s.media_kind,
+        })
+        .collect()
+}
+
+// Awaits each debounced rescan the background file watcher produces and
+// feeds the fresh track list back into the UI, looping for as long as the
+// watcher thread stays alive.
+fn poll_library_watcher(
+    mut rx: std::sync::mpsc::Receiver<Vec<library::ScannedTrack>>,
+    set_tracks: SetState<Vec<Track>>
+) {
+    xengui::task::spawn(async move {
+        loop {
+            let (returned_rx, scanned) = xengui::task::spawn_blocking(move || {
+                let scanned = rx.recv();
+                (rx, scanned)
+            }).await;
+
+            let Ok(scanned) = scanned else {
+                break;
+            };
+
+            set_tracks.set(build_tracks(scanned));
+            rx = returned_rx;
+        }
+    });
 }
 
 fn play_pause_button(
@@ -510,7 +588,7 @@ fn window_controls_row(_theme: &Theme) -> View {
     Row::new().height(pct!(100.0))
 }
 
-fn build_titlebar(theme: &Theme, current: &Track) -> View {
+fn build_titlebar(theme: &Theme, current: Option<&Track>) -> View {
     let brand = Row::new()
         .align_items(Align::Center)
         .gap(8.0, 0.0)
@@ -525,7 +603,10 @@ fn build_titlebar(theme: &Theme, current: &Track) -> View {
                 .color(theme.on_surface)
         );
 
-    let now_playing_label = format!("{} - {}", current.title, current.artist);
+    let now_playing_label = match current {
+        Some(track) => format!("{} - {}", track.title, track.artist),
+        None => "".to_string(),
+    };
 
     let center = View::new()
         .flex_grow(1.0)
@@ -649,6 +730,23 @@ fn build_home_page(
     set_is_playing: SetState<bool>,
     set_progress: SetState<f32>
 ) -> Box<dyn Widget> {
+    if tracks.is_empty() {
+        return Box::new(
+            Column::new()
+                .flex_grow(1.0)
+                .min_height(pct!(100.0))
+                .background(theme.background)
+                .child(
+                    empty_state(
+                        theme,
+                        codepoints::MUSIC_OFF,
+                        "No songs found",
+                        "Add a music folder in settings to start listening."
+                    )
+                )
+        );
+    }
+
     let header = Row::new()
         .width(pct!(100.0))
         .align_items(Align::Center)
@@ -767,7 +865,24 @@ fn build_search_page(theme: &Theme) -> Box<dyn Widget> {
     )
 }
 
-fn build_library_page(theme: &Theme, playlists: &[Playlist]) -> Box<dyn Widget> {
+fn build_library_page(theme: &Theme, playlists: &[Playlist], tracks: &[Track]) -> Box<dyn Widget> {
+    if tracks.is_empty() {
+        return Box::new(
+            Column::new()
+                .flex_grow(1.0)
+                .height(pct!(100.0))
+                .background(theme.background)
+                .child(
+                    empty_state(
+                        theme,
+                        codepoints::MUSIC_OFF,
+                        "No songs found",
+                        "Add a music folder in settings to start listening."
+                    )
+                )
+        );
+    }
+
     let header = Row::new()
         .width(pct!(100.0))
         .align_items(Align::Center)
@@ -985,29 +1100,34 @@ fn build_player_bar(
     set_shuffle_on: SetState<bool>,
     set_repeat_on: SetState<bool>
 ) -> View {
-    let track = &tracks[current_track_index];
+    let track = tracks.get(current_track_index);
     let tracks_len = tracks.len();
+    let has_track = track.is_some();
+
+    let art_color = track.map(|t| t.art_color).unwrap_or(theme.surface_container_highest);
+    let title = track.map(|t| t.title.clone()).unwrap_or_else(|| "No track selected".to_string());
+    let artist = track
+        .map(|t| t.artist.clone())
+        .unwrap_or_else(|| "Add music to your library".to_string());
+    let duration_secs = track.map(|t| t.duration_secs).unwrap_or(0);
 
     let left = Row::new()
         .width(px!(300.0))
         .align_items(Align::Center)
         .gap(12.0, 0.0)
-        .child(AlbumArt::new(track.art_color).size(52.0).icon_size(20.0))
+        .child(AlbumArt::new(art_color).size(52.0).icon_size(20.0))
         .child(
             Column::new()
                 .gap(0.0, 2.0)
                 .child(
                     Label::new()
-                        .label(track.title.clone())
+                        .label(title)
                         .font_weight(FontWeight::Bold)
                         .font_size(px!(14.0))
                         .color(theme.on_surface)
                 )
                 .child(
-                    Label::new()
-                        .label(track.artist.clone())
-                        .font_size(px!(13))
-                        .color(theme.on_surface_variant)
+                    Label::new().label(artist).font_size(px!(13)).color(theme.on_surface_variant)
                 )
         )
         .child(IconButton::new(codepoints::FAVORITE).color(theme.on_surface_variant).size(34.0));
@@ -1019,6 +1139,9 @@ fn build_player_bar(
         let set_current_track = set_current_track.clone();
         let set_progress = set_progress.clone();
         move |ctx: &mut EventCtx| {
+            if tracks_len == 0 {
+                return;
+            }
             let next = if current_track_index == 0 {
                 tracks_len - 1
             } else {
@@ -1034,6 +1157,9 @@ fn build_player_bar(
         let set_current_track = set_current_track.clone();
         let set_progress = set_progress.clone();
         move |ctx: &mut EventCtx| {
+            if tracks_len == 0 {
+                return;
+            }
             let next = (current_track_index + 1) % tracks_len;
             set_current_track.set(next);
             set_progress.set(0.0);
@@ -1044,6 +1170,9 @@ fn build_player_bar(
     let toggle_play = {
         let set_is_playing = set_is_playing.clone();
         move |ctx: &mut EventCtx| {
+            if !has_track {
+                return;
+            }
             set_is_playing.set(!is_playing);
             ctx.request_redraw();
         }
@@ -1070,7 +1199,7 @@ fn build_player_bar(
                 .axes(IconAxes::default().weight(500.0).fill(1.0))
                 .on_click(prev_track)
         )
-        .child(play_pause_button(theme, is_playing, toggle_play))
+        .child(play_pause_button(theme, is_playing && has_track, toggle_play))
         .child(
             IconButton::new(codepoints::SKIP_NEXT)
                 .color(theme.on_surface)
@@ -1087,7 +1216,7 @@ fn build_player_bar(
                 .on_click(toggle_repeat)
         );
 
-    let elapsed = (progress * (track.duration_secs as f32)) as u32;
+    let elapsed = (progress * (duration_secs as f32)) as u32;
 
     let seek_row = Row::new()
         .align_items(Align::Center)
@@ -1101,7 +1230,8 @@ fn build_player_bar(
         )
         .child(
             Slider::new()
-                .value(progress)
+                .value(if has_track { progress } else { 0.0 })
+                .enabled(has_track)
                 .flex_grow(1.0)
                 .fill_color(theme.primary)
                 .track_color(theme.surface_container_highest)
@@ -1111,7 +1241,6 @@ fn build_player_bar(
                 })
                 .on_commit({
                     let backend = backend.clone();
-                    let duration_secs = track.duration_secs;
                     move |value, ctx| {
                         let secs = value * (duration_secs as f32);
                         if let Err(e) = backend.borrow_mut().seek(Duration::from_secs_f32(secs)) {
@@ -1123,7 +1252,7 @@ fn build_player_bar(
         )
         .child(
             Label::new()
-                .label(format_duration(track.duration_secs))
+                .label(format_duration(duration_secs))
                 .font_size(px!(11.0))
                 .color(theme.on_surface_variant)
         );
@@ -1322,6 +1451,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let (next_playlist_id, set_next_playlist_id) = use_state(4u32);
 
         let (tracks, set_tracks) = use_state(Vec::<Track>::new());
+        let (library_loaded, set_library_loaded) = use_state(false);
 
         let (backend, _) = use_state(
             Rc::new(RefCell::new(RodioBackend::new().expect("no audio output device")))
@@ -1356,40 +1486,46 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         use_effect(
             {
                 let set_tracks = set_tracks.clone();
+                let set_library_loaded = set_library_loaded.clone();
                 let backend = backend.clone();
                 move || {
                     xengui::task::spawn(async move {
                         let config = xengui::task::spawn_blocking(
                             library::load_or_init_config
                         ).await;
+                        let scan_paths = config.library.scan_paths.clone();
+
                         let scanned = xengui::task::spawn_blocking({
-                            let paths = config.library.scan_paths.clone();
+                            let paths = scan_paths.clone();
                             move || library::scan_library(&paths)
                         }).await;
 
                         backend.borrow_mut().set_volume(config.playback.default_volume);
 
-                        let tracks: Vec<Track> = scanned
-                            .into_iter()
-                            .map(|s| Track {
-                                path: s.path,
-                                title: s.title,
-                                artist: s.artist,
-                                album: s.album,
-                                explicit_content: false,
-                                duration_secs: s.duration_secs,
-                                art_color: s.art_color,
-                                cover: s.cover.map(|(w, h, rgba)|
-                                    image_source_from_rgba8(rgba, w, h)
-                                ),
-                            })
-                            .collect();
+                        set_tracks.set(build_tracks(scanned));
+                        set_library_loaded.set(true);
 
-                        set_tracks.set(tracks);
+                        if config.library.watch_for_changes {
+                            let rx = library::spawn_library_watcher(scan_paths);
+                            poll_library_watcher(rx, set_tracks.clone());
+                        }
                     });
                 }
             },
             ()
+        );
+
+        use_effect(
+            {
+                let set_current_track = set_current_track.clone();
+                let len = tracks.len();
+                move || {
+                    if len > 0 && current_track >= len {
+                        set_current_track.set(len - 1);
+                    }
+                }
+            },
+            [tracks.len(), current_track]
         );
 
         use_effect(
@@ -1441,27 +1577,38 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         // bottom nav bubble, matching a phone/tablet-friendly layout.
         let show_sidebar = xengui::responsive_bool(xengui::Breakpoint::Md, true);
 
-        // Library scan runs asynchronously, so the very first frames have
-        // no tracks yet - render a loading state instead of indexing into
-        // an empty Vec.
-        let Some(current) = tracks.get(current_track).cloned() else {
+        if !library_loaded || tracks.get(current_track).is_none() {
+            let status_text = if library_loaded {
+                "No songs found. Add some music to your library folder to get started."
+            } else {
+                "Loading your library..."
+            };
+
             return Box::new(
                 Column::new()
                     .width(pct!(100.0))
                     .height(pct!(100.0))
-                    .align_items(Align::Center)
-                    .justify_content(JustifyContent::Center)
                     .background(theme.background)
+                    .font("Nunito")
+                    .child(build_titlebar(&theme, None))
                     .child(
-                        Label::new()
-                            .label("Loading your library...")
-                            .font_size(px!(15.0))
-                            .color(theme.on_surface_variant)
+                        Column::new()
+                            .flex_grow(1.0)
+                            .width(pct!(100.0))
+                            .align_items(Align::Center)
+                            .justify_content(JustifyContent::Center)
+                            .child(
+                                Label::new()
+                                    .label(status_text)
+                                    .font_size(px!(15.0))
+                                    .color(theme.on_surface_variant)
+                            )
                     )
             ) as Box<dyn Widget>;
-        };
+        }
 
-        let titlebar = build_titlebar(&theme, &current);
+        let current = tracks.get(current_track).cloned();
+        let titlebar = build_titlebar(&theme, current.as_ref());
 
         let content: Box<dyn Widget> = {
             let theme_home = theme.clone();
@@ -1474,6 +1621,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             let theme_library = theme.clone();
             let playlists_library = playlists.clone();
+            let tracks_library = tracks.clone();
 
             xen_router::Router
                 ::new()
@@ -1505,7 +1653,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     }
                 })
                 .route("/library", move |_params| {
-                    build_library_page(&theme_library, &playlists_library)
+                    build_library_page(&theme_library, &playlists_library, &tracks_library)
                 })
                 .not_found(|| Box::new(View::new()) as Box<dyn Widget>)
                 .build()
@@ -1576,30 +1724,33 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     xen_router::push(path);
                 });
 
-            let set_is_playing_mini = set_is_playing.clone();
-            let mini_player = build_mini_player(
-                &theme,
-                &current,
-                is_playing,
-                progress,
-                backend.clone(),
-                move |ctx| {
-                    set_is_playing_mini.set(!is_playing);
-                    ctx.request_redraw();
-                }
-            );
-
             // Mini player sits directly above the pill nav, sharing one
             // fixed bottom-anchored stack so they always move together.
-            let floating_stack = Column::new()
+            let mut floating_stack = Column::new()
                 .position(Position::Fixed)
                 .bottom(px!(16.0))
                 .left(px!(0.0))
                 .width(pct!(100.0))
                 .align_items(Align::Center)
-                .gap(0.0, 10.0)
-                .child(mini_player)
-                .child(nav);
+                .gap(0.0, 10.0);
+
+            if let Some(track) = &current && is_playing {
+                let set_is_playing_mini = set_is_playing.clone();
+                let mini_player = build_mini_player(
+                    &theme,
+                    track,
+                    is_playing,
+                    progress,
+                    backend.clone(),
+                    move |ctx| {
+                        set_is_playing_mini.set(!is_playing);
+                        ctx.request_redraw();
+                    }
+                );
+                floating_stack = floating_stack.child(mini_player);
+            }
+
+            floating_stack = floating_stack.child(nav);
 
             main_view = main_view.child(floating_stack);
 

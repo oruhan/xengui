@@ -6,6 +6,8 @@
 
 use serde::{ Deserialize, Serialize };
 use std::path::{ Path, PathBuf };
+use std::sync::mpsc;
+use std::time::Duration;
 use xengui::Color;
 
 #[derive(Clone, Debug, Deserialize, Serialize, Default)]
@@ -70,6 +72,12 @@ fn default_scan_paths() -> Vec<String> {
         .collect()
 }
 
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum MediaKind {
+    Audio,
+    Video,
+}
+
 #[derive(Clone, PartialEq)]
 pub struct ScannedTrack {
     pub path: PathBuf,
@@ -79,6 +87,7 @@ pub struct ScannedTrack {
     pub duration_secs: u32,
     pub art_color: Color,
     pub cover: Option<(u32, u32, Vec<u8>)>,
+    pub media_kind: MediaKind,
 }
 
 const PLACEHOLDER_COLORS: [Color; 6] = [
@@ -92,7 +101,7 @@ const PLACEHOLDER_COLORS: [Color; 6] = [
 
 /// Blocking; call through `xengui::task::spawn_blocking`.
 pub fn scan_library(scan_paths: &[String]) -> Vec<ScannedTrack> {
-    let extensions = ["mp3", "m4a", "flac", "wav", "ogg", "opus"];
+    let extensions = ["mp3", "m4a", "flac", "wav", "ogg", "opus", "webm"];
     let mut tracks = Vec::new();
 
     for root in scan_paths {
@@ -101,15 +110,19 @@ pub fn scan_library(scan_paths: &[String]) -> Vec<ScannedTrack> {
                 continue;
             }
             let path = entry.path();
-            let is_audio = path
+            let ext = path
                 .extension()
                 .and_then(|e| e.to_str())
-                .map(|e| extensions.contains(&e.to_lowercase().as_str()))
+                .map(|e| e.to_lowercase());
+            let is_audio = ext
+                .as_deref()
+                .map(|e| extensions.contains(&e))
                 .unwrap_or(false);
             if !is_audio {
                 continue;
             }
-            if let Some(track) = read_track_tags(path) {
+            let media_kind = media_kind_for_extension(ext.as_deref().unwrap_or(""));
+            if let Some(track) = read_track_tags(path, media_kind) {
                 tracks.push(track);
             }
         }
@@ -118,7 +131,15 @@ pub fn scan_library(scan_paths: &[String]) -> Vec<ScannedTrack> {
     tracks
 }
 
-fn read_track_tags(path: &Path) -> Option<ScannedTrack> {
+// .webm can carry a video track alongside its audio; every other
+// supported extension is audio-only. Playback today always extracts just
+// the audio stream, but tagging the source here lets a future player
+// switch into a video-capable mode without rescanning the library.
+fn media_kind_for_extension(ext: &str) -> MediaKind {
+    if ext == "webm" { MediaKind::Video } else { MediaKind::Audio }
+}
+
+fn read_track_tags(path: &Path, media_kind: MediaKind) -> Option<ScannedTrack> {
     use lofty::file::{ AudioFile, TaggedFileExt };
     use lofty::tag::Accessor;
 
@@ -171,11 +192,56 @@ fn read_track_tags(path: &Path) -> Option<ScannedTrack> {
         duration_secs,
         art_color: PLACEHOLDER_COLORS[color_index],
         cover,
+        media_kind,
     })
 }
 
 fn config_path() -> Option<PathBuf> {
     directories::ProjectDirs::from("", "", "pearl").map(|d| d.config_dir().join("config.toml"))
+}
+
+/// Watches `scan_paths` for filesystem changes and re-scans the library
+/// each time something changes, debounced so a burst of events (e.g.
+/// copying a whole album) triggers a single rescan. The returned receiver
+/// yields a fresh track list after every debounced rescan.
+pub fn spawn_library_watcher(scan_paths: Vec<String>) -> mpsc::Receiver<Vec<ScannedTrack>> {
+    let (tx, rx) = mpsc::channel();
+
+    std::thread::spawn(move || {
+        use notify::{ RecursiveMode, Watcher };
+
+        let (fs_tx, fs_rx) = mpsc::channel();
+        let mut watcher = match
+            notify::recommended_watcher(move |res| {
+                let _ = fs_tx.send(res);
+            })
+        {
+            Ok(watcher) => watcher,
+            Err(e) => {
+                log::error!("pearl: failed to create file watcher: {e}");
+                return;
+            }
+        };
+
+        for path in &scan_paths {
+            if let Err(e) = watcher.watch(Path::new(path), RecursiveMode::Recursive) {
+                log::warn!("pearl: failed to watch '{path}': {e}");
+            }
+        }
+
+        loop {
+            let Ok(_first) = fs_rx.recv() else {
+                break;
+            };
+            while fs_rx.recv_timeout(Duration::from_millis(500)).is_ok() {}
+
+            if tx.send(scan_library(&scan_paths)).is_err() {
+                break;
+            }
+        }
+    });
+
+    rx
 }
 
 fn write_config(path: &Path, config: &LibraryConfig) {
