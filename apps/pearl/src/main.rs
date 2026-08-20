@@ -36,6 +36,7 @@ struct Track {
     cover: Option<ImageSource>,
     // Lets a future player pick an audio-only or video-capable playback
     // path per track instead of assuming every source is audio-only.
+    #[allow(dead_code)]
     media_kind: library::MediaKind,
 }
 
