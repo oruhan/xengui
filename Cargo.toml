@@ -30,6 +30,13 @@ xen-clipboard = { version = "0.1.7", path = "crates/xen-clipboard" }
 xen-animation = { version = "0.1.4", path = "crates/xen-animation" }
 xengui-icons = { version = "0.1.0", path = "crates/xengui-icons" }
 xen-svg = { version = "0.1.1", path = "crates/xen-svg" }
+xen-audio = { version = "0.1.0", path = "crates/xen-audio" }
+rodio = { version = "0.20", default-features = false }
+lofty = "0.21"
+walkdir = "2.5"
+directories = "5.0"
+serde = { version = "1", features = ["derive"] }
+toml = "0.8"
 lyon = "1.0.19"
 wgpu = { version = "30.0.0", features = ["webgl"] }
 raw-window-handle = "0.6.2"
