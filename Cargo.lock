@@ -2228,6 +2228,7 @@ dependencies = [
  "env_logger",
  "ico",
  "image 0.24.9",
+ "image 0.25.10",
  "lofty",
  "log",
  "serde",

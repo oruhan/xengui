@@ -8,12 +8,14 @@ use serde::{ Deserialize, Serialize };
 use std::path::{ Path, PathBuf };
 use xengui::Color;
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize, Default)]
 pub struct LibraryConfig {
     #[serde(default)]
     pub library: LibrarySection,
     #[serde(default)]
     pub playback: PlaybackSection,
+    #[serde(default)]
+    pub playlists: PlaylistsSection,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, Default)]
@@ -30,6 +32,26 @@ pub struct PlaybackSection {
     pub default_volume: f32,
 }
 
+#[derive(Clone, Debug, Deserialize, Serialize, Default)]
+pub struct PlaylistEntry {
+    pub id: u32,
+    pub name: String,
+    #[serde(default = "default_playlist_color")]
+    pub color: [u8; 3],
+}
+
+fn default_playlist_color() -> [u8; 3] {
+    [124, 58, 237]
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, Default)]
+pub struct PlaylistsSection {
+    #[serde(default)]
+    pub next_id: u32,
+    #[serde(default)]
+    pub items: Vec<PlaylistEntry>,
+}
+
 fn default_volume() -> f32 {
     0.7
 }
@@ -38,35 +60,6 @@ impl Default for PlaybackSection {
     fn default() -> Self {
         Self { default_volume: default_volume() }
     }
-}
-
-pub fn load_or_init_config() -> LibraryConfig {
-    let Some(dirs) = directories::ProjectDirs::from("", "", "pearl") else {
-        return LibraryConfig {
-            library: LibrarySection::default(),
-            playback: PlaybackSection::default(),
-        };
-    };
-    let path = dirs.config_dir().join("config.toml");
-
-    if let Ok(text) = std::fs::read_to_string(&path) {
-        if let Ok(config) = toml::from_str::<LibraryConfig>(&text) {
-            return config;
-        }
-        log::warn!("pearl: config.toml malformed, using defaults");
-    }
-
-    let config = LibraryConfig {
-        library: LibrarySection { scan_paths: default_scan_paths(), watch_for_changes: true },
-        playback: PlaybackSection::default(),
-    };
-    if let Some(parent) = path.parent() {
-        let _ = std::fs::create_dir_all(parent);
-    }
-    if let Ok(text) = toml::to_string_pretty(&config) {
-        let _ = std::fs::write(&path, text);
-    }
-    config
 }
 
 fn default_scan_paths() -> Vec<String> {
@@ -179,4 +172,52 @@ fn read_track_tags(path: &Path) -> Option<ScannedTrack> {
         art_color: PLACEHOLDER_COLORS[color_index],
         cover,
     })
+}
+
+fn config_path() -> Option<PathBuf> {
+    directories::ProjectDirs::from("", "", "pearl").map(|d| d.config_dir().join("config.toml"))
+}
+
+fn write_config(path: &Path, config: &LibraryConfig) {
+    if let Some(parent) = path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    if let Ok(text) = toml::to_string_pretty(config) {
+        let _ = std::fs::write(path, text);
+    }
+}
+
+pub fn load_or_init_config() -> LibraryConfig {
+    let Some(path) = config_path() else {
+        return LibraryConfig::default();
+    };
+
+    if let Ok(text) = std::fs::read_to_string(&path) {
+        if let Ok(config) = toml::from_str::<LibraryConfig>(&text) {
+            return config;
+        }
+        log::warn!("pearl: config.toml malformed, using defaults");
+    }
+
+    let config = LibraryConfig {
+        library: LibrarySection { scan_paths: default_scan_paths(), watch_for_changes: true },
+        playback: PlaybackSection::default(),
+        playlists: PlaylistsSection::default(),
+    };
+    write_config(&path, &config);
+    config
+}
+
+/// Blocking; call through `xengui::task::spawn_blocking`.
+pub fn save_playlists(items: Vec<PlaylistEntry>, next_id: u32) {
+    let Some(path) = config_path() else {
+        return;
+    };
+    let mut config = std::fs
+        ::read_to_string(&path)
+        .ok()
+        .and_then(|text| toml::from_str::<LibraryConfig>(&text).ok())
+        .unwrap_or_default();
+    config.playlists = PlaylistsSection { next_id, items };
+    write_config(&path, &config);
 }

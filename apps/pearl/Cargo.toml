@@ -22,6 +22,7 @@ lofty = { workspace = true }
 serde = { workspace = true }
 toml = { workspace = true }
 directories = { workspace = true }
+image = { workspace = true }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 console_error_panic_hook = "0.1.7"

@@ -106,6 +106,7 @@ pub struct AlbumArt {
     color: Color,
     size: f32,
     icon_size: f32,
+    image: Option<ImageSource>,
 }
 
 impl AlbumArt {
@@ -118,6 +119,7 @@ impl AlbumArt {
             color,
             size: 52.0,
             icon_size: 20.0,
+            image: None,
         }
     }
 
@@ -128,6 +130,11 @@ impl AlbumArt {
 
     pub fn icon_size(mut self, icon_size: f32) -> Self {
         self.icon_size = icon_size;
+        self
+    }
+
+    pub fn image(mut self, image: Option<ImageSource>) -> Self {
+        self.image = image;
         self
     }
 }
@@ -143,17 +150,29 @@ impl StyleBuilder for AlbumArt {
 
 impl Render for AlbumArt {
     fn render(&self) -> Box<dyn Widget> {
-        Box::new(
-            View::new()
-                .width(px!(self.size))
-                .height(px!(self.size))
-                .align_items(Align::Center)
-                .justify_content(JustifyContent::Center)
-                .background(self.color)
-                .color(Color::WHITE.with_alpha_f32(0.92))
-                .border(Border::all(0.0, Color::TRANSPARENT).radius(12.0))
-                .child(VariableIcon::new(codepoints::MUSIC_NOTE).size(self.icon_size))
-        )
+        let mut view = View::new()
+            .width(px!(self.size))
+            .height(px!(self.size))
+            .align_items(Align::Center)
+            .justify_content(JustifyContent::Center)
+            .background(self.color)
+            .color(Color::WHITE.with_alpha_f32(0.92))
+            .border(Border::all(0.0, Color::TRANSPARENT).radius(12.0));
+
+        view = match &self.image {
+            Some(source) =>
+                view.child(
+                    Image::new()
+                        .source(source.clone())
+                        .object_fit(ObjectFit::Cover)
+                        .width(px!(self.size))
+                        .height(px!(self.size))
+                        .border(Border::all(0.0, Color::TRANSPARENT).radius(12.0))
+                ),
+            None => view.child(VariableIcon::new(codepoints::MUSIC_NOTE).size(self.icon_size)),
+        };
+
+        Box::new(view)
     }
 }
 

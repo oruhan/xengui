@@ -24,7 +24,7 @@ use crate::components::PlaybackTicker;
 // Sample data
 // ---------------------------------------------------------------------
 
-#[derive(Clone, PartialEq)]
+#[derive(Clone)]
 struct Track {
     path: std::path::PathBuf,
     title: String,
@@ -33,14 +33,56 @@ struct Track {
     explicit_content: bool,
     duration_secs: u32,
     art_color: Color,
+    cover: Option<ImageSource>,
 }
 
-#[derive(Clone)]
+impl PartialEq for Track {
+    fn eq(&self, other: &Self) -> bool {
+        self.path == other.path
+    }
+}
+
+#[derive(Clone, PartialEq)]
 struct Playlist {
     id: u32,
     name: String,
     color: Color,
     track_count: u32,
+    deletable: bool,
+}
+
+#[derive(Clone, PartialEq)]
+struct PlaylistsSnapshot(Vec<Playlist>, u32, bool);
+
+fn color_to_rgb(c: Color) -> [u8; 3] {
+    [(c.r() * 255.0).round() as u8, (c.g() * 255.0).round() as u8, (c.b() * 255.0).round() as u8]
+}
+
+fn rgb_to_color(rgb: [u8; 3]) -> Color {
+    Color::rgb(rgb[0], rgb[1], rgb[2])
+}
+
+fn sample_playlists() -> Vec<Playlist> {
+    vec![Playlist {
+        id: 0,
+        name: "Liked Songs".to_string(),
+        color: Color::VIOLET_500,
+        track_count: 0,
+        deletable: false,
+    }]
+}
+
+fn placeholder_track() -> Track {
+    Track {
+        path: std::path::PathBuf::new(),
+        title: "No Track".to_string(),
+        artist: "-".to_string(),
+        album: "-".to_string(),
+        explicit_content: false,
+        duration_secs: 1,
+        art_color: Color::NEUTRAL_500,
+        cover: None,
+    }
 }
 
 // Violet-based Material 3 dark palette; every derived color follows from
@@ -240,6 +282,7 @@ fn playlist_row(
     set_playlists: SetState<Vec<Playlist>>
 ) -> Box<dyn Widget> {
     let id = playlist.id;
+    let deletable = playlist.deletable;
 
     component(format!("playlist_row_{id}"), move || {
         let (editing, set_editing) = use_state(false);
@@ -315,8 +358,10 @@ fn playlist_row(
                         set_editing_start.set(true);
                         ctx.request_redraw();
                     })
-            )
-            .child(
+            );
+
+        if deletable {
+            row = row.child(
                 IconButton::new(codepoints::CLOSE)
                     .color(theme.on_surface_variant)
                     .size(26.0)
@@ -325,6 +370,7 @@ fn playlist_row(
                         ctx.request_redraw();
                     })
             );
+        }
 
         row = row.on_click(move |_ctx| xen_router::push(format!("/playlist/{id}")));
 
@@ -379,6 +425,7 @@ fn add_playlist_row(
                     name: format!("New Playlist {id}"),
                     color: Color::VIOLET_400,
                     track_count: 0,
+                    deletable: true,
                 });
             });
             set_next_playlist_id.set(id + 1);
@@ -550,20 +597,44 @@ fn song_row(
 
     let title_color = if is_current { theme.primary } else { theme.on_surface };
 
-    let texts = Column::new()
-        .flex_grow(1.0)
-        .justify_content(JustifyContent::Center)
-        .gap(0.0, 2.0)
+    let mut title_row = Row::new()
+        .align_items(Align::Center)
+        .gap(6.0, 0.0)
         .child(
             Label::new()
                 .font_weight(FontWeight::SemiBold)
                 .label(track.title.clone())
                 .font_size(px!(13.5))
                 .color(title_color)
-        )
+        );
+
+    if track.explicit_content {
+        title_row = title_row.child(
+            View::new()
+                .width(px!(16.0))
+                .height(px!(16.0))
+                .align_items(Align::Center)
+                .justify_content(JustifyContent::Center)
+                .background(theme.on_surface_variant)
+                .border(Border::all(0.0, Color::TRANSPARENT).radius(3.0))
+                .child(
+                    Label::new()
+                        .label("E")
+                        .font_size(px!(10.0))
+                        .font_weight(FontWeight::Bold)
+                        .color(theme.surface)
+                )
+        );
+    }
+
+    let texts = Column::new()
+        .flex_grow(1.0)
+        .justify_content(JustifyContent::Center)
+        .gap(0.0, 2.0)
+        .child(title_row)
         .child(
             Label::new()
-                .label(track.artist.clone())
+                .label(format!("{} • {}", track.artist, track.album))
                 .font_size(px!(12.0))
                 .color(theme.on_surface_variant)
         );
@@ -871,7 +942,12 @@ fn build_playlist_page(theme: &Theme, playlist: &Playlist, tracks: &[Track]) -> 
                 .border(Border::all(0.0, Color::TRANSPARENT).radius(10.0))
                 .transition_all(Transition::new(Duration::from_millis(140)).easing(Easing::EaseOut))
                 .hover_background(theme.surface_container_high)
-                .child(AlbumArt::new(track.art_color).size(42.0).icon_size(16.0))
+                .child(
+                    AlbumArt::new(track.art_color)
+                        .size(42.0)
+                        .icon_size(16.0)
+                        .image(track.cover.clone())
+                )
                 .child(
                     Column::new()
                         .flex_grow(1.0)
@@ -925,6 +1001,7 @@ fn build_player_bar(
     shuffle_on: bool,
     repeat_on: bool,
     show_side_panels: bool,
+    backend: Rc<RefCell<RodioBackend>>,
     set_current_track: SetState<usize>,
     set_is_playing: SetState<bool>,
     set_progress: SetState<f32>,
@@ -1143,6 +1220,7 @@ fn build_mini_player(
     track: &Track,
     is_playing: bool,
     progress: f32,
+    backend: Rc<RefCell<RodioBackend>>,
     toggle_play: impl Fn(&mut EventCtx) + 'static
 ) -> View {
     let seek = Slider::new()
@@ -1267,35 +1345,37 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let (playlists, set_playlists) = use_state(sample_playlists());
         let (next_playlist_id, set_next_playlist_id) = use_state(4u32);
 
-        let current_path = xen_router::current_path();
-        let current = tracks[current_track].clone();
-
-        let os_title = format!(
-            "{} {} - {}",
-            if is_playing {
-                "▶"
-            } else {
-                "❚❚"
-            },
-            current.title,
-            current.artist
-        );
-        let dep_key = ((current_track as u64) << 1) | (is_playing as u64);
-        use_effect(
-            {
-                let os_title = os_title.clone();
-                move || {
-                    xenframe::set_window_title(&os_title);
-                }
-            },
-            [dep_key]
-        );
+        let (tracks, set_tracks) = use_state(Vec::<Track>::new());
 
         let (backend, _) = use_state(
             Rc::new(RefCell::new(RodioBackend::new().expect("no audio output device")))
         );
 
-        let (tracks, set_tracks) = use_state(Vec::<Track>::new());
+        let current_path = xen_router::current_path();
+
+        let dep_key = [current_track as u64, is_playing as u64, tracks.len() as u64];
+        use_effect(
+            {
+                let tracks = tracks.clone();
+                move || {
+                    let Some(track) = tracks.get(current_track) else {
+                        return;
+                    };
+                    let os_title = format!(
+                        "{} {} - {}",
+                        if is_playing {
+                            "▶"
+                        } else {
+                            "❚❚"
+                        },
+                        track.title,
+                        track.artist
+                    );
+                    xenframe::set_window_title(&os_title);
+                }
+            },
+            dep_key
+        );
 
         use_effect(
             {
@@ -1323,6 +1403,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 explicit_content: false,
                                 duration_secs: s.duration_secs,
                                 art_color: s.art_color,
+                                cover: s.cover,
                             })
                             .collect();
 
@@ -1382,6 +1463,26 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         // Sidebar only shows at Md+; below that we switch to the floating
         // bottom nav bubble, matching a phone/tablet-friendly layout.
         let show_sidebar = xengui::responsive_bool(xengui::Breakpoint::Md, true);
+
+        // Library scan runs asynchronously, so the very first frames have
+        // no tracks yet - render a loading state instead of indexing into
+        // an empty Vec.
+        let Some(current) = tracks.get(current_track).cloned() else {
+            return Box::new(
+                Column::new()
+                    .width(pct!(100.0))
+                    .height(pct!(100.0))
+                    .align_items(Align::Center)
+                    .justify_content(JustifyContent::Center)
+                    .background(theme.background)
+                    .child(
+                        Label::new()
+                            .label("Loading your library...")
+                            .font_size(px!(15.0))
+                            .color(theme.on_surface_variant)
+                    )
+            ) as Box<dyn Widget>;
+        };
 
         let titlebar = build_titlebar(&theme, &current);
 
@@ -1468,6 +1569,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 shuffle_on,
                 repeat_on,
                 show_sidebar,
+                backend.clone(),
                 set_current_track.clone(),
                 set_is_playing.clone(),
                 set_progress.clone(),
@@ -1500,9 +1602,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let set_is_playing_mini = set_is_playing.clone();
             let mini_player = build_mini_player(
                 &theme,
-                &tracks[current_track],
+                &current,
                 is_playing,
                 progress,
+                backend.clone(),
                 move |ctx| {
                     set_is_playing_mini.set(!is_playing);
                     ctx.request_redraw();
