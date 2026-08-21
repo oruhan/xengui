@@ -781,41 +781,13 @@ fn build_home_page(
     Box::new(
         Column::new()
             .flex_grow(1.0)
-            .min_height(pct!(100.0))
+            .height(pct!(100.0))
             .overflow_x(Overflow::Hidden)
             .overflow_y(Overflow::Scroll)
             .padding(Edges::only(22, 20, 0, 20))
             .gap(0, 16)
             .background(theme.background)
             .child(header)
-            .child(
-                View::new()
-                    .display(Display::Flex)
-                    .flex_direction(FlexDirection::Column)
-                    .background(Color::NEUTRAL_800)
-                    .border(Border::all(1.0, Color::NEUTRAL_600).radius(20))
-                    .padding(px!(14))
-                    .gap(0, 12)
-                    .child(AlbumArt::new(Color::BLUE_500).size(128.0).icon_size(48.0))
-                    .child(
-                        View::new()
-                            .display(Display::Flex)
-                            .flex_direction(FlexDirection::Column)
-                            .gap(0, 4)
-                            .child(
-                                Label::new()
-                                    .label("Miss You (Bonus Track)")
-                                    .font_weight(FontWeight::Bold)
-                                    .font_size(16)
-                            )
-                            .child(
-                                Label::new()
-                                    .label("Track • Oliver Tree & Robin Schulz")
-                                    .font_weight(FontWeight::Medium)
-                                    .font_size(14)
-                            )
-                    )
-            )
             .child(song_list)
     )
 }
@@ -1448,7 +1420,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         let (current_track, set_current_track) = use_state(0usize);
         let (is_playing, set_is_playing) = use_state(false);
-        let (progress, set_progress) = use_state(0.32f32);
+        let (progress, set_progress) = use_state::<f32>(0.0);
+        let (last_tick_secs, set_last_tick_secs) = use_state(u32::MAX);
         let (volume, set_volume) = use_state(0.7f32);
         let (shuffle_on, set_shuffle_on) = use_state(false);
         let (repeat_on, set_repeat_on) = use_state(false);
@@ -1732,23 +1705,30 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             floating_stack = floating_stack.child(nav);
 
             main_view = main_view.child(floating_stack);
+        }
 
-            main_view = main_view.child(
-                PlaybackTicker::new(is_playing, {
-                    let backend = backend.clone();
-                    let set_progress = set_progress.clone();
-                    let duration = tracks
-                        .get(current_track)
-                        .map(|t| t.duration_secs)
-                        .unwrap_or(1)
-                        .max(1) as f32;
-                    move || {
-                        let pos = backend.borrow().position().as_secs_f32();
+        // Runs on every platform layout, not just mobile, so progress keeps
+        // advancing without needing an unrelated redraw (e.g. window resize)
+        main_view = main_view.child(
+            PlaybackTicker::new(is_playing, {
+                let backend = backend.clone();
+                let set_progress = set_progress.clone();
+                let set_last_tick_secs = set_last_tick_secs.clone();
+                let duration = tracks
+                    .get(current_track)
+                    .map(|t| t.duration_secs)
+                    .unwrap_or(1)
+                    .max(1) as f32;
+                move || {
+                    let pos = backend.borrow().position().as_secs_f32();
+                    let whole_secs = pos as u32;
+                    if whole_secs != last_tick_secs {
+                        set_last_tick_secs.set(whole_secs);
                         set_progress.set((pos / duration).clamp(0.0, 1.0));
                     }
-                })
-            );
-        }
+                }
+            })
+        );
 
         Box::new(main_view)
     });
