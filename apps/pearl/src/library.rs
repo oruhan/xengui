@@ -32,6 +32,14 @@ pub struct LibrarySection {
 pub struct PlaybackSection {
     #[serde(default = "default_volume")]
     pub default_volume: f32,
+    #[serde(default)]
+    pub muted: bool,
+}
+
+impl Default for PlaybackSection {
+    fn default() -> Self {
+        Self { default_volume: default_volume(), muted: false }
+    }
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, Default)]
@@ -56,12 +64,6 @@ pub struct PlaylistsSection {
 
 fn default_volume() -> f32 {
     0.7
-}
-
-impl Default for PlaybackSection {
-    fn default() -> Self {
-        Self { default_volume: default_volume() }
-    }
 }
 
 fn default_scan_paths() -> Vec<String> {
@@ -268,6 +270,20 @@ fn write_config(path: &Path, config: &LibraryConfig) {
     if let Ok(text) = toml::to_string_pretty(config) {
         let _ = std::fs::write(path, text);
     }
+}
+
+pub fn save_volume_settings(volume: f32, muted: bool) {
+    let Some(path) = config_path() else {
+        return;
+    };
+    let mut config = std::fs
+        ::read_to_string(&path)
+        .ok()
+        .and_then(|text| toml::from_str::<LibraryConfig>(&text).ok())
+        .unwrap_or_default();
+    config.playback.default_volume = volume;
+    config.playback.muted = muted;
+    write_config(&path, &config);
 }
 
 pub fn load_or_init_config() -> LibraryConfig {

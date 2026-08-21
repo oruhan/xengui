@@ -11,14 +11,13 @@ use xenframe::{ App, AppConfig };
 
 #[cfg(not(target_arch = "wasm32"))]
 use xenframe::WindowPosition;
+
 use xengui::{ properties::StyleValue, * };
 use xengui_icons::{ IconAxes, codepoints };
-
-use std::cell::RefCell;
-use std::rc::Rc;
 use xen_audio::{ AudioBackend, RodioBackend };
 
-use crate::components::PlaybackTicker;
+use std::cell::{ Cell, RefCell };
+use std::rc::Rc;
 
 // ---------------------------------------------------------------------
 // Sample data
@@ -1066,6 +1065,7 @@ fn build_player_bar(
     is_playing: bool,
     progress: f32,
     volume: f32,
+    is_muted: bool,
     shuffle_on: bool,
     repeat_on: bool,
     show_side_panels: bool,
@@ -1074,6 +1074,7 @@ fn build_player_bar(
     set_is_playing: SetState<bool>,
     set_progress: SetState<f32>,
     set_volume: SetState<f32>,
+    set_is_muted: SetState<bool>,
     set_shuffle_on: SetState<bool>,
     set_repeat_on: SetState<bool>
 ) -> View {
@@ -1256,15 +1257,13 @@ fn build_player_bar(
     bar = bar.child(center);
 
     if show_side_panels {
-        let volume_icon = if volume <= 0.001 {
+        let effective_volume = if is_muted { 0.0 } else { volume };
+        let volume_icon = if effective_volume <= 0.001 {
             codepoints::VOLUME_OFF
         } else {
             codepoints::VOLUME_UP
         };
-        let toggle_mute = {
-            let set_volume = set_volume.clone();
-            move |_ctx: &mut EventCtx| set_volume.set(if volume > 0.0 { 0.0 } else { 0.7 })
-        };
+        let toggle_mute = move |_ctx: &mut EventCtx| set_is_muted.set(!is_muted);
 
         let volume_row = Row::new()
             .width(px!(300.0))
@@ -1281,12 +1280,13 @@ fn build_player_bar(
             )
             .child(
                 Slider::new()
-                    .value(volume)
+                    .value(effective_volume)
                     .width(px!(110.0))
                     .fill_color(theme.primary)
                     .track_color(theme.surface_container_highest)
                     .on_change(move |value, ctx| {
                         set_volume.set(value);
+                        set_is_muted.set(false);
                         ctx.request_redraw();
                     })
             );
@@ -1421,8 +1421,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let (current_track, set_current_track) = use_state(0usize);
         let (is_playing, set_is_playing) = use_state(false);
         let (progress, set_progress) = use_state::<f32>(0.0);
-        let (last_tick_secs, set_last_tick_secs) = use_state(u32::MAX);
         let (volume, set_volume) = use_state(0.7f32);
+        let (is_muted, set_is_muted) = use_state(false);
+        let (config_loaded, set_config_loaded) = use_state(false);
         let (shuffle_on, set_shuffle_on) = use_state(false);
         let (repeat_on, set_repeat_on) = use_state(false);
         let (playlists, set_playlists) = use_state(sample_playlists());
@@ -1465,6 +1466,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             {
                 let set_tracks = set_tracks.clone();
                 let set_library_loaded = set_library_loaded.clone();
+                let set_volume = set_volume.clone();
+                let set_is_muted = set_is_muted.clone();
+                let set_config_loaded = set_config_loaded.clone();
                 let backend = backend.clone();
                 move || {
                     xengui::task::spawn(async move {
@@ -1478,10 +1482,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             move || library::scan_library(&paths)
                         }).await;
 
-                        backend.borrow_mut().set_volume(config.playback.default_volume);
+                        let effective_volume = if config.playback.muted {
+                            0.0
+                        } else {
+                            config.playback.default_volume
+                        };
+                        backend.borrow_mut().set_volume(effective_volume);
+                        set_volume.set(config.playback.default_volume);
+                        set_is_muted.set(config.playback.muted);
 
                         set_tracks.set(build_tracks(scanned));
                         set_library_loaded.set(true);
+                        set_config_loaded.set(true);
 
                         if config.library.watch_for_changes {
                             let rx = library::spawn_library_watcher(scan_paths);
@@ -1509,15 +1521,53 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         use_effect(
             {
                 let backend = backend.clone();
+                let set_progress = set_progress.clone();
+                let tracks = tracks.clone();
                 move || {
-                    if is_playing {
-                        backend.borrow_mut().play();
-                    } else {
+                    if !is_playing {
                         backend.borrow_mut().pause();
+                        return Box::new(|| {}) as Box<dyn FnOnce()>;
                     }
+
+                    backend.borrow_mut().play();
+
+                    let duration = tracks
+                        .get(current_track)
+                        .map(|t| t.duration_secs)
+                        .unwrap_or(1)
+                        .max(1) as f32;
+
+                    let stop_flag = Rc::new(Cell::new(false));
+                    let stop_flag_task = stop_flag.clone();
+                    let backend_task = backend.clone();
+                    let set_progress_task = set_progress.clone();
+
+                    // Sleeps on a background OS thread via spawn_blocking, so the
+                    // GUI thread stays idle between checks instead of redrawing
+                    // every frame; only pushes a state update (and a redraw)
+                    // once the displayed second actually changes.
+                    xengui::task::spawn(async move {
+                        let mut last_secs = u32::MAX;
+                        while !stop_flag_task.get() {
+                            xengui::task::spawn_blocking(|| {
+                                std::thread::sleep(std::time::Duration::from_millis(300));
+                            }).await;
+                            if stop_flag_task.get() {
+                                break;
+                            }
+                            let pos = backend_task.borrow().position().as_secs_f32();
+                            let whole = pos as u32;
+                            if whole != last_secs {
+                                last_secs = whole;
+                                set_progress_task.set((pos / duration).clamp(0.0, 1.0));
+                            }
+                        }
+                    });
+
+                    Box::new(move || stop_flag.set(true)) as Box<dyn FnOnce()>
                 }
             },
-            [is_playing]
+            [is_playing as u64, current_track as u64]
         );
 
         use_effect(
@@ -1545,10 +1595,25 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             {
                 let backend = backend.clone();
                 move || {
-                    backend.borrow_mut().set_volume(volume);
+                    let effective = if is_muted { 0.0 } else { volume };
+                    backend.borrow_mut().set_volume(effective);
                 }
             },
-            [volume.to_bits()]
+            [volume.to_bits(), is_muted as u32]
+        );
+
+        use_effect(
+            move || {
+                if !config_loaded {
+                    return;
+                }
+                xengui::task::spawn(async move {
+                    xengui::task::spawn_blocking(move || {
+                        library::save_volume_settings(volume, is_muted);
+                    }).await;
+                });
+            },
+            [volume.to_bits(), is_muted as u32, config_loaded as u32]
         );
 
         // Sidebar only shows at Md+; below that we switch to the floating
@@ -1643,6 +1708,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 is_playing,
                 progress,
                 volume,
+                is_muted,
                 shuffle_on,
                 repeat_on,
                 show_sidebar,
@@ -1651,6 +1717,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 set_is_playing.clone(),
                 set_progress.clone(),
                 set_volume.clone(),
+                set_is_muted.clone(),
                 set_shuffle_on.clone(),
                 set_repeat_on.clone()
             );
@@ -1706,29 +1773,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             main_view = main_view.child(floating_stack);
         }
-
-        // Runs on every platform layout, not just mobile, so progress keeps
-        // advancing without needing an unrelated redraw (e.g. window resize)
-        main_view = main_view.child(
-            PlaybackTicker::new(is_playing, {
-                let backend = backend.clone();
-                let set_progress = set_progress.clone();
-                let set_last_tick_secs = set_last_tick_secs.clone();
-                let duration = tracks
-                    .get(current_track)
-                    .map(|t| t.duration_secs)
-                    .unwrap_or(1)
-                    .max(1) as f32;
-                move || {
-                    let pos = backend.borrow().position().as_secs_f32();
-                    let whole_secs = pos as u32;
-                    if whole_secs != last_tick_secs {
-                        set_last_tick_secs.set(whole_secs);
-                        set_progress.set((pos / duration).clamp(0.0, 1.0));
-                    }
-                }
-            })
-        );
 
         Box::new(main_view)
     });
