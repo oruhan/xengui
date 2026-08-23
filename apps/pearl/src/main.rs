@@ -630,7 +630,11 @@ fn build_titlebar(theme: &Theme, current: Option<&Track>) -> View {
         .align_items(Align::Center)
         .background(theme.surface_container.with_alpha_f32(0.75))
         .backdrop_filter(Filter::Blur(px!(16.0)))
-        .border(Border::bottom(1.0, theme.outline_variant))
+        // Forces this widget's paint commands to sort after the body's (both
+        // are z=0 by default, and equal-z ties keep tree order), so the
+        // backdrop capture snapshots real painted content instead of an
+        // empty scene
+        .z_index(1)
         .window_drag_region(true)
         .child(brand)
         .child(center)
@@ -1263,7 +1267,10 @@ fn build_player_bar(
         } else {
             codepoints::VOLUME_UP
         };
-        let toggle_mute = move |_ctx: &mut EventCtx| set_is_muted.set(!is_muted);
+        let toggle_mute = {
+            let set_is_muted = set_is_muted.clone();
+            move |_ctx: &mut EventCtx| set_is_muted.set(!is_muted)
+        };
 
         let volume_row = Row::new()
             .width(px!(300.0))
