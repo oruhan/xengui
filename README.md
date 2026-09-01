@@ -43,7 +43,7 @@ Runnable applications live in [`apps`](apps); focused demonstrations live in [`e
 
 - Rust 1.92 or newer, as declared by the workspace MSRV.
 - A graphics adapter and driver supported by `wgpu`.
-- [Trunk](https://trunkrs.dev) and the `wasm32-unknown-unknown` Rust target for browser builds.
+- [Trunk](https://trunk-rs.github.io/trunk/) and the `wasm32-unknown-unknown` Rust target for browser builds.
 - The platform audio development package when building the full workspace; Linux builds of `xen-audio` require ALSA development files discoverable through `pkg-config`.
 
 ## Quick start
