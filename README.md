@@ -1,89 +1,54 @@
-# XenGui: a retained-mode GUI library in pure Rust
+# XenGui
 
-[<img alt="github" src="https://img.shields.io/badge/github-randseas/xengui-00aaaa?logo=github" height="20">](https://github.com/randseas/xengui)
-[![Latest version](https://img.shields.io/crates/v/xengui.svg)](https://crates.io/crates/xengui)
-[![Downloads](https://img.shields.io/crates/d/xengui.svg)](https://crates.io/crates/xengui)
-[![Rust](https://img.shields.io/badge/rust-1.92%2B-blue.svg)](https://www.rust-lang.org)
+[![Crates.io](https://img.shields.io/crates/v/xengui.svg)](https://crates.io/crates/xengui)
 [![Documentation](https://docs.rs/xengui/badge.svg)](https://docs.rs/xengui)
-[![Apache-2.0](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](https://github.com/randseas/xengui/blob/main/LICENSE)
+[![Rust 1.92+](https://img.shields.io/badge/rust-1.92%2B-blue.svg)](https://www.rust-lang.org)
+[![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 
-<!-- ![CI/CD](https://github.com/randseas/xengui/actions/workflows/ci_check.yml/badge.svg) -->
+XenGui is a retained-mode GUI toolkit written in Rust. It combines a hooks-based component model, Flexbox and Grid layout through [`taffy`](https://github.com/DioxusLabs/taffy), and GPU rendering through [`wgpu`](https://github.com/gfx-rs/wgpu). The same application code can target desktop and WebAssembly.
 
-<p align="start" style="margin-top: -.5rem">
-  <a href="https://xengui.vercel.app">
-    <img src="https://raw.githubusercontent.com/randseas/xengui/main/assets/XenGui_logo.svg" alt="XenGui logo" width="350"/>
-  </a>
-</p>
+[Live demo](https://xengui.vercel.app) | [Documentation](https://xengui.vercel.app/docs) | [API reference](https://docs.rs/xengui) | [Issue tracker](https://github.com/randseas/xengui/issues)
 
-<div align="start" style="margin-top: -1.5rem; text-decoration: underline; text-decoration-color: #4daafc;">
+> [!WARNING]
+> XenGui is under active development. Public APIs may change before 1.0; pin dependency versions and review release notes before upgrading production applications.
 
-### [Live web demo](https://xengui.vercel.app)
+## Highlights
 
-</div>
+- Retained widget tree with `component`, `use_state`, effects, resources, and context.
+- Flexbox, CSS Grid, responsive values, scrolling, and split-pane layouts.
+- Declarative themes and interaction-specific styles, including transitions and filters.
+- Built-in controls for text, forms, images, SVG, navigation, menus, tables, and overlays.
+- Batched `wgpu` pipelines for rectangles, text, images, SVG triangles, filters, and shadows.
+- Native windowing and input through `winit`, plus browser support through WebAssembly.
+- Rendering, runtime, routing, animation, clipboard, audio, SVG, and icons split into focused crates.
 
----
+## Architecture
 
-XenGui is a retained-mode rendering GUI implementation in pure **Rust**, built on the `wgpu` graphics API and `winit` window management. It combines a hooks-based retained-mode model with a Flexbox/Grid layout engine (powered by `taffy`) and a batched wgpu rendering pipeline, running natively on Windows, macOS, and Linux, as well as in the browser via WebAssembly.
+| Package | Role |
+| --- | --- |
+| [`xengui`](crates/xengui) | Platform-independent widget tree, hooks, layout, styling, and reconciliation. |
+| [`xenframe`](crates/xenframe) | Window creation, event loop, input, IME, theme, and browser integration. |
+| [`xengui-wgpu`](crates/xengui-wgpu) | GPU render backend and window renderer. |
+| [`xen-router`](crates/xen-router) | Client-side routing with browser History API synchronization. |
+| [`xen-router-build`](crates/xen-router-build) | Build-time generator for file-based routes. |
+| [`xen-animation`](crates/xen-animation) | Framework-independent transitions and easing. |
+| [`xen-clipboard`](crates/xen-clipboard) | Asynchronous text clipboard abstraction. |
+| [`xen-audio`](crates/xen-audio) | Framework-independent local audio playback abstraction. |
+| [`xen-svg`](crates/xen-svg) | SVG parsing and triangle tessellation. |
+| [`xengui-icons`](crates/xengui-icons) | Embedded Material Symbols variable icon font and codepoints. |
 
-> [!IMPORTANT]
-> XenGui is currently an early development release. APIs are still evolving and may change without notice between versions. Use with caution in production projects and expect breaking changes until a stable `1.0.0` release.
+Runnable applications live in [`apps`](apps); focused demonstrations live in [`examples`](examples).
 
-## Example
+## Requirements
 
-```rust
-let (counter, set_counter) = use_state::<i32>(0);
+- Rust 1.92 or newer, as declared by the workspace MSRV.
+- A graphics adapter and driver supported by `wgpu`.
+- [Trunk](https://trunkrs.dev) and the `wasm32-unknown-unknown` Rust target for browser builds.
+- The platform audio development package when building the full workspace; Linux builds of `xen-audio` require ALSA development files discoverable through `pkg-config`.
 
-View::new()
-    .display(Display::Flex)
-    .flex_direction(FlexDirection::Column)
-    .align_items(Align::Center)
-    .justify_content(JustifyContent::Center)
-    .width(pct!(100))
-    .height(pct!(100))
-    .background(|theme| theme.background)
-    .child(
-        Label::new()
-            .label(format!("Count: {counter}"))
-            .font_size(20)
-            .color(|theme| theme.on_background)
-        )
-    .child(
-        Button::new()
-            .label("Increment")
-            .padding(Edges::symmetric(12, 6))
-            .background(|theme| theme.primary)
-            .color(|theme| theme.on_primary)
-            .on_click(move |_ctx| set_counter.update(|v| *v += 1))
-    );
-```
+## Quick start
 
-## Features
-
-- **Retained-mode state** - React-style hooks (`use_state`, `component`) drive re-renders without a virtual DOM diffing framework bolted on top.
-- **Flexbox & Grid layout** - Layout system via [`taffy`](https://github.com/DioxusLabs/taffy), including flex direction, wrapping, alignment, gaps, and grid tracks.
-- **GPU-accelerated rendering** - Rects, text, and images are batched and drawn through dedicated `wgpu` pipelines.
-- **Declarative styling** - `Style`/`StyleBuilder` API covering colors (including OKLCH), borders, typography, spacing, and more.
-- **Built-in widgets** - `View`, `Label`, `Button`, `Link`, `TextBox`, `Image`, `Svg`, and `ContextMenu`, each with hover/pressed/focus/disabled style variants.
-- **Interaction system** - Unified handling of hover, click, focus, and keyboard events across widgets.
-- **Cross-platform** - Native targets (Windows, macOS, Linux) and WebAssembly from a single codebase.
-
-## Crates
-
-XenGui is split across several focused crates:
-
-| Crate                                   | Description                                                                              |
-| --------------------------------------- | ---------------------------------------------------------------------------------------- |
-| [`xengui`](crates/xengui)               | The core retained-mode GUI library: widget tree, hooks, layout, styling, and reconciler. |
-| [`xenframe`](crates/xenframe)           | Platform runtime: window creation, event loop, and input integration via `winit`.        |
-| [`xengui-wgpu`](crates/xengui-wgpu)     | The `wgpu` render backend implementing `xengui`'s `RenderBackend` trait.                 |
-| [`xen-animation`](crates/xen-animation) | Framework-agnostic animation and transition library.                                     |
-| [`xen-clipboard`](crates/xen-clipboard) | Cross-platform clipboard library.                                                        |
-| [`xen-svg`](crates/xen-svg)             | Platform-agnostic SVG parser and triangle tessellator.                                   |
-| [`xengui-icons`](crates/xengui-icons)   | Framework-agnostic various icon fonts.                           |
-
-## Installation
-
-`Cargo.toml`
+Create a binary crate and add the application runtime dependencies:
 
 ```toml
 [dependencies]
@@ -92,76 +57,82 @@ xenframe = "0.1.1"
 xengui-wgpu = "0.1.1"
 ```
 
-## Quick Start
-
 ```rust
+use xenframe::{App, AppConfig};
 use xengui::*;
-use xenframe::{App, AppConfig, WindowPosition};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let config = AppConfig {
-        title: "My XenGui App".into(),
+    let mut app = App::new(AppConfig {
+        title: "Counter".into(),
         width: 640,
         height: 480,
-        position: WindowPosition::Center,
         ..Default::default()
-    };
-
-    let mut app = App::new(config);
+    });
 
     app.render(|| {
-        let (counter, set_counter) = use_state::<i32>(0);
+        let (count, set_count) = use_state(0_i32);
 
         Box::new(
-            View::new()
-                .display(Display::Flex)
-                .flex_direction(FlexDirection::Column)
-                .align_items(Align::Center)
-                .justify_content(JustifyContent::Center)
+            Column::new()
                 .width(pct!(100))
                 .height(pct!(100))
-                .background(|theme| theme.background)
-                .child(
-                    Label::new()
-                        .label(format!("Count: {counter}"))
-                        .font_size(20)
-                        .color(|theme| theme.on_background)
-                )
+                .align_items(Align::Center)
+                .justify_content(JustifyContent::Center)
+                .gap(0, 12)
+                .child(Label::new().label(format!("Count: {count}")))
                 .child(
                     Button::new()
                         .label("Increment")
-                        .padding(Edges::symmetric(12, 8))
-                        .background(|theme| theme.primary)
-                        .color(|theme| theme.on_primary)
-                        .on_click(move |_ctx| set_counter.update(|v| *v += 1))
-                )
+                        .on_click(move |_| set_count.update(|value| *value += 1)),
+                ),
         )
     });
 
-    if let Err(e) = app.run() {
-        eprintln!("Error running app: {:?}", e);
-    }
-
+    app.run()?;
     Ok(())
 }
 ```
 
-Run it with:
+Run the application with `cargo run`.
+
+## Run the workspace
+
+From the repository root:
 
 ```bash
-cargo run
+cargo run -p widgets-catalog
 ```
 
-For WebAssembly targets, build and serve with [Trunk](https://github.com/trunk-rs/trunk):
+Other useful targets include `animation-example`, `filters-example`, `layout-example`, `router-example`, `scroll-example`, `settings-app`, `pearl`, and `xengui_website`.
+
+For a browser build:
 
 ```bash
-trunk serve
+rustup target add wasm32-unknown-unknown
+cargo install trunk
+cd examples/widgets_catalog
+trunk serve --open
 ```
 
-## Documentation
+Trunk serves a local development build and rebuilds it when source files change.
 
-Docs are available at: [https://xengui.vercel.app/docs](https://xengui.vercel.app/docs)
+## Development
+
+Run the standard quality checks from the repository root:
+
+```bash
+cargo fmt --all --check
+cargo check --workspace
+cargo test --workspace
+cargo clippy --workspace --all-targets -- -D warnings
+```
+
+GPU availability and target-specific dependencies can affect native or WebAssembly checks. When changing rendering code, test both a native example and a browser build.
+
+On Linux, a missing `alsa.pc` error means the distribution's ALSA development package and `pkg-config` must be installed before testing `xen-audio` or `pearl`.
+
+Contributions are welcome through [issues](https://github.com/randseas/xengui/issues) and pull requests. For substantial changes, open an issue first so the design can be discussed. Please include tests or a reproducible example for behavioral changes.
 
 ## License
 
-Apache License 2.0 © 2026 randseas. See [LICENSE](LICENSE) for details.
+Licensed under the [Apache License 2.0](LICENSE).

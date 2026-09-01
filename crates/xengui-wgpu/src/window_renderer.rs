@@ -150,8 +150,8 @@ impl WgpuWindowRenderer {
             SampleCount::X1
         )?;
 
-        let alpha_mode = if surface_caps.alpha_modes.contains(&wgpu::CompositeAlphaMode::Opaque) {
-            wgpu::CompositeAlphaMode::Opaque
+        let alpha_mode = if surface_caps.alpha_modes.contains(&wgpu::CompositeAlphaMode::PreMultiplied) {
+            wgpu::CompositeAlphaMode::PreMultiplied
         } else {
             surface_caps.alpha_modes[0]
         };

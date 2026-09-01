@@ -1,55 +1,53 @@
 # xengui-wgpu
 
-[<img alt="github" src="https://img.shields.io/badge/github-randseas/xengui-00aaaa?logo=github" height="20">](https://github.com/randseas/xengui/tree/main/crates/xengui-wgpu)
-[![Latest version](https://img.shields.io/crates/v/xengui-wgpu.svg)](https://crates.io/crates/xengui-wgpu)
-[![Downloads](https://img.shields.io/crates/d/xengui-wgpu.svg)](https://crates.io/crates/xengui-wgpu)
-[![Rust](https://img.shields.io/badge/rust-1.92%2B-blue.svg)](https://www.rust-lang.org)
+[![Crates.io](https://img.shields.io/crates/v/xengui-wgpu.svg)](https://crates.io/crates/xengui-wgpu)
 [![Documentation](https://docs.rs/xengui-wgpu/badge.svg)](https://docs.rs/xengui-wgpu)
-[![Apache-2.0](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](https://github.com/randseas/xengui/blob/main/crates/xengui-wgpu/LICENSE)
+[![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 
-The [`wgpu`](https://github.com/gfx-rs/wgpu) render backend for XenGui.
-
-`xengui-wgpu` implements `xengui`'s `RenderBackend` trait on top of `wgpu`, so `xengui`'s core (layout, widgets, reconciler, `FrameRenderer`) never depends on a concrete graphics API. It owns dedicated batched pipelines for rects (with SDF-based rounding, borders, and anti-aliasing), triangles, images, and text (via [`glyphon`](https://github.com/grovesNL/glyphon)), and interleaves draw calls in true paint order across all four.
-
-`WgpuWindowRenderer` owns a full wgpu device/surface for native windowed apps and is the integration point used by `xenframe`. A host that already owns its own wgpu device and render target (e.g. a game engine's render graph) can instead build `WgpuPipelines` once and call `begin_frame` directly against its own encoder and view.
+`xengui-wgpu` is the `wgpu` render backend for XenGui. It converts platform-independent paint commands from `xengui` into ordered GPU passes and can either own a window surface or render into a host-provided target.
 
 ## Features
 
-- Full `RenderBackend` implementation for `xengui`
-- Batched, scissor-clipped pipelines for rects, triangles, images, and text
-- SDF-based rounded-rect rendering with borders and anti-aliasing
-- Text shaping and glyph atlas management via `glyphon`
-- Shape caching to avoid re-shaping unchanged text runs every frame
-- User-supplied font loading, with WASM fallback-font support
-- Native (Windows, macOS, Linux) and WebAssembly targets
-
-> For a full application quick start (rendering, event loop, and GPU backend together), see the [workspace README](https://github.com/randseas/xengui#quick-start).
-
-## Example
-
-```rust
-use std::sync::Arc;
-use xengui_wgpu::WgpuWindowRenderer;
-
-let renderer = WgpuWindowRenderer::new(window, width, height, user_fonts)?;
-
-// Each frame:
-renderer.render_frame(&mut widget_tree, theme, scale_factor);
-```
+- `RenderBackend` implementation for rectangles, images, SVG triangles, and text.
+- Batched drawing with scissor clipping and stable paint order.
+- Rounded rectangles, borders, anti-aliasing, gradients, filters, and shadows.
+- Text shaping and glyph-atlas management through `glyphon`.
+- User font loading and WebAssembly fallback-font support.
+- Configurable MSAA for native and browser targets.
 
 ## Installation
-
-`Cargo.toml`
 
 ```toml
 [dependencies]
 xengui-wgpu = "0.1.1"
 ```
 
-## Documentation
+Most applications should use this crate indirectly through [`xenframe`](../xenframe). Hosts that already own a `wgpu::Device`, command encoder, and render target can construct `WgpuPipelines` and call `begin_frame` directly.
 
-Docs are available at: [https://xengui.vercel.app/docs/xengui-wgpu](https://xengui.vercel.app/docs/xengui-wgpu)
+## Main entry points
+
+| Type | Use case |
+| --- | --- |
+| `WgpuWindowRenderer` | Own a device and surface for a XenGui window. |
+| `WgpuPipelines` | Integrate XenGui into an existing `wgpu` renderer. |
+| `WgpuFrame` | Submit paint commands during a host-managed frame. |
+| `SampleCount` | Configure multisample anti-aliasing. |
+
+## Validation
+
+Rendering changes should be checked on both native and WebAssembly targets because WebGPU applies stricter shader and buffer-layout validation on some adapters.
+
+```bash
+cargo check -p xengui-wgpu
+cargo test -p xengui-wgpu
+```
+
+## Documentation and support
+
+- [API reference](https://docs.rs/xengui-wgpu)
+- [Project documentation](https://xengui.vercel.app/docs/xengui-wgpu)
+- [Workspace guide](../../README.md)
 
 ## License
 
-Apache License 2.0 © 2026 randseas. See [LICENSE](LICENSE) for details.
+Licensed under the [Apache License 2.0](LICENSE).

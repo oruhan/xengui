@@ -1,73 +1,57 @@
 # xen-clipboard
 
-[<img alt="github" src="https://img.shields.io/badge/github-randseas/xengui-00aaaa?logo=github" height="20">](https://github.com/randseas/xengui/tree/main/crates/xen-clipboard)
-[![Latest version](https://img.shields.io/crates/v/xen_clipboard.svg)](https://crates.io/crates/xen_clipboard)
-[![Downloads](https://img.shields.io/crates/d/xen_clipboard.svg)](https://crates.io/crates/xen_clipboard)
-[![Rust](https://img.shields.io/badge/rust-1.92%2B-blue.svg)](https://www.rust-lang.org)
+[![Crates.io](https://img.shields.io/crates/v/xen-clipboard.svg)](https://crates.io/crates/xen-clipboard)
 [![Documentation](https://docs.rs/xen-clipboard/badge.svg)](https://docs.rs/xen-clipboard)
-[![Apache-2.0](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](https://github.com/randseas/xengui/blob/main/crates/xen-clipboard/LICENSE)
+[![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 
-Cross-platform clipboard library in rust.
+`xen-clipboard` provides a callback-based text clipboard API for XenGui and other Rust applications.
 
-## Supported Platforms
+## Platform support
 
-- Windows
-- WebAssembly
+| Target | Status |
+| --- | --- |
+| Windows | Read, write, and content checks are implemented. |
+| WebAssembly | Implemented through the browser Clipboard API. |
+| Linux | Compiles with an explicit unsupported backend; text operations currently return `ClipboardError::Unsupported`. |
+| macOS, Android, iOS | Not implemented. |
 
-## Planned Platforms
-
-- Linux (Wayland/X11)
-- macOS
-- Android
-- iOS
-
-## Example
-
-```rust
-use xen_clipboard::Clipboard;
-
-fn main() {
-    let clipboard = Clipboard::new();
-
-    // Write text to the clipboard.
-    clipboard.set_text(
-        "Hello, Xen Clipboard!".into(),
-        |result| {
-            match result {
-                Ok(_) => println!("Copied!"),
-                Err(err) => eprintln!("Failed to copy: {err}"),
-            }
-        },
-    );
-
-    // Read text from the clipboard.
-    clipboard.get_text(|result| match result {
-        Ok(Some(text)) => println!("Clipboard: {text}"),
-        Ok(None) => println!("Clipboard is empty."),
-        Err(err) => eprintln!("Failed to read clipboard: {err}"),
-    });
-
-    // Check whether the clipboard contains text.
-    clipboard.has_text(|result| match result {
-        Ok(has_text) => println!("Has text: {has_text}"),
-        Err(err) => eprintln!("Failed to query clipboard: {err}"),
-    });
-}
-```
+Browser clipboard access requires a secure context and may require a user gesture or permission, depending on browser policy.
 
 ## Installation
-
-`Cargo.toml`
 
 ```toml
 [dependencies]
 xen-clipboard = "0.1.7"
 ```
 
-## Documentation
+## Usage
 
-Docs are available at: [https://xengui.vercel.app/docs/xen-clipboard](https://xengui.vercel.app/docs/xen-clipboard)
+```rust
+use xen_clipboard::Clipboard;
+
+let clipboard = Clipboard::new();
+
+clipboard.set_text("Hello", |result| {
+    if let Err(error) = result {
+        eprintln!("copy failed: {error}");
+    }
+});
+
+clipboard.get_text(|result| match result {
+    Ok(Some(text)) => println!("{text}"),
+    Ok(None) => println!("clipboard is empty"),
+    Err(error) => eprintln!("paste failed: {error}"),
+});
+```
+
+Callbacks may execute asynchronously. Do not assume a result is available immediately after invoking an operation.
+
+## Documentation and support
+
+- [API reference](https://docs.rs/xen-clipboard)
+- [Project documentation](https://xengui.vercel.app/docs/xen-clipboard)
+- [Issues](https://github.com/randseas/xengui/issues)
 
 ## License
 
-Apache License 2.0 © 2026 randseas. See [LICENSE](LICENSE) for details.
+Licensed under the [Apache License 2.0](LICENSE).
