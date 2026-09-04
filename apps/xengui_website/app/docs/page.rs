@@ -26,7 +26,7 @@ const NAV_ITEMS: &[(DocsSection, &str, &str)] = &[
 ];
 
 fn paragraph(text: &str, font_size: f32, line_height: f32) -> RichText {
-    let available_width = (viewport_size().0 - 40.0).clamp(200.0, 720.0);
+    let available_width = (viewport_size().0 - 40.0).clamp(200.0, 760.0);
     RichText::new()
         .with_content(text)
         .width(pct!(100.0))
@@ -41,7 +41,7 @@ fn heading(kicker: &str, title: &str, description: &str) -> View {
     Column::new()
         .width(pct!(100.0))
         .min_width(px!(0.0))
-        .gap(0.0, 10.0)
+        .gap(0.0, 12.0)
         .child(
             Label::new()
                 .label(kicker.to_uppercase())
@@ -54,9 +54,9 @@ fn heading(kicker: &str, title: &str, description: &str) -> View {
             Label::new()
                 .label(title)
                 .width(pct!(100.0))
-                .font_size(Responsive::new(px!(26.0)).md(px!(40.0)))
+                .font_size(Responsive::new(px!(30.0)).md(px!(44.0)))
                 .font_weight(FontWeight::SemiBold)
-                .letter_spacing(px!(-1.2))
+                .letter_spacing(px!(-1.5))
                 .color(|theme: &Theme| theme.on_background),
         )
         .child(paragraph(description, 15.0, 24.0))
@@ -76,30 +76,53 @@ fn section_title(title: &str, description: &str) -> View {
         .child(paragraph(description, 14.0, 22.0))
 }
 
-fn code_block(code: &str) -> View {
-    View::new()
+fn code_block(label: &str, code: &str) -> View {
+    Column::new()
         .width(pct!(100.0))
-        .padding(Edges::all(18.0))
         .background(Color::NEUTRAL_950)
-        .border(Border::all(1.0, Color::NEUTRAL_800).radius(12.0))
-        .overflow_x(Overflow::Auto)
+        .border(Border::all(1.0, Color::NEUTRAL_800).radius(20.0))
         .child(
-            Label::new()
-                .label(code)
-                .selectable(true)
-                .font_size(13.0)
-                .line_height(px!(20.0))
-                .color(Color::NEUTRAL_100),
+            Row::new()
+                .align_items(Align::Center)
+                .gap(9.0, 0.0)
+                .padding(Edges::only(18.0, 13.0, 18.0, 13.0))
+                .border(Border::bottom(1.0, Color::NEUTRAL_800))
+                .child(
+                    VariableIcon::new(xengui_icons::codepoints::CODE_BLOCKS)
+                        .size(17.0)
+                        .color(Color::NEUTRAL_400),
+                )
+                .child(
+                    Label::new()
+                        .label(label)
+                        .font_size(12.0)
+                        .font_weight(FontWeight::SemiBold)
+                        .letter_spacing(px!(0.35))
+                        .color(Color::NEUTRAL_300),
+                ),
+        )
+        .child(
+            View::new()
+                .padding(Edges::all(20.0))
+                .overflow_x(Overflow::Auto)
+                .child(
+                    Label::new()
+                        .label(code)
+                        .selectable(true)
+                        .font_size(13.0)
+                        .line_height(px!(21.0))
+                        .color(Color::NEUTRAL_100),
+                ),
         )
 }
 
 fn note(title: &str, text: &str) -> View {
     Row::new()
         .gap(12.0, 0.0)
-        .padding(Edges::all(16.0))
-        .background(|theme: &Theme| theme.primary_container.with_alpha_f32(0.45))
+        .padding(Edges::all(18.0))
+        .background(|theme: &Theme| theme.primary_container.with_alpha_f32(0.62))
         .border(|theme: &Theme| {
-            Border::all(1.0, theme.primary.with_alpha_f32(0.3)).radius(12.0)
+            Border::all(1.0, theme.primary.with_alpha_f32(0.28)).radius(20.0)
         })
         .child(VariableIcon::new(xengui_icons::codepoints::INFO).size(20.0))
         .child(
@@ -118,11 +141,16 @@ fn note(title: &str, text: &str) -> View {
 fn feature_card(title: &str, description: &str) -> View {
     Column::new()
         .flex_basis(Responsive::new(pct!(100.0)).md(pct!(48.0)))
-        .gap(0.0, 8.0)
-        .padding(Edges::all(18.0))
-        .background(|theme: &Theme| theme.surface)
-        .border(|theme: &Theme| Border::all(1.0, theme.outline_variant).radius(12.0))
-        .child(Label::new().label(title).font_weight(FontWeight::SemiBold))
+        .gap(0.0, 10.0)
+        .padding(Edges::all(20.0))
+        .background(|theme: &Theme| theme.surface_container_low)
+        .border(|theme: &Theme| Border::all(1.0, theme.outline_variant).radius(22.0))
+        .child(
+            Label::new()
+                .label(title)
+                .font_size(16.0)
+                .font_weight(FontWeight::SemiBold),
+        )
         .child(
             paragraph(description, 13.0, 20.0)
                 .max_width(px!((viewport_size().0 - 76.0).clamp(180.0, 400.0))),
@@ -144,7 +172,12 @@ fn nav_button(
         .label(if compact {
             title.to_owned()
         } else {
-            format!("{title}\n{subtitle}")
+            let index = NAV_ITEMS
+                .iter()
+                .position(|(item, _, _)| *item == section)
+                .unwrap_or_default()
+                + 1;
+            format!("{index:02}   {title}\n       {subtitle}")
         })
         .font_size(13.0)
         .line_height(px!(19.0))
@@ -162,8 +195,8 @@ fn nav_button(
                 Color::TRANSPARENT
             }
         })
-        .border(Border::all(0.0, Color::TRANSPARENT).radius(10.0))
-        .padding(Edges::symmetric(12.0, 10.0))
+        .border(Border::all(0.0, Color::TRANSPARENT).radius(18.0))
+        .padding(Edges::symmetric(15.0, 12.0))
         .hover_style(|style, theme| style.background(theme.surface_container_high))
         .transition_all(Transition::new(Duration::from_millis(140)).easing(Easing::EaseOut))
         .on_click(move |_ctx| set_active.set(section))
@@ -178,6 +211,137 @@ fn cards(items: &[(&str, &str)]) -> View {
         grid = grid.child(feature_card(title, description));
     }
     grid
+}
+
+fn capability(icon: char, value: &str, label: &str, tone: u8) -> View {
+    Column::new()
+        .flex_basis(Responsive::new(pct!(48.0)).lg(pct!(23.0)))
+        .gap(0.0, 10.0)
+        .padding(Edges::all(16.0))
+        .background(move |theme: &Theme| match tone {
+            1 => theme.secondary_container,
+            2 => theme.tertiary_container,
+            _ => theme.surface_container_lowest,
+        })
+        .border(Border::all(0.0, Color::TRANSPARENT).radius(20.0))
+        .child(
+            VariableIcon::new(icon)
+                .size(21.0)
+                .color(move |theme: &Theme| match tone {
+                    1 => theme.on_secondary_container,
+                    2 => theme.on_tertiary_container,
+                    _ => theme.primary,
+                }),
+        )
+        .child(
+            Label::new()
+                .label(value)
+                .font_size(17.0)
+                .font_weight(FontWeight::SemiBold),
+        )
+        .child(paragraph(label, 12.0, 18.0))
+}
+
+fn docs_hero(set_active: SetState<DocsSection>) -> View {
+    let set_api = set_active.clone();
+    Column::new()
+        .width(pct!(100.0))
+        .gap(0.0, 20.0)
+        .padding(Responsive::new(Edges::all(24.0)).md(Edges::all(40.0)))
+        .background(|theme: &Theme| theme.primary_container)
+        .border(Border::all(0.0, Color::TRANSPARENT).radius(Responsive::new(24.0).md(32.0)))
+        .child(
+            Row::new()
+                .align_items(Align::Center)
+                .gap(8.0, 0.0)
+                .child(
+                    VariableIcon::new(xengui_icons::codepoints::AUTO_STORIES)
+                        .size(18.0)
+                        .color(|theme: &Theme| theme.on_primary_container),
+                )
+                .child(
+                    Label::new()
+                        .label("XENGUI DOCUMENTATION")
+                        .font_size(12.0)
+                        .font_weight(FontWeight::SemiBold)
+                        .letter_spacing(px!(1.1))
+                        .color(|theme: &Theme| theme.on_primary_container),
+                ),
+        )
+        .child(
+            Label::new()
+                .label("Rust UI, baştan sona anlaşılır.")
+                .max_width(px!(820.0))
+                .font_size(Responsive::new(px!(38.0)).md(px!(58.0)))
+                .line_height(Responsive::new(px!(44.0)).md(px!(64.0)))
+                .font_weight(FontWeight::SemiBold)
+                .letter_spacing(px!(-2.0))
+                .color(|theme: &Theme| theme.on_primary_container),
+        )
+        .child(
+            paragraph(
+                "Kurulumdan renderer mimarisine kadar, üretimde ihtiyaç duyacağın kavramları çalışan örneklerle öğren.",
+                16.0,
+                25.0,
+            )
+            .color(|theme: &Theme| theme.on_primary_container),
+        )
+        .child(
+            View::new()
+                .display(Display::Flex)
+                .flex_wrap(FlexWrap::Wrap)
+                .gap(10.0, 10.0)
+                .child(
+                    Button::new()
+                        .label("Başlangıç rehberi  →")
+                        .font_weight(FontWeight::SemiBold)
+                        .background(|theme: &Theme| theme.primary)
+                        .color(|theme: &Theme| theme.on_primary)
+                        .border(Border::all(0.0, Color::TRANSPARENT).radius(18.0))
+                        .padding(Edges::symmetric(18.0, 12.0))
+                        .on_click(move |_ctx| set_active.set(DocsSection::Start)),
+                )
+                .child(
+                    Button::new()
+                        .label("API referansı")
+                        .font_weight(FontWeight::SemiBold)
+                        .background(|theme: &Theme| theme.surface_container_lowest)
+                        .color(|theme: &Theme| theme.on_surface)
+                        .border(Border::all(0.0, Color::TRANSPARENT).radius(18.0))
+                        .padding(Edges::symmetric(18.0, 12.0))
+                        .on_click(move |_ctx| set_api.set(DocsSection::Api)),
+                ),
+        )
+        .child(
+            View::new()
+                .display(Display::Flex)
+                .flex_wrap(FlexWrap::Wrap)
+                .gap(10.0, 10.0)
+                .child(capability(
+                    xengui_icons::codepoints::PACKAGE_2,
+                    "0.2.8",
+                    "Güncel xengui sürümü",
+                    0,
+                ))
+                .child(capability(
+                    xengui_icons::codepoints::DESKTOP_WINDOWS,
+                    "Native + Web",
+                    "Tek widget modeli",
+                    1,
+                ))
+                .child(capability(
+                    xengui_icons::codepoints::SPEED,
+                    "wgpu",
+                    "GPU hızlandırmalı",
+                    2,
+                ))
+                .child(capability(
+                    xengui_icons::codepoints::DATA_OBJECT,
+                    "Rust 1.92",
+                    "MSRV sözleşmesi",
+                    0,
+                )),
+        )
 }
 
 fn start_page() -> View {
@@ -197,6 +361,7 @@ fn start_page() -> View {
             "Uygulama kabuğu için xenframe, widget API'si için xengui kullanılır.",
         ))
         .child(code_block(
+            "Cargo.toml",
             "[dependencies]\nxengui = \"0.2.8\"\nxenframe = \"0.1.2\"\nxengui-wgpu = \"0.1.2\"",
         ))
         .child(section_title(
@@ -204,6 +369,7 @@ fn start_page() -> View {
             "Render closure her state değişiminde yeni widget ağacını üretir.",
         ))
         .child(code_block(
+            "src/main.rs",
             "use xenframe::{App, AppConfig};\nuse xengui::*;\n\nfn main() -> Result<(), Box<dyn std::error::Error>> {\n    let mut app = App::new(AppConfig::default());\n    app.render(|| Box::new(\n        Column::new()\n            .padding(Edges::all(24.0))\n            .gap(0.0, 12.0)\n            .child(Label::new().label(\"Merhaba, XenGui!\"))\n            .child(Button::new().label(\"Devam et\"))\n    ));\n    app.run()?;\n    Ok(())\n}",
         ))
         .child(section_title(
@@ -211,6 +377,7 @@ fn start_page() -> View {
             "Native uygulama Cargo, web uygulaması Trunk ile çalışır.",
         ))
         .child(code_block(
+            "Terminal",
             "# Native\ncargo run\n\n# Web\nrustup target add wasm32-unknown-unknown\ntrunk serve --open",
         ))
 }
@@ -231,10 +398,12 @@ fn concepts_page() -> View {
         ]))
         .child(section_title("State örneği", "Hook çağrı sırası koşulsuz ve kararlı olmalıdır."))
         .child(code_block(
+            "Component state",
             "let (count, set_count) = use_state(0);\n\nButton::new()\n    .label(format!(\"Sayaç: {count}\"))\n    .on_click(move |_ctx| set_count.set(count + 1))",
         ))
         .child(section_title("Kalıcı liste kimliği", "Dinamik listelerde index yerine domain kimliği kullanın."))
         .child(code_block(
+            "Keyed list",
             "for item in items {\n    list = list.child(\n        Row::new()\n            .key(item.id.to_string())\n            .child(Label::new().label(item.title))\n    );\n}",
         ))
 }
@@ -346,14 +515,17 @@ fn styling_page() -> View {
         ))
         .child(section_title("Tema tabanlı stil", "Closure aktif temayı render sırasında çözer."))
         .child(code_block(
+            "Theme tokens",
             "View::new()\n    .padding(Edges::all(20.0))\n    .background(|theme: &Theme| theme.surface)\n    .color(|theme: &Theme| theme.on_surface)\n    .border(|theme: &Theme|\n        Border::all(1.0, theme.outline_variant).radius(theme.radius_lg)\n    )",
         ))
         .child(section_title("Responsive değerler", "Mobile-first değer breakpoint geldiğinde değişir."))
         .child(code_block(
+            "Responsive layout",
             "View::new()\n    .padding(Responsive::new(Edges::all(16.0)).md(Edges::all(32.0)))\n    .width(Responsive::new(pct!(100.0)).lg(px!(960.0)))",
         ))
         .child(section_title("Grid", "Taffy tabanlı grid ve flex aynı layout ağacında birlikte kullanılabilir."))
         .child(code_block(
+            "Grid layout",
             "View::new()\n    .display(Display::Grid)\n    .grid_template_columns(vec![GridTrack::Fr(1.0), GridTrack::Fr(1.0)])\n    .gap(16.0, 16.0)",
         ))
 }
@@ -374,6 +546,7 @@ fn rendering_page() -> View {
         ]))
         .child(section_title("Renderer seçenekleri", "Varsayılan politika uyumluluk, vsync ve 4× triangle MSAA seçer."))
         .child(code_block(
+            "Renderer configuration",
             "use xengui_wgpu::{PresentModePreference, RendererOptions, SampleCount};\n\nlet config = AppConfig {\n    renderer: RendererOptions {\n        present_mode: PresentModePreference::Vsync,\n        sample_count: SampleCount::X4,\n        ..Default::default()\n    },\n    ..Default::default()\n};",
         ))
 }
