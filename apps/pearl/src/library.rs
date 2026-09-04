@@ -4,8 +4,8 @@
 //! browser's own file picker instead (not implemented yet).
 #![cfg(not(target_arch = "wasm32"))]
 
-use serde::{ Deserialize, Serialize };
-use std::path::{ Path, PathBuf };
+use serde::{Deserialize, Serialize};
+use std::path::{Path, PathBuf};
 use std::sync::mpsc;
 use std::time::Duration;
 use xengui::Color;
@@ -38,7 +38,10 @@ pub struct PlaybackSection {
 
 impl Default for PlaybackSection {
     fn default() -> Self {
-        Self { default_volume: default_volume(), muted: false }
+        Self {
+            default_volume: default_volume(),
+            muted: false,
+        }
     }
 }
 
@@ -67,8 +70,7 @@ fn default_volume() -> f32 {
 }
 
 fn default_scan_paths() -> Vec<String> {
-    directories::UserDirs
-        ::new()
+    directories::UserDirs::new()
         .and_then(|d| d.audio_dir().map(|p| p.to_string_lossy().to_string()))
         .into_iter()
         .collect()
@@ -102,11 +104,7 @@ const PLACEHOLDER_COLORS: [Color; 6] = [
 ];
 
 fn color_for_title(title: &str) -> Color {
-    let index =
-        title
-            .bytes()
-            .map(|b| b as usize)
-            .sum::<usize>() % PLACEHOLDER_COLORS.len();
+    let index = title.bytes().map(|b| b as usize).sum::<usize>() % PLACEHOLDER_COLORS.len();
     PLACEHOLDER_COLORS[index]
 }
 
@@ -116,7 +114,10 @@ pub fn scan_library(scan_paths: &[String]) -> Vec<ScannedTrack> {
     let mut tracks = Vec::new();
 
     for root in scan_paths {
-        for entry in walkdir::WalkDir::new(root).into_iter().filter_map(Result::ok) {
+        for entry in walkdir::WalkDir::new(root)
+            .into_iter()
+            .filter_map(Result::ok)
+        {
             if !entry.file_type().is_file() {
                 continue;
             }
@@ -147,11 +148,15 @@ pub fn scan_library(scan_paths: &[String]) -> Vec<ScannedTrack> {
 // the audio stream, but tagging the source here lets a future player
 // switch into a video-capable mode without rescanning the library.
 fn media_kind_for_extension(ext: &str) -> MediaKind {
-    if ext == "webm" { MediaKind::Video } else { MediaKind::Audio }
+    if ext == "webm" {
+        MediaKind::Video
+    } else {
+        MediaKind::Audio
+    }
 }
 
 fn read_track_tags(path: &Path, media_kind: MediaKind) -> Option<ScannedTrack> {
-    use lofty::file::{ AudioFile, TaggedFileExt };
+    use lofty::file::{AudioFile, TaggedFileExt};
     use lofty::tag::Accessor;
 
     let fallback_title = || {
@@ -193,18 +198,13 @@ fn read_track_tags(path: &Path, media_kind: MediaKind) -> Option<ScannedTrack> {
         .unwrap_or_else(|| "Unknown Album".to_string());
     let duration_secs = tagged.properties().duration().as_secs() as u32;
 
-    let cover = tag
-        .and_then(|t| t.pictures().first())
-        .and_then(|pic| {
-            image
-                ::load_from_memory(pic.data())
-                .ok()
-                .map(|img| {
-                    let rgba = img.to_rgba8();
-                    let (w, h) = rgba.dimensions();
-                    (w, h, rgba.into_raw())
-                })
-        });
+    let cover = tag.and_then(|t| t.pictures().first()).and_then(|pic| {
+        image::load_from_memory(pic.data()).ok().map(|img| {
+            let rgba = img.to_rgba8();
+            let (w, h) = rgba.dimensions();
+            (w, h, rgba.into_raw())
+        })
+    });
 
     Some(ScannedTrack {
         path: path.to_path_buf(),
@@ -230,14 +230,12 @@ pub fn spawn_library_watcher(scan_paths: Vec<String>) -> mpsc::Receiver<Vec<Scan
     let (tx, rx) = mpsc::channel();
 
     std::thread::spawn(move || {
-        use notify::{ RecursiveMode, Watcher };
+        use notify::{RecursiveMode, Watcher};
 
         let (fs_tx, fs_rx) = mpsc::channel();
-        let mut watcher = match
-            notify::recommended_watcher(move |res| {
-                let _ = fs_tx.send(res);
-            })
-        {
+        let mut watcher = match notify::recommended_watcher(move |res| {
+            let _ = fs_tx.send(res);
+        }) {
             Ok(watcher) => watcher,
             Err(e) => {
                 log::error!("pearl: failed to create file watcher: {e}");
@@ -276,8 +274,7 @@ pub fn save_volume_settings(volume: f32, muted: bool) {
     let Some(path) = config_path() else {
         return;
     };
-    let mut config = std::fs
-        ::read_to_string(&path)
+    let mut config = std::fs::read_to_string(&path)
         .ok()
         .and_then(|text| toml::from_str::<LibraryConfig>(&text).ok())
         .unwrap_or_default();
@@ -299,7 +296,10 @@ pub fn load_or_init_config() -> LibraryConfig {
     }
 
     let config = LibraryConfig {
-        library: LibrarySection { scan_paths: default_scan_paths(), watch_for_changes: true },
+        library: LibrarySection {
+            scan_paths: default_scan_paths(),
+            watch_for_changes: true,
+        },
         playback: PlaybackSection::default(),
         playlists: PlaylistsSection::default(),
     };

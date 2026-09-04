@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-use super::texture_pool::{ PooledTexture, TexturePool };
+use super::texture_pool::{PooledTexture, TexturePool};
 
 /// Upper bound on how many downsample/upsample levels a single blur can
 /// use. Higher radii just get a larger per-level offset instead of more
@@ -75,14 +75,16 @@ impl KawasePass {
                         ty: wgpu::BindingType::Buffer {
                             ty: wgpu::BufferBindingType::Uniform,
                             has_dynamic_offset: true,
-                            min_binding_size: std::num::NonZeroU64::new(
-                                std::mem::size_of::<GpuKawaseParams>() as u64
-                            ),
+                            min_binding_size: std::num::NonZeroU64::new(std::mem::size_of::<
+                                GpuKawaseParams,
+                            >(
+                            )
+                                as u64),
                         },
                         count: None,
                     },
                 ],
-            })
+            }),
         );
 
         let layout = device.create_pipeline_layout(
@@ -90,7 +92,7 @@ impl KawasePass {
                 label: Some("Kawase Pipeline Layout"),
                 bind_group_layouts: &[Some(&bind_group_layout)],
                 immediate_size: 0,
-            })
+            }),
         );
 
         let build_pipeline = |fs: &wgpu::ShaderModule, label: &str| {
@@ -114,17 +116,15 @@ impl KawasePass {
                         module: fs,
                         entry_point: Some("fs_main"),
                         compilation_options: Default::default(),
-                        targets: &[
-                            Some(wgpu::ColorTargetState {
-                                format,
-                                blend: None,
-                                write_mask: wgpu::ColorWrites::ALL,
-                            }),
-                        ],
+                        targets: &[Some(wgpu::ColorTargetState {
+                            format,
+                            blend: None,
+                            write_mask: wgpu::ColorWrites::ALL,
+                        })],
                     }),
                     multiview_mask: None,
                     cache: None,
-                })
+                }),
             )
         };
 
@@ -139,7 +139,7 @@ impl KawasePass {
                 mag_filter: wgpu::FilterMode::Linear,
                 min_filter: wgpu::FilterMode::Linear,
                 ..Default::default()
-            })
+            }),
         );
 
         let alignment = device.limits().min_uniform_buffer_offset_alignment as u64;
@@ -150,7 +150,7 @@ impl KawasePass {
                 size: params_stride * (MAX_PASSES as u64),
                 usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
                 mapped_at_creation: false,
-            })
+            }),
         );
 
         Self {
@@ -177,14 +177,20 @@ impl KawasePass {
         width: u32,
         height: u32,
         radius: f32,
-        pool: &mut TexturePool
+        pool: &mut TexturePool,
     ) -> PooledTexture {
         let (iterations, offset) = plan_iterations(radius.max(0.0));
         if iterations == 0 {
             return source.clone();
         }
 
-        let params = vec![GpuKawaseParams { offset, _pad: [0.0; 3] }; iterations * 2];
+        let params = vec![
+            GpuKawaseParams {
+                offset,
+                _pad: [0.0; 3]
+            };
+            iterations * 2
+        ];
         self.write_params(queue, &params);
 
         let mut levels: Vec<PooledTexture> = Vec::with_capacity(iterations + 1);
@@ -201,17 +207,22 @@ impl KawasePass {
                 device,
                 encoder,
                 &self.down_pipeline,
-                &levels.last().expect("levels always has at least the source").view,
+                &levels
+                    .last()
+                    .expect("levels always has at least the source")
+                    .view,
                 &target.view,
                 level_w,
                 level_h,
-                pass_index
+                pass_index,
             );
             levels.push(target);
             pass_index += 1;
         }
 
-        let mut current = levels.pop().expect("at least one downsample level was pushed");
+        let mut current = levels
+            .pop()
+            .expect("at least one downsample level was pushed");
         while let Some(level) = levels.pop() {
             let target = pool.acquire(device, level.width, level.height);
             self.dispatch(
@@ -222,7 +233,7 @@ impl KawasePass {
                 &target.view,
                 level.width,
                 level.height,
-                pass_index
+                pass_index,
             );
             current = target;
             pass_index += 1;
@@ -252,7 +263,7 @@ impl KawasePass {
         target: &wgpu::TextureView,
         width: u32,
         height: u32,
-        pass_index: usize
+        pass_index: usize,
     ) {
         let bind_group = device.create_bind_group(
             &(wgpu::BindGroupDescriptor {
@@ -278,31 +289,33 @@ impl KawasePass {
                         }),
                     },
                 ],
-            })
+            }),
         );
 
         let mut pass = encoder.begin_render_pass(
             &(wgpu::RenderPassDescriptor {
                 label: Some("Kawase Pass"),
-                color_attachments: &[
-                    Some(wgpu::RenderPassColorAttachment {
-                        view: target,
-                        resolve_target: None,
-                        ops: wgpu::Operations {
-                            load: wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT),
-                            store: wgpu::StoreOp::Store,
-                        },
-                        depth_slice: None,
-                    }),
-                ],
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: target,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT),
+                        store: wgpu::StoreOp::Store,
+                    },
+                    depth_slice: None,
+                })],
                 depth_stencil_attachment: None,
                 timestamp_writes: None,
                 occlusion_query_set: None,
                 multiview_mask: None,
-            })
+            }),
         );
         pass.set_pipeline(pipeline);
-        pass.set_bind_group(0, &bind_group, &[((pass_index as u64) * self.params_stride) as u32]);
+        pass.set_bind_group(
+            0,
+            &bind_group,
+            &[((pass_index as u64) * self.params_stride) as u32],
+        );
         pass.set_viewport(0.0, 0.0, width as f32, height as f32, 0.0, 1.0);
         pass.draw(0..3, 0..1);
     }

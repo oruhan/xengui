@@ -1,36 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 use crate::{
-    AnimKey,
-    AnimLayer,
-    AnimProperty,
-    AnimValue,
-    AnimationManager,
-    Background,
-    BorderRadius,
-    Color,
-    Constraints,
-    Easing,
-    ElementState,
-    EventCtx,
-    EventStatus,
-    InputEvent,
-    Interaction,
-    Key,
-    KeyState,
-    LayoutBox,
-    Length,
-    MeasureContext,
-    MeasureResult,
-    MouseButton,
-    PaintContext,
-    RectCommand,
-    Style,
-    StyleBuilder,
-    Transition,
-    Widget,
-    WidgetBase,
-    WidgetId,
-    constants::{ DEFAULT_CURSOR_ICON, DEFAULT_POINTER_CURSOR_ICON },
+    AnimKey, AnimLayer, AnimProperty, AnimValue, AnimationManager, Background, BorderRadius, Color,
+    Constraints, Easing, ElementState, EventCtx, EventStatus, InputEvent, Interaction, Key,
+    KeyState, LayoutBox, Length, MeasureContext, MeasureResult, MouseButton, PaintContext,
+    RectCommand, Style, StyleBuilder, Transition, Widget, WidgetBase, WidgetId,
+    constants::{DEFAULT_CURSOR_ICON, DEFAULT_POINTER_CURSOR_ICON},
 };
 use std::cell::Cell;
 use web_time::Duration;
@@ -41,9 +15,8 @@ const IDLE_TRACK_HEIGHT: f32 = 4.0;
 const HOVER_TRACK_HEIGHT: f32 = 6.0;
 const THUMB_DIAMETER: f32 = 13.0;
 
-const HOVER_TRANSITION: Transition = Transition::new(Duration::from_millis(140)).easing(
-    Easing::EaseOut
-);
+const HOVER_TRANSITION: Transition =
+    Transition::new(Duration::from_millis(140)).easing(Easing::EaseOut);
 
 /// A YouTube-Music-style horizontal slider: a thin track that thickens
 /// and reveals a thumb on hover/drag. Used for both seek and volume
@@ -67,6 +40,7 @@ pub struct Slider {
 }
 
 impl Slider {
+    /// Creates a value with its default configuration.
     pub fn new() -> Self {
         let mut interaction = Interaction::new();
         interaction.focusable = true;
@@ -93,24 +67,28 @@ impl Slider {
         slider
     }
 
+    /// Returns or updates the `value` value.
     pub fn value(mut self, value: f32) -> Self {
         self.value = value.clamp(0.0, 1.0);
         self.mark_dirty();
         self
     }
 
+    /// Returns or updates the `track_color` value.
     pub fn track_color(mut self, color: Color) -> Self {
         self.track_color = Some(color);
         self.mark_dirty();
         self
     }
 
+    /// Returns or updates the `fill_color` value.
     pub fn fill_color(mut self, color: Color) -> Self {
         self.fill_color = Some(color);
         self.mark_dirty();
         self
     }
 
+    /// Returns or updates the `thumb_color` value.
     pub fn thumb_color(mut self, color: Color) -> Self {
         self.thumb_color = Some(color);
         self.mark_dirty();
@@ -133,9 +111,11 @@ impl Slider {
 
     fn recompute_style(&mut self) {
         self.base.recompute_style();
-        self.base.interaction.hover_cursor = self.base.computed_style.cursor.or(
-            Some(DEFAULT_POINTER_CURSOR_ICON)
-        );
+        self.base.interaction.hover_cursor = self
+            .base
+            .computed_style
+            .cursor
+            .or(Some(DEFAULT_POINTER_CURSOR_ICON));
     }
 
     fn value_at(&self, local_x: f32, sf: f32) -> f32 {
@@ -308,10 +288,9 @@ impl Widget for Slider {
                 ctx.request_redraw();
                 return EventStatus::Handled;
             }
-            InputEvent::KeyInput { event: key_event, .. } if
-                self.base.interaction.focused &&
-                key_event.state == KeyState::Pressed
-            => {
+            InputEvent::KeyInput {
+                event: key_event, ..
+            } if self.base.interaction.focused && key_event.state == KeyState::Pressed => {
                 let step = 0.02;
                 let next = match key_event.key {
                     Key::ArrowLeft | Key::ArrowDown => Some((self.value - step).max(0.0)),
@@ -346,24 +325,32 @@ impl Widget for Slider {
         let Some(other) = other.as_any().downcast_ref::<Slider>() else {
             return false;
         };
-        self.value == other.value &&
-            self.track_color == other.track_color &&
-            self.fill_color == other.fill_color &&
-            self.thumb_color == other.thumb_color &&
-            self.base.style == other.base.style
+        self.value == other.value
+            && self.track_color == other.track_color
+            && self.fill_color == other.fill_color
+            && self.thumb_color == other.thumb_color
+            && self.base.authored_styles_eq(&other.base)
     }
 
     fn cascade_style(&mut self, parent: &Style, anim: &mut AnimationManager) {
         self.base.inherited_style = parent.clone();
         self.recompute_style();
 
-        let target = if self.base.interaction.hovered || self.dragging.get() { 1.0 } else { 0.0 };
+        let target = if self.base.interaction.hovered || self.dragging.get() {
+            1.0
+        } else {
+            0.0
+        };
         let key = AnimKey {
             widget: self.anim_id,
             layer: AnimLayer::Root,
             property: AnimProperty::Opacity,
         };
-        anim.set_target(key, AnimValue([target, 0.0, 0.0, 0.0]), Some(HOVER_TRANSITION));
+        anim.set_target(
+            key,
+            AnimValue([target, 0.0, 0.0, 0.0]),
+            Some(HOVER_TRANSITION),
+        );
         match anim.value(key) {
             Some(v) => {
                 self.hover_progress.set(v.0[0]);

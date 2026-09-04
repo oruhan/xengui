@@ -24,9 +24,13 @@ use super::Length;
 /// ```
 #[derive(Clone, Copy, Debug, PartialEq, Default)]
 pub struct BorderRadius {
+    /// The `top_left` value carried by this type.
     pub top_left: Length,
+    /// The `top_right` value carried by this type.
     pub top_right: Length,
+    /// The `bottom_right` value carried by this type.
     pub bottom_right: Length,
+    /// The `bottom_left` value carried by this type.
     pub bottom_left: Length,
 }
 
@@ -34,7 +38,12 @@ impl BorderRadius {
     /// Same radius on all four corners.
     pub fn all(radius: impl Into<Length>) -> Self {
         let radius = radius.into();
-        Self { top_left: radius, top_right: radius, bottom_right: radius, bottom_left: radius }
+        Self {
+            top_left: radius,
+            top_right: radius,
+            bottom_right: radius,
+            bottom_left: radius,
+        }
     }
 
     /// Explicit per-corner radii, in CSS `border-radius` order
@@ -43,7 +52,7 @@ impl BorderRadius {
         top_left: impl Into<Length>,
         top_right: impl Into<Length>,
         bottom_right: impl Into<Length>,
-        bottom_left: impl Into<Length>
+        bottom_left: impl Into<Length>,
     ) -> Self {
         Self {
             top_left: top_left.into(),
@@ -56,51 +65,82 @@ impl BorderRadius {
     /// Rounds only the top-left and top-right corners.
     pub fn top(radius: impl Into<Length>) -> Self {
         let radius = radius.into();
-        Self { top_left: radius, top_right: radius, ..Self::default() }
+        Self {
+            top_left: radius,
+            top_right: radius,
+            ..Self::default()
+        }
     }
 
     /// Rounds only the bottom-left and bottom-right corners.
     pub fn bottom(radius: impl Into<Length>) -> Self {
         let radius = radius.into();
-        Self { bottom_left: radius, bottom_right: radius, ..Self::default() }
+        Self {
+            bottom_left: radius,
+            bottom_right: radius,
+            ..Self::default()
+        }
     }
 
     /// Rounds only the top-left and bottom-left corners.
     pub fn left(radius: impl Into<Length>) -> Self {
         let radius = radius.into();
-        Self { top_left: radius, bottom_left: radius, ..Self::default() }
+        Self {
+            top_left: radius,
+            bottom_left: radius,
+            ..Self::default()
+        }
     }
 
     /// Rounds only the top-right and bottom-right corners.
     pub fn right(radius: impl Into<Length>) -> Self {
         let radius = radius.into();
-        Self { top_right: radius, bottom_right: radius, ..Self::default() }
+        Self {
+            top_right: radius,
+            bottom_right: radius,
+            ..Self::default()
+        }
     }
 
     /// Rounds a single corner, leaving the other three square.
     pub fn top_left(radius: impl Into<Length>) -> Self {
-        Self { top_left: radius.into(), ..Self::default() }
+        Self {
+            top_left: radius.into(),
+            ..Self::default()
+        }
     }
 
+    /// Returns or updates the `top_right` value.
     pub fn top_right(radius: impl Into<Length>) -> Self {
-        Self { top_right: radius.into(), ..Self::default() }
+        Self {
+            top_right: radius.into(),
+            ..Self::default()
+        }
     }
 
+    /// Returns or updates the `bottom_right` value.
     pub fn bottom_right(radius: impl Into<Length>) -> Self {
-        Self { bottom_right: radius.into(), ..Self::default() }
+        Self {
+            bottom_right: radius.into(),
+            ..Self::default()
+        }
     }
 
+    /// Returns or updates the `bottom_left` value.
     pub fn bottom_left(radius: impl Into<Length>) -> Self {
-        Self { bottom_left: radius.into(), ..Self::default() }
+        Self {
+            bottom_left: radius.into(),
+            ..Self::default()
+        }
     }
 
     /// Whether all four corners share the same radius - lets callers keep
     /// using the cheaper uniform code path (e.g. simple hit-testing) when
     /// no widget actually asked for asymmetric corners.
     pub fn is_uniform(&self) -> bool {
-        self.top_left == self.top_right &&
-            self.top_right == self.bottom_right &&
-            self.bottom_right == self.bottom_left
+        self.top_left == self.top_right
+            && self.top_right == self.bottom_right
+            && self.bottom_right == self.bottom_left
     }
 
     /// The largest of the four radii, in logical px - used where only an

@@ -54,7 +54,11 @@ impl Render for TestButton {
                 .border(Border::all(0.0, Color::TRANSPARENT).radius(8))
                 .cursor(Cursor::Pointer)
                 .on_click(move |_ctx| set_clicks.set(clicks + 1))
-                .child(Label::new().label(format!("{} ({clicks})", self.label)).color(Color::WHITE))
+                .child(
+                    Label::new()
+                        .label(format!("{} ({clicks})", self.label))
+                        .color(Color::WHITE),
+                ),
         )
     }
 }

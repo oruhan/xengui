@@ -1,14 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 use xengui::{
-    BorderRadius,
-    Color,
-    Constraints,
-    Edges,
-    Length,
-    MeasureResult,
-    Overflow,
-    Size,
-    Style,
+    BorderRadius, Color, Constraints, Edges, Length, MeasureResult, Overflow, Size, Style,
 };
 
 #[test]
@@ -81,7 +73,9 @@ fn border_radius_overlap_correction_scales_down() {
 
 #[test]
 fn constraints_constrain_width_prefers_known() {
-    let c = Constraints::new().with_known_width(50.0).with_max_width(100.0);
+    let c = Constraints::new()
+        .with_known_width(50.0)
+        .with_max_width(100.0);
     assert_eq!(c.constrain_width(10.0), 50.0);
 }
 
@@ -121,7 +115,10 @@ fn edges_all_symmetric_only() {
 
 #[test]
 fn style_inherit_fills_unset_inheritable_fields() {
-    let parent = Style { color: Some(Color::RED_500), ..Default::default() };
+    let parent = Style {
+        color: Some(Color::RED_500),
+        ..Default::default()
+    };
     let child = Style::default();
     let merged = parent.inherit_style(&child);
     assert_eq!(merged.color, Some(Color::RED_500));
@@ -129,8 +126,14 @@ fn style_inherit_fills_unset_inheritable_fields() {
 
 #[test]
 fn style_inherit_child_value_wins_over_parent() {
-    let parent = Style { color: Some(Color::RED_500), ..Default::default() };
-    let child = Style { color: Some(Color::BLUE_500), ..Default::default() };
+    let parent = Style {
+        color: Some(Color::RED_500),
+        ..Default::default()
+    };
+    let child = Style {
+        color: Some(Color::BLUE_500),
+        ..Default::default()
+    };
     let merged = parent.inherit_style(&child);
     assert_eq!(merged.color, Some(Color::BLUE_500));
 }
@@ -148,8 +151,14 @@ fn style_overlay_non_inherited_field_falls_back_to_base() {
 
 #[test]
 fn style_overlay_patch_overrides_base() {
-    let base = Style { overflow_x: Some(Overflow::Hidden), ..Default::default() };
-    let patch = Style { overflow_x: Some(Overflow::Scroll), ..Default::default() };
+    let base = Style {
+        overflow_x: Some(Overflow::Hidden),
+        ..Default::default()
+    };
+    let patch = Style {
+        overflow_x: Some(Overflow::Scroll),
+        ..Default::default()
+    };
     let merged = base.overlay(&patch);
     assert_eq!(merged.overflow_x, Some(Overflow::Scroll));
 }

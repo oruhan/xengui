@@ -1,28 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
+use crate::pipelines::postprocess::{BlitPass, directional_shadow_padding, padding_for_chain};
 use crate::pipelines::{
-    ImagePipeline,
-    PostProcessEngine,
-    RectPipeline,
-    StrokePipeline,
-    TextPipeline,
-    TrianglePipeline,
+    ImagePipeline, PostProcessEngine, RectPipeline, StrokePipeline, TextPipeline, TrianglePipeline,
     VariableIconPipeline,
 };
-use crate::pipelines::postprocess::{ BlitPass, directional_shadow_padding, padding_for_chain };
 use xengui::{
-    BoxShadowCommand,
-    Color,
-    DrawCommand,
-    FilterChain,
-    ImageCommand,
-    RectCommand,
-    RenderBackend,
-    StrokeCommand,
-    SystemTheme,
-    TextCommand,
-    TextMeasurer,
-    TriangleCommand,
-    VariableIconCommand,
+    BoxShadowCommand, Color, DrawCommand, FilterChain, ImageCommand, RectCommand, RenderBackend,
+    StrokeCommand, SystemTheme, TextCommand, TextMeasurer, TriangleCommand, VariableIconCommand,
 };
 
 /// Owns the four wgpu render pipelines xengui needs, built once against a
@@ -37,9 +21,8 @@ pub struct WgpuPipelines {
     variable_icon: VariableIconPipeline,
     postprocess: PostProcessEngine,
     surface_format: wgpu::TextureFormat,
-    /// Resolved, adapter-clamped MSAA sample count every pipeline above
-    /// was built with. `1` means MSAA is disabled entirely (either
-    /// requested that way, or the adapter didn't support anything higher).
+    /// Resolved, adapter-clamped sample count used by the dedicated
+    /// tessellated-triangle MSAA target. `1` means MSAA is disabled.
     sample_count: u32,
     // Everything is painted into this offscreen target instead of the
     // swapchain directly, so a backdrop-filter widget can read back
@@ -65,41 +48,45 @@ impl WgpuPipelines {
         adapter: &wgpu::Adapter,
         surface_format: wgpu::TextureFormat,
         user_fonts: Vec<(String, Vec<u8>)>,
-        requested_samples: crate::SampleCount
+        requested_samples: crate::SampleCount,
     ) -> Result<Self, String> {
-        let sample_count = requested_samples.clamp_to_adapter(adapter, surface_format).as_u32();
-
         // Tessellated SVG triangles (icons, checkmarks) have no analytic AA
-        // of their own the way the rect/image SDF pipelines do, so they get
-        // a dedicated MSAA target independent of the rest of the scene.
-        let triangle_sample_count = crate::SampleCount::X4
+        // of their own the way the rect/image SDF pipelines do, so the
+        // configured MSAA level applies to their dedicated target. Every
+        // other pipeline renders into the single-sample scene target.
+        let triangle_sample_count = requested_samples
             .clamp_to_adapter(adapter, surface_format)
             .as_u32();
+        let sample_count = triangle_sample_count;
 
         let scene_texture = device.create_texture(
             &(wgpu::TextureDescriptor {
                 label: Some("xengui scene target"),
-                size: wgpu::Extent3d { width: 1, height: 1, depth_or_array_layers: 1 },
+                size: wgpu::Extent3d {
+                    width: 1,
+                    height: 1,
+                    depth_or_array_layers: 1,
+                },
                 mip_level_count: 1,
                 sample_count: 1,
                 dimension: wgpu::TextureDimension::D2,
                 format: surface_format,
-                usage: wgpu::TextureUsages::RENDER_ATTACHMENT |
-                wgpu::TextureUsages::TEXTURE_BINDING |
-                wgpu::TextureUsages::COPY_SRC,
+                usage: wgpu::TextureUsages::RENDER_ATTACHMENT
+                    | wgpu::TextureUsages::TEXTURE_BINDING
+                    | wgpu::TextureUsages::COPY_SRC,
                 view_formats: &[],
-            })
+            }),
         );
         let scene_view = scene_texture.create_view(&Default::default());
 
         Ok(Self {
-            rect: RectPipeline::new(device, surface_format, sample_count),
+            rect: RectPipeline::new(device, surface_format, 1),
             triangle: TrianglePipeline::new(device, surface_format, triangle_sample_count),
             triangle_offscreen: TrianglePipeline::new(device, surface_format, 1),
-            stroke: StrokePipeline::new(device, surface_format, sample_count),
-            image: ImagePipeline::new(device, surface_format, sample_count),
-            text: TextPipeline::new(device, queue, surface_format, user_fonts, sample_count)?,
-            variable_icon: VariableIconPipeline::new(device, surface_format, sample_count),
+            stroke: StrokePipeline::new(device, surface_format, 1),
+            image: ImagePipeline::new(device, surface_format, 1),
+            text: TextPipeline::new(device, queue, surface_format, user_fonts, 1)?,
+            variable_icon: VariableIconPipeline::new(device, surface_format, 1),
             postprocess: PostProcessEngine::new(device, surface_format),
             surface_format,
             sample_count,
@@ -128,16 +115,20 @@ impl WgpuPipelines {
         let texture = device.create_texture(
             &(wgpu::TextureDescriptor {
                 label: Some("xengui scene target"),
-                size: wgpu::Extent3d { width, height, depth_or_array_layers: 1 },
+                size: wgpu::Extent3d {
+                    width,
+                    height,
+                    depth_or_array_layers: 1,
+                },
                 mip_level_count: 1,
                 sample_count: 1,
                 dimension: wgpu::TextureDimension::D2,
                 format: self.surface_format,
-                usage: wgpu::TextureUsages::RENDER_ATTACHMENT |
-                wgpu::TextureUsages::TEXTURE_BINDING |
-                wgpu::TextureUsages::COPY_SRC,
+                usage: wgpu::TextureUsages::RENDER_ATTACHMENT
+                    | wgpu::TextureUsages::TEXTURE_BINDING
+                    | wgpu::TextureUsages::COPY_SRC,
                 view_formats: &[],
-            })
+            }),
         );
         self.scene_view = texture.create_view(&Default::default());
         self.scene_texture = texture;
@@ -157,14 +148,18 @@ impl WgpuPipelines {
         let texture = device.create_texture(
             &(wgpu::TextureDescriptor {
                 label: Some("xengui triangle msaa target"),
-                size: wgpu::Extent3d { width, height, depth_or_array_layers: 1 },
+                size: wgpu::Extent3d {
+                    width,
+                    height,
+                    depth_or_array_layers: 1,
+                },
                 mip_level_count: 1,
                 sample_count: self.triangle_sample_count,
                 dimension: wgpu::TextureDimension::D2,
                 format: self.surface_format,
                 usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
                 view_formats: &[],
-            })
+            }),
         );
         self.triangle_msaa_view = Some(texture.create_view(&Default::default()));
         self.triangle_msaa_texture = Some(texture);
@@ -182,9 +177,17 @@ impl WgpuPipelines {
         encoder: &mut wgpu::CommandEncoder,
         target: &wgpu::TextureView,
         width: u32,
-        height: u32
+        height: u32,
     ) {
-        self.postprocess.blit_full(device, queue, encoder, &self.scene_view, target, width, height);
+        self.postprocess.blit_full(
+            device,
+            queue,
+            encoder,
+            &self.scene_view,
+            target,
+            width,
+            height,
+        );
     }
 
     /// The format every pipeline (including the filter engine's own
@@ -204,7 +207,7 @@ impl WgpuPipelines {
         encoder: &'a mut wgpu::CommandEncoder,
         width: u32,
         height: u32,
-        scale_factor: f32
+        scale_factor: f32,
     ) -> WgpuFrame<'a> {
         log::trace!("WgpuPipelines::begin_frame size={width}x{height} scale_factor={scale_factor}");
 
@@ -265,27 +268,25 @@ impl<'a> WgpuFrame<'a> {
         let _ = self.encoder.begin_render_pass(
             &(wgpu::RenderPassDescriptor {
                 label: Some("xengui clear pass"),
-                color_attachments: &[
-                    Some(wgpu::RenderPassColorAttachment {
-                        view: &self.view,
-                        resolve_target: None,
-                        ops: wgpu::Operations {
-                            load: wgpu::LoadOp::Clear(wgpu::Color {
-                                r: bg.r() as f64,
-                                g: bg.g() as f64,
-                                b: bg.b() as f64,
-                                a: bg.a() as f64,
-                            }),
-                            store: wgpu::StoreOp::Store,
-                        },
-                        depth_slice: None,
-                    }),
-                ],
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: &self.view,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(wgpu::Color {
+                            r: bg.r() as f64,
+                            g: bg.g() as f64,
+                            b: bg.b() as f64,
+                            a: bg.a() as f64,
+                        }),
+                        store: wgpu::StoreOp::Store,
+                    },
+                    depth_slice: None,
+                })],
                 depth_stencil_attachment: None,
                 timestamp_writes: None,
                 occlusion_query_set: None,
                 multiview_mask: None,
-            })
+            }),
         );
         self.shape_pass_open = true;
     }
@@ -322,7 +323,7 @@ impl<'a> WgpuFrame<'a> {
         cmds: &[DrawCommand],
         target_view: &wgpu::TextureView,
         target_width: u32,
-        target_height: u32
+        target_height: u32,
     ) {
         #[derive(PartialEq, Clone, Copy)]
         enum RunKind {
@@ -347,8 +348,7 @@ impl<'a> WgpuFrame<'a> {
         let mut cleared = false;
 
         macro_rules! shape_pass {
-            () => {
-        {
+            () => {{
                 let load = if cleared {
                     wgpu::LoadOp::Load
                 } else {
@@ -358,22 +358,22 @@ impl<'a> WgpuFrame<'a> {
                 self.encoder.begin_render_pass(
                     &(wgpu::RenderPassDescriptor {
                         label: Some("xengui filtered subtree shape pass"),
-                        color_attachments: &[
-                            Some(wgpu::RenderPassColorAttachment {
-                                view: target_view,
-                                resolve_target: None,
-                                ops: wgpu::Operations { load, store: wgpu::StoreOp::Store },
-                                depth_slice: None,
-                            }),
-                        ],
+                        color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                            view: target_view,
+                            resolve_target: None,
+                            ops: wgpu::Operations {
+                                load,
+                                store: wgpu::StoreOp::Store,
+                            },
+                            depth_slice: None,
+                        })],
                         depth_stencil_attachment: None,
                         timestamp_writes: None,
                         occlusion_query_set: None,
                         multiview_mask: None,
-                    })
+                    }),
                 )
-        }
-            };
+            }};
         }
 
         macro_rules! flush_run {
@@ -387,7 +387,7 @@ impl<'a> WgpuFrame<'a> {
                             &mut pass,
                             target_width,
                             target_height,
-                            &rect_buf
+                            &rect_buf,
                         );
                     }
                     Some(RunKind::Triangle) => {
@@ -398,7 +398,7 @@ impl<'a> WgpuFrame<'a> {
                             &mut pass,
                             target_width,
                             target_height,
-                            &tri_buf
+                            &tri_buf,
                         );
                     }
                     Some(RunKind::Image) => {
@@ -409,7 +409,7 @@ impl<'a> WgpuFrame<'a> {
                             &mut pass,
                             target_width,
                             target_height,
-                            &img_buf
+                            &img_buf,
                         );
                     }
                     Some(RunKind::Stroke) => {
@@ -420,10 +420,10 @@ impl<'a> WgpuFrame<'a> {
                             &mut pass,
                             target_width,
                             target_height,
-                            &stroke_buf
+                            &stroke_buf,
                         );
                     }
-                     Some(RunKind::VariableIcon) => {
+                    Some(RunKind::VariableIcon) => {
                         let mut pass = shape_pass!();
                         self.pipelines.variable_icon.draw_batch(
                             self.device,
@@ -431,7 +431,7 @@ impl<'a> WgpuFrame<'a> {
                             &mut pass,
                             target_width,
                             target_height,
-                            &variable_icon_buf
+                            &variable_icon_buf,
                         );
                     }
                     Some(RunKind::BoxShadow) => {
@@ -445,23 +445,21 @@ impl<'a> WgpuFrame<'a> {
                             target_view,
                             target_width,
                             target_height,
-                            &shadow_buf
+                            &shadow_buf,
                         );
                     }
                     Some(RunKind::Text) => {
                         if !cleared {
                             let _ = shape_pass!();
                         }
-                        if
-                            let Err(err) = self.pipelines.text.flush(
-                                self.device,
-                                self.queue,
-                                self.encoder,
-                                target_view,
-                                target_width,
-                                target_height
-                            )
-                        {
+                        if let Err(err) = self.pipelines.text.flush(
+                            self.device,
+                            self.queue,
+                            self.encoder,
+                            target_view,
+                            target_width,
+                            target_height,
+                        ) {
                             log::warn!("xengui-wgpu: filtered subtree text flush failed: {err}");
                         }
                         let decorations = self.pipelines.text.take_decorations();
@@ -473,7 +471,7 @@ impl<'a> WgpuFrame<'a> {
                                 &mut pass,
                                 target_width,
                                 target_height,
-                                &decorations
+                                &decorations,
                             );
                         }
                     }
@@ -494,7 +492,9 @@ impl<'a> WgpuFrame<'a> {
                         flush_run!();
                         current_kind = Some(RunKind::Text);
                     }
-                    self.pipelines.text.draw(self.scale_factor, SystemTheme::Dark, cmd);
+                    self.pipelines
+                        .text
+                        .draw(self.scale_factor, SystemTheme::Dark, cmd);
                 }
                 DrawCommand::Rect(cmd) => {
                     if current_kind != Some(RunKind::Rect) {
@@ -550,7 +550,7 @@ impl<'a> WgpuFrame<'a> {
                         &nested.commands,
                         target_view,
                         target_width,
-                        target_height
+                        target_height,
                     );
                 }
                 // An isolated filtered subtree has no "behind" content of
@@ -590,19 +590,20 @@ impl<'a> RenderBackend for WgpuFrame<'a> {
         let mut pass = self.encoder.begin_render_pass(
             &(wgpu::RenderPassDescriptor {
                 label: Some("xengui shape pass"),
-                color_attachments: &[
-                    Some(wgpu::RenderPassColorAttachment {
-                        view: &self.view,
-                        resolve_target: None,
-                        ops: wgpu::Operations { load, store: wgpu::StoreOp::Store },
-                        depth_slice: None,
-                    }),
-                ],
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: &self.view,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load,
+                        store: wgpu::StoreOp::Store,
+                    },
+                    depth_slice: None,
+                })],
                 depth_stencil_attachment: None,
                 timestamp_writes: None,
                 occlusion_query_set: None,
                 multiview_mask: None,
-            })
+            }),
         );
         self.pipelines.rect.draw_batch(
             self.device,
@@ -610,7 +611,7 @@ impl<'a> RenderBackend for WgpuFrame<'a> {
             &mut pass,
             self.width,
             self.height,
-            cmds
+            cmds,
         );
     }
 
@@ -626,19 +627,20 @@ impl<'a> RenderBackend for WgpuFrame<'a> {
             let mut pass = self.encoder.begin_render_pass(
                 &(wgpu::RenderPassDescriptor {
                     label: Some("xengui shape pass"),
-                    color_attachments: &[
-                        Some(wgpu::RenderPassColorAttachment {
-                            view: &self.view,
-                            resolve_target: None,
-                            ops: wgpu::Operations { load, store: wgpu::StoreOp::Store },
-                            depth_slice: None,
-                        }),
-                    ],
+                    color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                        view: &self.view,
+                        resolve_target: None,
+                        ops: wgpu::Operations {
+                            load,
+                            store: wgpu::StoreOp::Store,
+                        },
+                        depth_slice: None,
+                    })],
                     depth_stencil_attachment: None,
                     timestamp_writes: None,
                     occlusion_query_set: None,
                     multiview_mask: None,
-                })
+                }),
             );
             self.pipelines.triangle.draw_batch(
                 self.device,
@@ -646,7 +648,7 @@ impl<'a> RenderBackend for WgpuFrame<'a> {
                 &mut pass,
                 self.width,
                 self.height,
-                cmds
+                cmds,
             );
             return;
         };
@@ -669,28 +671,26 @@ impl<'a> RenderBackend for WgpuFrame<'a> {
             self.height,
             (0.0, 0.0),
             (1.0, 1.0),
-            None
+            None,
         );
 
         let mut pass = self.encoder.begin_render_pass(
             &(wgpu::RenderPassDescriptor {
                 label: Some("xengui triangle msaa pass"),
-                color_attachments: &[
-                    Some(wgpu::RenderPassColorAttachment {
-                        view: &msaa_view,
-                        resolve_target: Some(&self.view),
-                        ops: wgpu::Operations {
-                            load: wgpu::LoadOp::Load,
-                            store: wgpu::StoreOp::Store,
-                        },
-                        depth_slice: None,
-                    }),
-                ],
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: &msaa_view,
+                    resolve_target: Some(&self.view),
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Load,
+                        store: wgpu::StoreOp::Store,
+                    },
+                    depth_slice: None,
+                })],
                 depth_stencil_attachment: None,
                 timestamp_writes: None,
                 occlusion_query_set: None,
                 multiview_mask: None,
-            })
+            }),
         );
         self.pipelines.triangle.draw_batch(
             self.device,
@@ -698,7 +698,7 @@ impl<'a> RenderBackend for WgpuFrame<'a> {
             &mut pass,
             self.width,
             self.height,
-            cmds
+            cmds,
         );
     }
 
@@ -710,19 +710,20 @@ impl<'a> RenderBackend for WgpuFrame<'a> {
         let mut pass = self.encoder.begin_render_pass(
             &(wgpu::RenderPassDescriptor {
                 label: Some("xengui shape pass"),
-                color_attachments: &[
-                    Some(wgpu::RenderPassColorAttachment {
-                        view: &self.view,
-                        resolve_target: None,
-                        ops: wgpu::Operations { load, store: wgpu::StoreOp::Store },
-                        depth_slice: None,
-                    }),
-                ],
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: &self.view,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load,
+                        store: wgpu::StoreOp::Store,
+                    },
+                    depth_slice: None,
+                })],
                 depth_stencil_attachment: None,
                 timestamp_writes: None,
                 occlusion_query_set: None,
                 multiview_mask: None,
-            })
+            }),
         );
         self.pipelines.stroke.draw_batch(
             self.device,
@@ -730,7 +731,7 @@ impl<'a> RenderBackend for WgpuFrame<'a> {
             &mut pass,
             self.width,
             self.height,
-            cmds
+            cmds,
         );
     }
 
@@ -742,19 +743,20 @@ impl<'a> RenderBackend for WgpuFrame<'a> {
         let mut pass = self.encoder.begin_render_pass(
             &(wgpu::RenderPassDescriptor {
                 label: Some("xengui shape pass"),
-                color_attachments: &[
-                    Some(wgpu::RenderPassColorAttachment {
-                        view: &self.view,
-                        resolve_target: None,
-                        ops: wgpu::Operations { load, store: wgpu::StoreOp::Store },
-                        depth_slice: None,
-                    }),
-                ],
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: &self.view,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load,
+                        store: wgpu::StoreOp::Store,
+                    },
+                    depth_slice: None,
+                })],
                 depth_stencil_attachment: None,
                 timestamp_writes: None,
                 occlusion_query_set: None,
                 multiview_mask: None,
-            })
+            }),
         );
         self.pipelines.variable_icon.draw_batch(
             self.device,
@@ -762,7 +764,7 @@ impl<'a> RenderBackend for WgpuFrame<'a> {
             &mut pass,
             self.width,
             self.height,
-            cmds
+            cmds,
         );
     }
 
@@ -774,19 +776,20 @@ impl<'a> RenderBackend for WgpuFrame<'a> {
         let mut pass = self.encoder.begin_render_pass(
             &(wgpu::RenderPassDescriptor {
                 label: Some("xengui shape pass"),
-                color_attachments: &[
-                    Some(wgpu::RenderPassColorAttachment {
-                        view: &self.view,
-                        resolve_target: None,
-                        ops: wgpu::Operations { load, store: wgpu::StoreOp::Store },
-                        depth_slice: None,
-                    }),
-                ],
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: &self.view,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load,
+                        store: wgpu::StoreOp::Store,
+                    },
+                    depth_slice: None,
+                })],
                 depth_stencil_attachment: None,
                 timestamp_writes: None,
                 occlusion_query_set: None,
                 multiview_mask: None,
-            })
+            }),
         );
         self.pipelines.image.draw_batch(
             self.device,
@@ -794,7 +797,7 @@ impl<'a> RenderBackend for WgpuFrame<'a> {
             &mut pass,
             self.width,
             self.height,
-            cmds
+            cmds,
         );
     }
 
@@ -815,7 +818,7 @@ impl<'a> RenderBackend for WgpuFrame<'a> {
             &view,
             self.width,
             self.height,
-            cmds
+            cmds,
         );
     }
 
@@ -829,20 +832,22 @@ impl<'a> RenderBackend for WgpuFrame<'a> {
         self.pipelines.text.take_decorations()
     }
 
+    fn drain_text_decorations(&mut self, out: &mut Vec<RectCommand>) {
+        self.pipelines.text.drain_decorations(out);
+    }
+
     fn flush_text(&mut self) {
         const MAX_RETRIES: u32 = 3;
         let mut attempts = 0;
         loop {
-            match
-                self.pipelines.text.flush(
-                    self.device,
-                    self.queue,
-                    self.encoder,
-                    &self.view,
-                    self.width,
-                    self.height
-                )
-            {
+            match self.pipelines.text.flush(
+                self.device,
+                self.queue,
+                self.encoder,
+                &self.view,
+                self.width,
+                self.height,
+            ) {
                 Ok(()) => {
                     break;
                 }
@@ -875,8 +880,8 @@ impl<'a> RenderBackend for WgpuFrame<'a> {
             self.device.create_command_encoder(
                 &(wgpu::CommandEncoderDescriptor {
                     label: Some("xengui frame encoder (continued)"),
-                })
-            )
+                }),
+            ),
         );
         self.queue.submit(Some(finished.finish()));
     }
@@ -890,7 +895,7 @@ impl<'a> RenderBackend for WgpuFrame<'a> {
         cmds: &[DrawCommand],
         chain: &FilterChain,
         bounds: (f32, f32, f32, f32),
-        clip_rect: Option<(f32, f32, f32, f32)>
+        clip_rect: Option<(f32, f32, f32, f32)>,
     ) {
         let (bx, by, bw, bh) = bounds;
         let (pad_left, pad_top, pad_right, pad_bottom) = box_shadow_overflow(cmds, bounds);
@@ -916,15 +921,19 @@ impl<'a> RenderBackend for WgpuFrame<'a> {
         let source_texture = self.device.create_texture(
             &(wgpu::TextureDescriptor {
                 label: Some("xengui filtered subtree source"),
-                size: wgpu::Extent3d { width, height, depth_or_array_layers: 1 },
+                size: wgpu::Extent3d {
+                    width,
+                    height,
+                    depth_or_array_layers: 1,
+                },
                 mip_level_count: 1,
                 sample_count: 1,
                 dimension: wgpu::TextureDimension::D2,
                 format,
-                usage: wgpu::TextureUsages::RENDER_ATTACHMENT |
-                wgpu::TextureUsages::TEXTURE_BINDING,
+                usage: wgpu::TextureUsages::RENDER_ATTACHMENT
+                    | wgpu::TextureUsages::TEXTURE_BINDING,
                 view_formats: &[],
-            })
+            }),
         );
         let source_view = source_texture.create_view(&Default::default());
 
@@ -938,7 +947,7 @@ impl<'a> RenderBackend for WgpuFrame<'a> {
             width,
             height,
             chain,
-            self.scale_factor
+            self.scale_factor,
         );
 
         let dest_rect = (
@@ -948,7 +957,10 @@ impl<'a> RenderBackend for WgpuFrame<'a> {
             filtered.height as f32,
         );
 
-        log::trace!("draw_filtered dest_rect={dest_rect:?} filtered_padding={}", filtered.padding);
+        log::trace!(
+            "draw_filtered dest_rect={dest_rect:?} filtered_padding={}",
+            filtered.padding
+        );
 
         self.pipelines.postprocess.composite(
             self.device,
@@ -961,7 +973,7 @@ impl<'a> RenderBackend for WgpuFrame<'a> {
             self.width,
             self.height,
             (0.0, 0.0, 1.0, 1.0),
-            [0.0; 4]
+            [0.0; 4],
         );
     }
 
@@ -970,14 +982,15 @@ impl<'a> RenderBackend for WgpuFrame<'a> {
         chain: &FilterChain,
         bounds: (f32, f32, f32, f32),
         clip_rect: Option<(f32, f32, f32, f32)>,
-        radius: [f32; 4]
+        radius: [f32; 4],
     ) {
         let padding_px = padding_for_chain(chain, self.scale_factor);
         let screen_w = self.width as f32;
         let screen_h = self.height as f32;
 
         let Some((cap_x, cap_y, cap_w, cap_h, left_pad, top_pad, right_pad, bottom_pad)) =
-            backdrop_capture_rect(bounds, clip_rect, padding_px, screen_w, screen_h) else {
+            backdrop_capture_rect(bounds, clip_rect, padding_px, screen_w, screen_h)
+        else {
             log::trace!(
                 "draw_backdrop_filtered: empty capture rect, skipping bounds={bounds:?} clip={clip_rect:?}"
             );
@@ -1010,21 +1023,29 @@ impl<'a> RenderBackend for WgpuFrame<'a> {
         let snapshot = self.device.create_texture(
             &(wgpu::TextureDescriptor {
                 label: Some("xengui backdrop snapshot"),
-                size: wgpu::Extent3d { width: cap_w, height: cap_h, depth_or_array_layers: 1 },
+                size: wgpu::Extent3d {
+                    width: cap_w,
+                    height: cap_h,
+                    depth_or_array_layers: 1,
+                },
                 mip_level_count: 1,
                 sample_count: 1,
                 dimension: wgpu::TextureDimension::D2,
                 format: self.pipelines.surface_format(),
                 usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
                 view_formats: &[],
-            })
+            }),
         );
 
         self.encoder.copy_texture_to_texture(
             wgpu::TexelCopyTextureInfo {
                 texture: &self.pipelines.scene_texture,
                 mip_level: 0,
-                origin: wgpu::Origin3d { x: cap_x, y: cap_y, z: 0 },
+                origin: wgpu::Origin3d {
+                    x: cap_x,
+                    y: cap_y,
+                    z: 0,
+                },
                 aspect: wgpu::TextureAspect::All,
             },
             wgpu::TexelCopyTextureInfo {
@@ -1033,7 +1054,11 @@ impl<'a> RenderBackend for WgpuFrame<'a> {
                 origin: wgpu::Origin3d::ZERO,
                 aspect: wgpu::TextureAspect::All,
             },
-            wgpu::Extent3d { width: cap_w, height: cap_h, depth_or_array_layers: 1 }
+            wgpu::Extent3d {
+                width: cap_w,
+                height: cap_h,
+                depth_or_array_layers: 1,
+            },
         );
 
         let snapshot_view = snapshot.create_view(&Default::default());
@@ -1046,18 +1071,12 @@ impl<'a> RenderBackend for WgpuFrame<'a> {
             cap_w,
             cap_h,
             chain,
-            self.scale_factor
+            self.scale_factor,
         );
 
         let dest_rect = (dst_x, dst_y, dst_w, dst_h);
-        let source_uv_rect = backdrop_crop_uv_rect(
-            left_pad,
-            top_pad,
-            dst_w,
-            dst_h,
-            cap_w as f32,
-            cap_h as f32
-        );
+        let source_uv_rect =
+            backdrop_crop_uv_rect(left_pad, top_pad, dst_w, dst_h, cap_w as f32, cap_h as f32);
 
         log::trace!(
             "draw_backdrop_filtered dest_rect={dest_rect:?} source_uv_rect={source_uv_rect:?}"
@@ -1074,7 +1093,7 @@ impl<'a> RenderBackend for WgpuFrame<'a> {
             self.width,
             self.height,
             source_uv_rect,
-            radius
+            radius,
         );
     }
 
@@ -1091,7 +1110,7 @@ fn box_shadow_overflow(cmds: &[DrawCommand], bounds: (f32, f32, f32, f32)) -> (f
         by: f32,
         bw: f32,
         bh: f32,
-        overflow: &mut (f32, f32, f32, f32)
+        overflow: &mut (f32, f32, f32, f32),
     ) {
         for cmd in cmds {
             match cmd {
@@ -1116,16 +1135,20 @@ fn box_shadow_overflow(cmds: &[DrawCommand], bounds: (f32, f32, f32, f32)) -> (f
     }
 
     visit(cmds, bx, by, bw, bh, &mut overflow);
-    (overflow.0.max(0.0), overflow.1.max(0.0), overflow.2.max(0.0), overflow.3.max(0.0))
+    (
+        overflow.0.max(0.0),
+        overflow.1.max(0.0),
+        overflow.2.max(0.0),
+        overflow.3.max(0.0),
+    )
 }
 
 /// Shifts a draw command by `(-ox, -oy)`, converting it from the main
 /// frame's absolute paint coordinates into a filtered subtree's own local
 /// space, where the widget's own top-left lands at the texture origin.
 fn translate_draw_command(command: &DrawCommand, ox: f32, oy: f32) -> DrawCommand {
-    let shift_clip = |clip: Option<(f32, f32, f32, f32)>| {
-        clip.map(|(x, y, w, h)| (x - ox, y - oy, w, h))
-    };
+    let shift_clip =
+        |clip: Option<(f32, f32, f32, f32)>| clip.map(|(x, y, w, h)| (x - ox, y - oy, w, h));
 
     match command {
         DrawCommand::Rect(c) => {
@@ -1183,7 +1206,8 @@ fn translate_draw_command(command: &DrawCommand, ox: f32, oy: f32) -> DrawComman
             nested.bounds.0 -= ox;
             nested.bounds.1 -= oy;
             nested.clip_rect = shift_clip(nested.clip_rect);
-            nested.commands = nested.commands
+            nested.commands = nested
+                .commands
                 .iter()
                 .map(|c| translate_draw_command(c, ox, oy))
                 .collect();
@@ -1220,7 +1244,7 @@ fn backdrop_capture_rect(
     clip_rect: Option<(f32, f32, f32, f32)>,
     padding_px: f32,
     screen_w: f32,
-    screen_h: f32
+    screen_h: f32,
 ) -> Option<(u32, u32, u32, u32, f32, f32, f32, f32)> {
     let (bx, by, bw, bh) = bounds;
     let (cx, cy, cw, ch) = clip_rect.unwrap_or((0.0, 0.0, screen_w, screen_h));
@@ -1284,7 +1308,7 @@ fn backdrop_crop_uv_rect(
     dst_w: f32,
     dst_h: f32,
     cap_w: f32,
-    cap_h: f32
+    cap_h: f32,
 ) -> (f32, f32, f32, f32) {
     (
         left_pad / cap_w.max(1.0),
@@ -1301,13 +1325,9 @@ mod tests {
     #[test]
     fn capture_rect_pads_evenly_when_far_from_every_edge() {
         let bounds = (100.0, 100.0, 200.0, 50.0);
-        let (cx, cy, cw, ch, l, t, r, b) = backdrop_capture_rect(
-            bounds,
-            None,
-            16.0,
-            1000.0,
-            1000.0
-        ).expect("capture rect should exist");
+        let (cx, cy, cw, ch, l, t, r, b) =
+            backdrop_capture_rect(bounds, None, 16.0, 1000.0, 1000.0)
+                .expect("capture rect should exist");
         assert_eq!((cx, cy, cw, ch), (84, 84, 232, 82));
         assert_eq!((l, t, r, b), (16.0, 16.0, 16.0, 16.0));
     }
@@ -1318,13 +1338,9 @@ mod tests {
         // pad into - the top padding must be clamped to whatever room is
         // actually available (zero here), not silently assumed.
         let bounds = (50.0, 0.0, 500.0, 55.0);
-        let (_cx, cy, cw, ch, l, t, r, _b) = backdrop_capture_rect(
-            bounds,
-            None,
-            16.0,
-            1000.0,
-            1000.0
-        ).expect("capture rect should exist");
+        let (_cx, cy, cw, ch, l, t, r, _b) =
+            backdrop_capture_rect(bounds, None, 16.0, 1000.0, 1000.0)
+                .expect("capture rect should exist");
         assert_eq!(cy, 0);
         assert_eq!(t, 0.0);
         assert_eq!(ch, 55 + 16);
@@ -1337,13 +1353,9 @@ mod tests {
     fn capture_rect_shrinks_to_ancestor_clip_before_padding() {
         let bounds = (50.0, 0.0, 400.0, 55.0);
         let clip = Some((0.0, 0.0, 500.0, 40.0));
-        let (_cx, cy, _cw, ch, _l, t, _r, b) = backdrop_capture_rect(
-            bounds,
-            clip,
-            16.0,
-            1000.0,
-            1000.0
-        ).expect("capture rect should exist");
+        let (_cx, cy, _cw, ch, _l, t, _r, b) =
+            backdrop_capture_rect(bounds, clip, 16.0, 1000.0, 1000.0)
+                .expect("capture rect should exist");
         assert_eq!(cy, 0);
         assert_eq!(t, 0.0);
         assert_eq!(ch, 40 + 16);

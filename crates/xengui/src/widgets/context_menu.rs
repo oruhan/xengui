@@ -1,58 +1,22 @@
 // SPDX-License-Identifier: Apache-2.0
 use crate::{
-    AnimKey,
-    AnimLayer,
-    AnimProperty,
-    AnimValue,
-    AnimationManager,
-    Background,
-    Border,
-    BorderRadius,
-    Color,
-    Constraints,
-    Easing,
-    Edges,
-    ElementState,
-    EventCtx,
-    EventStatus,
-    FlexDirection,
-    FontStyle,
-    FontWeight,
-    ITEM_FONT_SIZE,
-    InputEvent,
-    Interaction,
-    IntoThemed,
-    Key,
-    KeyState,
-    LayoutBox,
-    Length,
-    MeasureContext,
-    MeasureResult,
-    MouseButton,
-    PaintContext,
-    Point,
-    Rect,
-    RectCommand,
-    Style,
-    StyleBuilder,
-    TextCommand,
-    TextMeasurer,
-    Transition,
-    Triangle,
-    TriangleCommand,
-    Widget,
-    WidgetBase,
-    WidgetId,
+    AnimKey, AnimLayer, AnimProperty, AnimValue, AnimationManager, Background, Border,
+    BorderRadius, Color, Constraints, Easing, Edges, ElementState, EventCtx, EventStatus,
+    FlexDirection, FontStyle, FontWeight, ITEM_FONT_SIZE, InputEvent, Interaction, IntoThemed, Key,
+    KeyState, LayoutBox, Length, MeasureContext, MeasureResult, MouseButton, PaintContext, Point,
+    Rect, RectCommand, Style, StyleBuilder, TextCommand, TextMeasurer, Transition, Triangle,
+    TriangleCommand, Widget, WidgetBase, WidgetId,
+    constants::{DEFAULT_FONT_SIZE, DEFAULT_LINE_HEIGHT_RATIO},
     pct,
-    constants::{ DEFAULT_FONT_SIZE, DEFAULT_LINE_HEIGHT_RATIO },
 };
 use smol_str::SmolStr;
-use std::cell::{ Cell, RefCell };
+use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 use web_time::Duration;
 
 type ClickCallback = Box<dyn FnMut(&mut EventCtx)>;
 
+/// Data and behavior represented by `ContextMenuItem`.
 pub struct ContextMenuItem {
     label: SmolStr,
     shortcut: Option<SmolStr>,
@@ -72,6 +36,7 @@ pub struct ContextMenuItem {
 }
 
 impl ContextMenuItem {
+    /// Creates a value with its default configuration.
     pub fn new(label: impl Into<SmolStr>) -> Self {
         Self {
             label: label.into(),
@@ -89,11 +54,13 @@ impl ContextMenuItem {
         }
     }
 
+    /// Registers the `on_click` callback.
     pub fn on_click(mut self, f: impl FnMut(&mut EventCtx) + 'static) -> Self {
         self.on_click = Some(Box::new(f));
         self
     }
 
+    /// Returns or updates the `enabled` value.
     pub fn enabled(mut self, enabled: bool) -> Self {
         self.enabled = enabled;
         self
@@ -117,11 +84,13 @@ impl ContextMenuItem {
         self
     }
 
+    /// Returns or updates the `submenu_item` value.
     pub fn submenu_item(mut self, item: ContextMenuItem) -> Self {
         self.submenu.push(ContextMenuEntry::Item(item));
         self
     }
 
+    /// Returns or updates the `submenu_divider` value.
     pub fn submenu_divider(mut self) -> Self {
         self.submenu.push(ContextMenuEntry::Divider);
         self
@@ -164,6 +133,7 @@ struct ClosingLevelSnapshot {
 pub struct ContextMenuHandle(Rc<Cell<Option<(f32, f32)>>>);
 
 impl ContextMenuHandle {
+    /// Creates a value with its default configuration.
     pub fn new() -> Self {
         Self(Rc::new(Cell::new(None)))
     }
@@ -198,17 +168,14 @@ const SHORTCUT_RIGHT_PADDING: f32 = 8.0;
 const ARROW_THICKNESS: f32 = 1.6;
 const ARROW_CAP_SEGMENTS: usize = 8;
 
-const OPACITY_TRANSITION: Transition = Transition::new(Duration::from_millis(120)).easing(
-    Easing::EaseOut
-);
+const OPACITY_TRANSITION: Transition =
+    Transition::new(Duration::from_millis(120)).easing(Easing::EaseOut);
 
-const SUBMENU_OPACITY_TRANSITION: Transition = Transition::new(Duration::from_millis(200)).easing(
-    Easing::EaseInOut
-);
+const SUBMENU_OPACITY_TRANSITION: Transition =
+    Transition::new(Duration::from_millis(200)).easing(Easing::EaseInOut);
 
-const ITEM_HOVER_TRANSITION: Transition = Transition::new(Duration::from_millis(150)).easing(
-    Easing::EaseInOut
-);
+const ITEM_HOVER_TRANSITION: Transition =
+    Transition::new(Duration::from_millis(150)).easing(Easing::EaseInOut);
 
 fn lerp_color(a: Color, b: Color, t: f32) -> Color {
     // Delegates to the same premultiplied-alpha blend xen-animation uses
@@ -245,11 +212,9 @@ fn point_in_rect(point: (f32, f32), rect: (f32, f32, f32, f32)) -> bool {
 fn menu_height(entries: &[ContextMenuEntry], padding: f32, sf: f32) -> f32 {
     let sum: f32 = entries
         .iter()
-        .map(|e| {
-            match e {
-                ContextMenuEntry::Item(_) => ITEM_HEIGHT,
-                ContextMenuEntry::Divider => DIVIDER_HEIGHT,
-            }
+        .map(|e| match e {
+            ContextMenuEntry::Item(_) => ITEM_HEIGHT,
+            ContextMenuEntry::Divider => DIVIDER_HEIGHT,
         })
         .sum();
     sum * sf + padding * 2.0 * sf
@@ -269,7 +234,7 @@ fn measure_entries_width(
     letter_spacing: f32,
     line_height: f32,
     pad_lr: f32,
-    sf: f32
+    sf: f32,
 ) -> f32 {
     let mut max_w: f32 = 0.0;
 
@@ -278,39 +243,52 @@ fn measure_entries_width(
             continue;
         };
 
-        let label_w = text.measure(
-            &item.label,
-            font,
-            font_size,
-            weight,
-            font_style,
-            letter_spacing,
-            line_height,
-            None,
-            sf
-        ).width;
+        let label_w = text
+            .measure(
+                &item.label,
+                font,
+                font_size,
+                weight,
+                font_style,
+                letter_spacing,
+                line_height,
+                None,
+                sf,
+            )
+            .width;
         item.label_width.set(label_w);
 
-        let shortcut_w = item.shortcut
-            .as_ref()
-            .map_or(0.0, |s| {
-                text.measure(
-                    s,
-                    font,
-                    font_size,
-                    weight,
-                    font_style,
-                    letter_spacing,
-                    line_height,
-                    None,
-                    sf
-                ).width
-            });
+        let shortcut_w = item.shortcut.as_ref().map_or(0.0, |s| {
+            text.measure(
+                s,
+                font,
+                font_size,
+                weight,
+                font_style,
+                letter_spacing,
+                line_height,
+                None,
+                sf,
+            )
+            .width
+        });
         item.shortcut_width.set(shortcut_w);
 
-        let arrow_w = if item.has_submenu() { SUBMENU_ARROW_RESERVED * sf } else { 0.0 };
-        let shortcut_gap = if shortcut_w > 0.0 { SHORTCUT_GAP * sf } else { 0.0 };
-        let shortcut_padding = if shortcut_w > 0.0 { SHORTCUT_RIGHT_PADDING * sf } else { 0.0 };
+        let arrow_w = if item.has_submenu() {
+            SUBMENU_ARROW_RESERVED * sf
+        } else {
+            0.0
+        };
+        let shortcut_gap = if shortcut_w > 0.0 {
+            SHORTCUT_GAP * sf
+        } else {
+            0.0
+        };
+        let shortcut_padding = if shortcut_w > 0.0 {
+            SHORTCUT_RIGHT_PADDING * sf
+        } else {
+            0.0
+        };
 
         let row_w = label_w + shortcut_gap + shortcut_w + shortcut_padding + arrow_w + pad_lr;
         max_w = max_w.max(row_w);
@@ -326,7 +304,7 @@ fn measure_entries_width(
                 letter_spacing,
                 line_height,
                 pad_lr,
-                sf
+                sf,
             );
             item.submenu_width.set(sub_w);
         }
@@ -341,7 +319,7 @@ fn entry_rect_at(
     size: (f32, f32),
     padding: f32,
     sf: f32,
-    index: usize
+    index: usize,
 ) -> (f32, f32, f32, f32) {
     let (mx, my) = pos;
     let (mw, _) = size;
@@ -351,20 +329,27 @@ fn entry_rect_at(
 
     let y_offset: f32 = entries[..index]
         .iter()
-        .map(|e| {
-            match e {
-                ContextMenuEntry::Item(_) => item_h,
-                ContextMenuEntry::Divider => divider_h,
-            }
+        .map(|e| match e {
+            ContextMenuEntry::Item(_) => item_h,
+            ContextMenuEntry::Divider => divider_h,
         })
         .sum();
 
     match entries[index] {
-        ContextMenuEntry::Item(_) =>
-            (mx + padding, my + padding + y_offset, mw - padding * 2.0, item_h),
+        ContextMenuEntry::Item(_) => (
+            mx + padding,
+            my + padding + y_offset,
+            mw - padding * 2.0,
+            item_h,
+        ),
         ContextMenuEntry::Divider => {
             let line_y = my + padding + y_offset + divider_h * 0.5;
-            (mx + padding, line_y, mw - padding * 2.0, DIVIDER_LINE_THICKNESS * sf)
+            (
+                mx + padding,
+                line_y,
+                mw - padding * 2.0,
+                DIVIDER_LINE_THICKNESS * sf,
+            )
         }
     }
 }
@@ -375,7 +360,7 @@ fn index_at(
     size: (f32, f32),
     padding: f32,
     sf: f32,
-    point: (f32, f32)
+    point: (f32, f32),
 ) -> Option<usize> {
     if !point_in_rect(point, (pos.0, pos.1, size.0, size.1)) {
         return None;
@@ -497,6 +482,7 @@ pub struct ContextMenu {
 }
 
 impl ContextMenu {
+    /// Creates a value with its default configuration.
     pub fn new() -> Self {
         let mut menu = Self {
             base: WidgetBase::new(Interaction::new()),
@@ -554,32 +540,38 @@ impl ContextMenu {
         menu
     }
 
+    /// Returns or updates the `key` value.
     pub fn key(mut self, key: impl Into<SmolStr>) -> Self {
         self.base.key = Some(key.into());
         self
     }
 
+    /// Returns or updates the `font` value.
     pub fn font(mut self, font: impl Into<SmolStr>) -> Self {
         self.base.style.font = Some(font.into());
         self.recompute_style();
         self
     }
 
+    /// Returns or updates the `child` value.
     pub fn child(mut self, child: impl Widget + 'static) -> Self {
         self.children.push(Box::new(child));
         self
     }
 
+    /// Returns or updates the `children_vec` value.
     pub fn children_vec(mut self, children: Vec<Box<dyn Widget>>) -> Self {
         self.children = children;
         self
     }
 
+    /// Returns or updates the `item` value.
     pub fn item(mut self, item: ContextMenuItem) -> Self {
         self.entries.push(ContextMenuEntry::Item(item));
         self
     }
 
+    /// Returns or updates the `divider` value.
     pub fn divider(mut self) -> Self {
         self.entries.push(ContextMenuEntry::Divider);
         self
@@ -606,74 +598,88 @@ impl ContextMenu {
         self.external_open.clone()
     }
 
+    /// Returns or updates the `menu_background` value.
     pub fn menu_background<M>(mut self, background: impl IntoThemed<Background, M>) -> Self {
         self.background = Some(background.resolve_themed());
         self
     }
 
+    /// Returns or updates the `border` value.
     pub fn border<M>(mut self, border: impl IntoThemed<Border, M>) -> Self {
         self.border = Some(border.resolve_themed());
         self
     }
 
+    /// Returns or updates the `padding` value.
     pub fn padding(mut self, value: f32) -> Self {
         self.menu_padding = Some(value);
         self
     }
 
+    /// Returns or updates the `item_hover_background` value.
     pub fn item_hover_background<M>(mut self, background: impl IntoThemed<Background, M>) -> Self {
         self.item_hover_background = Some(background.resolve_themed());
         self
     }
 
+    /// Returns or updates the `item_text_color` value.
     pub fn item_text_color(mut self, color: Color) -> Self {
         self.item_text_color = Some(color);
         self
     }
 
+    /// Returns or updates the `divider_color` value.
     pub fn divider_color(mut self, color: Color) -> Self {
         self.divider_color = Some(color);
         self
     }
 
+    /// Returns or updates the `item_background` value.
     pub fn item_background<M>(mut self, background: impl IntoThemed<Background, M>) -> Self {
         self.item_background = Some(background.resolve_themed());
         self
     }
 
+    /// Returns or updates the `item_pressed_background` value.
     pub fn item_pressed_background<M>(
         mut self,
-        background: impl IntoThemed<Background, M>
+        background: impl IntoThemed<Background, M>,
     ) -> Self {
         self.item_pressed_background = Some(background.resolve_themed());
         self
     }
 
+    /// Returns or updates the `item_border` value.
     pub fn item_border<M>(mut self, border: impl IntoThemed<Border, M>) -> Self {
         self.item_border = Some(border.resolve_themed());
         self
     }
 
+    /// Returns or updates the `item_hover_border` value.
     pub fn item_hover_border<M>(mut self, border: impl IntoThemed<Border, M>) -> Self {
         self.item_hover_border = Some(border.resolve_themed());
         self
     }
 
+    /// Returns or updates the `item_pressed_border` value.
     pub fn item_pressed_border<M>(mut self, border: impl IntoThemed<Border, M>) -> Self {
         self.item_pressed_border = Some(border.resolve_themed());
         self
     }
 
+    /// Returns or updates the `item_padding` value.
     pub fn item_padding<M>(mut self, padding: impl IntoThemed<Edges, M>) -> Self {
         self.item_padding = Some(padding.resolve_themed());
         self
     }
 
+    /// Returns or updates the `item_hover_text_color` value.
     pub fn item_hover_text_color(mut self, color: Color) -> Self {
         self.item_hover_text_color = Some(color);
         self
     }
 
+    /// Returns or updates the `item_pressed_text_color` value.
     pub fn item_pressed_text_color(mut self, color: Color) -> Self {
         self.item_pressed_text_color = Some(color);
         self
@@ -686,21 +692,25 @@ impl ContextMenu {
         self
     }
 
+    /// Returns or updates the `menu_min_width` value.
     pub fn menu_min_width(mut self, width: f32) -> Self {
         self.menu_min_width = Some(width);
         self
     }
 
+    /// Returns or updates the `menu_max_width` value.
     pub fn menu_max_width(mut self, width: f32) -> Self {
         self.menu_max_width = Some(width);
         self
     }
 
+    /// Returns or updates the `menu_min_height` value.
     pub fn menu_min_height(mut self, height: f32) -> Self {
         self.menu_min_height = Some(height);
         self
     }
 
+    /// Returns or updates the `menu_max_height` value.
     pub fn menu_max_height(mut self, height: f32) -> Self {
         self.menu_max_height = Some(height);
         self
@@ -739,7 +749,8 @@ impl ContextMenu {
     }
 
     fn effective_item_padding(&self) -> Edges {
-        self.item_padding.unwrap_or_else(|| Edges::symmetric(ITEM_PADDING_X, 0.0))
+        self.item_padding
+            .unwrap_or_else(|| Edges::symmetric(ITEM_PADDING_X, 0.0))
     }
 
     // Resolves the actual width a menu level should open at, given that
@@ -773,26 +784,26 @@ impl ContextMenu {
         if !self.open.get() {
             return false;
         }
-        point_in_rect(point, (
-            self.menu_pos.get().0,
-            self.menu_pos.get().1,
-            self.menu_size.get().0,
-            self.menu_size.get().1,
-        ))
+        point_in_rect(
+            point,
+            (
+                self.menu_pos.get().0,
+                self.menu_pos.get().1,
+                self.menu_size.get().0,
+                self.menu_size.get().1,
+            ),
+        )
     }
 
     fn point_in_any_menu(&self, point: (f32, f32)) -> bool {
         if self.point_in_menu(point) {
             return true;
         }
-        self.submenu_stack
-            .borrow()
-            .iter()
-            .any(|l| {
-                let (x, y) = l.pos.get();
-                let (w, h) = l.size.get();
-                point_in_rect(point, (x, y, w, h))
-            })
+        self.submenu_stack.borrow().iter().any(|l| {
+            let (x, y) = l.pos.get();
+            let (w, h) = l.size.get();
+            point_in_rect(point, (x, y, w, h))
+        })
     }
 
     fn entries_at<'a>(&'a self, path: &[usize]) -> &'a [ContextMenuEntry] {
@@ -814,7 +825,7 @@ impl ContextMenu {
         entries: &[ContextMenuEntry],
         hovered: Option<usize>,
         transition: Transition,
-        anim: &mut AnimationManager
+        anim: &mut AnimationManager,
     ) {
         for (i, entry) in entries.iter().enumerate() {
             let ContextMenuEntry::Item(item) = entry else {
@@ -829,8 +840,13 @@ impl ContextMenu {
                 property: AnimProperty::Opacity,
             };
             let hover_target = if is_target { 1.0 } else { 0.0 };
-            anim.set_target(hover_key, AnimValue([hover_target, 0.0, 0.0, 0.0]), Some(transition));
-            item.hover_progress.set(anim.value(hover_key).map_or(hover_target, |v| v.0[0]));
+            anim.set_target(
+                hover_key,
+                AnimValue([hover_target, 0.0, 0.0, 0.0]),
+                Some(transition),
+            );
+            item.hover_progress
+                .set(anim.value(hover_key).map_or(hover_target, |v| v.0[0]));
 
             if let Some(hover_scale) = item.hover_scale {
                 let scale_key = AnimKey {
@@ -842,9 +858,10 @@ impl ContextMenu {
                 anim.set_target(
                     scale_key,
                     AnimValue([scale_target, 0.0, 0.0, 0.0]),
-                    Some(transition)
+                    Some(transition),
                 );
-                item.scale_progress.set(anim.value(scale_key).map_or(scale_target, |v| v.0[0]));
+                item.scale_progress
+                    .set(anim.value(scale_key).map_or(scale_target, |v| v.0[0]));
             } else {
                 item.scale_progress.set(1.0);
             }
@@ -855,19 +872,17 @@ impl ContextMenu {
         fn walk<'a>(
             entries: &'a mut [ContextMenuEntry],
             path: &[usize],
-            idx: usize
+            idx: usize,
         ) -> Option<&'a mut ContextMenuItem> {
             match path.split_first() {
-                Some((&next, rest)) =>
-                    match entries.get_mut(next)? {
-                        ContextMenuEntry::Item(item) => walk(&mut item.submenu, rest, idx),
-                        ContextMenuEntry::Divider => None,
-                    }
-                None =>
-                    match entries.get_mut(idx)? {
-                        ContextMenuEntry::Item(item) => Some(item),
-                        ContextMenuEntry::Divider => None,
-                    }
+                Some((&next, rest)) => match entries.get_mut(next)? {
+                    ContextMenuEntry::Item(item) => walk(&mut item.submenu, rest, idx),
+                    ContextMenuEntry::Divider => None,
+                },
+                None => match entries.get_mut(idx)? {
+                    ContextMenuEntry::Item(item) => Some(item),
+                    ContextMenuEntry::Divider => None,
+                },
             }
         }
         walk(&mut self.entries, path, idx)
@@ -949,7 +964,7 @@ impl ContextMenu {
         &self,
         parent_rect: (f32, f32, f32, f32),
         width: f32,
-        height: f32
+        height: f32,
     ) -> (f32, f32) {
         let (px, py, pw, _ph) = parent_rect;
         let bounds_x = self.layout_box.x;
@@ -957,7 +972,11 @@ impl ContextMenu {
         let bounds_right = self.layout_box.x + self.layout_box.width;
         let bounds_bottom = self.layout_box.y + self.layout_box.height;
 
-        let x = if px + pw + width > bounds_right { (px - width).max(bounds_x) } else { px + pw };
+        let x = if px + pw + width > bounds_right {
+            (px - width).max(bounds_x)
+        } else {
+            px + pw
+        };
         let y = if py + height > bounds_bottom {
             (bounds_bottom - height).max(bounds_y)
         } else {
@@ -1022,16 +1041,17 @@ impl ContextMenu {
                 if level == 0 {
                     self.hovered_index.set(idx);
                 } else {
-                    self.submenu_stack.borrow()[level - 1].hovered_index.set(idx);
+                    self.submenu_stack.borrow()[level - 1]
+                        .hovered_index
+                        .set(idx);
                 }
 
                 self.close_from(level);
 
-                if
-                    let Some(i) = idx &&
-                    let Some(ContextMenuEntry::Item(item)) = entries.get(i) &&
-                    item.enabled &&
-                    item.has_submenu()
+                if let Some(i) = idx
+                    && let Some(ContextMenuEntry::Item(item)) = entries.get(i)
+                    && item.enabled
+                    && item.has_submenu()
                 {
                     let rect = entry_rect_at(entries, pos, size, padding, sf, i);
                     let mut child_path = path.clone();
@@ -1041,7 +1061,9 @@ impl ContextMenu {
                     let child_h = self.resolve_height(menu_height(child_entries, padding, sf));
                     let child_pos = self.position_submenu(rect, child_w, child_h);
 
-                    self.closing_submenus.borrow_mut().retain(|c| c.anim_id != item.anim_id);
+                    self.closing_submenus
+                        .borrow_mut()
+                        .retain(|c| c.anim_id != item.anim_id);
 
                     self.submenu_stack.borrow_mut().push(OpenSubmenu {
                         path: child_path,
@@ -1088,13 +1110,16 @@ impl ContextMenu {
         size: (f32, f32),
         hovered_index: Option<usize>,
         pressed_index: Option<usize>,
-        padding: f32
+        padding: f32,
     ) {
         let (mx, my) = pos;
         let (mw, mh) = size;
         let sf = ctx.scale_factor;
 
-        let bg = self.background.clone().unwrap_or(Background::Color(theme.surface));
+        let bg = self
+            .background
+            .clone()
+            .unwrap_or(Background::Color(theme.surface));
         let border = self.border.as_ref();
         let border_color = border.map(|b| b.color).unwrap_or(theme.outline_variant);
 
@@ -1125,11 +1150,9 @@ impl ContextMenu {
                     ctx.draw_rect(RectCommand {
                         position: (x, y),
                         size: (w, h),
-                        background: Some(
-                            Background::Color(
-                                divider_color.with_alpha_f32(divider_color.a() * opacity)
-                            )
-                        ),
+                        background: Some(Background::Color(
+                            divider_color.with_alpha_f32(divider_color.a() * opacity),
+                        )),
                         border_radius: None,
                         border_width: None,
                         border_color: None,
@@ -1145,8 +1168,13 @@ impl ContextMenu {
             let item_scale = item.scale_progress.get();
             let (bg_x, bg_y, bg_w, bg_h) = if (item_scale - 1.0).abs() > f32::EPSILON {
                 let scaled = crate::scaled_layout_box(
-                    LayoutBox { x, y, width: w, height: h },
-                    item_scale
+                    LayoutBox {
+                        x,
+                        y,
+                        width: w,
+                        height: h,
+                    },
+                    item_scale,
                 );
                 (scaled.x, scaled.y, scaled.width, scaled.height)
             } else {
@@ -1176,16 +1204,23 @@ impl ContextMenu {
             };
 
             let border = if is_pressed {
-                self.item_pressed_border.or(self.item_hover_border).or(self.item_border)
+                self.item_pressed_border
+                    .or(self.item_hover_border)
+                    .or(self.item_border)
             } else if is_hovered {
                 self.item_hover_border.or(self.item_border)
             } else {
                 self.item_border
             };
 
-            let t = if is_pressed { 1.0 } else { item.hover_progress.get() };
+            let t = if is_pressed {
+                1.0
+            } else {
+                item.hover_progress.get()
+            };
 
-            let idle_bg_color = self.item_background
+            let idle_bg_color = self
+                .item_background
                 .as_ref()
                 .map(Background::representative_color)
                 .unwrap_or(Color::TRANSPARENT);
@@ -1223,14 +1258,15 @@ impl ContextMenu {
 
             let mut text_style = self.base.computed_style.clone();
             text_style.font_size.get_or_insert(ITEM_FONT_SIZE);
-            text_style.color = Some(
-                base_color.with_alpha_f32(base_color.a() * opacity * alpha_scale)
-            );
+            text_style.color =
+                Some(base_color.with_alpha_f32(base_color.a() * opacity * alpha_scale));
 
-            let font_size = text_style.font_size
+            let font_size = text_style
+                .font_size
                 .map(|f| f.to_physical(sf))
                 .unwrap_or(DEFAULT_FONT_SIZE.to_physical(sf));
-            let text_h = text_style.line_height
+            let text_h = text_style
+                .line_height
                 .map(|lh| lh.value().to_physical(sf))
                 .filter(|lh| *lh > 0.0)
                 .unwrap_or(font_size * DEFAULT_LINE_HEIGHT_RATIO);
@@ -1241,9 +1277,8 @@ impl ContextMenu {
             let mut right_reserved = 0.0;
 
             if item.has_submenu() {
-                let arrow_color = base_color.with_alpha_f32(
-                    base_color.a() * opacity * alpha_scale * 0.8
-                );
+                let arrow_color =
+                    base_color.with_alpha_f32(base_color.a() * opacity * alpha_scale * 0.8);
                 for (p0, p1, p2) in submenu_arrow_triangles((x, y, w, h), sf) {
                     ctx.draw_triangle(TriangleCommand {
                         p0,
@@ -1258,16 +1293,18 @@ impl ContextMenu {
 
             if let Some(shortcut) = &item.shortcut {
                 let mut shortcut_style = text_style.clone();
-                shortcut_style.color = Some(
-                    base_color.with_alpha_f32(base_color.a() * opacity * alpha_scale * 0.6)
-                );
+                shortcut_style.color =
+                    Some(base_color.with_alpha_f32(base_color.a() * opacity * alpha_scale * 0.6));
 
                 let shortcut_w = item.shortcut_width.get();
                 let shortcut_padding = SHORTCUT_RIGHT_PADDING * sf;
 
                 ctx.draw_text(TextCommand {
                     text: shortcut.clone(),
-                    position: (x + w - right_reserved - shortcut_padding - shortcut_w, text_y),
+                    position: (
+                        x + w - right_reserved - shortcut_padding - shortcut_w,
+                        text_y,
+                    ),
                     style: shortcut_style,
                     max_width: Some(shortcut_w),
                     clip_rect: None,
@@ -1362,8 +1399,14 @@ impl Widget for ContextMenu {
         let font_size = style.font_size.unwrap_or(ITEM_FONT_SIZE).value();
         let weight = style.font_weight.unwrap_or_default();
         let font_style = style.font_style.unwrap_or_default();
-        let letter_spacing = style.letter_spacing.map(|ls| ls.value().value()).unwrap_or(0.0);
-        let line_height = style.line_height.map(|lh| lh.value().value()).unwrap_or(0.0);
+        let letter_spacing = style
+            .letter_spacing
+            .map(|ls| ls.value().value())
+            .unwrap_or(0.0);
+        let line_height = style
+            .line_height
+            .map(|lh| lh.value().value())
+            .unwrap_or(0.0);
         // Both sides of the item padding must be counted, or the measured
         // natural width comes up short and labels get clipped.
         let pad_lr = padding.left.to_physical(sf) + padding.right.to_physical(sf);
@@ -1378,7 +1421,7 @@ impl Widget for ContextMenu {
             letter_spacing,
             line_height,
             pad_lr,
-            sf
+            sf,
         );
         self.natural_width.set(width);
     }
@@ -1411,10 +1454,11 @@ impl Widget for ContextMenu {
             self.menu_size.get(),
             self.hovered_index.get(),
             self.pressed_index.get(),
-            padding
+            padding,
         );
 
-        let closing_levels: Vec<ClosingLevelSnapshot> = self.submenu_stack
+        let closing_levels: Vec<ClosingLevelSnapshot> = self
+            .submenu_stack
             .borrow()
             .iter()
             .map(|l| ClosingLevelSnapshot {
@@ -1438,7 +1482,7 @@ impl Widget for ContextMenu {
                 level.size,
                 level.hovered,
                 level.pressed,
-                padding
+                padding,
             );
         }
     }
@@ -1489,7 +1533,9 @@ impl Widget for ContextMenu {
                     if depth == 0 {
                         self.pressed_index.set(Some(idx));
                     } else {
-                        self.submenu_stack.borrow()[depth - 1].pressed_index.set(Some(idx));
+                        self.submenu_stack.borrow()[depth - 1]
+                            .pressed_index
+                            .set(Some(idx));
                     }
                     ctx.request_redraw();
                 }
@@ -1521,7 +1567,9 @@ impl Widget for ContextMenu {
                             self.submenu_stack.borrow()[depth - 1].path.clone()
                         };
 
-                        if let Some(item) = self.item_at_mut(&path, idx) && item.enabled {
+                        if let Some(item) = self.item_at_mut(&path, idx)
+                            && item.enabled
+                        {
                             if let Some(cb) = item.on_click.as_mut() {
                                 cb(ctx);
                             }
@@ -1545,11 +1593,12 @@ impl Widget for ContextMenu {
                 EventStatus::Handled
             }
 
-            InputEvent::KeyInput { event: key_event, .. } if
-                self.open.get() &&
-                key_event.key == Key::Escape &&
-                key_event.state == KeyState::Pressed
-            => {
+            InputEvent::KeyInput {
+                event: key_event, ..
+            } if self.open.get()
+                && key_event.key == Key::Escape
+                && key_event.state == KeyState::Pressed =>
+            {
                 self.close(ctx);
                 EventStatus::Handled
             }
@@ -1562,7 +1611,7 @@ impl Widget for ContextMenu {
         let Some(other) = other.as_any().downcast_ref::<ContextMenu>() else {
             return false;
         };
-        self.base.style == other.base.style && self.entries.len() == other.entries.len()
+        self.base.authored_styles_eq(&other.base) && self.entries.len() == other.entries.len()
     }
 
     fn cascade_style(&mut self, parent: &Style, anim: &mut AnimationManager) {
@@ -1578,14 +1627,20 @@ impl Widget for ContextMenu {
 
         self.animate_opacity(anim);
 
-        let submenu_transition = self.submenu_transition.unwrap_or(SUBMENU_OPACITY_TRANSITION);
+        let submenu_transition = self
+            .submenu_transition
+            .unwrap_or(SUBMENU_OPACITY_TRANSITION);
         for level in self.submenu_stack.borrow().iter() {
             let key = AnimKey {
                 widget: level.anim_id,
                 layer: AnimLayer::Content,
                 property: AnimProperty::Opacity,
             };
-            anim.set_target(key, AnimValue([1.0, 0.0, 0.0, 0.0]), Some(submenu_transition));
+            anim.set_target(
+                key,
+                AnimValue([1.0, 0.0, 0.0, 0.0]),
+                Some(submenu_transition),
+            );
             level.opacity.set(anim.value(key).map_or(1.0, |v| v.0[0]));
         }
 
@@ -1595,7 +1650,11 @@ impl Widget for ContextMenu {
                 layer: AnimLayer::Content,
                 property: AnimProperty::Opacity,
             };
-            anim.set_target(key, AnimValue([0.0, 0.0, 0.0, 0.0]), Some(submenu_transition));
+            anim.set_target(
+                key,
+                AnimValue([0.0, 0.0, 0.0, 0.0]),
+                Some(submenu_transition),
+            );
             let value = anim.value(key).map_or(0.0, |v| v.0[0]);
             level.opacity.set(value);
             value > 0.001
@@ -1603,9 +1662,15 @@ impl Widget for ContextMenu {
 
         let item_transition = self.item_transition.unwrap_or(ITEM_HOVER_TRANSITION);
 
-        Self::animate_entries(&self.entries, self.hovered_index.get(), item_transition, anim);
+        Self::animate_entries(
+            &self.entries,
+            self.hovered_index.get(),
+            item_transition,
+            anim,
+        );
 
-        let submenu_levels: Vec<(Vec<usize>, Option<usize>)> = self.submenu_stack
+        let submenu_levels: Vec<(Vec<usize>, Option<usize>)> = self
+            .submenu_stack
             .borrow()
             .iter()
             .map(|l| (l.path.clone(), l.hovered_index.get()))
@@ -1615,10 +1680,9 @@ impl Widget for ContextMenu {
             Self::animate_entries(entries, hovered, item_transition, anim);
         }
 
-        if
-            !self.open.get() &&
-            self.opacity_anim.get() <= 0.001 &&
-            let Some(pos) = self.pending_reopen.take()
+        if !self.open.get()
+            && self.opacity_anim.get() <= 0.001
+            && let Some(pos) = self.pending_reopen.take()
         {
             self.open_at_impl(pos);
         }
@@ -1643,8 +1707,10 @@ impl Widget for ContextMenu {
             self.hovered_index.set(old.hovered_index.get());
             self.pending_reopen.set(old.pending_reopen.get());
             self.pressed_index.set(old.pressed_index.get());
-            self.submenu_stack.replace(old.submenu_stack.borrow().clone());
-            self.closing_submenus.replace(old.closing_submenus.borrow().clone());
+            self.submenu_stack
+                .replace(old.submenu_stack.borrow().clone());
+            self.closing_submenus
+                .replace(old.closing_submenus.borrow().clone());
             self.scale_factor.set(old.scale_factor.get());
             transfer_entry_anim_state(&mut self.entries, &old.entries);
         }
@@ -1659,14 +1725,11 @@ impl Widget for ContextMenu {
 // rebuilds, since `entries` is rebuilt fresh by user code every render.
 fn transfer_entry_anim_state(
     new_entries: &mut [ContextMenuEntry],
-    old_entries: &[ContextMenuEntry]
+    old_entries: &[ContextMenuEntry],
 ) {
     for (new_entry, old_entry) in new_entries.iter_mut().zip(old_entries.iter()) {
-        if
-            let (ContextMenuEntry::Item(new_item), ContextMenuEntry::Item(old_item)) = (
-                new_entry,
-                old_entry,
-            )
+        if let (ContextMenuEntry::Item(new_item), ContextMenuEntry::Item(old_item)) =
+            (new_entry, old_entry)
         {
             new_item.anim_id = old_item.anim_id;
             new_item.hover_progress.set(old_item.hover_progress.get());

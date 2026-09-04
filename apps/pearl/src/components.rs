@@ -4,7 +4,7 @@
 use std::rc::Rc;
 use web_time::Duration;
 use xengui::*;
-use xengui_icons::{ IconAxes, codepoints };
+use xengui_icons::{IconAxes, codepoints};
 
 /* ------ Icon Button ------ */
 
@@ -81,15 +81,21 @@ impl Render for IconButton {
                 .border(Border::all(0.0, Color::TRANSPARENT).radius(self.size * 0.5))
                 .transition_all(Transition::new(Duration::from_millis(140)).easing(Easing::EaseOut))
                 .hover_style(|s, theme: &Theme| s.background(theme.surface_container_high))
-                .pressed_style(|s, theme: &Theme|
-                    s.background(theme.surface_container_highest).scale(0.88).content_scale(1.0)
+                .pressed_style(|s, theme: &Theme| {
+                    s.background(theme.surface_container_highest)
+                        .scale(0.88)
+                        .content_scale(1.0)
+                })
+                .child(
+                    VariableIcon::new(self.codepoint)
+                        .size(icon_size)
+                        .axes(self.axes),
                 )
-                .child(VariableIcon::new(self.codepoint).size(icon_size).axes(self.axes))
                 .on_click(move |ctx| {
                     if let Some(f) = &on_click {
                         f(ctx);
                     }
-                })
+                }),
         )
     }
 }
@@ -160,15 +166,14 @@ impl Render for AlbumArt {
             .border(Border::all(0.0, Color::TRANSPARENT).radius(12.0));
 
         view = match &self.image {
-            Some(source) =>
-                view.child(
-                    Image::new()
-                        .source(source.clone())
-                        .object_fit(ObjectFit::Cover)
-                        .width(px!(self.size))
-                        .height(px!(self.size))
-                        .border(Border::all(0.0, Color::TRANSPARENT).radius(12.0))
-                ),
+            Some(source) => view.child(
+                Image::new()
+                    .source(source.clone())
+                    .object_fit(ObjectFit::Cover)
+                    .width(px!(self.size))
+                    .height(px!(self.size))
+                    .border(Border::all(0.0, Color::TRANSPARENT).radius(12.0)),
+            ),
             None => view.child(VariableIcon::new(codepoints::MUSIC_NOTE).size(self.icon_size)),
         };
 

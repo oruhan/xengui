@@ -13,14 +13,15 @@
 - Clipboard, cursor, system theme, and window-control integration.
 - Multi-click, selection, long-press, and mobile text-input handling.
 - Efficient redraw and caret scheduling through the `winit` event loop.
+- Automatic surface recovery and renderer recreation after recoverable GPU device loss.
 
 ## Installation
 
 ```toml
 [dependencies]
-xengui = "0.2.7"
-xenframe = "0.1.1"
-xengui-wgpu = "0.1.1"
+xengui = "0.2.8"
+xenframe = "0.1.2"
+xengui-wgpu = "0.1.2"
 ```
 
 ## Usage
@@ -54,6 +55,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 ## Platform notes
 
 Native targets use `winit` windows. Browser targets attach to the canvas declared by the application's `index.html`; use Trunk to build and serve the application. Mobile-browser IME support uses a hidden HTML input managed by the runtime.
+
+GPU policy is available through `AppConfig::renderer`. Its defaults select broadly compatible backends, vsync presentation, conservative device limits, and adapter-clamped 4× MSAA for tessellated geometry.
 
 ## Documentation and support
 

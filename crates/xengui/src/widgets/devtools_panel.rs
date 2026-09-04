@@ -2,41 +2,12 @@
 //! In-app render/repaint inspector, toggled by F12 (see `xenframe::App`).
 //! Not meant to be added to a user's own tree directly.
 use crate::{
-    Align,
-    AnimationManager,
-    Background,
-    Border,
-    Button,
-    Color,
-    Constraints,
-    Cursor,
-    Display,
-    Edges,
-    ElementState,
-    EventCtx,
-    EventStatus,
-    FlexDirection,
-    Interaction,
-    InputEvent,
-    JustifyContent,
-    Label,
-    LayoutBox,
-    Length,
-    MeasureContext,
-    MeasureResult,
-    MouseButton,
-    Overflow,
-    PaintContext,
-    RectCommand,
-    Render,
-    Size,
-    Style,
-    StyleBuilder,
-    View,
-    Widget,
-    WidgetBase,
+    Align, AnimationManager, Background, Border, Button, Color, Constraints, Cursor, Display,
+    Edges, ElementState, EventCtx, EventStatus, FlexDirection, InputEvent, Interaction,
+    JustifyContent, Label, LayoutBox, Length, MeasureContext, MeasureResult, MouseButton, Overflow,
+    PaintContext, RectCommand, Render, Size, Style, StyleBuilder, View, Widget, WidgetBase,
     WidgetId,
-    devtools::{ self, RenderEventKind },
+    devtools::{self, RenderEventKind},
     pct,
 };
 use smol_str::SmolStr;
@@ -69,6 +40,7 @@ pub struct DevtoolsResizeHandle {
 }
 
 impl DevtoolsResizeHandle {
+    /// Creates a value with its default configuration.
     pub fn new(width_handle: Rc<Cell<f32>>, close_handle: Rc<Cell<bool>>) -> Self {
         let mut interaction = Interaction::new();
         interaction.hover_cursor = Some(Cursor::EwResize);
@@ -248,6 +220,7 @@ impl Widget for DevtoolsResizeHandle {
     }
 }
 
+/// Data and behavior represented by `DevtoolsPanel`.
 pub struct DevtoolsPanel {
     base: WidgetBase,
     layout_box: LayoutBox,
@@ -259,6 +232,7 @@ pub struct DevtoolsPanel {
 }
 
 impl DevtoolsPanel {
+    /// Creates a value with its default configuration.
     pub fn new(width_handle: Rc<Cell<f32>>, close_handle: Rc<Cell<bool>>) -> Self {
         Self {
             base: WidgetBase::new(Interaction::new()),
@@ -271,6 +245,7 @@ impl DevtoolsPanel {
         }
     }
 
+    /// Returns or updates the `key` value.
     pub fn key(mut self, key: impl Into<SmolStr>) -> Self {
         self.base.key = Some(key.into());
         self
@@ -376,7 +351,7 @@ impl Render for DevtoolsPanel {
                     .padding(Edges::symmetric(8.0, 4.0))
                     .background(Color::NEUTRAL_800)
                     .color(Color::NEUTRAL_100)
-                    .on_click(|_ctx| devtools::clear())
+                    .on_click(|_ctx| devtools::clear()),
             )
             .child(
                 Button::new()
@@ -388,7 +363,7 @@ impl Render for DevtoolsPanel {
                     .on_click(move |ctx| {
                         close_handle.set(true);
                         ctx.request_redraw();
-                    })
+                    }),
             );
 
         let header = View::new()
@@ -402,7 +377,7 @@ impl Render for DevtoolsPanel {
                 Label::new()
                     .label(format!("XenGui DevTools ({} events)", entries.len()))
                     .color(Color::NEUTRAL_100)
-                    .font_size(Length::px(13.0))
+                    .font_size(Length::px(13.0)),
             )
             .child(header_buttons);
 
@@ -421,10 +396,11 @@ impl Render for DevtoolsPanel {
                 .display(Display::Flex)
                 .flex_direction(FlexDirection::Row)
                 .size(Length::px(width), pct!(100.0))
-                .child(
-                    DevtoolsResizeHandle::new(self.width_handle.clone(), self.close_handle.clone())
-                )
-                .child(content)
+                .child(DevtoolsResizeHandle::new(
+                    self.width_handle.clone(),
+                    self.close_handle.clone(),
+                ))
+                .child(content),
         )
     }
 }
@@ -460,9 +436,8 @@ impl Widget for DevtoolsPanel {
 
         if self.inner.is_empty() {
             let key = format!("DevtoolsPanel#{}", self.hooks_id.get());
-            let built = devtools::with_suppressed(|| {
-                crate::component(key, || Render::render(self))
-            });
+            let built =
+                devtools::with_suppressed(|| crate::component(key, || Render::render(self)));
             self.inner = vec![built];
         }
 

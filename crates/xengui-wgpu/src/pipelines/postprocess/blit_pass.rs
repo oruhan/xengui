@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-use xengui::{ Color, paint };
+use xengui::{Color, paint};
 
 // Explicit padding mirrors WGSL's std140-style alignment rules (vec4
 // aligns to 16 bytes, vec2 to 8 bytes, and the whole struct rounds up to
@@ -79,7 +79,7 @@ impl BlitPass {
                         count: None,
                     },
                 ],
-            })
+            }),
         );
 
         let layout = device.create_pipeline_layout(
@@ -87,7 +87,7 @@ impl BlitPass {
                 label: Some("Blit Pipeline Layout"),
                 bind_group_layouts: &[Some(&bind_group_layout)],
                 immediate_size: 0,
-            })
+            }),
         );
 
         let build_pipeline = |blend: Option<wgpu::BlendState>, label: &str| {
@@ -115,24 +115,22 @@ impl BlitPass {
                         module: &fs,
                         entry_point: Some("fs_main"),
                         compilation_options: Default::default(),
-                        targets: &[
-                            Some(wgpu::ColorTargetState {
-                                format,
-                                blend,
-                                write_mask: wgpu::ColorWrites::ALL,
-                            }),
-                        ],
+                        targets: &[Some(wgpu::ColorTargetState {
+                            format,
+                            blend,
+                            write_mask: wgpu::ColorWrites::ALL,
+                        })],
                     }),
                     multiview_mask: None,
                     cache: None,
-                })
+                }),
             )
         };
 
         let pipeline = build_pipeline(None, "Blit Pipeline (overwrite)");
         let pipeline_blend = build_pipeline(
             Some(wgpu::BlendState::PREMULTIPLIED_ALPHA_BLENDING),
-            "Blit Pipeline (blend)"
+            "Blit Pipeline (blend)",
         );
 
         let sampler = device.create_sampler(
@@ -143,7 +141,7 @@ impl BlitPass {
                 mag_filter: wgpu::FilterMode::Linear,
                 min_filter: wgpu::FilterMode::Linear,
                 ..Default::default()
-            })
+            }),
         );
 
         let uniform_buffer = device.create_buffer(
@@ -152,10 +150,16 @@ impl BlitPass {
                 size: std::mem::size_of::<GpuBlitParams>() as u64,
                 usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
                 mapped_at_creation: false,
-            })
+            }),
         );
 
-        Self { pipeline, bind_group_layout, sampler, uniform_buffer, pipeline_blend }
+        Self {
+            pipeline,
+            bind_group_layout,
+            sampler,
+            uniform_buffer,
+            pipeline_blend,
+        }
     }
 
     /// `scale_uv` lets the caller map a smaller/larger source texture onto
@@ -176,7 +180,7 @@ impl BlitPass {
         target_height: u32,
         offset_uv: (f32, f32),
         scale_uv: (f32, f32),
-        tint: Option<Color>
+        tint: Option<Color>,
     ) {
         self.dispatch(
             device,
@@ -192,7 +196,7 @@ impl BlitPass {
             scale_uv,
             tint,
             [0.0; 4],
-            false
+            false,
         );
     }
 
@@ -219,7 +223,7 @@ impl BlitPass {
         target_width: u32,
         target_height: u32,
         source_uv_rect: (f32, f32, f32, f32),
-        radius: [f32; 4]
+        radius: [f32; 4],
     ) {
         let (offset_u, offset_v, scale_u, scale_v) = source_uv_rect;
         self.dispatch(
@@ -236,7 +240,7 @@ impl BlitPass {
             (scale_u, scale_v),
             None,
             radius,
-            true
+            true,
         );
     }
 
@@ -256,14 +260,17 @@ impl BlitPass {
         scale_uv: (f32, f32),
         tint: Option<Color>,
         radius: [f32; 4],
-        blend_over: bool
+        blend_over: bool,
     ) {
         let (tint_rgba, tint_mix) = match tint {
             Some(c) => (c.to_f32_array(), 1.0),
             None => ([0.0, 0.0, 0.0, 1.0], 0.0),
         };
         let dest_half_size = [dest_rect.2 * 0.5, dest_rect.3 * 0.5];
-        let dest_pos = [dest_rect.0 + dest_half_size[0], dest_rect.1 + dest_half_size[1]];
+        let dest_pos = [
+            dest_rect.0 + dest_half_size[0],
+            dest_rect.1 + dest_half_size[1],
+        ];
         let params = GpuBlitParams {
             tint: tint_rgba,
             tint_mix,
@@ -295,34 +302,36 @@ impl BlitPass {
                         resource: self.uniform_buffer.as_entire_binding(),
                     },
                 ],
-            })
+            }),
         );
 
-        let pipeline = if blend_over { &self.pipeline_blend } else { &self.pipeline };
+        let pipeline = if blend_over {
+            &self.pipeline_blend
+        } else {
+            &self.pipeline
+        };
 
         let mut pass = encoder.begin_render_pass(
             &(wgpu::RenderPassDescriptor {
                 label: Some("Blit Pass"),
-                color_attachments: &[
-                    Some(wgpu::RenderPassColorAttachment {
-                        view: target,
-                        resolve_target: None,
-                        ops: wgpu::Operations {
-                            load: if blend_over {
-                                wgpu::LoadOp::Load
-                            } else {
-                                wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT)
-                            },
-                            store: wgpu::StoreOp::Store,
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: target,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: if blend_over {
+                            wgpu::LoadOp::Load
+                        } else {
+                            wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT)
                         },
-                        depth_slice: None,
-                    }),
-                ],
+                        store: wgpu::StoreOp::Store,
+                    },
+                    depth_slice: None,
+                })],
                 depth_stencil_attachment: None,
                 timestamp_writes: None,
                 occlusion_query_set: None,
                 multiview_mask: None,
-            })
+            }),
         );
         pass.set_pipeline(pipeline);
         pass.set_bind_group(0, &bind_group, &[]);
@@ -332,14 +341,11 @@ impl BlitPass {
             dest_rect.2.max(1.0),
             dest_rect.3.max(1.0),
             0.0,
-            1.0
+            1.0,
         );
 
-        let (sx, sy, sw, sh) = paint::draw_command::scissor_for_clip(
-            clip_rect,
-            target_width,
-            target_height
-        );
+        let (sx, sy, sw, sh) =
+            paint::draw_command::scissor_for_clip(clip_rect, target_width, target_height);
         if sw == 0 || sh == 0 {
             return;
         }

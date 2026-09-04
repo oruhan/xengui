@@ -9,3 +9,6 @@ license = "Apache-2.0"
 repository = "https://github.com/randseas/xengui/tree/main/crates/xen-router-build"
 
 [dependencies]
+
+[lints]
+workspace = true

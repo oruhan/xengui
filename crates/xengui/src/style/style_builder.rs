@@ -1,55 +1,46 @@
 // SPDX-License-Identifier: Apache-2.0
 use crate::{
-    BoxShadow, BoxSizing, Overflow, Overscroll, ScrollbarGutter, TransformOrigin, TransitionProperty, properties::StyleValue, style::{ FontStyle, FontWeight, IntoThemed, LetterSpacing },
+    BoxShadow, BoxSizing, Overflow, Overscroll, ScrollbarGutter, TransformOrigin,
+    TransitionProperty,
+    properties::StyleValue,
+    style::{FontStyle, FontWeight, IntoThemed, LetterSpacing},
 };
 
 use super::{
-    Align,
-    Background,
-    Border,
-    Outline,
-    Color,
-    Cursor,
-    Display,
-    Edges,
-    FlexDirection,
-    FlexWrap,
-    GridPlacement,
-    GridTrack,
-    JustifyContent,
-    Length,
-    LineHeight,
-    Position,
-    ScrollbarStyle,
-    Size,
-    Style,
-    TextAlign,
-    TextDecoration,
+    Align, Background, Border, Color, Cursor, Display, Edges, FlexDirection, FlexWrap,
+    GridPlacement, GridTrack, JustifyContent, Length, LineHeight, Outline, Position,
+    ScrollbarStyle, Size, Style, TextAlign, TextDecoration,
 };
 
+/// Fluent style setters shared by all built-in widgets.
+#[allow(missing_docs)]
 pub trait StyleBuilder: Sized {
     fn style_mut(&mut self) -> &mut Style;
 
     fn mark_dirty(&mut self) {}
 
     fn width<M>(mut self, width: impl IntoThemed<Length, M>) -> Self {
-        self.style_mut().size.get_or_insert_with(Default::default).width = Some(
-            width.resolve_themed()
-        );
+        self.style_mut()
+            .size
+            .get_or_insert_with(Default::default)
+            .width = Some(width.resolve_themed());
         self.mark_dirty();
         self
     }
 
     fn height<M>(mut self, height: impl IntoThemed<Length, M>) -> Self {
-        self.style_mut().size.get_or_insert_with(Default::default).height = Some(
-            height.resolve_themed()
-        );
+        self.style_mut()
+            .size
+            .get_or_insert_with(Default::default)
+            .height = Some(height.resolve_themed());
         self.mark_dirty();
         self
     }
 
     fn size<W, H, MW, MH>(mut self, width: W, height: H) -> Self
-        where W: IntoThemed<Length, MW>, H: IntoThemed<Length, MH>
+    where
+        W: IntoThemed<Length, MW>,
+        H: IntoThemed<Length, MH>,
     {
         self.style_mut().size = Some(Size::new(width.resolve_themed(), height.resolve_themed()));
         self.mark_dirty();
@@ -190,7 +181,7 @@ pub trait StyleBuilder: Sized {
 
     /// Applies a GPU-accelerated visual filter chain to this widget's
     /// rendered output (content, background, children — everything this
-    /// widget paints). Matches CSS `filter` semantics; see [`Filter`].
+    /// widget paints). Matches CSS `filter` semantics; see [`crate::Filter`].
     ///
     /// Widgets without a filter set are unaffected and keep using the
     /// existing direct-to-frame rendering path — no offscreen texture is
@@ -227,53 +218,59 @@ pub trait StyleBuilder: Sized {
     }
 
     fn min_width<M>(mut self, width: impl IntoThemed<Length, M>) -> Self {
-        self.style_mut().min_size.get_or_insert_with(Default::default).width = Some(
-            width.resolve_themed()
-        );
+        self.style_mut()
+            .min_size
+            .get_or_insert_with(Default::default)
+            .width = Some(width.resolve_themed());
         self.mark_dirty();
         self
     }
 
     fn min_height<M>(mut self, height: impl IntoThemed<Length, M>) -> Self {
-        self.style_mut().min_size.get_or_insert_with(Default::default).height = Some(
-            height.resolve_themed()
-        );
+        self.style_mut()
+            .min_size
+            .get_or_insert_with(Default::default)
+            .height = Some(height.resolve_themed());
         self.mark_dirty();
         self
     }
 
     fn min_size<W, H, MW, MH>(mut self, width: W, height: H) -> Self
-        where W: IntoThemed<Length, MW>, H: IntoThemed<Length, MH>
+    where
+        W: IntoThemed<Length, MW>,
+        H: IntoThemed<Length, MH>,
     {
-        self.style_mut().min_size = Some(
-            Size::new(width.resolve_themed(), height.resolve_themed())
-        );
+        self.style_mut().min_size =
+            Some(Size::new(width.resolve_themed(), height.resolve_themed()));
         self.mark_dirty();
         self
     }
 
     fn max_width<M>(mut self, width: impl IntoThemed<Length, M>) -> Self {
-        self.style_mut().max_size.get_or_insert_with(Default::default).width = Some(
-            width.resolve_themed()
-        );
+        self.style_mut()
+            .max_size
+            .get_or_insert_with(Default::default)
+            .width = Some(width.resolve_themed());
         self.mark_dirty();
         self
     }
 
     fn max_height<M>(mut self, height: impl IntoThemed<Length, M>) -> Self {
-        self.style_mut().max_size.get_or_insert_with(Default::default).height = Some(
-            height.resolve_themed()
-        );
+        self.style_mut()
+            .max_size
+            .get_or_insert_with(Default::default)
+            .height = Some(height.resolve_themed());
         self.mark_dirty();
         self
     }
 
     fn max_size<W, H, MW, MH>(mut self, width: W, height: H) -> Self
-        where W: IntoThemed<Length, MW>, H: IntoThemed<Length, MH>
+    where
+        W: IntoThemed<Length, MW>,
+        H: IntoThemed<Length, MH>,
     {
-        self.style_mut().max_size = Some(
-            Size::new(width.resolve_themed(), height.resolve_themed())
-        );
+        self.style_mut().max_size =
+            Some(Size::new(width.resolve_themed(), height.resolve_themed()));
         self.mark_dirty();
         self
     }
@@ -407,7 +404,9 @@ pub trait StyleBuilder: Sized {
     }
 
     fn gap<W, H, MW, MH>(mut self, horizontal: W, vertical: H) -> Self
-        where W: IntoThemed<Length, MW>, H: IntoThemed<Length, MH>
+    where
+        W: IntoThemed<Length, MW>,
+        H: IntoThemed<Length, MH>,
     {
         self.style_mut().gap = Some((horizontal.resolve_themed(), vertical.resolve_themed()));
         self.mark_dirty();
@@ -455,62 +454,73 @@ pub trait StyleBuilder: Sized {
     }
 
     fn scrollbar_thickness(mut self, thickness: f32) -> Self {
-        self.style_mut().scrollbar.get_or_insert_with(ScrollbarStyle::default).thickness =
-            Some(thickness);
+        self.style_mut()
+            .scrollbar
+            .get_or_insert_with(ScrollbarStyle::default)
+            .thickness = Some(thickness);
         self.mark_dirty();
         self
     }
 
     fn scrollbar_show_arrows(mut self, value: bool) -> Self {
-        self.style_mut().scrollbar.get_or_insert_with(ScrollbarStyle::default).show_arrows =
-            Some(value);
+        self.style_mut()
+            .scrollbar
+            .get_or_insert_with(ScrollbarStyle::default)
+            .show_arrows = Some(value);
         self.mark_dirty();
         self
     }
 
     fn scrollbar_min_thumb_length(mut self, length: f32) -> Self {
-        self.style_mut().scrollbar.get_or_insert_with(ScrollbarStyle::default).min_thumb_length =
-            Some(length);
+        self.style_mut()
+            .scrollbar
+            .get_or_insert_with(ScrollbarStyle::default)
+            .min_thumb_length = Some(length);
         self.mark_dirty();
         self
     }
 
     fn scrollbar_thumb_color<M>(mut self, color: impl IntoThemed<Color, M>) -> Self {
-        self.style_mut().scrollbar.get_or_insert_with(ScrollbarStyle::default).thumb_color = Some(
-            color.resolve_themed()
-        );
+        self.style_mut()
+            .scrollbar
+            .get_or_insert_with(ScrollbarStyle::default)
+            .thumb_color = Some(color.resolve_themed());
         self.mark_dirty();
         self
     }
 
     fn scrollbar_thumb_radius<M>(mut self, radius: impl IntoThemed<f32, M>) -> Self {
-        self.style_mut().scrollbar.get_or_insert_with(ScrollbarStyle::default).thumb_radius = Some(
-            radius.resolve_themed()
-        );
+        self.style_mut()
+            .scrollbar
+            .get_or_insert_with(ScrollbarStyle::default)
+            .thumb_radius = Some(radius.resolve_themed());
         self.mark_dirty();
         self
     }
 
     fn scrollbar_track_color<M>(mut self, color: impl IntoThemed<Color, M>) -> Self {
-        self.style_mut().scrollbar.get_or_insert_with(ScrollbarStyle::default).track_color = Some(
-            color.resolve_themed()
-        );
+        self.style_mut()
+            .scrollbar
+            .get_or_insert_with(ScrollbarStyle::default)
+            .track_color = Some(color.resolve_themed());
         self.mark_dirty();
         self
     }
 
     fn scrollbar_button_color<M>(mut self, color: impl IntoThemed<Color, M>) -> Self {
-        self.style_mut().scrollbar.get_or_insert_with(ScrollbarStyle::default).button_color = Some(
-            color.resolve_themed()
-        );
+        self.style_mut()
+            .scrollbar
+            .get_or_insert_with(ScrollbarStyle::default)
+            .button_color = Some(color.resolve_themed());
         self.mark_dirty();
         self
     }
 
     fn scrollbar_arrow_color<M>(mut self, color: impl IntoThemed<Color, M>) -> Self {
-        self.style_mut().scrollbar.get_or_insert_with(ScrollbarStyle::default).arrow_color = Some(
-            color.resolve_themed()
-        );
+        self.style_mut()
+            .scrollbar
+            .get_or_insert_with(ScrollbarStyle::default)
+            .arrow_color = Some(color.resolve_themed());
 
         self.mark_dirty();
 
@@ -518,8 +528,10 @@ pub trait StyleBuilder: Sized {
     }
 
     fn scrollbar_thumb_border_color<M>(mut self, color: impl IntoThemed<Color, M>) -> Self {
-        self.style_mut().scrollbar.get_or_insert_with(ScrollbarStyle::default).thumb_border_color =
-            Some(color.resolve_themed());
+        self.style_mut()
+            .scrollbar
+            .get_or_insert_with(ScrollbarStyle::default)
+            .thumb_border_color = Some(color.resolve_themed());
 
         self.mark_dirty();
 
@@ -527,8 +539,10 @@ pub trait StyleBuilder: Sized {
     }
 
     fn scrollbar_track_border_color<M>(mut self, color: impl IntoThemed<Color, M>) -> Self {
-        self.style_mut().scrollbar.get_or_insert_with(ScrollbarStyle::default).track_border_color =
-            Some(color.resolve_themed());
+        self.style_mut()
+            .scrollbar
+            .get_or_insert_with(ScrollbarStyle::default)
+            .track_border_color = Some(color.resolve_themed());
 
         self.mark_dirty();
 
@@ -540,8 +554,10 @@ pub trait StyleBuilder: Sized {
     // track/thumb/buttons; unset fields fall back to the default scrollbar style.
 
     fn scrollbar_hover_thickness(mut self, thickness: f32) -> Self {
-        self.style_mut().scrollbar_hover.get_or_insert_with(ScrollbarStyle::default).thickness =
-            Some(thickness);
+        self.style_mut()
+            .scrollbar_hover
+            .get_or_insert_with(ScrollbarStyle::default)
+            .thickness = Some(thickness);
 
         self.mark_dirty();
 
@@ -549,12 +565,10 @@ pub trait StyleBuilder: Sized {
     }
 
     fn scrollbar_hover_min_thumb_length(mut self, length: f32) -> Self {
-        self
-
-            .style_mut()
-
-            .scrollbar_hover.get_or_insert_with(ScrollbarStyle::default).min_thumb_length =
-            Some(length);
+        self.style_mut()
+            .scrollbar_hover
+            .get_or_insert_with(ScrollbarStyle::default)
+            .min_thumb_length = Some(length);
 
         self.mark_dirty();
 
@@ -562,8 +576,10 @@ pub trait StyleBuilder: Sized {
     }
 
     fn scrollbar_hover_thumb_color<M>(mut self, color: impl IntoThemed<Color, M>) -> Self {
-        self.style_mut().scrollbar_hover.get_or_insert_with(ScrollbarStyle::default).thumb_color =
-            Some(color.resolve_themed());
+        self.style_mut()
+            .scrollbar_hover
+            .get_or_insert_with(ScrollbarStyle::default)
+            .thumb_color = Some(color.resolve_themed());
 
         self.mark_dirty();
 
@@ -571,13 +587,10 @@ pub trait StyleBuilder: Sized {
     }
 
     fn scrollbar_hover_thumb_border_color<M>(mut self, color: impl IntoThemed<Color, M>) -> Self {
-        self
-
-            .style_mut()
-
-            .scrollbar_hover.get_or_insert_with(ScrollbarStyle::default).thumb_border_color = Some(
-            color.resolve_themed()
-        );
+        self.style_mut()
+            .scrollbar_hover
+            .get_or_insert_with(ScrollbarStyle::default)
+            .thumb_border_color = Some(color.resolve_themed());
 
         self.mark_dirty();
 
@@ -585,8 +598,10 @@ pub trait StyleBuilder: Sized {
     }
 
     fn scrollbar_hover_track_color<M>(mut self, color: impl IntoThemed<Color, M>) -> Self {
-        self.style_mut().scrollbar_hover.get_or_insert_with(ScrollbarStyle::default).track_color =
-            Some(color.resolve_themed());
+        self.style_mut()
+            .scrollbar_hover
+            .get_or_insert_with(ScrollbarStyle::default)
+            .track_color = Some(color.resolve_themed());
 
         self.mark_dirty();
 
@@ -594,25 +609,28 @@ pub trait StyleBuilder: Sized {
     }
 
     fn scrollbar_hover_track_border_color<M>(mut self, color: impl IntoThemed<Color, M>) -> Self {
-        self
-            .style_mut()
-            .scrollbar_hover.get_or_insert_with(ScrollbarStyle::default).track_border_color = Some(
-            color.resolve_themed()
-        );
+        self.style_mut()
+            .scrollbar_hover
+            .get_or_insert_with(ScrollbarStyle::default)
+            .track_border_color = Some(color.resolve_themed());
         self.mark_dirty();
         self
     }
 
     fn scrollbar_hover_button_color<M>(mut self, color: impl IntoThemed<Color, M>) -> Self {
-        self.style_mut().scrollbar_hover.get_or_insert_with(ScrollbarStyle::default).button_color =
-            Some(color.resolve_themed());
+        self.style_mut()
+            .scrollbar_hover
+            .get_or_insert_with(ScrollbarStyle::default)
+            .button_color = Some(color.resolve_themed());
         self.mark_dirty();
         self
     }
 
     fn scrollbar_hover_arrow_color<M>(mut self, color: impl IntoThemed<Color, M>) -> Self {
-        self.style_mut().scrollbar_hover.get_or_insert_with(ScrollbarStyle::default).arrow_color =
-            Some(color.resolve_themed());
+        self.style_mut()
+            .scrollbar_hover
+            .get_or_insert_with(ScrollbarStyle::default)
+            .arrow_color = Some(color.resolve_themed());
         self.mark_dirty();
         self
     }
@@ -620,66 +638,73 @@ pub trait StyleBuilder: Sized {
     // Active while the thumb is being dragged; unset fields fall back to
     // the hover style, then the default.
     fn scrollbar_pressed_thickness(mut self, thickness: f32) -> Self {
-        self.style_mut().scrollbar_pressed.get_or_insert_with(ScrollbarStyle::default).thickness =
-            Some(thickness);
+        self.style_mut()
+            .scrollbar_pressed
+            .get_or_insert_with(ScrollbarStyle::default)
+            .thickness = Some(thickness);
         self.mark_dirty();
         self
     }
 
     fn scrollbar_pressed_min_thumb_length(mut self, length: f32) -> Self {
-        self
-            .style_mut()
-            .scrollbar_pressed.get_or_insert_with(ScrollbarStyle::default).min_thumb_length =
-            Some(length);
+        self.style_mut()
+            .scrollbar_pressed
+            .get_or_insert_with(ScrollbarStyle::default)
+            .min_thumb_length = Some(length);
         self.mark_dirty();
         self
     }
 
     fn scrollbar_pressed_thumb_color<M>(mut self, color: impl IntoThemed<Color, M>) -> Self {
-        self.style_mut().scrollbar_pressed.get_or_insert_with(ScrollbarStyle::default).thumb_color =
-            Some(color.resolve_themed());
+        self.style_mut()
+            .scrollbar_pressed
+            .get_or_insert_with(ScrollbarStyle::default)
+            .thumb_color = Some(color.resolve_themed());
         self.mark_dirty();
         self
     }
 
     fn scrollbar_pressed_thumb_border_color<M>(mut self, color: impl IntoThemed<Color, M>) -> Self {
-        self
-            .style_mut()
-            .scrollbar_pressed.get_or_insert_with(ScrollbarStyle::default).thumb_border_color =
-            Some(color.resolve_themed());
+        self.style_mut()
+            .scrollbar_pressed
+            .get_or_insert_with(ScrollbarStyle::default)
+            .thumb_border_color = Some(color.resolve_themed());
         self.mark_dirty();
         self
     }
 
     fn scrollbar_pressed_track_color<M>(mut self, color: impl IntoThemed<Color, M>) -> Self {
-        self.style_mut().scrollbar_pressed.get_or_insert_with(ScrollbarStyle::default).track_color =
-            Some(color.resolve_themed());
+        self.style_mut()
+            .scrollbar_pressed
+            .get_or_insert_with(ScrollbarStyle::default)
+            .track_color = Some(color.resolve_themed());
         self.mark_dirty();
         self
     }
 
     fn scrollbar_pressed_track_border_color<M>(mut self, color: impl IntoThemed<Color, M>) -> Self {
-        self
-            .style_mut()
-            .scrollbar_pressed.get_or_insert_with(ScrollbarStyle::default).track_border_color =
-            Some(color.resolve_themed());
+        self.style_mut()
+            .scrollbar_pressed
+            .get_or_insert_with(ScrollbarStyle::default)
+            .track_border_color = Some(color.resolve_themed());
         self.mark_dirty();
         self
     }
 
     fn scrollbar_pressed_button_color<M>(mut self, color: impl IntoThemed<Color, M>) -> Self {
-        self
-            .style_mut()
-            .scrollbar_pressed.get_or_insert_with(ScrollbarStyle::default).button_color = Some(
-            color.resolve_themed()
-        );
+        self.style_mut()
+            .scrollbar_pressed
+            .get_or_insert_with(ScrollbarStyle::default)
+            .button_color = Some(color.resolve_themed());
         self.mark_dirty();
         self
     }
 
     fn scrollbar_pressed_arrow_color<M>(mut self, color: impl IntoThemed<Color, M>) -> Self {
-        self.style_mut().scrollbar_pressed.get_or_insert_with(ScrollbarStyle::default).arrow_color =
-            Some(color.resolve_themed());
+        self.style_mut()
+            .scrollbar_pressed
+            .get_or_insert_with(ScrollbarStyle::default)
+            .arrow_color = Some(color.resolve_themed());
         self.mark_dirty();
         self
     }
@@ -704,7 +729,10 @@ pub trait StyleBuilder: Sized {
 
     fn transition(mut self, transition: crate::Transition) -> Self {
         self.style_mut().transition = Some(transition);
-        let props = self.style_mut().transition_properties.unwrap_or(TransitionProperty::NONE);
+        let props = self
+            .style_mut()
+            .transition_properties
+            .unwrap_or(TransitionProperty::NONE);
         self.style_mut().transition_properties = Some(props.union(TransitionProperty::DEFAULT));
         self.mark_dirty();
         self
@@ -712,7 +740,10 @@ pub trait StyleBuilder: Sized {
 
     fn transition_all(mut self, transition: crate::Transition) -> Self {
         self.style_mut().transition = Some(transition);
-        let props = self.style_mut().transition_properties.unwrap_or(TransitionProperty::NONE);
+        let props = self
+            .style_mut()
+            .transition_properties
+            .unwrap_or(TransitionProperty::NONE);
         self.style_mut().transition_properties = Some(props.union(TransitionProperty::ALL));
         self.mark_dirty();
         self
@@ -720,7 +751,10 @@ pub trait StyleBuilder: Sized {
 
     fn transition_colors(mut self, transition: crate::Transition) -> Self {
         self.style_mut().transition_overrides.colors = Some(transition);
-        let props = self.style_mut().transition_properties.unwrap_or(TransitionProperty::NONE);
+        let props = self
+            .style_mut()
+            .transition_properties
+            .unwrap_or(TransitionProperty::NONE);
         self.style_mut().transition_properties = Some(props.union(TransitionProperty::COLORS));
         self.mark_dirty();
         self
@@ -728,7 +762,10 @@ pub trait StyleBuilder: Sized {
 
     fn transition_opacity(mut self, transition: crate::Transition) -> Self {
         self.style_mut().transition_overrides.opacity = Some(transition);
-        let props = self.style_mut().transition_properties.unwrap_or(TransitionProperty::NONE);
+        let props = self
+            .style_mut()
+            .transition_properties
+            .unwrap_or(TransitionProperty::NONE);
         self.style_mut().transition_properties = Some(props.union(TransitionProperty::OPACITY));
         self.mark_dirty();
         self
@@ -736,7 +773,10 @@ pub trait StyleBuilder: Sized {
 
     fn transition_shadow(mut self, transition: crate::Transition) -> Self {
         self.style_mut().transition_overrides.shadow = Some(transition);
-        let props = self.style_mut().transition_properties.unwrap_or(TransitionProperty::NONE);
+        let props = self
+            .style_mut()
+            .transition_properties
+            .unwrap_or(TransitionProperty::NONE);
         self.style_mut().transition_properties = Some(props.union(TransitionProperty::SHADOW));
         self.mark_dirty();
         self
@@ -744,7 +784,10 @@ pub trait StyleBuilder: Sized {
 
     fn transition_transform(mut self, transition: crate::Transition) -> Self {
         self.style_mut().transition_overrides.transform = Some(transition);
-        let props = self.style_mut().transition_properties.unwrap_or(TransitionProperty::NONE);
+        let props = self
+            .style_mut()
+            .transition_properties
+            .unwrap_or(TransitionProperty::NONE);
         self.style_mut().transition_properties = Some(props.union(TransitionProperty::TRANSFORM));
         self.mark_dirty();
         self
@@ -760,13 +803,16 @@ pub trait StyleBuilder: Sized {
 }
 
 #[derive(Default)]
+/// Data and behavior represented by `StylePatch`.
 pub struct StylePatch(Style);
 
 impl StylePatch {
+    /// Creates a value with its default configuration.
     pub fn new() -> Self {
         Self(Style::default())
     }
 
+    /// Returns or updates the `build` value.
     pub fn build(self) -> Style {
         self.0
     }

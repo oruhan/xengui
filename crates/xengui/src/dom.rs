@@ -12,6 +12,7 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 
 #[derive(Clone, Debug, PartialEq)]
+/// Available `DomAction` choices.
 pub enum DomAction {
     /// Synthesizes a primary activation - a click on `Button`, a toggle
     /// on `Checkbox`/`Switch`, a selection on `RadioButton`, a focus on
@@ -39,23 +40,30 @@ thread_local! {
 /// `.id(id)`. Delivered on that widget's next animation tick.
 pub fn dispatch(id: &str, action: DomAction) {
     MAILBOX.with(|m| {
-        m.borrow_mut().entry(SmolStr::new(id)).or_default().push(action);
+        m.borrow_mut()
+            .entry(SmolStr::new(id))
+            .or_default()
+            .push(action);
     });
     crate::hooks::mark_dirty_and_redraw();
 }
 
+/// Returns or updates the `click` value.
 pub fn click(id: &str) {
     dispatch(id, DomAction::Click);
 }
 
+/// Returns or updates the `focus` value.
 pub fn focus(id: &str) {
     dispatch(id, DomAction::Focus);
 }
 
+/// Updates the `set_checked` value.
 pub fn set_checked(id: &str, checked: bool) {
     dispatch(id, DomAction::SetChecked(checked));
 }
 
+/// Updates the `set_value` value.
 pub fn set_value(id: &str, value: impl Into<String>) {
     dispatch(id, DomAction::SetValue(value.into()));
 }
@@ -63,12 +71,7 @@ pub fn set_value(id: &str, value: impl Into<String>) {
 /// Widgets use this in `wants_animation_frame` to opt into ticking only
 /// while something is actually pending for their own id.
 pub fn has_pending(id: &str) -> bool {
-    MAILBOX.with(|m|
-        m
-            .borrow()
-            .get(id)
-            .is_some_and(|q| !q.is_empty())
-    )
+    MAILBOX.with(|m| m.borrow().get(id).is_some_and(|q| !q.is_empty()))
 }
 
 /// Drains and returns every action currently queued for `id`, in the

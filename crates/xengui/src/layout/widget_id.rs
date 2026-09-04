@@ -20,7 +20,7 @@ impl WidgetId {
     }
 }
 
-use std::sync::atomic::{ AtomicU64, Ordering };
+use std::sync::atomic::{AtomicU64, Ordering};
 
 impl WidgetId {
     /// Fresh identifier for a newly-constructed widget instance; carry it

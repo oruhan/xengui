@@ -17,6 +17,7 @@ pub fn set_is_touch_platform(value: bool) {
     IS_TOUCH.with(|cell| cell.set(value));
 }
 
+/// Returns whether the `is_touch_platform` condition is satisfied.
 pub fn is_touch_platform() -> bool {
     if cfg!(any(target_os = "ios", target_os = "android")) {
         return true;

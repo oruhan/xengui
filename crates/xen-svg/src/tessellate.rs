@@ -1,31 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
-use crate::{ CIRCLE_SEGMENTS, CORNER_SEGMENTS, TOLERANCE };
 use super::{
-    FillRule as SvgFillRule,
-    LineCap as SvgLineCap,
-    LineJoin as SvgLineJoin,
-    PathCommand,
-    SvgAttributes,
-    SvgColor,
-    SvgDocument,
-    SvgElement,
-    SvgImageSource,
-    Transform2D,
+    FillRule as SvgFillRule, LineCap as SvgLineCap, LineJoin as SvgLineJoin, PathCommand,
+    SvgAttributes, SvgColor, SvgDocument, SvgElement, SvgImageSource, Transform2D,
 };
-use lyon::math::{ point, Point };
+use crate::{CIRCLE_SEGMENTS, CORNER_SEGMENTS, TOLERANCE};
+use lyon::math::{Point, point};
 use lyon::path::Path;
 use lyon::tessellation::{
-    BuffersBuilder,
-    FillOptions,
-    FillRule,
-    FillTessellator,
-    FillVertex,
-    LineCap,
-    LineJoin,
-    StrokeOptions,
-    StrokeTessellator,
-    StrokeVertex,
-    VertexBuffers,
+    BuffersBuilder, FillOptions, FillRule, FillTessellator, FillVertex, LineCap, LineJoin,
+    StrokeOptions, StrokeTessellator, StrokeVertex, VertexBuffers,
 };
 
 /// A single filled triangle in the SVG's own `viewBox` coordinate space,
@@ -63,7 +46,7 @@ fn tessellate_element(
     element: &SvgElement,
     parent_transform: Transform2D,
     parent_opacity: f32,
-    out: &mut Vec<SvgTriangle>
+    out: &mut Vec<SvgTriangle>,
 ) {
     // Element's own local transform must apply first, then the accumulated
     // ancestor chain - not the other way around.
@@ -87,7 +70,14 @@ fn tessellate_element(
                 add_fill_aa_fringe(&loops, attrs.fill, opacity, out);
             }
         }
-        SvgElement::Rect { x, y, width, height, rx, attrs } => {
+        SvgElement::Rect {
+            x,
+            y,
+            width,
+            height,
+            rx,
+            attrs,
+        } => {
             let polygon = rect_polygon(*x, *y, *width, *height, *rx);
             let path = build_polygon_path(&polygon, true, transform);
             emit_shape(&path, attrs, opacity, scale, out);
@@ -107,28 +97,27 @@ fn tessellate_element(
                 add_fill_aa_fringe(&[mapped], attrs.fill, opacity, out);
             }
         }
-        SvgElement::Line { x1, y1, x2, y2, attrs } => {
-            let path = build_polygon_path(
-                &[
-                    (*x1, *y1),
-                    (*x2, *y2),
-                ],
-                false,
-                transform
-            );
+        SvgElement::Line {
+            x1,
+            y1,
+            x2,
+            y2,
+            attrs,
+        } => {
+            let path = build_polygon_path(&[(*x1, *y1), (*x2, *y2)], false, transform);
             emit_stroke(&path, attrs, opacity, scale, out);
         }
-        SvgElement::Image { x, y, width, height, source, .. } => {
-            if
-                let SvgImageSource::Svg(nested) = source &&
-                let Some(nested_transform) = nested_svg_transform(
-                    *x,
-                    *y,
-                    *width,
-                    *height,
-                    nested.view_box,
-                    transform
-                )
+        SvgElement::Image {
+            x,
+            y,
+            width,
+            height,
+            source,
+            ..
+        } => {
+            if let SvgImageSource::Svg(nested) = source
+                && let Some(nested_transform) =
+                    nested_svg_transform(*x, *y, *width, *height, nested.view_box, transform)
             {
                 for child in &nested.elements {
                     tessellate_element(child, nested_transform, opacity, out);
@@ -154,10 +143,7 @@ fn map_point(transform: Transform2D, x: f32, y: f32) -> Point {
 }
 
 fn map_points(points: &[(f32, f32)], transform: Transform2D) -> Vec<(f32, f32)> {
-    points
-        .iter()
-        .map(|&(x, y)| transform.apply(x, y))
-        .collect()
+    points.iter().map(|&(x, y)| transform.apply(x, y)).collect()
 }
 
 fn map_loops(loops: &[Vec<(f32, f32)>], transform: Transform2D) -> Vec<Vec<(f32, f32)>> {
@@ -213,16 +199,14 @@ fn flatten_path_commands(commands: &[PathCommand]) -> Vec<Vec<(f32, f32)>> {
                 for i in 1..=AA_CURVE_SEGMENTS {
                     let t = (i as f32) / (AA_CURVE_SEGMENTS as f32);
                     let mt = 1.0 - t;
-                    let px =
-                        mt * mt * mt * p0.0 +
-                        3.0 * mt * mt * t * c1x +
-                        3.0 * mt * t * t * c2x +
-                        t * t * t * x;
-                    let py =
-                        mt * mt * mt * p0.1 +
-                        3.0 * mt * mt * t * c1y +
-                        3.0 * mt * t * t * c2y +
-                        t * t * t * y;
+                    let px = mt * mt * mt * p0.0
+                        + 3.0 * mt * mt * t * c1x
+                        + 3.0 * mt * t * t * c2x
+                        + t * t * t * x;
+                    let py = mt * mt * mt * p0.1
+                        + 3.0 * mt * mt * t * c1y
+                        + 3.0 * mt * t * t * c2y
+                        + t * t * t * y;
                     push_point(&mut current, (px, py));
                 }
                 cursor = (x, y);
@@ -254,7 +238,7 @@ fn push_quad_band(
     w1: f32,
     paint: SvgColor,
     opacity: f32,
-    out: &mut Vec<SvgTriangle>
+    out: &mut Vec<SvgTriangle>,
 ) {
     let ext = |p: (f32, f32), w: f32| (p.0 + normal.0 * w, p.1 + normal.1 * w);
     let a0 = ext(a, w0);
@@ -262,8 +246,20 @@ fn push_quad_band(
     let b0 = ext(b, w0);
     let b1 = ext(b, w1);
 
-    out.push(SvgTriangle { p0: a0, p1: a1, p2: b1, paint, opacity });
-    out.push(SvgTriangle { p0: a0, p1: b1, p2: b0, paint, opacity });
+    out.push(SvgTriangle {
+        p0: a0,
+        p1: a1,
+        p2: b1,
+        paint,
+        opacity,
+    });
+    out.push(SvgTriangle {
+        p0: a0,
+        p1: b1,
+        p2: b0,
+        paint,
+        opacity,
+    });
 }
 
 // Builds a soft edge around every polygon loop by extruding thin,
@@ -278,7 +274,7 @@ fn add_fill_aa_fringe(
     loops: &[Vec<(f32, f32)>],
     paint: SvgColor,
     opacity: f32,
-    out: &mut Vec<SvgTriangle>
+    out: &mut Vec<SvgTriangle>,
 ) {
     if matches!(paint, SvgColor::None) {
         return;
@@ -317,7 +313,16 @@ fn add_fill_aa_fringe(
                 let band_opacity = opacity * (1.0 - (t0 + t1) * 0.5);
 
                 push_quad_band(a, b, normal, w0, w1, paint, band_opacity, out);
-                push_quad_band(a, b, (-normal.0, -normal.1), w0, w1, paint, band_opacity, out);
+                push_quad_band(
+                    a,
+                    b,
+                    (-normal.0, -normal.1),
+                    w0,
+                    w1,
+                    paint,
+                    band_opacity,
+                    out,
+                );
             }
         }
     }
@@ -340,16 +345,14 @@ fn build_path_from_commands(commands: &[PathCommand], transform: Transform2D) ->
                 builder.line_to(map_point(transform, x, y));
             }
             PathCommand::QuadTo(cx, cy, x, y) => {
-                builder.quadratic_bezier_to(
-                    map_point(transform, cx, cy),
-                    map_point(transform, x, y)
-                );
+                builder
+                    .quadratic_bezier_to(map_point(transform, cx, cy), map_point(transform, x, y));
             }
             PathCommand::CubicTo(c1x, c1y, c2x, c2y, x, y) => {
                 builder.cubic_bezier_to(
                     map_point(transform, c1x, c1y),
                     map_point(transform, c2x, c2y),
-                    map_point(transform, x, y)
+                    map_point(transform, x, y),
                 );
             }
             PathCommand::Close => {
@@ -388,7 +391,7 @@ fn emit_shape(
     attrs: &SvgAttributes,
     opacity: f32,
     scale: f32,
-    out: &mut Vec<SvgTriangle>
+    out: &mut Vec<SvgTriangle>,
 ) {
     if !matches!(attrs.fill, SvgColor::None) {
         tessellate_fill(path, attrs, opacity, out);
@@ -401,7 +404,7 @@ fn emit_stroke(
     attrs: &SvgAttributes,
     opacity: f32,
     scale: f32,
-    out: &mut Vec<SvgTriangle>
+    out: &mut Vec<SvgTriangle>,
 ) {
     if !matches!(attrs.stroke, SvgColor::None) && attrs.stroke_width > 0.0 {
         tessellate_stroke(path, attrs, opacity, scale, out);
@@ -419,7 +422,7 @@ fn tessellate_fill(path: &Path, attrs: &SvgAttributes, opacity: f32, out: &mut V
         &options,
         &mut BuffersBuilder::new(&mut geometry, |vertex: FillVertex| {
             vertex.position().to_array()
-        })
+        }),
     );
 
     if let Err(err) = result {
@@ -435,7 +438,7 @@ fn tessellate_stroke(
     attrs: &SvgAttributes,
     opacity: f32,
     scale: f32,
-    out: &mut Vec<SvgTriangle>
+    out: &mut Vec<SvgTriangle>,
 ) {
     let mut geometry: VertexBuffers<[f32; 2], u16> = VertexBuffers::new();
     let options = StrokeOptions::default()
@@ -452,7 +455,7 @@ fn tessellate_stroke(
         &options,
         &mut BuffersBuilder::new(&mut geometry, |vertex: StrokeVertex| {
             vertex.position().to_array()
-        })
+        }),
     );
 
     if let Err(err) = result {
@@ -490,9 +493,14 @@ fn push_triangles(
     geometry: &VertexBuffers<[f32; 2], u16>,
     paint: SvgColor,
     opacity: f32,
-    out: &mut Vec<SvgTriangle>
+    out: &mut Vec<SvgTriangle>,
 ) {
-    for tri in geometry.indices.chunks_exact(3) {
+    let (triangles, remainder) = geometry.indices.as_chunks::<3>();
+    debug_assert!(
+        remainder.is_empty(),
+        "tessellator emitted incomplete triangle indices"
+    );
+    for tri in triangles {
         let p0 = geometry.vertices[tri[0] as usize];
         let p1 = geometry.vertices[tri[1] as usize];
         let p2 = geometry.vertices[tri[2] as usize];
@@ -508,7 +516,12 @@ fn push_triangles(
 
 fn rect_polygon(x: f32, y: f32, width: f32, height: f32, rx: f32) -> Vec<(f32, f32)> {
     if rx <= 0.0 {
-        return vec![(x, y), (x + width, y), (x + width, y + height), (x, y + height)];
+        return vec![
+            (x, y),
+            (x + width, y),
+            (x + width, y + height),
+            (x, y + height),
+        ];
     }
 
     let r = rx.min(width * 0.5).min(height * 0.5);
@@ -548,7 +561,7 @@ fn nested_svg_transform(
     width: f32,
     height: f32,
     view_box: (f32, f32, f32, f32),
-    transform: Transform2D
+    transform: Transform2D,
 ) -> Option<Transform2D> {
     let (vb_x, vb_y, vb_w, vb_h) = view_box;
     let w = if width > 0.0 { width } else { vb_w };
@@ -563,7 +576,7 @@ fn nested_svg_transform(
         Transform2D::translate(-vb_x, -vb_y)
             .then(Transform2D::scale(s, s))
             .then(Transform2D::translate(ox, oy))
-            .then(transform)
+            .then(transform),
     )
 }
 
@@ -594,7 +607,7 @@ fn collect_raster_images_recursive(
     element: &SvgElement,
     parent_transform: Transform2D,
     parent_opacity: f32,
-    out: &mut Vec<SvgRasterImage>
+    out: &mut Vec<SvgRasterImage>,
 ) {
     let transform = element.attrs().transform.then(parent_transform);
     let opacity = parent_opacity * element.attrs().opacity;
@@ -605,41 +618,44 @@ fn collect_raster_images_recursive(
                 collect_raster_images_recursive(child, transform, opacity, out);
             }
         }
-        SvgElement::Image { x, y, width, height, source, clip, .. } => {
-            match source {
-                SvgImageSource::Raster { width: iw, height: ih, rgba } => {
-                    let w = if *width > 0.0 { *width } else { *iw as f32 };
-                    let h = if *height > 0.0 { *height } else { *ih as f32 };
-                    out.push(SvgRasterImage {
-                        position: (*x, *y),
-                        size: (w, h),
-                        width: *iw,
-                        height: *ih,
-                        rgba: rgba.clone(),
-                        opacity,
-                        transform,
-                        clip: *clip,
-                    });
-                }
-                SvgImageSource::Svg(nested) => {
-                    if
-                        let Some(nested_transform) = nested_svg_transform(
-                            *x,
-                            *y,
-                            *width,
-                            *height,
-                            nested.view_box,
-                            transform
-                        )
-                    {
-                        for child in &nested.elements {
-                            collect_raster_images_recursive(child, nested_transform, opacity, out);
-                        }
+        SvgElement::Image {
+            x,
+            y,
+            width,
+            height,
+            source,
+            clip,
+            ..
+        } => match source {
+            SvgImageSource::Raster {
+                width: iw,
+                height: ih,
+                rgba,
+            } => {
+                let w = if *width > 0.0 { *width } else { *iw as f32 };
+                let h = if *height > 0.0 { *height } else { *ih as f32 };
+                out.push(SvgRasterImage {
+                    position: (*x, *y),
+                    size: (w, h),
+                    width: *iw,
+                    height: *ih,
+                    rgba: rgba.clone(),
+                    opacity,
+                    transform,
+                    clip: *clip,
+                });
+            }
+            SvgImageSource::Svg(nested) => {
+                if let Some(nested_transform) =
+                    nested_svg_transform(*x, *y, *width, *height, nested.view_box, transform)
+                {
+                    for child in &nested.elements {
+                        collect_raster_images_recursive(child, nested_transform, opacity, out);
                     }
                 }
-                SvgImageSource::Unresolved(_) => {}
             }
-        }
+            SvgImageSource::Unresolved(_) => {}
+        },
         _ => {}
     }
 }
@@ -668,7 +684,7 @@ fn collect_draw_ops_recursive(
     element: &SvgElement,
     parent_transform: Transform2D,
     parent_opacity: f32,
-    out: &mut Vec<SvgDrawOp>
+    out: &mut Vec<SvgDrawOp>,
 ) {
     let transform = element.attrs().transform.then(parent_transform);
     let opacity = parent_opacity * element.attrs().opacity;
@@ -690,7 +706,14 @@ fn collect_draw_ops_recursive(
             }
             out.extend(tris.into_iter().map(SvgDrawOp::Triangle));
         }
-        SvgElement::Rect { x, y, width, height, rx, attrs } => {
+        SvgElement::Rect {
+            x,
+            y,
+            width,
+            height,
+            rx,
+            attrs,
+        } => {
             let mut tris = Vec::new();
             let polygon = rect_polygon(*x, *y, *width, *height, *rx);
             let path = build_polygon_path(&polygon, true, transform);
@@ -712,55 +735,55 @@ fn collect_draw_ops_recursive(
             }
             out.extend(tris.into_iter().map(SvgDrawOp::Triangle));
         }
-        SvgElement::Line { x1, y1, x2, y2, attrs } => {
+        SvgElement::Line {
+            x1,
+            y1,
+            x2,
+            y2,
+            attrs,
+        } => {
             let mut tris = Vec::new();
-            let path = build_polygon_path(
-                &[
-                    (*x1, *y1),
-                    (*x2, *y2),
-                ],
-                false,
-                transform
-            );
+            let path = build_polygon_path(&[(*x1, *y1), (*x2, *y2)], false, transform);
             emit_stroke(&path, attrs, opacity, scale, &mut tris);
             out.extend(tris.into_iter().map(SvgDrawOp::Triangle));
         }
-        SvgElement::Image { x, y, width, height, source, clip, .. } => {
-            match source {
-                SvgImageSource::Raster { width: iw, height: ih, rgba } => {
-                    let w = if *width > 0.0 { *width } else { *iw as f32 };
-                    let h = if *height > 0.0 { *height } else { *ih as f32 };
-                    out.push(
-                        SvgDrawOp::Image(SvgRasterImage {
-                            position: (*x, *y),
-                            size: (w, h),
-                            width: *iw,
-                            height: *ih,
-                            rgba: rgba.clone(),
-                            opacity,
-                            transform,
-                            clip: *clip,
-                        })
-                    );
-                }
-                SvgImageSource::Svg(nested) => {
-                    if
-                        let Some(nested_transform) = nested_svg_transform(
-                            *x,
-                            *y,
-                            *width,
-                            *height,
-                            nested.view_box,
-                            transform
-                        )
-                    {
-                        for child in &nested.elements {
-                            collect_draw_ops_recursive(child, nested_transform, opacity, out);
-                        }
+        SvgElement::Image {
+            x,
+            y,
+            width,
+            height,
+            source,
+            clip,
+            ..
+        } => match source {
+            SvgImageSource::Raster {
+                width: iw,
+                height: ih,
+                rgba,
+            } => {
+                let w = if *width > 0.0 { *width } else { *iw as f32 };
+                let h = if *height > 0.0 { *height } else { *ih as f32 };
+                out.push(SvgDrawOp::Image(SvgRasterImage {
+                    position: (*x, *y),
+                    size: (w, h),
+                    width: *iw,
+                    height: *ih,
+                    rgba: rgba.clone(),
+                    opacity,
+                    transform,
+                    clip: *clip,
+                }));
+            }
+            SvgImageSource::Svg(nested) => {
+                if let Some(nested_transform) =
+                    nested_svg_transform(*x, *y, *width, *height, nested.view_box, transform)
+                {
+                    for child in &nested.elements {
+                        collect_draw_ops_recursive(child, nested_transform, opacity, out);
                     }
                 }
-                SvgImageSource::Unresolved(_) => {}
             }
-        }
+            SvgImageSource::Unresolved(_) => {}
+        },
     }
 }

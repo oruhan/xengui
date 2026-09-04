@@ -1,4 +1,3 @@
-// crates/xengui-wgpu/src/msaa.rs (yeni)
 // SPDX-License-Identifier: Apache-2.0
 
 /// Hardware multisample count for anti-aliasing triangle geometry (used

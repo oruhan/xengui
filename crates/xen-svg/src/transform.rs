@@ -12,7 +12,14 @@ pub struct Transform2D {
 }
 
 impl Transform2D {
-    pub const IDENTITY: Self = Self { a: 1.0, b: 0.0, c: 0.0, d: 1.0, e: 0.0, f: 0.0 };
+    pub const IDENTITY: Self = Self {
+        a: 1.0,
+        b: 0.0,
+        c: 0.0,
+        d: 1.0,
+        e: 0.0,
+        f: 0.0,
+    };
 
     pub const fn new(a: f32, b: f32, c: f32, d: f32, e: f32, f: f32) -> Self {
         Self { a, b, c, d, e, f }
@@ -52,7 +59,10 @@ impl Transform2D {
     }
 
     pub fn apply(self, x: f32, y: f32) -> (f32, f32) {
-        (self.a * x + self.c * y + self.e, self.b * x + self.d * y + self.f)
+        (
+            self.a * x + self.c * y + self.e,
+            self.b * x + self.d * y + self.f,
+        )
     }
 }
 
@@ -82,54 +92,47 @@ pub fn parse_transform(input: &str) -> Transform2D {
             .collect();
 
         let matrix = match name.trim() {
-            "translate" =>
-                match nums.as_slice() {
-                    [tx] => Transform2D::translate(*tx, 0.0),
-                    [tx, ty] => Transform2D::translate(*tx, *ty),
-                    _ => {
-                        continue;
-                    }
+            "translate" => match nums.as_slice() {
+                [tx] => Transform2D::translate(*tx, 0.0),
+                [tx, ty] => Transform2D::translate(*tx, *ty),
+                _ => {
+                    continue;
                 }
-            "scale" =>
-                match nums.as_slice() {
-                    [s] => Transform2D::scale(*s, *s),
-                    [sx, sy] => Transform2D::scale(*sx, *sy),
-                    _ => {
-                        continue;
-                    }
+            },
+            "scale" => match nums.as_slice() {
+                [s] => Transform2D::scale(*s, *s),
+                [sx, sy] => Transform2D::scale(*sx, *sy),
+                _ => {
+                    continue;
                 }
-            "rotate" =>
-                match nums.as_slice() {
-                    [deg] => Transform2D::rotate(*deg),
-                    [deg, cx, cy] =>
-                        Transform2D::translate(*cx, *cy)
-                            .then(Transform2D::rotate(*deg))
-                            .then(Transform2D::translate(-cx, -cy)),
-                    _ => {
-                        continue;
-                    }
+            },
+            "rotate" => match nums.as_slice() {
+                [deg] => Transform2D::rotate(*deg),
+                [deg, cx, cy] => Transform2D::translate(*cx, *cy)
+                    .then(Transform2D::rotate(*deg))
+                    .then(Transform2D::translate(-cx, -cy)),
+                _ => {
+                    continue;
                 }
-            "skewX" =>
-                match nums.as_slice() {
-                    [deg] => Transform2D::skew_x(*deg),
-                    _ => {
-                        continue;
-                    }
+            },
+            "skewX" => match nums.as_slice() {
+                [deg] => Transform2D::skew_x(*deg),
+                _ => {
+                    continue;
                 }
-            "skewY" =>
-                match nums.as_slice() {
-                    [deg] => Transform2D::skew_y(*deg),
-                    _ => {
-                        continue;
-                    }
+            },
+            "skewY" => match nums.as_slice() {
+                [deg] => Transform2D::skew_y(*deg),
+                _ => {
+                    continue;
                 }
-            "matrix" =>
-                match nums.as_slice() {
-                    [a, b, c, d, e, f] => Transform2D::new(*a, *b, *c, *d, *e, *f),
-                    _ => {
-                        continue;
-                    }
+            },
+            "matrix" => match nums.as_slice() {
+                [a, b, c, d, e, f] => Transform2D::new(*a, *b, *c, *d, *e, *f),
+                _ => {
+                    continue;
                 }
+            },
             _ => {
                 continue;
             }

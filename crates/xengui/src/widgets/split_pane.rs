@@ -2,25 +2,9 @@
 //! IDE-style layout: optional left/right/bottom panels around a flexible
 //! center area, each resizable by dragging its own `SplitHandle`.
 use crate::{
-    AnimationManager,
-    Column,
-    Constraints,
-    Display,
-    Interaction,
-    LayoutBox,
-    Length,
-    MeasureContext,
-    MeasureResult,
-    Overflow,
-    PaintContext,
-    Row,
-    SplitHandle,
-    SplitSide,
-    Style,
-    StyleBuilder,
-    View,
-    Widget,
-    WidgetBase,
+    AnimationManager, Column, Constraints, Display, Interaction, LayoutBox, Length, MeasureContext,
+    MeasureResult, Overflow, PaintContext, Row, SplitHandle, SplitSide, Style, StyleBuilder, View,
+    Widget, WidgetBase,
 };
 use smol_str::SmolStr;
 use std::cell::Cell;
@@ -39,6 +23,7 @@ pub struct SplitPanel {
 }
 
 impl SplitPanel {
+    /// Creates a value with its default configuration.
     pub fn new(content: impl Widget + 'static, size: Rc<Cell<f32>>) -> Self {
         Self {
             content: Box::new(content),
@@ -49,11 +34,13 @@ impl SplitPanel {
         }
     }
 
+    /// Returns or updates the `min_size` value.
     pub fn min_size(mut self, value: f32) -> Self {
         self.min_size = value;
         self
     }
 
+    /// Returns or updates the `max_size` value.
     pub fn max_size(mut self, value: f32) -> Self {
         self.max_size = value;
         self
@@ -90,7 +77,7 @@ impl SplitSizedBox {
         size: Rc<Cell<f32>>,
         min_size: f32,
         max_size: f32,
-        horizontal: bool
+        horizontal: bool,
     ) -> Self {
         let mut base = WidgetBase::new(Interaction::new());
         base.style.display = Some(Display::Flex);
@@ -116,7 +103,11 @@ impl SplitSizedBox {
         let clamped = self.size.get().clamp(self.min_size, self.max_size);
         let target = Length::px(clamped);
         let mut size = self.base.style.size.unwrap_or_default();
-        let axis = if self.horizontal { &mut size.width } else { &mut size.height };
+        let axis = if self.horizontal {
+            &mut size.width
+        } else {
+            &mut size.height
+        };
 
         if *axis != Some(target) {
             *axis = Some(target);
@@ -203,7 +194,7 @@ impl Widget for SplitSizedBox {
 fn side_panel_row(
     left: Option<SplitPanel>,
     center: Box<dyn Widget>,
-    right: Option<SplitPanel>
+    right: Option<SplitPanel>,
 ) -> View {
     let mut row = Row::new().size(Length::pct(100.0), Length::pct(100.0));
 
@@ -213,15 +204,18 @@ fn side_panel_row(
             panel.size.clone(),
             panel.min_size,
             panel.max_size,
-            true
+            true,
         );
         if let Some(key) = panel.key {
             wrapper = wrapper.key(key);
         }
         row = row.child(wrapper);
-        row = row.child(
-            SplitHandle::new(panel.size, SplitSide::Left, panel.min_size, panel.max_size)
-        );
+        row = row.child(SplitHandle::new(
+            panel.size,
+            SplitSide::Left,
+            panel.min_size,
+            panel.max_size,
+        ));
     }
 
     let center_wrapper = View::new()
@@ -233,15 +227,18 @@ fn side_panel_row(
     row = row.child(center_wrapper);
 
     if let Some(panel) = right {
-        row = row.child(
-            SplitHandle::new(panel.size.clone(), SplitSide::Right, panel.min_size, panel.max_size)
-        );
+        row = row.child(SplitHandle::new(
+            panel.size.clone(),
+            SplitSide::Right,
+            panel.min_size,
+            panel.max_size,
+        ));
         let mut wrapper = SplitSizedBox::new(
             panel.content,
             panel.size,
             panel.min_size,
             panel.max_size,
-            true
+            true,
         );
         if let Some(key) = panel.key {
             wrapper = wrapper.key(key);
@@ -256,7 +253,7 @@ fn side_panel_row(
 pub fn split_pane(
     left: Option<SplitPanel>,
     center: impl Widget + 'static,
-    right: Option<SplitPanel>
+    right: Option<SplitPanel>,
 ) -> View {
     side_panel_row(left, Box::new(center), right)
 }
@@ -268,7 +265,7 @@ pub fn split_pane_with_bottom(
     left: Option<SplitPanel>,
     center: impl Widget + 'static,
     right: Option<SplitPanel>,
-    bottom: Option<SplitPanel>
+    bottom: Option<SplitPanel>,
 ) -> View {
     let top_row = side_panel_row(left, Box::new(center), right);
 
@@ -283,15 +280,18 @@ pub fn split_pane_with_bottom(
     column = column.child(top_wrapper);
 
     if let Some(panel) = bottom {
-        column = column.child(
-            SplitHandle::new(panel.size.clone(), SplitSide::Bottom, panel.min_size, panel.max_size)
-        );
+        column = column.child(SplitHandle::new(
+            panel.size.clone(),
+            SplitSide::Bottom,
+            panel.min_size,
+            panel.max_size,
+        ));
         let mut wrapper = SplitSizedBox::new(
             panel.content,
             panel.size,
             panel.min_size,
             panel.max_size,
-            false
+            false,
         );
         if let Some(key) = panel.key {
             wrapper = wrapper.key(key);

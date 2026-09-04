@@ -2,9 +2,9 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 use web_time::Duration;
 
-use xenframe::{ App, AppConfig };
 #[cfg(not(target_arch = "wasm32"))]
 use xenframe::WindowPosition;
+use xenframe::{App, AppConfig};
 use xengui::*;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -16,8 +16,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     #[cfg(not(target_arch = "wasm32"))]
     {
-        let _ = env_logger::Builder
-            ::new()
+        let _ = env_logger::Builder::new()
             .filter_module("xengui", log::LevelFilter::Info)
             .filter_level(log::LevelFilter::Warn)
             .format_timestamp(None)
@@ -53,7 +52,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     Label::new()
                         .label("Independent color / transform transitions")
                         .font_size(16)
-                        .color(Color::NEUTRAL_600)
+                        .color(Color::NEUTRAL_600),
                 )
                 .child(
                     // Color fades slowly, scale reacts fast - each group
@@ -65,23 +64,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         .padding(Edges::only(16, 10, 16, 10))
                         .border(Border::all(1, Color::BLUE_500).radius(10))
                         .transition_colors(
-                            Transition::new(Duration::from_millis(500)).easing(Easing::EaseInOut)
+                            Transition::new(Duration::from_millis(500)).easing(Easing::EaseInOut),
                         )
                         .transition_transform(
-                            Transition::new(Duration::from_millis(150)).easing(Easing::EaseOut)
+                            Transition::new(Duration::from_millis(150)).easing(Easing::EaseOut),
                         )
-                        .hover_style(|s, _theme: &Theme|
-                            s
-                                .background(Color::BLUE_600)
+                        .hover_style(|s, _theme: &Theme| {
+                            s.background(Color::BLUE_600)
                                 .border(Border::all(1, Color::BLUE_600).radius(10))
-                        )
-                        .pressed_style(|s, _theme: &Theme|
-                            s
-                                .background(Color::BLUE_800)
+                        })
+                        .pressed_style(|s, _theme: &Theme| {
+                            s.background(Color::BLUE_800)
                                 .scale(0.9)
                                 .content_scale(1.0)
                                 .border(Border::all(1, Color::BLUE_800).radius(10))
-                        )
+                        }),
                 )
                 .child(
                     Button::new()
@@ -91,10 +88,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         .padding(Edges::only(16, 10, 16, 10))
                         .border(Border::all(1, Color::NEUTRAL_700).radius(8))
                         .transition_all(Transition::new(Duration::from_millis(250)))
-                        .hover_style(|s, _theme: &Theme|
+                        .hover_style(|s, _theme: &Theme| {
                             s.border(Border::all(1, Color::NEUTRAL_700).radius(24))
-                        )
-                )
+                        }),
+                ),
         )
     });
 

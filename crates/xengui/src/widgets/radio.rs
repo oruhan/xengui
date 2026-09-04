@@ -1,45 +1,18 @@
 // SPDX-License-Identifier: Apache-2.0
 use crate::{
-    AnimKey,
-    AnimLayer,
-    AnimProperty,
-    AnimValue,
-    AnimationManager,
-    Background,
-    BorderRadius,
-    Color,
-    Constraints,
-    Easing,
-    ElementState,
-    EventCtx,
-    EventStatus,
-    InputEvent,
-    Interaction,
-    Key,
-    KeyState,
-    LayoutBox,
-    Length,
-    MeasureContext,
-    MeasureResult,
-    MouseButton,
-    PaintContext,
-    RectCommand,
-    Style,
-    StyleBuilder,
-    Transition,
-    Widget,
-    WidgetBase,
-    WidgetId,
-    constants::{ DEFAULT_CURSOR_ICON, DEFAULT_POINTER_CURSOR_ICON, DISABLED_WIDGET_OPACITY },
+    AnimKey, AnimLayer, AnimProperty, AnimValue, AnimationManager, Background, BorderRadius, Color,
+    Constraints, Easing, ElementState, EventCtx, EventStatus, InputEvent, Interaction, Key,
+    KeyState, LayoutBox, Length, MeasureContext, MeasureResult, MouseButton, PaintContext,
+    RectCommand, Style, StyleBuilder, Transition, Widget, WidgetBase, WidgetId,
+    constants::{DEFAULT_CURSOR_ICON, DEFAULT_POINTER_CURSOR_ICON, DISABLED_WIDGET_OPACITY},
 };
 use std::cell::Cell;
 use web_time::Duration;
 
 type SelectCallback = Box<dyn FnMut(&mut EventCtx)>;
 
-const SELECT_TRANSITION: Transition = Transition::new(Duration::from_millis(180)).easing(
-    Easing::EaseOut
-);
+const SELECT_TRANSITION: Transition =
+    Transition::new(Duration::from_millis(180)).easing(Easing::EaseOut);
 
 fn lerp_color(a: Color, b: Color, t: f32) -> Color {
     let blended = AnimValue(a.to_f32_array()).lerp_premultiplied(AnimValue(b.to_f32_array()), t);
@@ -62,6 +35,7 @@ pub struct RadioButton {
 }
 
 impl RadioButton {
+    /// Creates a value with its default configuration.
     pub fn new() -> Self {
         let mut interaction = Interaction::new();
         interaction.focusable = true;
@@ -82,6 +56,7 @@ impl RadioButton {
         radio
     }
 
+    /// Returns or updates the `selected` value.
     pub fn selected(mut self, selected: bool) -> Self {
         self.selected = selected;
         self.select_progress.set(if selected { 1.0 } else { 0.0 });
@@ -89,18 +64,21 @@ impl RadioButton {
         self
     }
 
+    /// Returns or updates the `size` value.
     pub fn size(mut self, size: f32) -> Self {
         self.size = size;
         self.mark_dirty();
         self
     }
 
+    /// Returns or updates the `dot_color` value.
     pub fn dot_color(mut self, color: Color) -> Self {
         self.dot_color = Some(color);
         self.mark_dirty();
         self
     }
 
+    /// Registers the `on_select` callback.
     pub fn on_select(mut self, f: impl FnMut(&mut EventCtx) + 'static) -> Self {
         self.on_select = Some(Box::new(f));
         self
@@ -108,15 +86,15 @@ impl RadioButton {
 
     fn recompute_style(&mut self) {
         self.base.recompute_style();
-        self.base.interaction.hover_cursor = self.base.computed_style.cursor.or(
-            Some(
-                if self.base.interaction.enabled {
+        self.base.interaction.hover_cursor =
+            self.base
+                .computed_style
+                .cursor
+                .or(Some(if self.base.interaction.enabled {
                     DEFAULT_POINTER_CURSOR_ICON
                 } else {
                     DEFAULT_CURSOR_ICON
-                }
-            )
-        );
+                }));
     }
 
     fn select(&mut self, ctx: &mut EventCtx) {
@@ -173,20 +151,27 @@ impl Widget for RadioButton {
             self.layout_box,
             style.scale.unwrap_or(1.0),
             style.transform_origin.unwrap_or_default(),
-            sf
+            sf,
         );
         let theme = crate::current_theme();
 
         let t = self.select_progress.get();
-        let dim = if self.base.interaction.enabled { 1.0 } else { DISABLED_WIDGET_OPACITY };
+        let dim = if self.base.interaction.enabled {
+            1.0
+        } else {
+            DISABLED_WIDGET_OPACITY
+        };
 
         let border = style.border.as_ref();
-        let unselected_border = border.map(|bo| bo.color).unwrap_or(theme.on_surface_variant);
+        let unselected_border = border
+            .map(|bo| bo.color)
+            .unwrap_or(theme.on_surface_variant);
         let selected_border = border.map(|bo| bo.color).unwrap_or(theme.primary);
         let ring_color_base = lerp_color(unselected_border, selected_border, t);
         let ring_color = ring_color_base.with_alpha_f32(ring_color_base.a() * dim);
 
-        let fill_base = style.background
+        let fill_base = style
+            .background
             .clone()
             .unwrap_or(Background::Color(Color::TRANSPARENT))
             .representative_color();
@@ -199,7 +184,9 @@ impl Widget for RadioButton {
             border_radius: Some(BorderRadius::all(Length::px(b.width * 0.5))),
             border_color: Some(ring_color),
             border_width: Some(
-                border.map(|bo| Length::px(bo.top.to_physical(sf))).unwrap_or(Length::px(2.0 * sf))
+                border
+                    .map(|bo| Length::px(bo.top.to_physical(sf)))
+                    .unwrap_or(Length::px(2.0 * sf)),
             ),
             clip_rect: None,
         });
@@ -213,9 +200,9 @@ impl Widget for RadioButton {
             ctx.draw_rect(RectCommand {
                 position: (cx - dot_d * 0.5, cy - dot_d * 0.5),
                 size: (dot_d, dot_d),
-                background: Some(
-                    Background::Color(dot_color_base.with_alpha_f32(dot_color_base.a() * t * dim))
-                ),
+                background: Some(Background::Color(
+                    dot_color_base.with_alpha_f32(dot_color_base.a() * t * dim),
+                )),
                 border_radius: Some(BorderRadius::all(Length::px(dot_d * 0.5))),
                 border_width: None,
                 border_color: None,
@@ -227,7 +214,8 @@ impl Widget for RadioButton {
     }
 
     fn hit_test(&self, point: (f32, f32)) -> bool {
-        self.layout_box.contains_rounded(point, self.layout_box.width * 0.5)
+        self.layout_box
+            .contains_rounded(point, self.layout_box.width * 0.5)
     }
 
     fn event(&mut self, event: &InputEvent, ctx: &mut EventCtx) -> EventStatus {
@@ -239,8 +227,9 @@ impl Widget for RadioButton {
             if let Some(id) = &self.base.id {
                 for action in crate::dom::take_actions(id) {
                     match action {
-                        crate::dom::DomAction::Click | crate::dom::DomAction::SetChecked(true) =>
-                            self.select(ctx),
+                        crate::dom::DomAction::Click | crate::dom::DomAction::SetChecked(true) => {
+                            self.select(ctx)
+                        }
                         crate::dom::DomAction::SetChecked(false) => {
                             self.selected = false;
                             self.base.dirty = true;
@@ -259,11 +248,14 @@ impl Widget for RadioButton {
                 button: MouseButton::Left,
                 ..
             } => self.base.interaction.pressed && self.base.interaction.hovered,
-            InputEvent::KeyInput { event: key_event, .. } =>
-                self.base.interaction.focused &&
-                    !key_event.repeat &&
-                    key_event.state == KeyState::Pressed &&
-                    matches!(key_event.key, Key::Enter | Key::Space),
+            InputEvent::KeyInput {
+                event: key_event, ..
+            } => {
+                self.base.interaction.focused
+                    && !key_event.repeat
+                    && key_event.state == KeyState::Pressed
+                    && matches!(key_event.key, Key::Enter | Key::Space)
+            }
             _ => false,
         };
 
@@ -279,9 +271,8 @@ impl Widget for RadioButton {
         if matches!(status, EventStatus::Handled) {
             self.recompute_style();
 
-            if
-                self.base.computed_style != before_style ||
-                self.base.interaction.focus_visible != before_focus_visible
+            if self.base.computed_style != before_style
+                || self.base.interaction.focus_visible != before_focus_visible
             {
                 self.base.dirty = true;
                 ctx.request_redraw();
@@ -296,15 +287,10 @@ impl Widget for RadioButton {
             return false;
         };
 
-        self.selected == other.selected &&
-            self.size == other.size &&
-            self.dot_color == other.dot_color &&
-            self.base.style == other.base.style &&
-            self.base.hover_style == other.base.hover_style &&
-            self.base.pressed_style == other.base.pressed_style &&
-            self.base.disabled_style == other.base.disabled_style &&
-            self.base.focus_style == other.base.focus_style &&
-            self.base.focused_hover_style == other.base.focused_hover_style
+        self.selected == other.selected
+            && self.size == other.size
+            && self.dot_color == other.dot_color
+            && self.base.authored_styles_eq(&other.base)
     }
 
     fn cascade_style(&mut self, parent: &Style, anim: &mut AnimationManager) {
@@ -320,7 +306,11 @@ impl Widget for RadioButton {
             layer: AnimLayer::Content,
             property: AnimProperty::Opacity,
         };
-        anim.set_target(key, AnimValue([target, 0.0, 0.0, 0.0]), Some(SELECT_TRANSITION));
+        anim.set_target(
+            key,
+            AnimValue([target, 0.0, 0.0, 0.0]),
+            Some(SELECT_TRANSITION),
+        );
         match anim.value(key) {
             Some(v) => {
                 self.select_progress.set(v.0[0]);
@@ -350,8 +340,8 @@ impl Widget for RadioButton {
     }
 
     fn wants_animation_frame(&self) -> bool {
-        self.base.interaction.enabled &&
-            self.base.id.as_deref().is_some_and(crate::dom::has_pending)
+        self.base.interaction.enabled
+            && self.base.id.as_deref().is_some_and(crate::dom::has_pending)
     }
 
     fn anim_id(&self) -> WidgetId {

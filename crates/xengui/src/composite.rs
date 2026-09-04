@@ -8,5 +8,6 @@ use crate::Widget;
 /// function component reruns on every parent render. Props are just the
 /// struct's own fields; `use_state` works normally inside `render`.
 pub trait Render {
+    /// Builds the widget subtree represented by this component's current properties.
     fn render(&self) -> Box<dyn Widget>;
 }

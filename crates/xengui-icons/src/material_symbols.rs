@@ -85,7 +85,7 @@ impl IconAxes {
     /// rasterized-glyph cache key downstream - bit-identical `f32`s only,
     /// no tolerance-based comparison.
     pub fn cache_key(&self) -> u64 {
-        use std::hash::{ Hash, Hasher };
+        use std::hash::{Hash, Hasher};
         let mut hasher = std::collections::hash_map::DefaultHasher::new();
         self.fill.to_bits().hash(&mut hasher);
         self.weight.to_bits().hash(&mut hasher);
@@ -97,7 +97,12 @@ impl IconAxes {
 
 impl Default for IconAxes {
     fn default() -> Self {
-        Self { fill: 0.0, weight: 400.0, grade: 0.0, optical_size: 24.0 }
+        Self {
+            fill: 0.0,
+            weight: 400.0,
+            grade: 0.0,
+            optical_size: 24.0,
+        }
     }
 }
 

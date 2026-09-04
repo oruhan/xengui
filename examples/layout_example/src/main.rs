@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // hide console window on windows subsystem
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
-use std::{ cell::Cell, rc::Rc };
+use std::{cell::Cell, rc::Rc};
 
-use xenframe::{ App, AppConfig };
 #[cfg(not(target_arch = "wasm32"))]
 use xenframe::WindowPosition;
+use xenframe::{App, AppConfig};
 use xengui::*;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -17,8 +17,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     #[cfg(not(target_arch = "wasm32"))]
     {
-        let _ = env_logger::Builder
-            ::new()
+        let _ = env_logger::Builder::new()
             .filter_module("xengui", log::LevelFilter::Info)
             .filter_level(log::LevelFilter::Warn)
             .format_timestamp(None)
@@ -43,9 +42,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     app.with_font(
         "Noto_Sans",
-        include_bytes!(
-            concat!(env!("CARGO_MANIFEST_DIR"), "/fonts/NotoSans-VariableFont.ttf")
-        ).to_vec()
+        include_bytes!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/fonts/NotoSans-VariableFont.ttf"
+        ))
+        .to_vec(),
     );
 
     app.render(|| {
@@ -75,67 +76,65 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         .background(|theme: &Theme| theme.background)
                         .padding(Edges::all(15))
                         .gap(0, 10)
-                        .child(
-                            split_pane_with_bottom(
-                                Some(
-                                    SplitPanel::new(
-                                        View::new()
-                                            .display(Display::Flex)
-                                            .align_items(Align::Center)
-                                            .justify_content(JustifyContent::Center)
-                                            .background(|theme: &Theme| theme.tertiary)
-                                            .color(|theme: &Theme| theme.on_tertiary)
-                                            .width(pct!(100))
-                                            .child(Label::new().label("Sidebar box")),
-                                        sidebar_width.clone()
-                                    )
-                                        .min_size(180.0)
-                                        .max_size(480.0)
-                                        .key("sidebar")
-                                ),
-                                View::new()
-                                    .display(Display::Flex)
-                                    .align_items(Align::Center)
-                                    .justify_content(JustifyContent::Center)
-                                    .background(|theme: &Theme| theme.secondary)
-                                    .color(|theme: &Theme| theme.on_secondary)
-                                    .width(pct!(100))
-                                    .child(Label::new().label("Content box")),
-                                Some(
-                                    SplitPanel::new(
-                                        View::new()
-                                            .display(Display::Flex)
-                                            .align_items(Align::Center)
-                                            .justify_content(JustifyContent::Center)
-                                            .background(|theme: &Theme| theme.tertiary)
-                                            .color(|theme: &Theme| theme.on_tertiary)
-                                            .width(pct!(100))
-                                            .child(Label::new().label("Outline box")),
-                                        outline_width.clone()
-                                    )
-                                        .min_size(160.0)
-                                        .max_size(400.0)
-                                        .key("outline")
-                                ),
-                                Some(
-                                    SplitPanel::new(
-                                        View::new()
-                                            .display(Display::Flex)
-                                            .align_items(Align::Center)
-                                            .justify_content(JustifyContent::Center)
-                                            .background(|theme: &Theme| theme.primary)
-                                            .color(|theme: &Theme| theme.on_primary)
-                                            .width(pct!(100))
-                                            .child(Label::new().label("Bottom box")),
-                                        bottom_height.clone()
-                                    )
-                                        .min_size(160.0)
-                                        .max_size(400.0)
-                                        .key("bottom")
+                        .child(split_pane_with_bottom(
+                            Some(
+                                SplitPanel::new(
+                                    View::new()
+                                        .display(Display::Flex)
+                                        .align_items(Align::Center)
+                                        .justify_content(JustifyContent::Center)
+                                        .background(|theme: &Theme| theme.tertiary)
+                                        .color(|theme: &Theme| theme.on_tertiary)
+                                        .width(pct!(100))
+                                        .child(Label::new().label("Sidebar box")),
+                                    sidebar_width.clone(),
                                 )
-                            )
-                        )
-                )
+                                .min_size(180.0)
+                                .max_size(480.0)
+                                .key("sidebar"),
+                            ),
+                            View::new()
+                                .display(Display::Flex)
+                                .align_items(Align::Center)
+                                .justify_content(JustifyContent::Center)
+                                .background(|theme: &Theme| theme.secondary)
+                                .color(|theme: &Theme| theme.on_secondary)
+                                .width(pct!(100))
+                                .child(Label::new().label("Content box")),
+                            Some(
+                                SplitPanel::new(
+                                    View::new()
+                                        .display(Display::Flex)
+                                        .align_items(Align::Center)
+                                        .justify_content(JustifyContent::Center)
+                                        .background(|theme: &Theme| theme.tertiary)
+                                        .color(|theme: &Theme| theme.on_tertiary)
+                                        .width(pct!(100))
+                                        .child(Label::new().label("Outline box")),
+                                    outline_width.clone(),
+                                )
+                                .min_size(160.0)
+                                .max_size(400.0)
+                                .key("outline"),
+                            ),
+                            Some(
+                                SplitPanel::new(
+                                    View::new()
+                                        .display(Display::Flex)
+                                        .align_items(Align::Center)
+                                        .justify_content(JustifyContent::Center)
+                                        .background(|theme: &Theme| theme.primary)
+                                        .color(|theme: &Theme| theme.on_primary)
+                                        .width(pct!(100))
+                                        .child(Label::new().label("Bottom box")),
+                                    bottom_height.clone(),
+                                )
+                                .min_size(160.0)
+                                .max_size(400.0)
+                                .key("bottom"),
+                            ),
+                        )),
+                ),
         )
     });
 

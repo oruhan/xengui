@@ -6,32 +6,22 @@
 
 mod base64;
 mod color;
+mod constants;
 mod document;
 mod element;
 mod parser;
 mod tessellate;
 mod transform;
-mod constants;
 
-pub use color::{ Color, SvgColor };
+pub use color::{Color, SvgColor};
+pub use constants::*;
 pub use document::SvgDocument;
 pub use element::{
-    FillRule,
-    LineCap,
-    LineJoin,
-    PathCommand,
-    SvgAttributes,
-    SvgElement,
-    SvgImageSource,
+    FillRule, LineCap, LineJoin, PathCommand, SvgAttributes, SvgElement, SvgImageSource,
 };
 pub use parser::parse_svg;
 pub use tessellate::{
+    SvgDrawOp, SvgRasterImage, SvgTriangle, collect_draw_ops, collect_raster_images,
     tessellate_document,
-    collect_raster_images,
-    SvgRasterImage,
-    SvgTriangle,
-    collect_draw_ops,
-    SvgDrawOp,
 };
-pub use transform::{ parse_transform, Transform2D };
-pub use constants::*;
+pub use transform::{Transform2D, parse_transform};

@@ -2,7 +2,10 @@
 use smol_str::SmolStr;
 
 use crate::{
-    AnimationManager, Background, Border, BorderRadius, BoxShadow, BoxShadowCommand, Color, Constraints, EventCtx, EventStatus, InputEvent, Interaction, LayoutBox, Length, MeasureContext, MeasureResult, Outline, PaintContext, RectCommand, Style, TransformOrigin, WidgetId, properties::StyleValue,
+    AnimationManager, Background, Border, BorderRadius, BoxShadow, BoxShadowCommand, Color,
+    Constraints, EventCtx, EventStatus, InputEvent, Interaction, LayoutBox, Length, MeasureContext,
+    MeasureResult, Outline, PaintContext, RectCommand, Style, TransformOrigin, WidgetId,
+    properties::StyleValue,
 };
 use std::any::Any;
 
@@ -10,27 +13,38 @@ use std::any::Any;
 /// DOM `<input>` on web targets so mobile browsers open the keyboard.
 #[derive(Clone, Debug)]
 pub struct NativeTextInputSnapshot {
+    /// The `value` value carried by this type.
     pub value: String,
+    /// The `placeholder` value carried by this type.
     pub placeholder: String,
+    /// The `max_length` value carried by this type.
     pub max_length: Option<usize>,
+    /// The `read_only` value carried by this type.
     pub read_only: bool,
 }
 
+/// Behavior required from `Widget` implementations.
 pub trait Widget: Any {
+    /// Returns or updates the `as_any` value.
     fn as_any(&self) -> &dyn Any;
 
+    /// Returns or updates the `as_any_mut` value.
     fn as_any_mut(&mut self) -> &mut dyn Any;
 
+    /// Returns or updates the `debug_name` value.
     fn debug_name(&self) -> &'static str {
         "Widget"
     }
 
+    /// Returns or updates the `get_key` value.
     fn get_key(&self) -> Option<&SmolStr> {
         None
     }
 
+    /// Returns whether the `is_dirty` condition is satisfied.
     fn is_dirty(&self) -> bool;
 
+    /// Updates the `set_dirty` value.
     fn set_dirty(&mut self, dirty: bool);
 
     /// Whether this widget's dirtiness stems from something that would
@@ -46,10 +60,13 @@ pub trait Widget: Any {
     /// No-op by default; only meaningful alongside a real `is_layout_dirty` override.
     fn set_layout_dirty(&mut self, _value: bool) {}
 
+    /// Returns or updates the `style` value.
     fn style(&self) -> &Style;
 
+    /// Returns or updates the `style_mut` value.
     fn style_mut(&mut self) -> &mut Style;
 
+    /// Returns or updates the `computed_style` value.
     fn computed_style(&self) -> &Style {
         self.style()
     }
@@ -60,10 +77,12 @@ pub trait Widget: Any {
     /// Called once, right before this widget is permanently removed from the tree.
     fn on_unmount(&mut self) {}
 
+    /// Returns or updates the `children` value.
     fn children(&self) -> &[Box<dyn Widget>] {
         &[]
     }
 
+    /// Returns or updates the `children_mut` value.
     fn children_mut(&mut self) -> Option<&mut Vec<Box<dyn Widget>>> {
         None
     }
@@ -92,6 +111,7 @@ pub trait Widget: Any {
         None
     }
 
+    /// Returns or updates the `measure` value.
     fn measure(&self, ctx: &mut MeasureContext, constraints: Constraints) -> MeasureResult;
 
     /// Runs once per full layout pass for every widget, leaf or not,
@@ -100,10 +120,13 @@ pub trait Widget: Any {
     /// own flex/grid size, which `measure` alone controls.
     fn on_layout_pass(&self, _ctx: &mut MeasureContext) {}
 
+    /// Returns or updates the `layout` value.
     fn layout(&mut self, rect: LayoutBox);
 
+    /// Returns or updates the `layout_box` value.
     fn layout_box(&self) -> &LayoutBox;
 
+    /// Returns or updates the `paint` value.
     fn paint(&self, ctx: &mut PaintContext);
 
     /// Marks this widget's entire subtree as rendered by the top layer
@@ -116,6 +139,7 @@ pub trait Widget: Any {
     /// used for overlays like a scrollbar thumb that depend on live state.
     fn paint_overlay(&self, _ctx: &mut PaintContext) {}
 
+    /// Returns or updates the `paint_box` value.
     fn paint_box(&self, ctx: &mut PaintContext) {
         let style = self.computed_style();
         let sf = ctx.scale_factor;
@@ -127,9 +151,10 @@ pub trait Widget: Any {
             *self.layout_box(),
             style.scale.unwrap_or(1.0),
             style.transform_origin.unwrap_or_default(),
-            sf
+            sf,
         );
-        let radius = style.border
+        let radius = style
+            .border
             .as_ref()
             .and_then(|b| b.radius)
             .map(|r| r.to_physical_array(sf, layout.width, layout.height))
@@ -139,10 +164,7 @@ pub trait Widget: Any {
         let has_radius = radius.iter().any(|r| *r > 0.0);
 
         if let Some(shadows) = &style.box_shadow {
-            for shadow in shadows
-                .iter()
-                .rev()
-                .filter(|s| !s.inset) {
+            for shadow in shadows.iter().rev().filter(|s| !s.inset) {
                 self.paint_shadow_layer(ctx, layout, radius, shadow, sf);
             }
         }
@@ -177,15 +199,13 @@ pub trait Widget: Any {
         }
 
         if let Some(shadows) = &style.box_shadow {
-            for shadow in shadows
-                .iter()
-                .rev()
-                .filter(|s| s.inset) {
+            for shadow in shadows.iter().rev().filter(|s| s.inset) {
                 self.paint_shadow_layer(ctx, layout, radius, shadow, sf);
             }
         }
     }
 
+    /// Returns or updates the `paint_edge_borders` value.
     fn paint_edge_borders(&self, ctx: &mut PaintContext, layout: LayoutBox, b: &Border, sf: f32) {
         let top = b.top.to_physical(sf);
         let right = b.right.to_physical(sf);
@@ -208,23 +228,34 @@ pub trait Widget: Any {
             edge(layout.x, layout.y, layout.width, top);
         }
         if bottom > 0.0 {
-            edge(layout.x, layout.y + layout.height - bottom, layout.width, bottom);
+            edge(
+                layout.x,
+                layout.y + layout.height - bottom,
+                layout.width,
+                bottom,
+            );
         }
         if left > 0.0 {
             edge(layout.x, layout.y, left, layout.height);
         }
         if right > 0.0 {
-            edge(layout.x + layout.width - right, layout.y, right, layout.height);
+            edge(
+                layout.x + layout.width - right,
+                layout.y,
+                right,
+                layout.height,
+            );
         }
     }
 
+    /// Returns or updates the `paint_shadow_layer` value.
     fn paint_shadow_layer(
         &self,
         ctx: &mut PaintContext,
         layout: LayoutBox,
         radius: [f32; 4],
         shadow: &BoxShadow,
-        sf: f32
+        sf: f32,
     ) {
         let ox = shadow.offset_x.to_physical(sf);
         let oy = shadow.offset_y.to_physical(sf);
@@ -270,8 +301,12 @@ pub trait Widget: Any {
         });
     }
 
+    /// Returns or updates the `paint_outline` value.
     fn paint_outline(&self, ctx: &mut PaintContext) {
-        if self.interaction().is_some_and(|i| i.focused && i.focus_visible) {
+        if self
+            .interaction()
+            .is_some_and(|i| i.focused && i.focus_visible)
+        {
             return;
         }
 
@@ -286,11 +321,16 @@ pub trait Widget: Any {
         let sf = ctx.scale_factor;
         let layout = self.layout_box();
         let offset = outline.offset.to_physical(sf);
-        let radius = outline.radius
+        let radius = outline
+            .radius
             .or_else(|| style.border.as_ref().and_then(|b| b.radius))
-            .map(|r|
-                r.to_physical_array(sf, layout.width + offset * 2.0, layout.height + offset * 2.0)
-            )
+            .map(|r| {
+                r.to_physical_array(
+                    sf,
+                    layout.width + offset * 2.0,
+                    layout.height + offset * 2.0,
+                )
+            })
             .unwrap_or([0.0; 4]);
 
         ctx.draw_rect(RectCommand {
@@ -307,6 +347,7 @@ pub trait Widget: Any {
         });
     }
 
+    /// Returns or updates the `paint_focus` value.
     fn paint_focus(&self, ctx: &mut PaintContext) {
         let Some(interaction) = self.interaction() else {
             return;
@@ -323,32 +364,33 @@ pub trait Widget: Any {
                 return;
             }
             StyleValue::Value(outline) => *outline,
-            StyleValue::Default =>
-                Outline {
-                    width: Length::px(2.5),
-                    color: Color::BLUE_500,
-                    radius: style.border
-                        .as_ref()
-                        .and_then(|b| b.radius)
-                        .map(|r|
-                            BorderRadius::only(
-                                r.top_left.add_px(4.0),
-                                r.top_right.add_px(4.0),
-                                r.bottom_right.add_px(4.0),
-                                r.bottom_left.add_px(4.0)
-                            )
-                        ),
-                    offset: Length::px(4.0),
-                },
+            StyleValue::Default => Outline {
+                width: Length::px(2.5),
+                color: Color::BLUE_500,
+                radius: style.border.as_ref().and_then(|b| b.radius).map(|r| {
+                    BorderRadius::only(
+                        r.top_left.add_px(4.0),
+                        r.top_right.add_px(4.0),
+                        r.bottom_right.add_px(4.0),
+                        r.bottom_left.add_px(4.0),
+                    )
+                }),
+                offset: Length::px(4.0),
+            },
         };
 
         let sf = ctx.scale_factor;
         let offset = outline.offset.to_physical(sf);
-        let radius = outline.radius
+        let radius = outline
+            .radius
             .or_else(|| style.border.as_ref().and_then(|b| b.radius))
-            .map(|r|
-                r.to_physical_array(sf, layout.width + offset * 2.0, layout.height + offset * 2.0)
-            )
+            .map(|r| {
+                r.to_physical_array(
+                    sf,
+                    layout.width + offset * 2.0,
+                    layout.height + offset * 2.0,
+                )
+            })
             .unwrap_or([0.0; 4]);
 
         ctx.draw_rect(RectCommand {
@@ -372,6 +414,7 @@ pub trait Widget: Any {
     /// and flushed in its own pass after every widget's rects).
     fn paint_top(&self, _ctx: &mut PaintContext) {}
 
+    /// Returns or updates the `hit_test` value.
     fn hit_test(&self, point: (f32, f32)) -> bool {
         let b = self.layout_box();
 
@@ -418,14 +461,17 @@ pub trait Widget: Any {
         false
     }
 
+    /// Returns or updates the `interaction` value.
     fn interaction(&self) -> Option<&Interaction> {
         None
     }
 
+    /// Returns or updates the `interaction_mut` value.
     fn interaction_mut(&mut self) -> Option<&mut Interaction> {
         None
     }
 
+    /// Returns or updates the `transfer_interaction_state` value.
     fn transfer_interaction_state(&mut self, old: &dyn Widget) {
         if let (Some(new), Some(old)) = (self.interaction_mut(), old.interaction()) {
             new.transfer_from(old);
@@ -440,6 +486,7 @@ pub trait Widget: Any {
     /// widget can ignore this; the default does nothing.
     fn transfer_composite_children(&mut self, _old: &mut dyn Widget) {}
 
+    /// Returns or updates the `event` value.
     fn event(&mut self, event: &InputEvent, ctx: &mut EventCtx) -> EventStatus {
         let status = match self.interaction_mut() {
             Some(interaction) if interaction.is_active() => interaction.handle(event, ctx),
@@ -453,10 +500,12 @@ pub trait Widget: Any {
         status
     }
 
+    /// Returns or updates the `content_eq` value.
     fn content_eq(&self, _other: &dyn Widget) -> bool {
         false
     }
 
+    /// Returns or updates the `cascade_style` value.
     fn cascade_style(&mut self, parent: &Style, anim: &mut AnimationManager) {
         if let Some(children) = self.children_mut() {
             for child in children.iter_mut() {
@@ -465,10 +514,13 @@ pub trait Widget: Any {
         }
     }
 
+    /// Returns or updates the `after_interaction_transfer` value.
     fn after_interaction_transfer(&mut self) {}
 
+    /// Returns or updates the `transfer_measured_state` value.
     fn transfer_measured_state(&mut self, _old: &dyn Widget) {}
 
+    /// Returns or updates the `blink_interval` value.
     fn blink_interval(&self) -> Option<web_time::Duration> {
         None
     }
@@ -485,15 +537,18 @@ pub trait Widget: Any {
         None
     }
 
+    /// Returns or updates the `text_selection` value.
     fn text_selection(&self) -> Option<(usize, usize)> {
         None
     }
 
+    /// Updates the `set_text_selection` value.
     fn set_text_selection(&mut self, _range: Option<(usize, usize)>) {}
 
     // Called by the global Escape handler; clears the selection and also
     // stops any drag-in-progress so a still-held mouse button can't
     // immediately re-create the selection on the next move.
+    /// Performs the `cancel_text_selection` operation.
     fn cancel_text_selection(&mut self) {
         self.set_text_selection(None);
     }
@@ -513,6 +568,7 @@ pub trait Widget: Any {
         0
     }
 
+    /// Returns or updates the `select_all_text` value.
     fn select_all_text(&mut self) {}
 
     /// Stable per-instance animation key namespace. Assign once in the
@@ -579,7 +635,7 @@ pub fn scaled_layout_box_with_origin(
     rect: LayoutBox,
     scale: f32,
     origin: TransformOrigin,
-    scale_factor: f32
+    scale_factor: f32,
 ) -> LayoutBox {
     let (ox, oy) = origin.resolve(rect.width, rect.height, scale_factor);
     LayoutBox {
@@ -598,6 +654,6 @@ pub(crate) fn border_radius_from_physical(radii: [f32; 4]) -> BorderRadius {
         Length::px(radii[0]),
         Length::px(radii[1]),
         Length::px(radii[2]),
-        Length::px(radii[3])
+        Length::px(radii[3]),
     )
 }

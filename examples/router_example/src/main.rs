@@ -3,7 +3,7 @@
 
 #[cfg(not(target_arch = "wasm32"))]
 use xenframe::WindowPosition;
-use xenframe::{ App, AppConfig };
+use xenframe::{App, AppConfig};
 
 include!(concat!(env!("OUT_DIR"), "/xen_router_generated.rs"));
 
@@ -23,7 +23,7 @@ fn show_debug_overlay(message: &str) {
         "style",
         "position:fixed;inset:0;margin:0;background:rgba(0,0,0,0);color:#ff8080;\
          font:12px/1.5 monospace;padding:16px;white-space:pre-wrap;\
-         z-index:2147483647;overflow:auto;pointer-events:none;"
+         z-index:2147483647;overflow:auto;pointer-events:none;",
     );
     overlay.set_text_content(Some(message));
     let _ = body.append_child(&overlay);
@@ -32,12 +32,10 @@ fn show_debug_overlay(message: &str) {
 // write debug messages directly into the screen
 #[cfg(target_arch = "wasm32")]
 fn install_panic_hook() {
-    std::panic::set_hook(
-        Box::new(|info| {
-            console_error_panic_hook::hook(info);
-            show_debug_overlay(&format!("xengui panicked:\n\n{info}"));
-        })
-    );
+    std::panic::set_hook(Box::new(|info| {
+        console_error_panic_hook::hook(info);
+        show_debug_overlay(&format!("xengui panicked:\n\n{info}"));
+    }));
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -50,12 +48,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     #[cfg(not(target_arch = "wasm32"))]
     {
-        let _ = env_logger::Builder
-            ::new()
+        let _ = env_logger::Builder::new()
             .filter_module("xenframe", log::LevelFilter::Info)
             .filter_module("xengui", log::LevelFilter::Debug)
             .filter_module("xengui_wgpu", log::LevelFilter::Trace)
-            .filter_level(log::LevelFilter::Warn) 
+            .filter_level(log::LevelFilter::Warn)
             .format_timestamp(None)
             .try_init();
     }
@@ -80,12 +77,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     app.with_font(
         "Noto Sans",
-        include_bytes!(
-            concat!(env!("CARGO_MANIFEST_DIR"), "/fonts/NotoSans-VariableFont.ttf")
-        ).to_vec()
+        include_bytes!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/fonts/NotoSans-VariableFont.ttf"
+        ))
+        .to_vec(),
     );
 
-    app.render(|| { build_router().build() });
+    app.render(|| build_router().build());
 
     if let Err(e) = app.run() {
         eprintln!("[router-example] Error running app: {:?}", e);

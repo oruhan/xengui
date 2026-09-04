@@ -23,18 +23,29 @@ struct GradientColors {
 
 @vertex
 fn vs_main(
-    @location(0) position: vec2<f32>,
-    @location(1) local_pos: vec2<f32>,
-    @location(2) half_size: vec2<f32>,
-    @location(3) radius: vec4<f32>,
-    @location(4) border_width: f32,
-    @location(5) fill_color: vec4<f32>,
-    @location(6) border_color: vec4<f32>,
-    @location(7) gradient_meta: vec4<f32>,
+    @builtin(vertex_index) vertex_index: u32,
+    @location(0) screen_rect: vec4<f32>,
+    @location(1) half_size: vec2<f32>,
+    @location(2) radius: vec4<f32>,
+    @location(3) border_width: f32,
+    @location(4) fill_color: vec4<f32>,
+    @location(5) border_color: vec4<f32>,
+    @location(6) gradient_meta: vec4<f32>,
 ) -> VertexOutput {
+    let corners = array<vec2<f32>, 6>(
+        vec2<f32>(0.0, 0.0), vec2<f32>(1.0, 0.0), vec2<f32>(0.0, 1.0),
+        vec2<f32>(0.0, 1.0), vec2<f32>(1.0, 0.0), vec2<f32>(1.0, 1.0),
+    );
+    let corner = corners[vertex_index];
+    let outer_half_size = half_size + vec2<f32>(1.5, 1.5);
     var out: VertexOutput;
-    out.clip_position = vec4<f32>(position, 0.0, 1.0);
-    out.local_pos = local_pos;
+    out.clip_position = vec4<f32>(
+        mix(screen_rect.x, screen_rect.z, corner.x),
+        mix(screen_rect.y, screen_rect.w, corner.y),
+        0.0,
+        1.0,
+    );
+    out.local_pos = mix(-outer_half_size, outer_half_size, corner);
     out.half_size = half_size;
     out.radius = radius;
     out.border_width = border_width;

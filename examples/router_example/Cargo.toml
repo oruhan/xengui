@@ -30,3 +30,6 @@ web-sys = { version = "0.3", features = [
 
 [build-dependencies]
 xen-router-build = { workspace = true }
+
+[lints]
+workspace = true

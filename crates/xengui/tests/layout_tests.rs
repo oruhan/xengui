@@ -2,7 +2,12 @@
 use xengui::LayoutBox;
 
 fn make_box() -> LayoutBox {
-    LayoutBox { x: 0.0, y: 0.0, width: 100.0, height: 50.0 }
+    LayoutBox {
+        x: 0.0,
+        y: 0.0,
+        width: 100.0,
+        height: 50.0,
+    }
 }
 
 #[test]

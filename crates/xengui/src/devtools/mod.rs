@@ -25,18 +25,22 @@ thread_local! {
     static START: Instant = Instant::now();
 }
 
+/// Returns or updates the `record` value.
 pub fn record(tag: &'static str) {
     push(tag, None, None);
 }
 
+/// Returns or updates the `record_size` value.
 pub fn record_size(tag: &'static str, width: u32, height: u32) {
     push(tag, Some((width, height)), None);
 }
 
+/// Returns or updates the `record_note` value.
 pub fn record_note(tag: &'static str, note: impl Into<String>) {
     push(tag, None, Some(note.into()));
 }
 
+/// Returns or updates the `record_size_note` value.
 pub fn record_size_note(tag: &'static str, width: u32, height: u32, note: impl Into<String>) {
     push(tag, Some((width, height)), Some(note.into()));
 }
@@ -47,7 +51,12 @@ fn push(tag: &'static str, size: Option<(u32, u32)>, note: Option<String>) {
         if events.len() == CAPACITY {
             events.pop_front();
         }
-        events.push_back(Event { t: Instant::now(), tag, size, note });
+        events.push_back(Event {
+            t: Instant::now(),
+            tag,
+            size,
+            note,
+        });
     });
 }
 
@@ -62,8 +71,9 @@ pub fn dump(label: &str) {
         for event in events.iter() {
             let us = event.t.duration_since(start).as_micros();
             match (&event.size, &event.note) {
-                (Some((w, h)), Some(note)) =>
-                    log::info!("[{us:>12}us] {:<28} {w}x{h}  {note}", event.tag),
+                (Some((w, h)), Some(note)) => {
+                    log::info!("[{us:>12}us] {:<28} {w}x{h}  {note}", event.tag)
+                }
                 (Some((w, h)), None) => log::info!("[{us:>12}us] {:<28} {w}x{h}", event.tag),
                 (None, Some(note)) => log::info!("[{us:>12}us] {:<28} {note}", event.tag),
                 (None, None) => log::info!("[{us:>12}us] {}", event.tag),
@@ -74,6 +84,7 @@ pub fn dump(label: &str) {
     });
 }
 
+/// Performs the `clear` operation.
 pub fn clear() {
     EVENTS.with(|events| events.borrow_mut().clear());
 }

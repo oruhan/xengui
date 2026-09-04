@@ -33,3 +33,6 @@ console_log = { workspace = true }
 ico = "0.3"
 image = "0.24"
 winres = "0.1"
+
+[lints]
+workspace = true

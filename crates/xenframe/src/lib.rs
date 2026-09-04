@@ -7,8 +7,8 @@
 //! `xengui::XenRenderer`.
 
 pub mod app;
-pub mod window;
 pub mod handler;
+pub mod window;
 
 pub mod cursor;
 pub mod keyboard;
@@ -25,19 +25,15 @@ pub mod window_controls;
 #[cfg(target_os = "windows")]
 pub mod win32_chrome;
 
+pub mod overlay;
 #[cfg(target_arch = "wasm32")]
 pub mod web;
-pub mod overlay;
 
-pub use app::{ App, request_reload };
+pub use app::{App, request_reload};
 pub use config::*;
 pub use window::WindowPosition;
 
 pub use window_controls::{
-    close_window,
-    drag_window,
-    is_window_maximized,
-    minimize_window,
-    set_window_title,
+    close_window, drag_window, is_window_maximized, minimize_window, set_window_title,
     toggle_maximize_window,
 };

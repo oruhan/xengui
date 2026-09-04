@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-use xengui::{ TriangleCommand, paint };
+use xengui::{TriangleCommand, paint};
 
 #[repr(C)]
 #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
@@ -34,6 +34,7 @@ pub struct TrianglePipeline {
     vertex_buffer: wgpu::Buffer,
     vertex_capacity: usize,
     write_offset: usize,
+    vertices: Vec<Vertex>,
 }
 
 const VERTICES_PER_TRIANGLE: usize = 3;
@@ -43,7 +44,7 @@ impl TrianglePipeline {
     pub fn new(
         device: &wgpu::Device,
         surface_format: wgpu::TextureFormat,
-        sample_count: u32
+        sample_count: u32,
     ) -> Self {
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("Triangle Shader"),
@@ -55,7 +56,7 @@ impl TrianglePipeline {
                 label: Some("Triangle Pipeline Layout"),
                 bind_group_layouts: &[],
                 immediate_size: 0,
-            })
+            }),
         );
 
         let pipeline = device.create_render_pipeline(
@@ -82,17 +83,15 @@ impl TrianglePipeline {
                     module: &shader,
                     entry_point: Some("fs_main"),
                     compilation_options: Default::default(),
-                    targets: &[
-                        Some(wgpu::ColorTargetState {
-                            format: surface_format,
-                            blend: Some(wgpu::BlendState::ALPHA_BLENDING),
-                            write_mask: wgpu::ColorWrites::ALL,
-                        }),
-                    ],
+                    targets: &[Some(wgpu::ColorTargetState {
+                        format: surface_format,
+                        blend: Some(wgpu::BlendState::ALPHA_BLENDING),
+                        write_mask: wgpu::ColorWrites::ALL,
+                    })],
                 }),
                 multiview_mask: None,
                 cache: None,
-            })
+            }),
         );
 
         let vertex_capacity = DEFAULT_TRIANGLE_CAPACITY * VERTICES_PER_TRIANGLE;
@@ -102,7 +101,7 @@ impl TrianglePipeline {
                 size: (vertex_capacity * std::mem::size_of::<Vertex>()) as u64,
                 usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
                 mapped_at_creation: false,
-            })
+            }),
         );
 
         Self {
@@ -110,6 +109,7 @@ impl TrianglePipeline {
             vertex_buffer,
             vertex_capacity,
             write_offset: 0,
+            vertices: Vec::with_capacity(vertex_capacity),
         }
     }
 
@@ -124,7 +124,7 @@ impl TrianglePipeline {
         render_pass: &mut wgpu::RenderPass<'_>,
         surface_width: u32,
         surface_height: u32,
-        cmds: &[TriangleCommand]
+        cmds: &[TriangleCommand],
     ) {
         if cmds.is_empty() {
             return;
@@ -134,27 +134,44 @@ impl TrianglePipeline {
         let inv_h = 2.0 / (surface_height.max(1) as f32);
         let ndc = |px: f32, py: f32| -> [f32; 2] { [px * inv_w - 1.0, 1.0 - py * inv_h] };
 
-        let mut vertices = Vec::with_capacity(cmds.len() * VERTICES_PER_TRIANGLE);
+        self.vertices.clear();
+        self.vertices.reserve(cmds.len() * VERTICES_PER_TRIANGLE);
 
         for cmd in cmds {
             let color = cmd.color.to_f32_array();
-            vertices.push(Vertex { position: ndc(cmd.p0.0, cmd.p0.1), color });
-            vertices.push(Vertex { position: ndc(cmd.p1.0, cmd.p1.1), color });
-            vertices.push(Vertex { position: ndc(cmd.p2.0, cmd.p2.1), color });
+            self.vertices.push(Vertex {
+                position: ndc(cmd.p0.0, cmd.p0.1),
+                color,
+            });
+            self.vertices.push(Vertex {
+                position: ndc(cmd.p1.0, cmd.p1.1),
+                color,
+            });
+            self.vertices.push(Vertex {
+                position: ndc(cmd.p2.0, cmd.p2.1),
+                color,
+            });
         }
 
         let base_vertex = self.write_offset;
-        self.ensure_capacity(device, base_vertex + vertices.len());
+        self.ensure_capacity(device, base_vertex + self.vertices.len());
         queue.write_buffer(
             &self.vertex_buffer,
             (base_vertex * std::mem::size_of::<Vertex>()) as u64,
-            bytemuck::cast_slice(&vertices)
+            bytemuck::cast_slice(&self.vertices),
         );
-        self.write_offset += vertices.len();
+        self.write_offset += self.vertices.len();
 
         render_pass.set_pipeline(&self.pipeline);
         render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
-        render_pass.set_viewport(0.0, 0.0, surface_width as f32, surface_height as f32, 0.0, 1.0);
+        render_pass.set_viewport(
+            0.0,
+            0.0,
+            surface_width as f32,
+            surface_height as f32,
+            0.0,
+            1.0,
+        );
 
         let mut run_start = 0usize;
         let mut current_clip = cmds[0].clip_rect;
@@ -168,7 +185,7 @@ impl TrianglePipeline {
                     i,
                     current_clip,
                     surface_width,
-                    surface_height
+                    surface_height,
                 );
                 run_start = i;
                 current_clip = cmd.clip_rect;
@@ -181,7 +198,7 @@ impl TrianglePipeline {
             cmds.len(),
             current_clip,
             surface_width,
-            surface_height
+            surface_height,
         );
     }
 
@@ -192,21 +209,18 @@ impl TrianglePipeline {
         end: usize,
         clip: Option<(f32, f32, f32, f32)>,
         surface_width: u32,
-        surface_height: u32
+        surface_height: u32,
     ) {
-        let (sx, sy, sw, sh) = paint::draw_command::scissor_for_clip(
-            clip,
-            surface_width,
-            surface_height
-        );
+        let (sx, sy, sw, sh) =
+            paint::draw_command::scissor_for_clip(clip, surface_width, surface_height);
         if sw == 0 || sh == 0 {
             return;
         }
         render_pass.set_scissor_rect(sx, sy, sw, sh);
         render_pass.draw(
-            (base_vertex + start * VERTICES_PER_TRIANGLE) as u32..(base_vertex +
-                end * VERTICES_PER_TRIANGLE) as u32,
-            0..1
+            (base_vertex + start * VERTICES_PER_TRIANGLE) as u32
+                ..(base_vertex + end * VERTICES_PER_TRIANGLE) as u32,
+            0..1,
         );
     }
 
@@ -221,7 +235,7 @@ impl TrianglePipeline {
                 size: (self.vertex_capacity * std::mem::size_of::<Vertex>()) as u64,
                 usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
                 mapped_at_creation: false,
-            })
+            }),
         );
     }
 }

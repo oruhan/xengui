@@ -1,61 +1,28 @@
 // SPDX-License-Identifier: Apache-2.0
 #![cfg(target_os = "windows")]
+#![allow(unsafe_code)]
 
+use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 use std::sync::Arc;
-use raw_window_handle::{ HasWindowHandle, RawWindowHandle };
-use winit::window::Window;
-use windows_sys::Win32::Foundation::{ HWND, LPARAM, LRESULT, RECT, WPARAM };
-use windows_sys::Win32::UI::Shell::{ DefSubclassProc, RemoveWindowSubclass, SetWindowSubclass };
-use windows_sys::Win32::UI::WindowsAndMessaging::{
-    GetWindowRect,
-    HTBOTTOM,
-    HTBOTTOMLEFT,
-    HTBOTTOMRIGHT,
-    HTCLIENT,
-    HTLEFT,
-    HTRIGHT,
-    HTTOP,
-    HTTOPLEFT,
-    HTTOPRIGHT,
-    IsZoomed,
-    KillTimer,
-    NCCALCSIZE_PARAMS,
-    SWP_FRAMECHANGED,
-    SWP_NOACTIVATE,
-    SWP_NOMOVE,
-    SWP_NOSIZE,
-    SWP_NOZORDER,
-    SetTimer,
-    SetWindowPos,
-    WINDOWPOS,
-    WM_DESTROY,
-    WM_ENTERSIZEMOVE,
-    WM_ERASEBKGND,
-    WM_EXITSIZEMOVE,
-    WM_NCCALCSIZE,
-    WM_NCHITTEST,
-    WM_PAINT,
-    WM_SIZE,
-    WM_TIMER,
-    WM_WINDOWPOSCHANGED,
-    WVR_REDRAW,
-};
+use windows_sys::Win32::Foundation::{HWND, LPARAM, LRESULT, RECT, WPARAM};
+use windows_sys::Win32::Graphics::Dwm::DwmFlush;
 use windows_sys::Win32::Graphics::Dwm::{
-    DWMWA_TRANSITIONS_FORCEDISABLED,
-    DWMWA_USE_IMMERSIVE_DARK_MODE,
-    DWMWA_WINDOW_CORNER_PREFERENCE,
-    DWMWCP_ROUND,
-    DwmExtendFrameIntoClientArea,
-    DwmSetWindowAttribute,
+    DWMWA_TRANSITIONS_FORCEDISABLED, DWMWA_USE_IMMERSIVE_DARK_MODE, DWMWA_WINDOW_CORNER_PREFERENCE,
+    DWMWCP_ROUND, DwmExtendFrameIntoClientArea, DwmSetWindowAttribute,
+};
+use windows_sys::Win32::Graphics::Gdi::{
+    GetMonitorInfoW, MONITOR_DEFAULTTONEAREST, MONITORINFO, MonitorFromWindow,
 };
 use windows_sys::Win32::UI::Controls::MARGINS;
-use windows_sys::Win32::Graphics::Dwm::DwmFlush;
-use windows_sys::Win32::Graphics::Gdi::{
-    GetMonitorInfoW,
-    MonitorFromWindow,
-    MONITORINFO,
-    MONITOR_DEFAULTTONEAREST,
+use windows_sys::Win32::UI::Shell::{DefSubclassProc, RemoveWindowSubclass, SetWindowSubclass};
+use windows_sys::Win32::UI::WindowsAndMessaging::{
+    GetWindowRect, HTBOTTOM, HTBOTTOMLEFT, HTBOTTOMRIGHT, HTCLIENT, HTLEFT, HTRIGHT, HTTOP,
+    HTTOPLEFT, HTTOPRIGHT, IsZoomed, KillTimer, NCCALCSIZE_PARAMS, SWP_FRAMECHANGED,
+    SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER, SetTimer, SetWindowPos, WINDOWPOS,
+    WM_DESTROY, WM_ENTERSIZEMOVE, WM_ERASEBKGND, WM_EXITSIZEMOVE, WM_NCCALCSIZE, WM_NCHITTEST,
+    WM_PAINT, WM_SIZE, WM_TIMER, WM_WINDOWPOSCHANGED, WVR_REDRAW,
 };
+use winit::window::Window;
 
 const SUBCLASS_ID: usize = 1;
 const RESIZE_TIMER_ID: usize = 1;
@@ -92,7 +59,7 @@ unsafe extern "system" fn custom_chrome_subclass(
     wparam: WPARAM,
     lparam: LPARAM,
     _uidsubclass: usize,
-    _dwrefdata: usize
+    _dwrefdata: usize,
 ) -> LRESULT {
     match msg {
         WM_NCCALCSIZE if wparam != 0 => {
@@ -115,7 +82,12 @@ unsafe extern "system" fn custom_chrome_subclass(
                     }
                 }
 
-                let mut rect = RECT { left: 0, top: 0, right: 0, bottom: 0 };
+                let mut rect = RECT {
+                    left: 0,
+                    top: 0,
+                    right: 0,
+                    bottom: 0,
+                };
                 unsafe {
                     GetWindowRect(hwnd, &mut rect);
                 }
@@ -133,7 +105,12 @@ unsafe extern "system" fn custom_chrome_subclass(
             let x = (lparam & 0xffff) as i16 as i32;
             let y = ((lparam >> 16) & 0xffff) as i16 as i32;
 
-            let mut rect = RECT { left: 0, top: 0, right: 0, bottom: 0 };
+            let mut rect = RECT {
+                left: 0,
+                top: 0,
+                right: 0,
+                bottom: 0,
+            };
             unsafe {
                 GetWindowRect(hwnd, &mut rect);
             }
@@ -169,20 +146,25 @@ unsafe extern "system" fn custom_chrome_subclass(
                     hwnd,
                     DWMWA_TRANSITIONS_FORCEDISABLED as u32,
                     &disable as *const _ as *const _,
-                    std::mem::size_of_val(&disable) as u32
+                    std::mem::size_of_val(&disable) as u32,
                 );
                 SetTimer(hwnd, RESIZE_TIMER_ID, RESIZE_TIMER_INTERVAL_MS, None);
             }
         }
         WM_TIMER if wparam == RESIZE_TIMER_ID => {
-            let mut rect = RECT { left: 0, top: 0, right: 0, bottom: 0 };
+            let mut rect = RECT {
+                left: 0,
+                top: 0,
+                right: 0,
+                bottom: 0,
+            };
             unsafe {
                 GetWindowRect(hwnd, &mut rect);
             }
             xengui::devtools::record_size(
                 "WM_TIMER",
                 (rect.right - rect.left).max(0) as u32,
-                (rect.bottom - rect.top).max(0) as u32
+                (rect.bottom - rect.top).max(0) as u32,
             );
             RESIZE_TICK.with(|cell| {
                 if let Some(tick) = cell.borrow_mut().as_mut() {
@@ -199,7 +181,7 @@ unsafe extern "system" fn custom_chrome_subclass(
                     hwnd,
                     DWMWA_TRANSITIONS_FORCEDISABLED as u32,
                     &disable as *const _ as *const _,
-                    std::mem::size_of_val(&disable) as u32
+                    std::mem::size_of_val(&disable) as u32,
                 );
             }
             xengui::devtools::record("WM_EXITSIZEMOVE");
@@ -211,7 +193,7 @@ unsafe extern "system" fn custom_chrome_subclass(
                 "WM_WINDOWPOSCHANGED",
                 pos.cx.max(0) as u32,
                 pos.cy.max(0) as u32,
-                format!("at ({}, {})", pos.x, pos.y)
+                format!("at ({}, {})", pos.x, pos.y),
             );
         }
         WM_SIZE => {
@@ -257,7 +239,7 @@ pub fn install_for_window(window: &Arc<Window>) {
             0,
             0,
             0,
-            SWP_FRAMECHANGED | SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE
+            SWP_FRAMECHANGED | SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE,
         );
 
         // Extend DWM frame for native shadows
@@ -274,7 +256,7 @@ pub fn install_for_window(window: &Arc<Window>) {
             hwnd,
             DWMWA_WINDOW_CORNER_PREFERENCE as u32,
             &corner_pref as *const _ as *const _,
-            std::mem::size_of_val(&corner_pref) as u32
+            std::mem::size_of_val(&corner_pref) as u32,
         );
 
         let dark: i32 = 1;
@@ -282,7 +264,7 @@ pub fn install_for_window(window: &Arc<Window>) {
             hwnd,
             DWMWA_USE_IMMERSIVE_DARK_MODE as u32,
             &dark as *const _ as *const _,
-            std::mem::size_of_val(&dark) as u32
+            std::mem::size_of_val(&dark) as u32,
         );
         // Attach subclassing via comctl32 safely
         SetWindowSubclass(hwnd, Some(custom_chrome_subclass), SUBCLASS_ID, 0);

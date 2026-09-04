@@ -1,41 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
 use crate::{
-    AnimKey,
-    AnimLayer,
-    AnimProperty,
-    AnimValue,
-    AnimationManager,
-    Background,
-    BorderRadius,
-    Color,
-    Constraints,
-    Easing,
-    ElementState,
-    EventCtx,
-    EventStatus,
-    InputEvent,
-    Interaction,
-    Key,
-    KeyState,
-    LayoutBox,
-    Length,
-    MeasureContext,
-    MeasureResult,
-    MouseButton,
-    PaintContext,
-    RectCommand,
-    Style,
-    StyleBuilder,
-    Transition,
-    VariableIconCommand,
-    Widget,
-    WidgetBase,
+    AnimKey, AnimLayer, AnimProperty, AnimValue, AnimationManager, Background, BorderRadius, Color,
+    Constraints, Easing, ElementState, EventCtx, EventStatus, InputEvent, Interaction, Key,
+    KeyState, LayoutBox, Length, MeasureContext, MeasureResult, MouseButton, PaintContext,
+    RectCommand, Style, StyleBuilder, Transition, VariableIconCommand, Widget, WidgetBase,
     WidgetId,
-    constants::{ DEFAULT_CURSOR_ICON, DEFAULT_POINTER_CURSOR_ICON, DISABLED_WIDGET_OPACITY },
+    constants::{DEFAULT_CURSOR_ICON, DEFAULT_POINTER_CURSOR_ICON, DISABLED_WIDGET_OPACITY},
 };
 use std::cell::Cell;
 use web_time::Duration;
-use xengui_icons::{ IconAxes, MaterialSymbolsVariable, codepoints };
+use xengui_icons::{IconAxes, MaterialSymbolsVariable, codepoints};
 
 type ChangeCallback = Box<dyn FnMut(bool, &mut EventCtx)>;
 
@@ -47,13 +21,11 @@ const THUMB_PRESSED: f32 = 27.0;
 
 const TRACK_PADDING: f32 = 5.0;
 
-const TOGGLE_TRANSITION: Transition = Transition::new(Duration::from_millis(180)).easing(
-    Easing::EaseOut
-);
+const TOGGLE_TRANSITION: Transition =
+    Transition::new(Duration::from_millis(180)).easing(Easing::EaseOut);
 
-const THUMB_SIZE_TRANSITION: Transition = Transition::new(Duration::from_millis(120)).easing(
-    Easing::EaseOut
-);
+const THUMB_SIZE_TRANSITION: Transition =
+    Transition::new(Duration::from_millis(120)).easing(Easing::EaseOut);
 
 fn lerp_color(a: Color, b: Color, t: f32) -> Color {
     let blended = AnimValue(a.to_f32_array()).lerp_premultiplied(AnimValue(b.to_f32_array()), t);
@@ -87,6 +59,7 @@ pub struct Switch {
 }
 
 impl Switch {
+    /// Creates a value with its default configuration.
     pub fn new() -> Self {
         let mut interaction = Interaction::new();
         interaction.focusable = true;
@@ -115,6 +88,7 @@ impl Switch {
         switch
     }
 
+    /// Returns or updates the `checked` value.
     pub fn checked(mut self, checked: bool) -> Self {
         self.checked = checked;
         self.progress.set(if checked { 1.0 } else { 0.0 });
@@ -129,36 +103,42 @@ impl Switch {
         self
     }
 
+    /// Returns or updates the `track_on_color` value.
     pub fn track_on_color(mut self, color: Color) -> Self {
         self.track_on_color = Some(color);
         self.mark_dirty();
         self
     }
 
+    /// Returns or updates the `track_off_color` value.
     pub fn track_off_color(mut self, color: Color) -> Self {
         self.track_off_color = Some(color);
         self.mark_dirty();
         self
     }
 
+    /// Returns or updates the `thumb_on_color` value.
     pub fn thumb_on_color(mut self, color: Color) -> Self {
         self.thumb_on_color = Some(color);
         self.mark_dirty();
         self
     }
 
+    /// Returns or updates the `thumb_off_color` value.
     pub fn thumb_off_color(mut self, color: Color) -> Self {
         self.thumb_off_color = Some(color);
         self.mark_dirty();
         self
     }
 
+    /// Returns or updates the `border_color` value.
     pub fn border_color(mut self, color: Color) -> Self {
         self.border_color = Some(color);
         self.mark_dirty();
         self
     }
 
+    /// Registers the `on_change` callback.
     pub fn on_change(mut self, f: impl FnMut(bool, &mut EventCtx) + 'static) -> Self {
         self.on_change = Some(Box::new(f));
         self
@@ -189,15 +169,15 @@ impl Switch {
 
     fn recompute_style(&mut self) {
         self.base.recompute_style();
-        self.base.interaction.hover_cursor = self.base.computed_style.cursor.or(
-            Some(
-                if self.base.interaction.enabled {
+        self.base.interaction.hover_cursor =
+            self.base
+                .computed_style
+                .cursor
+                .or(Some(if self.base.interaction.enabled {
                     DEFAULT_POINTER_CURSOR_ICON
                 } else {
                     DEFAULT_CURSOR_ICON
-                }
-            )
-        );
+                }));
     }
 
     fn toggle(&mut self, ctx: &mut EventCtx) {
@@ -252,18 +232,22 @@ impl Widget for Switch {
             self.layout_box,
             style.scale.unwrap_or(1.0),
             style.transform_origin.unwrap_or_default(),
-            ctx.scale_factor
+            ctx.scale_factor,
         );
         let theme = crate::current_theme();
 
         let t = self.progress.get();
-        let dim = if self.base.interaction.enabled { 1.0 } else { DISABLED_WIDGET_OPACITY };
+        let dim = if self.base.interaction.enabled {
+            1.0
+        } else {
+            DISABLED_WIDGET_OPACITY
+        };
 
         let track_off = self.track_off_color.unwrap_or(theme.surface_container_high);
         let track_on = self.track_on_color.unwrap_or(theme.primary);
-        let thumb_off = self.thumb_off_color.unwrap_or(
-            self.border_color.unwrap_or(theme.on_surface_variant)
-        );
+        let thumb_off = self
+            .thumb_off_color
+            .unwrap_or(self.border_color.unwrap_or(theme.on_surface_variant));
         let thumb_on = self.thumb_on_color.unwrap_or(theme.on_primary);
         let border_color = self.border_color.unwrap_or(theme.outline);
 
@@ -278,9 +262,8 @@ impl Widget for Switch {
             background: Some(Background::Color(track_color)),
             border_radius: Some(BorderRadius::all(Length::px(b.height * 0.5))),
             border_width: (t < 0.999).then(|| Length::px(2.0 * sf * (1.0 - t))),
-            border_color: (t < 0.999).then_some(
-                border_color.with_alpha_f32(border_color.a() * dim)
-            ),
+            border_color: (t < 0.999)
+                .then_some(border_color.with_alpha_f32(border_color.a() * dim)),
             clip_rect: None,
         });
 
@@ -352,7 +335,8 @@ impl Widget for Switch {
     }
 
     fn hit_test(&self, point: (f32, f32)) -> bool {
-        self.layout_box.contains_rounded(point, self.layout_box.height * 0.5)
+        self.layout_box
+            .contains_rounded(point, self.layout_box.height * 0.5)
     }
 
     fn event(&mut self, event: &InputEvent, ctx: &mut EventCtx) -> EventStatus {
@@ -383,11 +367,14 @@ impl Widget for Switch {
                 button: MouseButton::Left,
                 ..
             } => self.base.interaction.pressed && self.base.interaction.hovered,
-            InputEvent::KeyInput { event: key_event, .. } =>
-                self.base.interaction.focused &&
-                    !key_event.repeat &&
-                    key_event.state == KeyState::Pressed &&
-                    matches!(key_event.key, Key::Enter | Key::Space),
+            InputEvent::KeyInput {
+                event: key_event, ..
+            } => {
+                self.base.interaction.focused
+                    && !key_event.repeat
+                    && key_event.state == KeyState::Pressed
+                    && matches!(key_event.key, Key::Enter | Key::Space)
+            }
             _ => false,
         };
 
@@ -401,16 +388,13 @@ impl Widget for Switch {
             self.toggle(ctx);
         }
 
-        if
-            matches!(status, EventStatus::Handled) ||
-            before_pressed != self.base.interaction.pressed
+        if matches!(status, EventStatus::Handled) || before_pressed != self.base.interaction.pressed
         {
             self.recompute_style();
 
-            if
-                self.base.computed_style != before_style ||
-                self.base.interaction.focus_visible != before_focus_visible ||
-                before_pressed != self.base.interaction.pressed
+            if self.base.computed_style != before_style
+                || self.base.interaction.focus_visible != before_focus_visible
+                || before_pressed != self.base.interaction.pressed
             {
                 self.base.dirty = true;
                 ctx.request_redraw();
@@ -425,17 +409,17 @@ impl Widget for Switch {
             return false;
         };
 
-        self.checked == other.checked &&
-            self.size == other.size &&
-            self.track_on_color == other.track_on_color &&
-            self.track_off_color == other.track_off_color &&
-            self.thumb_on_color == other.thumb_on_color &&
-            self.thumb_off_color == other.thumb_off_color &&
-            self.border_color == other.border_color &&
-            self.icon_on_codepoint == other.icon_on_codepoint &&
-            self.icon_off_codepoint == other.icon_off_codepoint &&
-            self.icons_enabled == other.icons_enabled &&
-            self.base.style == other.base.style
+        self.checked == other.checked
+            && self.size == other.size
+            && self.track_on_color == other.track_on_color
+            && self.track_off_color == other.track_off_color
+            && self.thumb_on_color == other.thumb_on_color
+            && self.thumb_off_color == other.thumb_off_color
+            && self.border_color == other.border_color
+            && self.icon_on_codepoint == other.icon_on_codepoint
+            && self.icon_off_codepoint == other.icon_off_codepoint
+            && self.icons_enabled == other.icons_enabled
+            && self.base.authored_styles_eq(&other.base)
     }
 
     fn cascade_style(&mut self, parent: &Style, anim: &mut AnimationManager) {
@@ -448,7 +432,11 @@ impl Widget for Switch {
             layer: AnimLayer::Content,
             property: AnimProperty::Opacity,
         };
-        anim.set_target(key, AnimValue([target, 0.0, 0.0, 0.0]), Some(TOGGLE_TRANSITION));
+        anim.set_target(
+            key,
+            AnimValue([target, 0.0, 0.0, 0.0]),
+            Some(TOGGLE_TRANSITION),
+        );
         match anim.value(key) {
             Some(v) => {
                 self.progress.set(v.0[0]);
@@ -471,7 +459,7 @@ impl Widget for Switch {
         anim.set_target(
             thumb_key,
             AnimValue([thumb_target, 0.0, 0.0, 0.0]),
-            Some(THUMB_SIZE_TRANSITION)
+            Some(THUMB_SIZE_TRANSITION),
         );
         match anim.value(thumb_key) {
             Some(v) => {
@@ -494,8 +482,8 @@ impl Widget for Switch {
     }
 
     fn wants_animation_frame(&self) -> bool {
-        self.base.interaction.enabled &&
-            self.base.id.as_deref().is_some_and(crate::dom::has_pending)
+        self.base.interaction.enabled
+            && self.base.id.as_deref().is_some_and(crate::dom::has_pending)
     }
 
     fn transfer_interaction_state(&mut self, old: &dyn Widget) {

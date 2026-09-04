@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{ platform, ClipboardError };
+use crate::{ClipboardError, platform};
 
 /// Cross-platform clipboard.
 ///
@@ -40,7 +40,8 @@ impl Clipboard {
 
     /// Reads text from the clipboard.
     pub fn get_text<F>(&self, callback: F)
-        where F: FnOnce(Result<Option<String>, ClipboardError>) + Send + 'static
+    where
+        F: FnOnce(Result<Option<String>, ClipboardError>) + Send + 'static,
     {
         self.backend.get_text(Box::new(callback));
     }
@@ -49,14 +50,15 @@ impl Clipboard {
     pub fn set_text(
         &self,
         text: impl Into<String>,
-        callback: impl FnOnce(Result<(), ClipboardError>) + Send + 'static
+        callback: impl FnOnce(Result<(), ClipboardError>) + Send + 'static,
     ) {
         self.backend.set_text(text.into(), Box::new(callback));
     }
 
     /// Returns whether the clipboard currently contains text.
     pub fn has_text<F>(&self, callback: F)
-        where F: FnOnce(Result<bool, ClipboardError>) + Send + 'static
+    where
+        F: FnOnce(Result<bool, ClipboardError>) + Send + 'static,
     {
         self.backend.has_text(Box::new(callback));
     }

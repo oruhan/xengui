@@ -1,5 +1,7 @@
 # XenGui
 
+**English** | [Türkçe](README.tr.md)
+
 [![Crates.io](https://img.shields.io/crates/v/xengui.svg)](https://crates.io/crates/xengui)
 [![Documentation](https://docs.rs/xengui/badge.svg)](https://docs.rs/xengui)
 [![Rust 1.92+](https://img.shields.io/badge/rust-1.92%2B-blue.svg)](https://www.rust-lang.org)
@@ -18,7 +20,7 @@ XenGui is a retained-mode GUI toolkit written in Rust. It combines a hooks-based
 - Flexbox, CSS Grid, responsive values, scrolling, and split-pane layouts.
 - Declarative themes and interaction-specific styles, including transitions and filters.
 - Built-in controls for text, forms, images, SVG, navigation, menus, tables, and overlays.
-- Batched `wgpu` pipelines for rectangles, text, images, SVG triangles, filters, and shadows.
+- Instanced and batched `wgpu` pipelines with reusable frame staging for rectangles, text, images, SVG triangles, filters, and shadows.
 - Native windowing and input through `winit`, plus browser support through WebAssembly.
 - Rendering, runtime, routing, animation, clipboard, audio, SVG, and icons split into focused crates.
 
@@ -39,6 +41,8 @@ XenGui is a retained-mode GUI toolkit written in Rust. It combines a hooks-based
 
 Runnable applications live in [`apps`](apps); focused demonstrations live in [`examples`](examples).
 
+The renderer's allocation and upload model is documented in [Rendering performance](docs/rendering-performance.md).
+
 ## Requirements
 
 - Rust 1.92 or newer, as declared by the workspace MSRV.
@@ -52,9 +56,9 @@ Create a binary crate and add the application runtime dependencies:
 
 ```toml
 [dependencies]
-xengui = "0.2.7"
-xenframe = "0.1.1"
-xengui-wgpu = "0.1.1"
+xengui = "0.2.8"
+xenframe = "0.1.2"
+xengui-wgpu = "0.1.2"
 ```
 
 ```rust

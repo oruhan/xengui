@@ -1,13 +1,20 @@
 // SPDX-License-Identifier: Apache-2.0
-use crate::{ BorderRadius, Color, Length };
+use crate::{BorderRadius, Color, Length};
 
 #[derive(Clone, Copy, Debug, PartialEq)]
+/// Data and behavior represented by `Border`.
 pub struct Border {
+    /// The `top` value carried by this type.
     pub top: Length,
+    /// The `right` value carried by this type.
     pub right: Length,
+    /// The `bottom` value carried by this type.
     pub bottom: Length,
+    /// The `left` value carried by this type.
     pub left: Length,
+    /// The `color` value carried by this type.
     pub color: Color,
+    /// The `radius` value carried by this type.
     pub radius: Option<BorderRadius>,
 }
 
@@ -25,21 +32,31 @@ impl Default for Border {
 }
 
 impl Border {
+    /// Creates a value with its default configuration.
     pub fn new() -> Self {
         Self::default()
     }
 
+    /// Returns or updates the `all` value.
     pub fn all(width: impl Into<Length>, color: Color) -> Self {
         let width = width.into();
-        Self { top: width, right: width, bottom: width, left: width, color, radius: None }
+        Self {
+            top: width,
+            right: width,
+            bottom: width,
+            left: width,
+            color,
+            radius: None,
+        }
     }
 
+    /// Returns or updates the `sides` value.
     pub fn sides(
         top: impl Into<Length>,
         right: impl Into<Length>,
         bottom: impl Into<Length>,
         left: impl Into<Length>,
-        color: Color
+        color: Color,
     ) -> Self {
         Self {
             top: top.into(),
@@ -51,30 +68,62 @@ impl Border {
         }
     }
 
+    /// Returns or updates the `top` value.
     pub fn top(width: impl Into<Length>, color: Color) -> Self {
-        Self { top: width.into(), color, ..Self::default() }
+        Self {
+            top: width.into(),
+            color,
+            ..Self::default()
+        }
     }
 
+    /// Returns or updates the `right` value.
     pub fn right(width: impl Into<Length>, color: Color) -> Self {
-        Self { right: width.into(), color, ..Self::default() }
+        Self {
+            right: width.into(),
+            color,
+            ..Self::default()
+        }
     }
 
+    /// Returns or updates the `bottom` value.
     pub fn bottom(width: impl Into<Length>, color: Color) -> Self {
-        Self { bottom: width.into(), color, ..Self::default() }
+        Self {
+            bottom: width.into(),
+            color,
+            ..Self::default()
+        }
     }
 
+    /// Returns or updates the `left` value.
     pub fn left(width: impl Into<Length>, color: Color) -> Self {
-        Self { left: width.into(), color, ..Self::default() }
+        Self {
+            left: width.into(),
+            color,
+            ..Self::default()
+        }
     }
 
+    /// Returns or updates the `horizontal` value.
     pub fn horizontal(width: impl Into<Length>, color: Color) -> Self {
         let width = width.into();
-        Self { left: width, right: width, color, ..Self::default() }
+        Self {
+            left: width,
+            right: width,
+            color,
+            ..Self::default()
+        }
     }
 
+    /// Returns or updates the `vertical` value.
     pub fn vertical(width: impl Into<Length>, color: Color) -> Self {
         let width = width.into();
-        Self { top: width, bottom: width, color, ..Self::default() }
+        Self {
+            top: width,
+            bottom: width,
+            color,
+            ..Self::default()
+        }
     }
 
     /// Sets this border's corner radii. Accepts a single `Length`/`f32`
@@ -85,6 +134,7 @@ impl Border {
         self
     }
 
+    /// Returns or updates the `width` value.
     pub fn width(mut self, width: impl Into<Length>) -> Self {
         let width = width.into();
         self.top = width;
@@ -94,12 +144,13 @@ impl Border {
         self
     }
 
+    /// Returns or updates the `sides_width` value.
     pub fn sides_width(
         mut self,
         top: impl Into<Length>,
         right: impl Into<Length>,
         bottom: impl Into<Length>,
-        left: impl Into<Length>
+        left: impl Into<Length>,
     ) -> Self {
         self.top = top.into();
         self.right = right.into();
@@ -108,26 +159,31 @@ impl Border {
         self
     }
 
+    /// Returns or updates the `top_width` value.
     pub fn top_width(mut self, width: impl Into<Length>) -> Self {
         self.top = width.into();
         self
     }
 
+    /// Returns or updates the `right_width` value.
     pub fn right_width(mut self, width: impl Into<Length>) -> Self {
         self.right = width.into();
         self
     }
 
+    /// Returns or updates the `bottom_width` value.
     pub fn bottom_width(mut self, width: impl Into<Length>) -> Self {
         self.bottom = width.into();
         self
     }
 
+    /// Returns or updates the `left_width` value.
     pub fn left_width(mut self, width: impl Into<Length>) -> Self {
         self.left = width.into();
         self
     }
 
+    /// Returns or updates the `horizontal_width` value.
     pub fn horizontal_width(mut self, width: impl Into<Length>) -> Self {
         let width = width.into();
         self.left = width;
@@ -135,6 +191,7 @@ impl Border {
         self
     }
 
+    /// Returns or updates the `vertical_width` value.
     pub fn vertical_width(mut self, width: impl Into<Length>) -> Self {
         let width = width.into();
         self.top = width;
@@ -142,11 +199,13 @@ impl Border {
         self
     }
 
+    /// Returns or updates the `color` value.
     pub fn color(mut self, color: Color) -> Self {
         self.color = color;
         self
     }
 
+    /// Returns whether the `is_uniform` condition is satisfied.
     pub fn is_uniform(&self) -> bool {
         self.top == self.right && self.right == self.bottom && self.bottom == self.left
     }

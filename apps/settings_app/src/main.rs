@@ -3,12 +3,12 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use web_time::Duration;
-use xenframe::{ App, AppConfig };
+use xenframe::{App, AppConfig};
 
 #[cfg(not(target_arch = "wasm32"))]
 use xenframe::WindowPosition;
-use xengui::{ properties::StyleValue, * };
-use xengui_icons::{ IconAxes, codepoints };
+use xengui::{properties::StyleValue, *};
+use xengui_icons::{IconAxes, codepoints};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     #[cfg(target_arch = "wasm32")]
@@ -19,8 +19,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     #[cfg(not(target_arch = "wasm32"))]
     {
-        let _ = env_logger::Builder
-            ::new()
+        let _ = env_logger::Builder::new()
             .filter_module("xengui", log::LevelFilter::Info)
             .filter_level(log::LevelFilter::Warn)
             .format_timestamp(None)
@@ -48,9 +47,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     app.with_font(
         "Noto_Sans",
-        include_bytes!(
-            concat!(env!("CARGO_MANIFEST_DIR"), "/fonts/NotoSans-VariableFont.ttf")
-        ).to_vec()
+        include_bytes!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/fonts/NotoSans-VariableFont.ttf"
+        ))
+        .to_vec(),
     );
 
     app.render(|| {

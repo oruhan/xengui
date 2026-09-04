@@ -1,4 +1,4 @@
-use winit::monitor::{ MonitorHandle, VideoModeHandle };
+use winit::monitor::{MonitorHandle, VideoModeHandle};
 
 pub enum WindowPosition {
     Center,

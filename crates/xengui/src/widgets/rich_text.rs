@@ -1,42 +1,31 @@
 // SPDX-License-Identifier: Apache-2.0
 use crate::{
-    AnimationManager,
-    Color,
-    Constraints,
-    Cursor,
-    FontStyle,
-    FontWeight,
-    Interaction,
-    LayoutBox,
-    MeasureContext,
-    MeasureResult,
-    PaintContext,
-    Style,
-    StyleBuilder,
-    TextCommand,
-    TextDecoration,
-    Widget,
-    WidgetBase,
-    WidgetContent,
-    WidgetId,
-    constants::DEFAULT_FONT_SIZE,
+    AnimationManager, Color, Constraints, Cursor, FontStyle, FontWeight, Interaction, LayoutBox,
+    MeasureContext, MeasureResult, PaintContext, Style, StyleBuilder, TextCommand, TextDecoration,
+    Widget, WidgetBase, WidgetContent, WidgetId, constants::DEFAULT_FONT_SIZE,
 };
 use smol_str::SmolStr;
-use std::cell::{ Cell, RefCell };
+use std::cell::{Cell, RefCell};
 
 /// One run of text within a [`RichText`] widget, styled independently of
 /// its siblings. Unset fields fall back to the widget's own resolved
 /// style, the same way a hover/pressed style patch overlays a base style.
 #[derive(Clone, Debug, PartialEq)]
 pub struct TextSpan {
+    /// The `text` value carried by this type.
     pub text: SmolStr,
+    /// The `color` value carried by this type.
     pub color: Option<Color>,
+    /// The `weight` value carried by this type.
     pub weight: Option<FontWeight>,
+    /// The `style` value carried by this type.
     pub style: Option<FontStyle>,
+    /// The `decoration` value carried by this type.
     pub decoration: Option<TextDecoration>,
 }
 
 impl TextSpan {
+    /// Creates a value with its default configuration.
     pub fn new(text: impl Into<SmolStr>) -> Self {
         Self {
             text: text.into(),
@@ -47,21 +36,25 @@ impl TextSpan {
         }
     }
 
+    /// Returns or updates the `color` value.
     pub fn color(mut self, color: Color) -> Self {
         self.color = Some(color);
         self
     }
 
+    /// Returns or updates the `weight` value.
     pub fn weight(mut self, weight: FontWeight) -> Self {
         self.weight = Some(weight);
         self
     }
 
+    /// Returns or updates the `style` value.
     pub fn style(mut self, style: FontStyle) -> Self {
         self.style = Some(style);
         self
     }
 
+    /// Returns or updates the `decoration` value.
     pub fn decoration(mut self, decoration: TextDecoration) -> Self {
         self.decoration = Some(decoration);
         self
@@ -134,6 +127,7 @@ pub struct RichText {
 }
 
 impl RichText {
+    /// Creates a value with its default configuration.
     pub fn new() -> Self {
         let mut interaction = Interaction::new();
         interaction.focusable = false;
@@ -214,7 +208,10 @@ impl Widget for RichText {
 
         // Logical metrics; TextMeasurer converts to physical internally.
         let font_size = style.font_size.unwrap_or(DEFAULT_FONT_SIZE).value();
-        let letter_spacing = style.letter_spacing.map(|ls| ls.value().value()).unwrap_or(0.0);
+        let letter_spacing = style
+            .letter_spacing
+            .map(|ls| ls.value().value())
+            .unwrap_or(0.0);
         let base_weight = style.font_weight.unwrap_or_default();
         let base_style = style.font_style.unwrap_or_default();
 
@@ -222,7 +219,10 @@ impl Widget for RichText {
         // internally); resolved to a concrete physical value separately
         // below, since this widget needs the real number for its own
         // line-stepping math in paint().
-        let line_height_logical = style.line_height.map(|lh| lh.value().value()).unwrap_or(0.0);
+        let line_height_logical = style
+            .line_height
+            .map(|lh| lh.value().value())
+            .unwrap_or(0.0);
         let line_height = if line_height_logical > 0.0 {
             line_height_logical * scale_factor
         } else {
@@ -231,7 +231,7 @@ impl Widget for RichText {
                 font_size,
                 base_weight,
                 base_style,
-                scale_factor
+                scale_factor,
             )
         };
 
@@ -253,23 +253,25 @@ impl Widget for RichText {
             let weight = span.weight.unwrap_or(base_weight);
             let font_style = span.style.unwrap_or(base_style);
 
-            let width = ctx.text.measure(
-                text,
-                style.font.as_deref(),
-                font_size,
-                weight,
-                font_style,
-                letter_spacing,
-                line_height_logical,
-                None,
-                scale_factor
-            ).width;
+            let width = ctx
+                .text
+                .measure(
+                    text,
+                    style.font.as_deref(),
+                    font_size,
+                    weight,
+                    font_style,
+                    letter_spacing,
+                    line_height_logical,
+                    None,
+                    scale_factor,
+                )
+                .width;
 
-            if
-                let Some(max_w) = constraints.max_width &&
-                !is_space &&
-                cursor_x > 0.0 &&
-                cursor_x + width > max_w
+            if let Some(max_w) = constraints.max_width
+                && !is_space
+                && cursor_x > 0.0
+                && cursor_x + width > max_w
             {
                 line += 1;
                 cursor_x = 0.0;
@@ -295,17 +297,16 @@ impl Widget for RichText {
         let line_count = (line + 1) as f32;
         self.line_height.set(line_height);
         *self.placed.borrow_mut() = placed;
-        self.content_size.set((max_line_width, line_count * line_height));
+        self.content_size
+            .set((max_line_width, line_count * line_height));
 
         let padding = style.padding.unwrap_or_default();
-        let width =
-            max_line_width +
-            padding.left.to_physical(scale_factor) +
-            padding.right.to_physical(scale_factor);
-        let height =
-            line_count * line_height +
-            padding.top.to_physical(scale_factor) +
-            padding.bottom.to_physical(scale_factor);
+        let width = max_line_width
+            + padding.left.to_physical(scale_factor)
+            + padding.right.to_physical(scale_factor);
+        let height = line_count * line_height
+            + padding.top.to_physical(scale_factor)
+            + padding.bottom.to_physical(scale_factor);
 
         let (width, height) = constraints.constrain_size(width, height);
         MeasureResult::new(width, height)
@@ -332,18 +333,19 @@ impl Widget for RichText {
 
             let mut span_style = style.clone();
             span_style.color = span.color.or(style.color);
-            span_style.font_weight = Some(
-                span.weight.unwrap_or(style.font_weight.unwrap_or_default())
-            );
-            span_style.font_style = Some(
-                span.style.unwrap_or(style.font_style.unwrap_or_default())
-            );
+            span_style.font_weight =
+                Some(span.weight.unwrap_or(style.font_weight.unwrap_or_default()));
+            span_style.font_style =
+                Some(span.style.unwrap_or(style.font_style.unwrap_or_default()));
             span_style.text_decoration = span.decoration.or(style.text_decoration);
             span_style.font_size.get_or_insert(DEFAULT_FONT_SIZE);
 
             ctx.draw_text(TextCommand {
                 text: SmolStr::new(text),
-                position: (origin_x + token.x, origin_y + (token.line as f32) * line_height),
+                position: (
+                    origin_x + token.x,
+                    origin_y + (token.line as f32) * line_height,
+                ),
                 style: span_style,
                 max_width: None,
                 clip_rect: None,
@@ -356,13 +358,7 @@ impl Widget for RichText {
             return false;
         };
 
-        self.spans == other.spans &&
-            self.base.style == other.base.style &&
-            self.base.hover_style == other.base.hover_style &&
-            self.base.pressed_style == other.base.pressed_style &&
-            self.base.disabled_style == other.base.disabled_style &&
-            self.base.focus_style == other.base.focus_style &&
-            self.base.focused_hover_style == other.base.focused_hover_style
+        self.spans == other.spans && self.base.authored_styles_eq(&other.base)
     }
 
     fn cascade_style(&mut self, parent: &Style, anim: &mut AnimationManager) {

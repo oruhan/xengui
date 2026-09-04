@@ -10,19 +10,25 @@
 //! let sidebar = View::new()
 //!     .width(Responsive::new(pct!(100.0)).md(px!(280.0)).lg(px!(320.0)));
 //! ```
-use std::cell::Cell;
 use super::theme::IntoThemed;
+use std::cell::Cell;
 
 /// Tailwind-parity breakpoints, activated min-width-first like CSS media
 /// queries (`@media (min-width: ...)`) - a value set at `Md` also applies
 /// at `Lg`/`Xl`/`Xl2` unless overridden there.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Breakpoint {
+    /// The `Base` variant.
     Base,
+    /// The `Sm` variant.
     Sm,
+    /// The `Md` variant.
     Md,
+    /// The `Lg` variant.
     Lg,
+    /// The `Xl` variant.
     Xl,
+    /// The `Xl2` variant.
     Xl2,
 }
 
@@ -40,10 +46,17 @@ impl Breakpoint {
     }
 
     fn from_width(logical_width: f32) -> Self {
-        [Self::Xl2, Self::Xl, Self::Lg, Self::Md, Self::Sm, Self::Base]
-            .into_iter()
-            .find(|bp| logical_width >= bp.min_width())
-            .unwrap_or(Self::Base)
+        [
+            Self::Xl2,
+            Self::Xl,
+            Self::Lg,
+            Self::Md,
+            Self::Sm,
+            Self::Base,
+        ]
+        .into_iter()
+        .find(|bp| logical_width >= bp.min_width())
+        .unwrap_or(Self::Base)
     }
 }
 
@@ -77,30 +90,43 @@ pub struct Responsive<T> {
 }
 
 impl<T: Clone> Responsive<T> {
+    /// Creates a value with its default configuration.
     pub fn new(base: T) -> Self {
-        Self { base, sm: None, md: None, lg: None, xl: None, xl2: None }
+        Self {
+            base,
+            sm: None,
+            md: None,
+            lg: None,
+            xl: None,
+            xl2: None,
+        }
     }
 
+    /// Returns or updates the `sm` value.
     pub fn sm(mut self, value: T) -> Self {
         self.sm = Some(value);
         self
     }
 
+    /// Returns or updates the `md` value.
     pub fn md(mut self, value: T) -> Self {
         self.md = Some(value);
         self
     }
 
+    /// Returns or updates the `lg` value.
     pub fn lg(mut self, value: T) -> Self {
         self.lg = Some(value);
         self
     }
 
+    /// Returns or updates the `xl` value.
     pub fn xl(mut self, value: T) -> Self {
         self.xl = Some(value);
         self
     }
 
+    /// Returns or updates the `xl2` value.
     pub fn xl2(mut self, value: T) -> Self {
         self.xl2 = Some(value);
         self
@@ -152,9 +178,5 @@ impl_into_themed_responsive!(
 /// hamburger below `Md`.
 pub fn responsive_bool(at: Breakpoint, when_at_or_above: bool) -> bool {
     let active = current_breakpoint() >= at;
-    if when_at_or_above {
-        active
-    } else {
-        !active
-    }
+    if when_at_or_above { active } else { !active }
 }

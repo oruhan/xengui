@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 use web_time::Duration;
 
-use xen_animation::{ Easing, Transition };
+use xen_animation::{Easing, Transition};
 
-use crate::{ Color, Cursor, Length };
+use crate::{Color, Cursor, Length};
 
 /// Default font size in logical pixels
 pub const DEFAULT_FONT_SIZE: Length = Length::px(15.0);
@@ -40,20 +40,19 @@ pub const DEFAULT_SCROLLBAR_THUMB_HOVER_THICKNESS: f32 = 7.0;
 
 // Eased transition applied to scroll position when animating toward a
 // wheel/nudge target; drag updates bypass this and snap instantly.
-pub const SCROLL_TRANSITION: Transition = Transition::new(
-    web_time::Duration::from_millis(250)
-).easing(Easing::EaseOut);
-pub const SCROLLBAR_THICKNESS_TRANSITION: Transition = Transition::new(
-    web_time::Duration::from_millis(160)
-).easing(Easing::EaseOut);
+/// The `SCROLL_TRANSITION` constant.
+pub const SCROLL_TRANSITION: Transition =
+    Transition::new(web_time::Duration::from_millis(250)).easing(Easing::EaseOut);
+/// The `SCROLLBAR_THICKNESS_TRANSITION` constant.
+pub const SCROLLBAR_THICKNESS_TRANSITION: Transition =
+    Transition::new(web_time::Duration::from_millis(160)).easing(Easing::EaseOut);
 /// How long a scrollbar shown only while scrolling (see
 /// `StyleBuilder::scrollbar_auto_hide`) stays visible after the last
 /// scroll activity before it starts fading out.
 pub const SCROLLBAR_AUTO_HIDE_LINGER: Duration = Duration::from_millis(700);
 /// Fade transition applied to a scrollbar's own opacity while auto-hide is active.
-pub const SCROLLBAR_OPACITY_FADE_TRANSITION: Transition = Transition::new(
-    Duration::from_millis(220)
-).easing(Easing::EaseOut);
+pub const SCROLLBAR_OPACITY_FADE_TRANSITION: Transition =
+    Transition::new(Duration::from_millis(220)).easing(Easing::EaseOut);
 
 /// Opacity applied to a `Scroll`-mode scrollbar axis that has nothing to
 /// scroll, so it stays visible but reads as disabled instead of vanishing.
@@ -63,8 +62,11 @@ pub const SCROLLBAR_DISABLED_OPACITY: f32 = 0.35;
 /// cross-axis thickness, so it renders thinner than its track.
 pub const SCROLLBAR_THUMB_PADDING: f32 = 4.0;
 
+/// The `SCROLLBAR_ARROW_SIZE` constant.
 pub const SCROLLBAR_ARROW_SIZE: f32 = 6.0;
+/// The `SCROLLBAR_ARROW_CAP_SEGMENTS` constant.
 pub const SCROLLBAR_ARROW_CAP_SEGMENTS: usize = 32;
+/// The `SCROLLBAR_ARROW_CORNER_RADIUS` constant.
 pub const SCROLLBAR_ARROW_CORNER_RADIUS: f32 = 2.2;
 
 /// Delay (seconds) after pressing a scrollbar arrow button before it
@@ -76,9 +78,8 @@ pub const ARROW_HOLD_REPEAT_INTERVAL: f32 = 0.06;
 
 /* ---- Scrollbar arrow press feedback ---- */
 /// Transition applied to a scrollbar arrow button's press scale.
-pub const SCROLLBAR_ARROW_PRESS_TRANSITION: Transition = Transition::new(
-    web_time::Duration::from_millis(100)
-).easing(Easing::EaseOut);
+pub const SCROLLBAR_ARROW_PRESS_TRANSITION: Transition =
+    Transition::new(web_time::Duration::from_millis(100)).easing(Easing::EaseOut);
 /// Scale a scrollbar arrow button shrinks to while pressed.
 pub const SCROLLBAR_ARROW_PRESS_SCALE: f32 = 0.85;
 
@@ -112,15 +113,13 @@ pub const AUTO_SCROLL_MAX_SPEED: f32 = 1900.0;
 /// approaches no matter how far past the bounds it's pulled.
 pub const OVERSCROLL_RUBBER_BAND_RANGE: f32 = 90.0;
 /// Eased transition used to spring an overscrolled offset back to bounds.
-pub const OVERSCROLL_RETURN_TRANSITION: Transition = Transition::new(
-    web_time::Duration::from_millis(320)
-).easing(Easing::EaseOut);
+pub const OVERSCROLL_RETURN_TRANSITION: Transition =
+    Transition::new(web_time::Duration::from_millis(320)).easing(Easing::EaseOut);
 /// Transition used to fade out an edge-glow flash for `Overscroll::Glow`,
 /// driven through `xen_animation::AnimationManager` instead of a manual
 /// per-frame decay.
-pub const OVERSCROLL_GLOW_FADE_TRANSITION: Transition = Transition::new(
-    web_time::Duration::from_millis(385)
-).easing(Easing::Linear);
+pub const OVERSCROLL_GLOW_FADE_TRANSITION: Transition =
+    Transition::new(web_time::Duration::from_millis(385)).easing(Easing::Linear);
 /// Visual travel (px) a `Stretch`-mode drag/fling asymptotically
 /// approaches - shorter than `OVERSCROLL_RUBBER_BAND_RANGE`, matching
 /// Android's stretch overscroll, which resists further than a loose
@@ -133,9 +132,8 @@ pub const STRETCH_RUBBER_BAND_RANGE: f32 = 48.0;
 pub const STRETCH_OVERSCROLL_FRICTION_MULTIPLIER: f32 = 4.5;
 /// Eased transition used to spring a `Stretch`-mode overscrolled offset
 /// back to bounds - snappier than `OVERSCROLL_RETURN_TRANSITION`.
-pub const STRETCH_RETURN_TRANSITION: Transition = Transition::new(
-    web_time::Duration::from_millis(180)
-).easing(Easing::EaseOut);
+pub const STRETCH_RETURN_TRANSITION: Transition =
+    Transition::new(web_time::Duration::from_millis(180)).easing(Easing::EaseOut);
 /// Thickness (px) of the full-span edge-glow band for `Overscroll::Glow`,
 /// drawn across the whole hit edge instead of anchored to the gesture point.
 pub const OVERSCROLL_GLOW_BAND_THICKNESS: f32 = 3.0;
@@ -144,9 +142,11 @@ pub const OVERSCROLL_GLOW_BAND_THICKNESS: f32 = 3.0;
 // Bounded by the rect pipeline's vertex-attribute budget (see
 // rect_pipeline.rs) - WebGL2's 16-location ceiling doesn't leave room
 // for more once packed alongside the existing fill/border attributes.
+/// The `MAX_GRADIENT_STOPS` constant.
 pub const MAX_GRADIENT_STOPS: usize = 512;
 
 /* ----- ContextMenu ----- */
+/// The `ITEM_FONT_SIZE` constant.
 pub const ITEM_FONT_SIZE: Length = Length::px(13.0);
 
 /// Opacity multiplier applied to Checkbox/Switch/RadioButton colors while

@@ -11,15 +11,21 @@ pub fn set_viewport_size(width: f32, height: f32) {
     VIEWPORT_SIZE.with(|cell| cell.set((width, height)));
 }
 
+/// Returns or updates the `viewport_size` value.
 pub fn viewport_size() -> (f32, f32) {
     VIEWPORT_SIZE.with(Cell::get)
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
+/// Available `Length` choices.
 pub enum Length {
+    /// The `Px` variant.
     Px(f32),
+    /// The `Percent` variant.
     Percent(f32),
+    /// The `ViewportWidth` variant.
     ViewportWidth(f32),
+    /// The `ViewportHeight` variant.
     ViewportHeight(f32),
 }
 
@@ -30,22 +36,27 @@ impl Default for Length {
 }
 
 impl Length {
+    /// Returns or updates the `px` value.
     pub const fn px(value: f32) -> Self {
         Self::Px(value)
     }
 
+    /// Returns or updates the `pct` value.
     pub fn pct(value: f32) -> Self {
         Self::Percent(value)
     }
 
+    /// Returns or updates the `vw` value.
     pub const fn vw(value: f32) -> Self {
         Self::ViewportWidth(value)
     }
 
+    /// Returns or updates the `vh` value.
     pub const fn vh(value: f32) -> Self {
         Self::ViewportHeight(value)
     }
 
+    /// Returns or updates the `value` value.
     pub const fn value(&self) -> f32 {
         match self {
             Self::Px(v) => *v,
@@ -55,6 +66,7 @@ impl Length {
         }
     }
 
+    /// Returns or updates the `to_physical` value.
     pub fn to_physical(self, scale_factor: f32) -> f32 {
         match self {
             Self::Px(v) => v * scale_factor,
@@ -70,10 +82,12 @@ impl Length {
         }
     }
 
+    /// Returns or updates the `add_px` value.
     pub fn add_px(self, value: f32) -> Self {
         Self::px(self.value() + value)
     }
 
+    /// Returns or updates the `sub_px` value.
     pub fn sub_px(self, value: f32) -> Self {
         Self::px((self.value() - value).max(0.0))
     }
@@ -83,6 +97,8 @@ impl Length {
 ///
 /// # Example
 /// ```rust
+/// use xengui::px;
+///
 /// let width = px!(100);
 /// ```
 #[macro_export]
@@ -96,6 +112,8 @@ macro_rules! px {
 ///
 /// # Example
 /// ```rust
+/// use xengui::pct;
+///
 /// let width = pct!(100);
 /// ```
 #[macro_export]
@@ -106,6 +124,7 @@ macro_rules! pct {
 }
 
 #[macro_export]
+/// Expands the `vw` convenience syntax.
 macro_rules! vw {
     ($v:expr) => {
         $crate::style::Length::ViewportWidth($v as f32)
@@ -113,6 +132,7 @@ macro_rules! vw {
 }
 
 #[macro_export]
+/// Expands the `vh` convenience syntax.
 macro_rules! vh {
     ($v:expr) => {
         $crate::style::Length::ViewportHeight($v as f32)

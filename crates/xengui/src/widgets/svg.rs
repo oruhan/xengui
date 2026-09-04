@@ -1,65 +1,47 @@
 // SPDX-License-Identifier: Apache-2.0
 use crate::{
-    AnimationManager,
-    Constraints,
-    EventCtx,
-    EventStatus,
-    ImageCommand,
-    ImageSource,
-    InputEvent,
-    Interaction,
-    LayoutBox,
-    MeasureContext,
-    MeasureResult,
-    PaintContext,
-    Style,
-    StyleBuilder,
-    TriangleCommand,
-    Widget,
-    WidgetBase,
-    WidgetId,
-    image_source_from_rgba8,
-    svg_compat::{ IntoSvgColor, from_svg_color },
+    AnimationManager, Constraints, EventCtx, EventStatus, ImageCommand, ImageSource, InputEvent,
+    Interaction, LayoutBox, MeasureContext, MeasureResult, PaintContext, Style, StyleBuilder,
+    TriangleCommand, Widget, WidgetBase, WidgetId, image_source_from_rgba8,
+    svg_compat::{IntoSvgColor, from_svg_color},
 };
 use smol_str::SmolStr;
 use std::sync::Arc;
-use xen_svg::{
-    PathCommand,
-    SvgAttributes,
-    SvgDocument,
-    SvgDrawOp,
-    SvgElement,
-    SvgTriangle,
-    Transform2D,
-    collect_draw_ops,
-    parse_svg,
-};
 #[cfg(not(target_arch = "wasm32"))]
 use xen_svg::SvgImageSource;
+use xen_svg::{
+    PathCommand, SvgAttributes, SvgDocument, SvgDrawOp, SvgElement, SvgTriangle, Transform2D,
+    collect_draw_ops, parse_svg,
+};
 
 macro_rules! impl_svg_attrs_builder {
     ($ty:ident) => {
         impl $ty {
+            /// Returns or updates the `fill` value.
             pub fn fill(mut self, color: impl IntoSvgColor) -> Self {
                 self.attrs.fill = color.into_svg_color();
                 self
             }
 
+            /// Returns or updates the `stroke` value.
             pub fn stroke(mut self, color: impl IntoSvgColor) -> Self {
                 self.attrs.stroke = color.into_svg_color();
                 self
             }
 
+            /// Returns or updates the `stroke_width` value.
             pub fn stroke_width(mut self, width: f32) -> Self {
                 self.attrs.stroke_width = width;
                 self
             }
 
+            /// Returns or updates the `opacity` value.
             pub fn opacity(mut self, opacity: f32) -> Self {
                 self.attrs.opacity = opacity;
                 self
             }
 
+            /// Returns or updates the `transform` value.
             pub fn transform(mut self, transform: Transform2D) -> Self {
                 self.attrs.transform = transform;
                 self
@@ -68,43 +50,57 @@ macro_rules! impl_svg_attrs_builder {
     };
 }
 
+/// Data and behavior represented by `SvgPathBuilder`.
 pub struct SvgPathBuilder {
     commands: Vec<PathCommand>,
     attrs: SvgAttributes,
 }
 
 impl SvgPathBuilder {
+    /// Creates a value with its default configuration.
     pub fn new() -> Self {
-        Self { commands: Vec::new(), attrs: SvgAttributes::default() }
+        Self {
+            commands: Vec::new(),
+            attrs: SvgAttributes::default(),
+        }
     }
 
+    /// Returns or updates the `move_to` value.
     pub fn move_to(mut self, x: f32, y: f32) -> Self {
         self.commands.push(PathCommand::MoveTo(x, y));
         self
     }
 
+    /// Returns or updates the `line_to` value.
     pub fn line_to(mut self, x: f32, y: f32) -> Self {
         self.commands.push(PathCommand::LineTo(x, y));
         self
     }
 
+    /// Returns or updates the `quad_to` value.
     pub fn quad_to(mut self, cx: f32, cy: f32, x: f32, y: f32) -> Self {
         self.commands.push(PathCommand::QuadTo(cx, cy, x, y));
         self
     }
 
+    /// Returns or updates the `cubic_to` value.
     pub fn cubic_to(mut self, c1x: f32, c1y: f32, c2x: f32, c2y: f32, x: f32, y: f32) -> Self {
-        self.commands.push(PathCommand::CubicTo(c1x, c1y, c2x, c2y, x, y));
+        self.commands
+            .push(PathCommand::CubicTo(c1x, c1y, c2x, c2y, x, y));
         self
     }
 
+    /// Returns or updates the `close` value.
     pub fn close(mut self) -> Self {
         self.commands.push(PathCommand::Close);
         self
     }
 
     fn build(self) -> SvgElement {
-        SvgElement::Path { commands: self.commands, attrs: self.attrs }
+        SvgElement::Path {
+            commands: self.commands,
+            attrs: self.attrs,
+        }
     }
 }
 
@@ -116,6 +112,7 @@ impl Default for SvgPathBuilder {
 
 impl_svg_attrs_builder!(SvgPathBuilder);
 
+/// Data and behavior represented by `SvgRectBuilder`.
 pub struct SvgRectBuilder {
     x: f32,
     y: f32,
@@ -126,10 +123,19 @@ pub struct SvgRectBuilder {
 }
 
 impl SvgRectBuilder {
+    /// Creates a value with its default configuration.
     pub fn new(x: f32, y: f32, width: f32, height: f32) -> Self {
-        Self { x, y, width, height, rx: 0.0, attrs: SvgAttributes::default() }
+        Self {
+            x,
+            y,
+            width,
+            height,
+            rx: 0.0,
+            attrs: SvgAttributes::default(),
+        }
     }
 
+    /// Returns or updates the `radius` value.
     pub fn radius(mut self, rx: f32) -> Self {
         self.rx = rx;
         self
@@ -149,6 +155,7 @@ impl SvgRectBuilder {
 
 impl_svg_attrs_builder!(SvgRectBuilder);
 
+/// Data and behavior represented by `SvgCircleBuilder`.
 pub struct SvgCircleBuilder {
     cx: f32,
     cy: f32,
@@ -157,17 +164,29 @@ pub struct SvgCircleBuilder {
 }
 
 impl SvgCircleBuilder {
+    /// Creates a value with its default configuration.
     pub fn new(cx: f32, cy: f32, r: f32) -> Self {
-        Self { cx, cy, r, attrs: SvgAttributes::default() }
+        Self {
+            cx,
+            cy,
+            r,
+            attrs: SvgAttributes::default(),
+        }
     }
 
     fn build(self) -> SvgElement {
-        SvgElement::Circle { cx: self.cx, cy: self.cy, r: self.r, attrs: self.attrs }
+        SvgElement::Circle {
+            cx: self.cx,
+            cy: self.cy,
+            r: self.r,
+            attrs: self.attrs,
+        }
     }
 }
 
 impl_svg_attrs_builder!(SvgCircleBuilder);
 
+/// Data and behavior represented by `SvgLineBuilder`.
 pub struct SvgLineBuilder {
     x1: f32,
     y1: f32,
@@ -177,74 +196,103 @@ pub struct SvgLineBuilder {
 }
 
 impl SvgLineBuilder {
+    /// Creates a value with its default configuration.
     pub fn new(x1: f32, y1: f32, x2: f32, y2: f32) -> Self {
-        Self { x1, y1, x2, y2, attrs: SvgAttributes::default() }
+        Self {
+            x1,
+            y1,
+            x2,
+            y2,
+            attrs: SvgAttributes::default(),
+        }
     }
 
     fn build(self) -> SvgElement {
-        SvgElement::Line { x1: self.x1, y1: self.y1, x2: self.x2, y2: self.y2, attrs: self.attrs }
+        SvgElement::Line {
+            x1: self.x1,
+            y1: self.y1,
+            x2: self.x2,
+            y2: self.y2,
+            attrs: self.attrs,
+        }
     }
 }
 
 impl_svg_attrs_builder!(SvgLineBuilder);
 
+/// Data and behavior represented by `SvgGroupBuilder`.
 pub struct SvgGroupBuilder {
     children: Vec<SvgElement>,
     attrs: SvgAttributes,
 }
 
 impl SvgGroupBuilder {
+    /// Creates a value with its default configuration.
     pub fn new() -> Self {
-        Self { children: Vec::new(), attrs: SvgAttributes::default() }
+        Self {
+            children: Vec::new(),
+            attrs: SvgAttributes::default(),
+        }
     }
 
+    /// Returns or updates the `path` value.
     pub fn path(mut self, build: impl FnOnce(SvgPathBuilder) -> SvgPathBuilder) -> Self {
         self.children.push(build(SvgPathBuilder::new()).build());
         self
     }
 
+    /// Returns or updates the `rect` value.
     pub fn rect(
         mut self,
         x: f32,
         y: f32,
         w: f32,
         h: f32,
-        build: impl FnOnce(SvgRectBuilder) -> SvgRectBuilder
+        build: impl FnOnce(SvgRectBuilder) -> SvgRectBuilder,
     ) -> Self {
-        self.children.push(build(SvgRectBuilder::new(x, y, w, h)).build());
+        self.children
+            .push(build(SvgRectBuilder::new(x, y, w, h)).build());
         self
     }
 
+    /// Returns or updates the `circle` value.
     pub fn circle(
         mut self,
         cx: f32,
         cy: f32,
         r: f32,
-        build: impl FnOnce(SvgCircleBuilder) -> SvgCircleBuilder
+        build: impl FnOnce(SvgCircleBuilder) -> SvgCircleBuilder,
     ) -> Self {
-        self.children.push(build(SvgCircleBuilder::new(cx, cy, r)).build());
+        self.children
+            .push(build(SvgCircleBuilder::new(cx, cy, r)).build());
         self
     }
 
+    /// Returns or updates the `line` value.
     pub fn line(
         mut self,
         x1: f32,
         y1: f32,
         x2: f32,
         y2: f32,
-        build: impl FnOnce(SvgLineBuilder) -> SvgLineBuilder
+        build: impl FnOnce(SvgLineBuilder) -> SvgLineBuilder,
     ) -> Self {
-        self.children.push(build(SvgLineBuilder::new(x1, y1, x2, y2)).build());
+        self.children
+            .push(build(SvgLineBuilder::new(x1, y1, x2, y2)).build());
         self
     }
 
+    /// Returns or updates the `group` value.
     pub fn group(mut self, build: impl FnOnce(SvgGroupBuilder) -> SvgGroupBuilder) -> Self {
         self.children.push(build(SvgGroupBuilder::new()).build());
         self
     }
 
     fn build(self) -> SvgElement {
-        SvgElement::Group { children: self.children, attrs: self.attrs }
+        SvgElement::Group {
+            children: self.children,
+            attrs: self.attrs,
+        }
     }
 }
 
@@ -300,9 +348,13 @@ fn resolve_document_images(document: &mut SvgDocument) {
             } else {
                 let decoded = image::load_from_memory(&bytes).ok()?.to_rgba8();
                 let (width, height) = decoded.dimensions();
-                Some(SvgImageSource::Raster { width, height, rgba: Arc::new(decoded.into_raw()) })
+                Some(SvgImageSource::Raster {
+                    width,
+                    height,
+                    rgba: Arc::new(decoded.into_raw()),
+                })
             }
-        })
+        }),
     );
 }
 
@@ -313,7 +365,7 @@ fn resolve_document_images(_document: &mut SvgDocument) {}
 /// circle, line, image, group) through the existing triangle pipeline
 /// (vector content) and the existing image pipeline (raster `<image>`s).
 ///
-/// Colors may use [`SvgColor::CURRENT`] instead of a fixed [`crate::Color`]
+/// Colors may use [`xen_svg::SvgColor::CURRENT`] instead of a fixed [`crate::Color`]
 /// to follow the widget's inherited `color` at render time, the same way
 /// CSS's `currentColor` works - this is what lets `xengui-icons` ship icons
 /// that automatically match surrounding text color.
@@ -330,6 +382,7 @@ pub struct Svg {
 }
 
 impl Svg {
+    /// Creates a value with its default configuration.
     pub fn new() -> Self {
         let document = SvgDocument::default();
         let interaction = Interaction::new();
@@ -368,11 +421,13 @@ impl Svg {
         }
     }
 
+    /// Returns or updates the `key` value.
     pub fn key(mut self, key: impl Into<SmolStr>) -> Self {
         self.base.key = Some(key.into());
         self
     }
 
+    /// Returns or updates the `view_box` value.
     pub fn view_box(mut self, x: f32, y: f32, width: f32, height: f32) -> Self {
         let mut document = (*self.document).clone();
         document.view_box = (x, y, width, height);
@@ -380,46 +435,51 @@ impl Svg {
         self
     }
 
+    /// Returns or updates the `path` value.
     pub fn path(mut self, build: impl FnOnce(SvgPathBuilder) -> SvgPathBuilder) -> Self {
         self.push_element(build(SvgPathBuilder::new()).build());
         self
     }
 
+    /// Returns or updates the `rect` value.
     pub fn rect(
         mut self,
         x: f32,
         y: f32,
         w: f32,
         h: f32,
-        build: impl FnOnce(SvgRectBuilder) -> SvgRectBuilder
+        build: impl FnOnce(SvgRectBuilder) -> SvgRectBuilder,
     ) -> Self {
         self.push_element(build(SvgRectBuilder::new(x, y, w, h)).build());
         self
     }
 
+    /// Returns or updates the `circle` value.
     pub fn circle(
         mut self,
         cx: f32,
         cy: f32,
         r: f32,
-        build: impl FnOnce(SvgCircleBuilder) -> SvgCircleBuilder
+        build: impl FnOnce(SvgCircleBuilder) -> SvgCircleBuilder,
     ) -> Self {
         self.push_element(build(SvgCircleBuilder::new(cx, cy, r)).build());
         self
     }
 
+    /// Returns or updates the `line` value.
     pub fn line(
         mut self,
         x1: f32,
         y1: f32,
         x2: f32,
         y2: f32,
-        build: impl FnOnce(SvgLineBuilder) -> SvgLineBuilder
+        build: impl FnOnce(SvgLineBuilder) -> SvgLineBuilder,
     ) -> Self {
         self.push_element(build(SvgLineBuilder::new(x1, y1, x2, y2)).build());
         self
     }
 
+    /// Returns or updates the `group` value.
     pub fn group(mut self, build: impl FnOnce(SvgGroupBuilder) -> SvgGroupBuilder) -> Self {
         self.push_element(build(SvgGroupBuilder::new()).build());
         self
@@ -467,27 +527,19 @@ impl Svg {
     fn set_document(&mut self, document: SvgDocument) {
         let ops = collect_draw_ops(&document);
         self.draw_ops = Arc::new(
-            ops
-                .into_iter()
-                .map(|op| {
-                    match op {
-                        SvgDrawOp::Triangle(tri) => ResolvedDrawOp::Triangle(tri),
-                        SvgDrawOp::Image(img) =>
-                            ResolvedDrawOp::Image(ResolvedRasterImage {
-                                position: img.position,
-                                size: img.size,
-                                transform: img.transform,
-                                opacity: img.opacity,
-                                source: image_source_from_rgba8(
-                                    (*img.rgba).clone(),
-                                    img.width,
-                                    img.height
-                                ),
-                                clip: img.clip,
-                            }),
-                    }
+            ops.into_iter()
+                .map(|op| match op {
+                    SvgDrawOp::Triangle(tri) => ResolvedDrawOp::Triangle(tri),
+                    SvgDrawOp::Image(img) => ResolvedDrawOp::Image(ResolvedRasterImage {
+                        position: img.position,
+                        size: img.size,
+                        transform: img.transform,
+                        opacity: img.opacity,
+                        source: image_source_from_rgba8((*img.rgba).clone(), img.width, img.height),
+                        clip: img.clip,
+                    }),
                 })
-                .collect()
+                .collect(),
         );
         self.document = Arc::new(document);
         self.mark_dirty();
@@ -608,22 +660,29 @@ impl Widget for Svg {
             self.layout_box,
             content_scale,
             style.transform_origin.unwrap_or_default(),
-            ctx.scale_factor
+            ctx.scale_factor,
         );
         let scale = (b.width / vb_w).min(b.height / vb_h);
         let offset_x = (b.x + (b.width - vb_w * scale) * 0.5).round();
         let offset_y = (b.y + (b.height - vb_h * scale) * 0.5).round();
 
         let map = |p: (f32, f32)| -> (f32, f32) {
-            (offset_x + (p.0 - vb_x) * scale, offset_y + (p.1 - vb_y) * scale)
+            (
+                offset_x + (p.0 - vb_x) * scale,
+                offset_y + (p.1 - vb_y) * scale,
+            )
         };
 
-        let inherited_color = self.base.computed_style.color.unwrap_or(crate::Color::BLACK);
+        let inherited_color = self
+            .base
+            .computed_style
+            .color
+            .unwrap_or(crate::Color::BLACK);
         let inherited_svg_color = xen_svg::Color::rgba_f32(
             inherited_color.r(),
             inherited_color.g(),
             inherited_color.b(),
-            inherited_color.a()
+            inherited_color.a(),
         );
 
         // Draws vector triangles and raster images in the same order they
@@ -657,12 +716,7 @@ impl Widget for Svg {
                     // image itself, then takes the axis-aligned bounding
                     // box of the mapped corners.
                     let clip_rect = image.clip.map(|(cx, cy, cw, ch)| {
-                        let corners = [
-                            (cx, cy),
-                            (cx + cw, cy),
-                            (cx, cy + ch),
-                            (cx + cw, cy + ch),
-                        ];
+                        let corners = [(cx, cy), (cx + cw, cy), (cx, cy + ch), (cx + cw, cy + ch)];
                         let mapped: Vec<(f32, f32)> = corners
                             .iter()
                             .map(|&(x, y)| {
@@ -670,22 +724,10 @@ impl Widget for Svg {
                                 map((tx, ty))
                             })
                             .collect();
-                        let min_x = mapped
-                            .iter()
-                            .map(|p| p.0)
-                            .fold(f32::MAX, f32::min);
-                        let max_x = mapped
-                            .iter()
-                            .map(|p| p.0)
-                            .fold(f32::MIN, f32::max);
-                        let min_y = mapped
-                            .iter()
-                            .map(|p| p.1)
-                            .fold(f32::MAX, f32::min);
-                        let max_y = mapped
-                            .iter()
-                            .map(|p| p.1)
-                            .fold(f32::MIN, f32::max);
+                        let min_x = mapped.iter().map(|p| p.0).fold(f32::MAX, f32::min);
+                        let max_x = mapped.iter().map(|p| p.0).fold(f32::MIN, f32::max);
+                        let min_y = mapped.iter().map(|p| p.1).fold(f32::MAX, f32::min);
+                        let max_y = mapped.iter().map(|p| p.1).fold(f32::MIN, f32::max);
                         (min_x, min_y, max_x - min_x, max_y - min_y)
                     });
 
@@ -694,9 +736,8 @@ impl Widget for Svg {
                         size: (image.size.0 * img_scale, image.size.1 * img_scale),
                         image: image.source.clone(),
                         border_radius: None,
-                        tint: (image.opacity < 1.0).then(||
-                            crate::Color::WHITE.with_alpha_f32(image.opacity)
-                        ),
+                        tint: (image.opacity < 1.0)
+                            .then(|| crate::Color::WHITE.with_alpha_f32(image.opacity)),
                         clip_rect,
                     });
                 }
@@ -715,7 +756,7 @@ impl Widget for Svg {
         let Some(other) = other.as_any().downcast_ref::<Svg>() else {
             return false;
         };
-        *self.document == *other.document && self.base.style == other.base.style
+        *self.document == *other.document && self.base.authored_styles_eq(&other.base)
     }
 
     fn cascade_style(&mut self, parent: &Style, anim: &mut AnimationManager) {

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-use super::{ SvgElement, SvgImageSource };
+use super::{SvgElement, SvgImageSource};
 
 /// Parsed SVG document: the `viewBox` (used as the local coordinate space
 /// every element is authored in) plus the top-level element tree.
@@ -11,7 +11,10 @@ pub struct SvgDocument {
 
 impl SvgDocument {
     pub fn new(view_box: (f32, f32, f32, f32)) -> Self {
-        Self { view_box, elements: Vec::new() }
+        Self {
+            view_box,
+            elements: Vec::new(),
+        }
     }
 
     /// Finds the first element (searching recursively into groups) whose
@@ -32,9 +35,8 @@ fn find_by_id_in_slice<'a>(elements: &'a mut [SvgElement], id: &str) -> Option<&
         if element.attrs().id.as_deref() == Some(id) {
             return Some(element);
         }
-        if
-            let SvgElement::Group { children, .. } = element &&
-            let Some(found) = find_by_id_in_slice(children, id)
+        if let SvgElement::Group { children, .. } = element
+            && let Some(found) = find_by_id_in_slice(children, id)
         {
             return Some(found);
         }
@@ -44,7 +46,7 @@ fn find_by_id_in_slice<'a>(elements: &'a mut [SvgElement], id: &str) -> Option<&
 
 fn resolve_images_in_element(
     element: &mut SvgElement,
-    resolve: &mut dyn FnMut(&str) -> Option<SvgImageSource>
+    resolve: &mut dyn FnMut(&str) -> Option<SvgImageSource>,
 ) {
     match element {
         SvgElement::Group { children, .. } => {
@@ -53,7 +55,9 @@ fn resolve_images_in_element(
             }
         }
         SvgElement::Image { source, .. } => {
-            if let SvgImageSource::Unresolved(href) = source && let Some(resolved) = resolve(href) {
+            if let SvgImageSource::Unresolved(href) = source
+                && let Some(resolved) = resolve(href)
+            {
                 *source = resolved;
             }
             if let SvgImageSource::Svg(nested) = source {

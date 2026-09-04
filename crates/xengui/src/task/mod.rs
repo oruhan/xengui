@@ -12,9 +12,9 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::future::Future;
 use std::pin::Pin;
-use std::sync::atomic::{ AtomicU64, Ordering };
-use std::sync::{ Arc, Mutex };
-use std::task::{ Context, Poll, Wake, Waker };
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, Mutex};
+use std::task::{Context, Poll, Wake, Waker};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 struct TaskId(u64);
@@ -45,11 +45,14 @@ static READY: Mutex<Vec<TaskId>> = Mutex::new(Vec::new());
 /// event loop proxy and registers it via [`set_executor_waker`].
 #[cfg(not(target_arch = "wasm32"))]
 pub trait ExecutorWaker: Send + Sync {
+    /// Returns or updates the `wake` value.
     fn wake(&self);
 }
 
 #[cfg(target_arch = "wasm32")]
+/// Wakes the host event loop when a spawned task becomes ready.
 pub trait ExecutorWaker {
+    /// Requests that the host poll the GUI-thread executor.
     fn wake(&self);
 }
 
@@ -62,11 +65,14 @@ thread_local! {
 }
 
 #[cfg(not(target_arch = "wasm32"))]
+/// Updates the `set_executor_waker` value.
+/// Installs the callback used to wake the host event loop.
 pub fn set_executor_waker(waker: Arc<dyn ExecutorWaker>) {
     *EXECUTOR_WAKER.lock().unwrap() = Some(waker);
 }
 
 #[cfg(target_arch = "wasm32")]
+/// Installs the callback used to wake the host event loop.
 pub fn set_executor_waker(waker: Arc<dyn ExecutorWaker>) {
     EXECUTOR_WAKER.with(|cell| {
         *cell.borrow_mut() = Some(waker);
@@ -107,7 +113,10 @@ impl Wake for TaskWaker {
 /// (`Result<T, E>`) can be spawned directly without an extra `.map()`.
 /// Must be called from the same thread that later drives the executor
 /// via [`poll`] - in practice, the GUI thread.
-pub fn spawn<F>(future: F) where F: Future + 'static {
+pub fn spawn<F>(future: F)
+where
+    F: Future + 'static,
+{
     let id = TaskId::next();
     let boxed: BoxedTask = Box::pin(async move {
         future.await;
@@ -169,6 +178,7 @@ struct BlockingShared<T> {
 }
 
 #[cfg(not(target_arch = "wasm32"))]
+/// Data and behavior represented by `SpawnBlocking`.
 pub struct SpawnBlocking<T> {
     shared: Arc<Mutex<BlockingShared<T>>>,
 }
@@ -222,9 +232,14 @@ impl<T> Future for SpawnBlocking<T> {
 /// `cargo test`) benefit from the catch.
 #[cfg(not(target_arch = "wasm32"))]
 pub fn spawn_blocking<F, T>(f: F) -> SpawnBlocking<T>
-    where F: FnOnce() -> T + Send + 'static, T: Send + 'static
+where
+    F: FnOnce() -> T + Send + 'static,
+    T: Send + 'static,
 {
-    let shared = Arc::new(Mutex::new(BlockingShared { result: None, waker: None }));
+    let shared = Arc::new(Mutex::new(BlockingShared {
+        result: None,
+        waker: None,
+    }));
     let worker_shared = shared.clone();
 
     std::thread::spawn(move || {
@@ -396,13 +411,7 @@ mod tests {
     fn spawn_blocking_future_pending_then_ready() {
         let _guard = test_guard();
 
-        struct NoopWaker;
-        impl Wake for NoopWaker {
-            fn wake(self: Arc<Self>) {}
-        }
-
-        let waker = Waker::from(Arc::new(NoopWaker));
-        let mut cx = Context::from_waker(&waker);
+        let mut cx = Context::from_waker(Waker::noop());
 
         let mut fut = spawn_blocking(|| {
             std::thread::sleep(Duration::from_millis(30));
@@ -462,7 +471,8 @@ mod tests {
 
         // The background thread still runs to completion; its result is
         // simply never observed by anything since the future is gone.
-        rx.recv_timeout(Duration::from_secs(1)).expect("worker thread never finished");
+        rx.recv_timeout(Duration::from_secs(1))
+            .expect("worker thread never finished");
         cancel_all();
     }
 

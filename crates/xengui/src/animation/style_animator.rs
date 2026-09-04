@@ -1,21 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
 use super::{
-    AnimKey,
-    AnimLayer,
-    AnimProperty,
-    AnimValue,
-    AnimationManager,
-    Transition,
-    TransitionProperty,
+    AnimKey, AnimLayer, AnimProperty, AnimValue, AnimationManager, Transition, TransitionProperty,
 };
-use crate::{ Background, BorderRadius, Color, Edges, Length, Style, WidgetId };
+use crate::{Background, BorderRadius, Color, Edges, Length, Style, WidgetId};
 
 fn animate_length(
     anim: &mut AnimationManager,
     key: AnimKey,
     transition: Option<Transition>,
     value: Length,
-    animating: &mut bool
+    animating: &mut bool,
 ) -> Length {
     // Percent lengths need a resolved parent size to blend meaningfully,
     // so only Px values are interpolated here.
@@ -37,7 +31,7 @@ fn animate_color(
     key: AnimKey,
     transition: Option<Transition>,
     value: Color,
-    animating: &mut bool
+    animating: &mut bool,
 ) -> Color {
     anim.set_color_target(key, AnimValue(value.to_f32_array()), transition);
     match anim.value(key) {
@@ -56,7 +50,7 @@ fn animate_color(
 pub fn animate_computed_style(
     widget_id: WidgetId,
     style: &mut Style,
-    anim: &mut AnimationManager
+    anim: &mut AnimationManager,
 ) -> bool {
     let Some(properties) = style.transition_properties else {
         return false;
@@ -79,9 +73,13 @@ pub fn animate_computed_style(
         let transition = overrides.colors.or(default_transition);
 
         if let Some(color) = style.color {
-            style.color = Some(
-                animate_color(anim, key(AnimProperty::TextColor), transition, color, &mut animating)
-            );
+            style.color = Some(animate_color(
+                anim,
+                key(AnimProperty::TextColor),
+                transition,
+                color,
+                &mut animating,
+            ));
         }
 
         if let Some(Background::Color(color)) = &style.background {
@@ -91,7 +89,7 @@ pub fn animate_computed_style(
                 key(AnimProperty::BackgroundColor),
                 transition,
                 color,
-                &mut animating
+                &mut animating,
             );
             style.background = Some(Background::Color(animated));
         }
@@ -102,7 +100,7 @@ pub fn animate_computed_style(
                 key(AnimProperty::BorderColor),
                 transition,
                 border.color,
-                &mut animating
+                &mut animating,
             );
             style.border = Some(border);
         }
@@ -130,7 +128,11 @@ pub fn animate_computed_style(
         style.scale = Some(resolved_scale);
 
         let k = key(AnimProperty::ContentScale);
-        anim.set_target(k, AnimValue([content_scale_target, 0.0, 0.0, 0.0]), transition);
+        anim.set_target(
+            k,
+            AnimValue([content_scale_target, 0.0, 0.0, 0.0]),
+            transition,
+        );
         let resolved_content_scale = anim.value(k).map_or(content_scale_target, |v| {
             animating = true;
             v.0[0]
@@ -143,14 +145,22 @@ pub fn animate_computed_style(
 
         if let Some(mut size) = style.size {
             if let Some(w) = size.width {
-                size.width = Some(
-                    animate_length(anim, key(AnimProperty::Width), transition, w, &mut animating)
-                );
+                size.width = Some(animate_length(
+                    anim,
+                    key(AnimProperty::Width),
+                    transition,
+                    w,
+                    &mut animating,
+                ));
             }
             if let Some(h) = size.height {
-                size.height = Some(
-                    animate_length(anim, key(AnimProperty::Height), transition, h, &mut animating)
-                );
+                size.height = Some(animate_length(
+                    anim,
+                    key(AnimProperty::Height),
+                    transition,
+                    h,
+                    &mut animating,
+                ));
             }
             style.size = Some(size);
         }
@@ -162,28 +172,28 @@ pub fn animate_computed_style(
                     key(AnimProperty::PaddingLeft),
                     transition,
                     padding.left,
-                    &mut animating
+                    &mut animating,
                 ),
                 top: animate_length(
                     anim,
                     key(AnimProperty::PaddingTop),
                     transition,
                     padding.top,
-                    &mut animating
+                    &mut animating,
                 ),
                 right: animate_length(
                     anim,
                     key(AnimProperty::PaddingRight),
                     transition,
                     padding.right,
-                    &mut animating
+                    &mut animating,
                 ),
                 bottom: animate_length(
                     anim,
                     key(AnimProperty::PaddingBottom),
                     transition,
                     padding.bottom,
-                    &mut animating
+                    &mut animating,
                 ),
             });
         }
@@ -195,28 +205,28 @@ pub fn animate_computed_style(
                     key(AnimProperty::MarginLeft),
                     transition,
                     margin.left,
-                    &mut animating
+                    &mut animating,
                 ),
                 top: animate_length(
                     anim,
                     key(AnimProperty::MarginTop),
                     transition,
                     margin.top,
-                    &mut animating
+                    &mut animating,
                 ),
                 right: animate_length(
                     anim,
                     key(AnimProperty::MarginRight),
                     transition,
                     margin.right,
-                    &mut animating
+                    &mut animating,
                 ),
                 bottom: animate_length(
                     anim,
                     key(AnimProperty::MarginBottom),
                     transition,
                     margin.bottom,
-                    &mut animating
+                    &mut animating,
                 ),
             });
         }
@@ -227,70 +237,80 @@ pub fn animate_computed_style(
                 key(AnimProperty::BorderWidth),
                 transition,
                 border.top,
-                &mut animating
+                &mut animating,
             );
             border.right = animate_length(
                 anim,
                 key(AnimProperty::BorderWidth),
                 transition,
                 border.right,
-                &mut animating
+                &mut animating,
             );
             border.bottom = animate_length(
                 anim,
                 key(AnimProperty::BorderWidth),
                 transition,
                 border.bottom,
-                &mut animating
+                &mut animating,
             );
             border.left = animate_length(
                 anim,
                 key(AnimProperty::BorderWidth),
                 transition,
                 border.left,
-                &mut animating
+                &mut animating,
             );
             if let Some(radius) = border.radius {
-                border.radius = Some(
-                    BorderRadius::only(
-                        animate_length(
-                            anim,
-                            key(AnimProperty::BorderRadiusTL),
-                            transition,
-                            radius.top_left,
-                            &mut animating
-                        ),
-                        animate_length(
-                            anim,
-                            key(AnimProperty::BorderRadiusTR),
-                            transition,
-                            radius.top_right,
-                            &mut animating
-                        ),
-                        animate_length(
-                            anim,
-                            key(AnimProperty::BorderRadiusBR),
-                            transition,
-                            radius.bottom_right,
-                            &mut animating
-                        ),
-                        animate_length(
-                            anim,
-                            key(AnimProperty::BorderRadiusBL),
-                            transition,
-                            radius.bottom_left,
-                            &mut animating
-                        )
-                    )
-                );
+                border.radius = Some(BorderRadius::only(
+                    animate_length(
+                        anim,
+                        key(AnimProperty::BorderRadiusTL),
+                        transition,
+                        radius.top_left,
+                        &mut animating,
+                    ),
+                    animate_length(
+                        anim,
+                        key(AnimProperty::BorderRadiusTR),
+                        transition,
+                        radius.top_right,
+                        &mut animating,
+                    ),
+                    animate_length(
+                        anim,
+                        key(AnimProperty::BorderRadiusBR),
+                        transition,
+                        radius.bottom_right,
+                        &mut animating,
+                    ),
+                    animate_length(
+                        anim,
+                        key(AnimProperty::BorderRadiusBL),
+                        transition,
+                        radius.bottom_left,
+                        &mut animating,
+                    ),
+                ));
             }
             style.border = Some(border);
         }
 
         if let Some((gx, gy)) = style.gap {
             style.gap = Some((
-                animate_length(anim, key(AnimProperty::GapX), transition, gx, &mut animating),
-                animate_length(anim, key(AnimProperty::GapY), transition, gy, &mut animating),
+                animate_length(
+                    anim,
+                    key(AnimProperty::GapX),
+                    transition,
+                    gx,
+                    &mut animating,
+                ),
+                animate_length(
+                    anim,
+                    key(AnimProperty::GapY),
+                    transition,
+                    gy,
+                    &mut animating,
+                ),
             ));
         }
     }

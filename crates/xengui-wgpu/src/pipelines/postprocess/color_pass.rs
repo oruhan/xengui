@@ -74,7 +74,7 @@ impl ColorFilterPass {
                         count: None,
                     },
                 ],
-            })
+            }),
         );
 
         let layout = device.create_pipeline_layout(
@@ -82,7 +82,7 @@ impl ColorFilterPass {
                 label: Some("Color Filter Pipeline Layout"),
                 bind_group_layouts: &[Some(&bind_group_layout)],
                 immediate_size: 0,
-            })
+            }),
         );
 
         let pipeline = device.create_render_pipeline(
@@ -105,17 +105,15 @@ impl ColorFilterPass {
                     module: &fs,
                     entry_point: Some("fs_main"),
                     compilation_options: Default::default(),
-                    targets: &[
-                        Some(wgpu::ColorTargetState {
-                            format,
-                            blend: Some(wgpu::BlendState::PREMULTIPLIED_ALPHA_BLENDING),
-                            write_mask: wgpu::ColorWrites::ALL,
-                        }),
-                    ],
+                    targets: &[Some(wgpu::ColorTargetState {
+                        format,
+                        blend: Some(wgpu::BlendState::PREMULTIPLIED_ALPHA_BLENDING),
+                        write_mask: wgpu::ColorWrites::ALL,
+                    })],
                 }),
                 multiview_mask: None,
                 cache: None,
-            })
+            }),
         );
 
         let sampler = device.create_sampler(
@@ -126,7 +124,7 @@ impl ColorFilterPass {
                 mag_filter: wgpu::FilterMode::Linear,
                 min_filter: wgpu::FilterMode::Linear,
                 ..Default::default()
-            })
+            }),
         );
 
         let uniform_buffer = device.create_buffer(
@@ -135,10 +133,15 @@ impl ColorFilterPass {
                 size: std::mem::size_of::<GpuFilterOps>() as u64,
                 usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
                 mapped_at_creation: false,
-            })
+            }),
         );
 
-        Self { pipeline, bind_group_layout, sampler, uniform_buffer }
+        Self {
+            pipeline,
+            bind_group_layout,
+            sampler,
+            uniform_buffer,
+        }
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -151,12 +154,18 @@ impl ColorFilterPass {
         target: &wgpu::TextureView,
         width: u32,
         height: u32,
-        filters: &[&Filter]
+        filters: &[&Filter],
     ) {
         let mut ops = GpuFilterOps {
             count: 0,
             _pad: [0; 3],
-            ops: [GpuFilterOp { kind: 0, _pad0: 0, _pad1: 0, _pad2: 0, params: [0.0; 4] }; MAX_OPS],
+            ops: [GpuFilterOp {
+                kind: 0,
+                _pad0: 0,
+                _pad1: 0,
+                _pad2: 0,
+                params: [0.0; 4],
+            }; MAX_OPS],
         };
 
         for filter in filters.iter().take(MAX_OPS) {
@@ -203,28 +212,26 @@ impl ColorFilterPass {
                         resource: self.uniform_buffer.as_entire_binding(),
                     },
                 ],
-            })
+            }),
         );
 
         let mut pass = encoder.begin_render_pass(
             &(wgpu::RenderPassDescriptor {
                 label: Some("Color Filter Pass"),
-                color_attachments: &[
-                    Some(wgpu::RenderPassColorAttachment {
-                        view: target,
-                        resolve_target: None,
-                        ops: wgpu::Operations {
-                            load: wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT),
-                            store: wgpu::StoreOp::Store,
-                        },
-                        depth_slice: None,
-                    }),
-                ],
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: target,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT),
+                        store: wgpu::StoreOp::Store,
+                    },
+                    depth_slice: None,
+                })],
                 depth_stencil_attachment: None,
                 timestamp_writes: None,
                 occlusion_query_set: None,
                 multiview_mask: None,
-            })
+            }),
         );
         pass.set_pipeline(&self.pipeline);
         pass.set_bind_group(0, &bind_group, &[]);

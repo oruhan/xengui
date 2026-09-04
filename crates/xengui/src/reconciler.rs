@@ -25,7 +25,7 @@
 use crate::Widget;
 use smol_str::SmolStr;
 use std::collections::HashMap;
-use web_time::{ Duration, Instant };
+use web_time::{Duration, Instant};
 
 struct Frame {
     new_siblings: Vec<Box<dyn Widget>>,
@@ -40,7 +40,7 @@ impl Frame {
     fn new(
         new_siblings: Vec<Box<dyn Widget>>,
         old_siblings: &[Box<dyn Widget>],
-        old_path: Vec<usize>
+        old_path: Vec<usize>,
     ) -> Self {
         let mut keyed_old = HashMap::new();
 
@@ -91,7 +91,7 @@ fn resolve_old_siblings<'a>(root: &'a [Box<dyn Widget>], path: &[usize]) -> &'a 
 
 fn resolve_old_siblings_mut<'a>(
     root: &'a mut [Box<dyn Widget>],
-    path: &[usize]
+    path: &[usize],
 ) -> &'a mut [Box<dyn Widget>] {
     let mut current = root;
     for &idx in path {
@@ -118,7 +118,7 @@ impl WorkLoop {
     pub fn perform_work(
         &mut self,
         old_root: &mut [Box<dyn Widget>],
-        deadline: Instant
+        deadline: Instant,
     ) -> WorkLoopStatus {
         loop {
             let frame_done = {
@@ -232,7 +232,8 @@ impl WorkLoop {
 
             let taken_children = std::mem::take(new_node.children_mut().unwrap());
             let old_children = resolve_old_siblings(old_root, &child_path);
-            self.stack.push(Frame::new(taken_children, old_children, child_path));
+            self.stack
+                .push(Frame::new(taken_children, old_children, child_path));
         }
     }
 
@@ -291,7 +292,7 @@ fn unmount_subtree(widget: &mut dyn Widget) {
 /// isn't worth the added complexity.
 pub fn reconcile_now(
     new_root: Vec<Box<dyn Widget>>,
-    old_root: &mut [Box<dyn Widget>]
+    old_root: &mut [Box<dyn Widget>],
 ) -> Vec<Box<dyn Widget>> {
     let mut work = WorkLoop::new(new_root, old_root);
     let far_future = Instant::now() + Duration::from_secs(3600);

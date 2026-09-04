@@ -1,39 +1,19 @@
+use std::cell::Cell;
 #[cfg(target_arch = "wasm32")]
 use std::cell::RefCell;
-use std::cell::Cell;
 use std::rc::Rc;
-use std::{ sync::Arc };
+use std::sync::Arc;
 use web_time::Instant;
 
-use winit::event_loop::{ ControlFlow, EventLoop };
+use winit::event_loop::{ControlFlow, EventLoop};
 use winit::window::Window;
 use xengui::{
-    Cursor,
-    ElementState,
-    EventCtx,
-    EventStatus,
-    InputEvent,
-    InputState,
-    MouseButton,
-    StyleBuilder,
-    TOUCH_LONG_PRESS_DURATION,
-    TOUCH_LONG_PRESS_MOVE_TOLERANCE_DP,
-    TouchPanPhase,
-    Widget,
-    clear_text_selection_recursive,
-    collect_focusable_paths,
-    collect_selected_text_recursive,
-    dispatch_focus_within_transition,
-    dispatch_hover_transition,
-    dispatch_positional,
-    dispatch_positional_capturing,
-    dispatch_to_path,
-    hit_test_path,
-    hooks,
-    path_is_within,
-    reconciler,
-    style,
-    update_global_text_selection,
+    Cursor, ElementState, EventCtx, EventStatus, InputEvent, InputState, MouseButton, StyleBuilder,
+    TOUCH_LONG_PRESS_DURATION, TOUCH_LONG_PRESS_MOVE_TOLERANCE_DP, TouchPanPhase, Widget,
+    clear_text_selection_recursive, collect_focusable_paths, collect_selected_text_recursive,
+    dispatch_focus_within_transition, dispatch_hover_transition, dispatch_positional,
+    dispatch_positional_capturing, dispatch_to_path, hit_test_path, hooks, path_is_within,
+    reconciler, style, update_global_text_selection,
 };
 use xengui_wgpu::WgpuWindowRenderer;
 
@@ -186,7 +166,12 @@ impl App {
         self.apply_pending_theme_switch();
 
         let system_is_dark = matches!(self.config.theme, Some(winit::window::Theme::Dark));
-        let active = self.config.themes.get(self.config.active_theme).cloned().unwrap_or_default();
+        let active = self
+            .config
+            .themes
+            .get(self.config.active_theme)
+            .cloned()
+            .unwrap_or_default();
         style::theme::set_current_theme(active.resolved_for_system(system_is_dark));
 
         hooks::begin_render();
@@ -209,27 +194,29 @@ impl App {
             // would refuse to shrink for the panel and push it off the
             // right edge of the window instead.
             root_style.flex_shrink = Some(1.0);
-            root_style.min_size.get_or_insert_with(Default::default).width = Some(
-                xengui::Length::px(0.0)
-            );
+            root_style
+                .min_size
+                .get_or_insert_with(Default::default)
+                .width = Some(xengui::Length::px(0.0));
 
             let mut children: Vec<Box<dyn xengui::Widget>> = vec![new_root];
 
             if self.devtools_open {
-                let panel = xengui::DevtoolsPanel
-                    ::new(self.devtools_panel_width.clone(), self.devtools_close_requested.clone())
-                    .key(xengui::devtools::DEVTOOLS_PANEL_KEY);
+                let panel = xengui::DevtoolsPanel::new(
+                    self.devtools_panel_width.clone(),
+                    self.devtools_close_requested.clone(),
+                )
+                .key(xengui::devtools::DEVTOOLS_PANEL_KEY);
                 children.push(Box::new(panel));
             }
 
             new_root = Box::new(
-                xengui::View
-                    ::new()
+                xengui::View::new()
                     .key("xengui_root_wrapper")
                     .display(xengui::Display::Flex)
                     .flex_direction(xengui::FlexDirection::Row)
                     .size(xengui::pct!(100.0), xengui::pct!(100.0))
-                    .children_vec(children)
+                    .children_vec(children),
             );
         }
 
@@ -312,7 +299,7 @@ impl App {
             &mut self.root,
             old_hover.as_deref(),
             new_hover.as_deref(),
-            &mut ctx
+            &mut ctx,
         );
 
         self.apply_event_ctx(ctx);
@@ -386,15 +373,17 @@ impl App {
                 dispatch_to_path(
                     &mut self.root,
                     &new_focus,
-                    &(InputEvent::FocusGained { via_keyboard: false }),
-                    &mut sub_ctx
+                    &(InputEvent::FocusGained {
+                        via_keyboard: false,
+                    }),
+                    &mut sub_ctx,
                 );
 
                 dispatch_focus_within_transition(
                     &mut self.root,
                     old_focus.as_deref(),
                     Some(&new_focus),
-                    &mut sub_ctx
+                    &mut sub_ctx,
                 );
 
                 if let Some(icon) = sub_ctx.take_cursor_icon() {
@@ -409,7 +398,9 @@ impl App {
                 #[cfg(target_arch = "wasm32")]
                 self.sync_native_input(&new_focus, true);
             }
-        } else if ctx.clear_focus && let Some(old) = self.input.focused_path.take() {
+        } else if ctx.clear_focus
+            && let Some(old) = self.input.focused_path.take()
+        {
             let mut sub_ctx = EventCtx::new();
             dispatch_to_path(&mut self.root, &old, &InputEvent::FocusLost, &mut sub_ctx);
             dispatch_focus_within_transition(&mut self.root, Some(&old), None, &mut sub_ctx);
@@ -417,11 +408,15 @@ impl App {
             self.hide_native_input();
         }
 
-        if let Some(icon) = ctx.take_cursor_icon() && let Some(window) = &self.window {
+        if let Some(icon) = ctx.take_cursor_icon()
+            && let Some(window) = &self.window
+        {
             window.set_cursor(to_winit_cursor(icon));
         }
 
-        if ctx.redraw_requested() && let Some(window) = &self.window {
+        if ctx.redraw_requested()
+            && let Some(window) = &self.window
+        {
             window.request_redraw();
         }
 
@@ -444,7 +439,9 @@ impl App {
             return;
         }
 
-        let current_index = self.input.focused_path
+        let current_index = self
+            .input
+            .focused_path
             .as_ref()
             .and_then(|p| focusable.iter().position(|f| f == p));
 
@@ -471,13 +468,13 @@ impl App {
             &mut self.root,
             &new_path,
             &(InputEvent::FocusGained { via_keyboard: true }),
-            &mut ctx
+            &mut ctx,
         );
         dispatch_focus_within_transition(
             &mut self.root,
             old_focus.as_deref(),
             Some(&new_path),
-            &mut ctx
+            &mut ctx,
         );
         self.input.focused_path = Some(new_path.to_string());
         self.next_blink = None;
@@ -508,8 +505,12 @@ impl App {
             dispatch_positional(
                 &mut self.root,
                 path,
-                &(InputEvent::MouseInput { state, button: MouseButton::Left, position: point }),
-                &mut ctx
+                &(InputEvent::MouseInput {
+                    state,
+                    button: MouseButton::Left,
+                    position: point,
+                }),
+                &mut ctx,
             );
             if ctx.take_suppress_text_drag() {
                 self.input.text_drag_anchor = None;
@@ -542,22 +543,21 @@ impl App {
                 self.touch_pan_owner = None;
 
                 if let Some(focused) = self.input.focused_path.clone() {
-                    let stays_focused = path
-                        .as_deref()
-                        .is_some_and(|p| path_is_within(p, &focused));
+                    let stays_focused =
+                        path.as_deref().is_some_and(|p| path_is_within(p, &focused));
                     if !stays_focused {
                         let mut ctx = EventCtx::new();
                         dispatch_to_path(
                             &mut self.root,
                             &focused,
                             &InputEvent::FocusLost,
-                            &mut ctx
+                            &mut ctx,
                         );
                         dispatch_focus_within_transition(
                             &mut self.root,
                             Some(&focused),
                             None,
-                            &mut ctx
+                            &mut ctx,
                         );
                         self.input.focused_path = None;
                         #[cfg(target_arch = "wasm32")]
@@ -572,7 +572,7 @@ impl App {
                         &mut self.root,
                         self.input.hovered_path.as_deref(),
                         path.as_deref(),
-                        &mut ctx
+                        &mut ctx,
                     );
                     self.apply_event_ctx(ctx);
                 }
@@ -591,7 +591,7 @@ impl App {
                             button: MouseButton::Left,
                             position: point,
                         }),
-                        &mut ctx
+                        &mut ctx,
                     );
                     suppress_drag = ctx.take_suppress_text_drag();
                     self.apply_event_ctx(ctx);
@@ -608,8 +608,11 @@ impl App {
                     let (pan_status, pan_owner) = dispatch_positional_capturing(
                         &mut self.root,
                         path,
-                        &(InputEvent::TouchPan { phase: TouchPanPhase::Start, position: point }),
-                        &mut pan_ctx
+                        &(InputEvent::TouchPan {
+                            phase: TouchPanPhase::Start,
+                            position: point,
+                        }),
+                        &mut pan_ctx,
                     );
                     self.apply_event_ctx(pan_ctx);
                     suppress_drag |= pan_status == EventStatus::Handled;
@@ -618,11 +621,8 @@ impl App {
 
                 self.input.text_drag_anchor = if suppress_drag { None } else { Some(point) };
 
-                self.pending_long_press = path.map(|p| (
-                    Instant::now() + TOUCH_LONG_PRESS_DURATION,
-                    point,
-                    p,
-                ));
+                self.pending_long_press =
+                    path.map(|p| (Instant::now() + TOUCH_LONG_PRESS_DURATION, point, p));
             }
 
             TouchPhase::Moved => {
@@ -633,7 +633,7 @@ impl App {
                         &mut self.root,
                         &path,
                         &(InputEvent::MouseMoved { position: point }),
-                        &mut ctx
+                        &mut ctx,
                     );
                     self.apply_event_ctx(ctx);
                 }
@@ -645,22 +645,25 @@ impl App {
                     dispatch_to_path(
                         &mut self.root,
                         &owner,
-                        &(InputEvent::TouchPan { phase: TouchPanPhase::Move, position: point }),
-                        &mut pan_ctx
+                        &(InputEvent::TouchPan {
+                            phase: TouchPanPhase::Move,
+                            position: point,
+                        }),
+                        &mut pan_ctx,
                     );
                     self.apply_event_ctx(pan_ctx);
                 }
 
-                if
-                    let Some(anchor) = self.input.text_drag_anchor &&
-                    update_global_text_selection(&mut self.root, anchor, point) &&
-                    let Some(window) = &self.window
+                if let Some(anchor) = self.input.text_drag_anchor
+                    && update_global_text_selection(&mut self.root, anchor, point)
+                    && let Some(window) = &self.window
                 {
                     window.request_redraw();
                 }
 
                 if let Some((_, start_point, _)) = self.pending_long_press {
-                    let scale_factor = self.window
+                    let scale_factor = self
+                        .window
                         .as_ref()
                         .map_or(1.0, |w| w.scale_factor() as f32);
                     let moved = (point.0 - start_point.0).abs() + (point.1 - start_point.1).abs();
@@ -684,7 +687,7 @@ impl App {
                             button: MouseButton::Left,
                             position: point,
                         }),
-                        &mut ctx
+                        &mut ctx,
                     );
                     self.apply_event_ctx(ctx);
                 }
@@ -694,8 +697,11 @@ impl App {
                     dispatch_to_path(
                         &mut self.root,
                         &owner,
-                        &(InputEvent::TouchPan { phase: TouchPanPhase::End, position: point }),
-                        &mut pan_ctx
+                        &(InputEvent::TouchPan {
+                            phase: TouchPanPhase::End,
+                            position: point,
+                        }),
+                        &mut pan_ctx,
                     );
                     self.apply_event_ctx(pan_ctx);
                 }
@@ -721,8 +727,11 @@ impl App {
                     dispatch_to_path(
                         &mut self.root,
                         &owner,
-                        &(InputEvent::TouchPan { phase: TouchPanPhase::Cancel, position: point }),
-                        &mut pan_ctx
+                        &(InputEvent::TouchPan {
+                            phase: TouchPanPhase::Cancel,
+                            position: point,
+                        }),
+                        &mut pan_ctx,
                     );
                     self.apply_event_ctx(pan_ctx);
                 }
@@ -769,7 +778,11 @@ impl App {
         }
 
         let is_dark = matches!(self.config.theme, Some(winit::window::Theme::Dark));
-        let target = if is_dark { self.config.dark_theme } else { self.config.light_theme };
+        let target = if is_dark {
+            self.config.dark_theme
+        } else {
+            self.config.light_theme
+        };
 
         if target < self.config.themes.len() && target != self.config.active_theme {
             self.config.active_theme = target;
@@ -802,11 +815,19 @@ impl App {
             return;
         };
         let theme = crate::window::system_theme(self.config.theme);
-        let scale_factor = self.window.as_ref().map_or(1.0, |w| w.scale_factor() as f32);
+        let scale_factor = self
+            .window
+            .as_ref()
+            .map_or(1.0, |w| w.scale_factor() as f32);
 
         crate::win32_chrome::flush_dwm();
         xengui::devtools::record_size("resize_synced:render_begin", width, height);
-        renderer.resize(&mut self.root, theme, scale_factor, width, height);
+        let resize_error = renderer
+            .try_resize(&mut self.root, theme, scale_factor, width, height)
+            .err();
+        if let Some(error) = resize_error {
+            self.recover_renderer(error);
+        }
         self.recalc_hover_at_cursor();
         self.recheck_breakpoint();
         xengui::devtools::record_size("resize_synced:render_end", width, height);

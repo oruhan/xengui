@@ -1,29 +1,26 @@
 // SPDX-License-Identifier: Apache-2.0
 use crate::{
-    Align as XAlign,
-    BoxSizing as XBoxSizing,
-    Display as XDisplay,
-    FlexDirection as XFlexDir,
-    FlexWrap as XFlexWrap,
-    JustifyContent as XJustify,
-    Overflow as XOverflow,
-    Position as XPosition,
-    Style,
+    Align as XAlign, BoxSizing as XBoxSizing, Display as XDisplay, FlexDirection as XFlexDir,
+    FlexWrap as XFlexWrap, JustifyContent as XJustify, Overflow as XOverflow,
+    Position as XPosition, Style,
 };
 use taffy::prelude::*;
 use taffy::style::Style as TaffyStyle;
 
 fn dim<T>(l: crate::Length, scale_factor: f32) -> T
-    where T: taffy::style_helpers::FromLength + taffy::style_helpers::FromPercent
+where
+    T: taffy::style_helpers::FromLength + taffy::style_helpers::FromPercent,
 {
     match l {
         crate::Length::Px(v) => length(v * scale_factor),
         crate::Length::Percent(v) => percent(v / 100.0),
-        crate::Length::ViewportWidth(_) | crate::Length::ViewportHeight(_) =>
-            length(l.to_physical(scale_factor)),
+        crate::Length::ViewportWidth(_) | crate::Length::ViewportHeight(_) => {
+            length(l.to_physical(scale_factor))
+        }
     }
 }
 
+/// Returns or updates the `style_to_taffy` value.
 pub fn style_to_taffy(style: &Style, scale_factor: f32, has_children: bool) -> TaffyStyle {
     let mut t = TaffyStyle {
         display: match style.display.unwrap_or_default() {
@@ -33,8 +30,9 @@ pub fn style_to_taffy(style: &Style, scale_factor: f32, has_children: bool) -> T
             XDisplay::None => taffy::style::Display::None,
         },
         position: match style.position.unwrap_or_default() {
-            XPosition::Static | XPosition::Relative | XPosition::Sticky =>
-                taffy::style::Position::Relative,
+            XPosition::Static | XPosition::Relative | XPosition::Sticky => {
+                taffy::style::Position::Relative
+            }
             XPosition::Absolute | XPosition::Fixed => taffy::style::Position::Absolute,
         },
         box_sizing: match style.box_sizing {
@@ -54,7 +52,10 @@ pub fn style_to_taffy(style: &Style, scale_factor: f32, has_children: bool) -> T
     // Sticky stays in-flow and is clamped after layout instead (see
     // LayoutEngine), so it must not also receive taffy's own relative
     // offset shift the way Absolute/Fixed insets do.
-    if matches!(style.position.unwrap_or_default(), XPosition::Absolute | XPosition::Fixed) {
+    if matches!(
+        style.position.unwrap_or_default(),
+        XPosition::Absolute | XPosition::Fixed
+    ) {
         if let Some(top) = style.top {
             t.inset.top = dim(top, scale_factor);
         }
@@ -92,7 +93,10 @@ pub fn style_to_taffy(style: &Style, scale_factor: f32, has_children: bool) -> T
     #[allow(unused_parens)]
     if let Some(v) = style.flex_shrink {
         t.flex_shrink = v;
-    } else if style.min_size.is_some_and(|s| (s.width.is_some() || s.height.is_some())) {
+    } else if style
+        .min_size
+        .is_some_and(|s| (s.width.is_some() || s.height.is_some()))
+    {
         // Taffy's own default (flex-shrink:1, matching web CSS) still lets
         // the flex algorithm compress a content-sized item back down to its
         // min_size whenever available space is tight, making an explicit
@@ -142,7 +146,8 @@ pub fn style_to_taffy(style: &Style, scale_factor: f32, has_children: bool) -> T
         if let Some(h) = size.height {
             let px = dim(h, scale_factor);
             t.size.height = px;
-            if style.min_size.and_then(|s| s.height).is_none() && matches!(h, crate::Length::Px(_)) {
+            if style.min_size.and_then(|s| s.height).is_none() && matches!(h, crate::Length::Px(_))
+            {
                 t.min_size.height = px;
                 if style.flex_shrink.is_none() {
                     t.flex_shrink = 0.0;
@@ -263,7 +268,7 @@ fn map_justify(j: XJustify) -> JustifyContent {
 
 fn map_grid_track(
     track: &crate::GridTrack,
-    scale_factor: f32
+    scale_factor: f32,
 ) -> taffy::style::GridTemplateComponent<String> {
     let sizing_function = match track {
         crate::GridTrack::Px(px) => length(*px * scale_factor),

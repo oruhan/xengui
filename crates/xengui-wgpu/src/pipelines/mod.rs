@@ -1,16 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0
 pub mod image_pipeline;
+pub mod postprocess;
 pub mod rect_pipeline;
+pub mod stroke_pipeline;
 pub mod text_pipeline;
 pub mod triangle_pipeline;
-pub mod stroke_pipeline;
-pub mod postprocess;
 pub mod variable_icon_pipeline;
 
 pub use image_pipeline::ImagePipeline;
+pub use postprocess::PostProcessEngine;
 pub use rect_pipeline::RectPipeline;
+pub use stroke_pipeline::StrokePipeline;
 pub use text_pipeline::TextPipeline;
 pub use triangle_pipeline::TrianglePipeline;
-pub use stroke_pipeline::StrokePipeline;
-pub use postprocess::PostProcessEngine;
 pub use variable_icon_pipeline::VariableIconPipeline;

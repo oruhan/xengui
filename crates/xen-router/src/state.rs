@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-use std::cell::{ Cell, RefCell };
+use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use xengui::hooks;
 
@@ -14,8 +14,7 @@ thread_local! {
 
 #[cfg(target_arch = "wasm32")]
 fn initial_path() -> String {
-    web_sys
-        ::window()
+    web_sys::window()
         .and_then(|w| w.location().pathname().ok())
         .unwrap_or_else(|| "/".to_string())
 }
@@ -27,8 +26,7 @@ fn initial_path() -> String {
 
 #[cfg(target_arch = "wasm32")]
 fn initial_search() -> HashMap<String, String> {
-    web_sys
-        ::window()
+    web_sys::window()
         .and_then(|w| w.location().search().ok())
         .map(|s| parse_query(&s))
         .unwrap_or_default()
@@ -66,13 +64,10 @@ fn percent_decode(s: &str) -> String {
     let mut out = Vec::with_capacity(bytes.len());
     let mut i = 0;
     while i < bytes.len() {
-        if
-            bytes[i] == b'%' &&
-            i + 2 < bytes.len() &&
-            let Ok(byte) = u8::from_str_radix(
-                std::str::from_utf8(&bytes[i + 1..i + 3]).unwrap_or(""),
-                16
-            )
+        if bytes[i] == b'%'
+            && i + 2 < bytes.len()
+            && let Ok(byte) =
+                u8::from_str_radix(std::str::from_utf8(&bytes[i + 1..i + 3]).unwrap_or(""), 16)
         {
             out.push(byte);
             i += 3;
@@ -115,7 +110,9 @@ pub fn replace(path: impl Into<String>) {
 pub fn back() {
     #[cfg(target_arch = "wasm32")]
     {
-        if let Some(window) = web_sys::window() && let Ok(history) = window.history() {
+        if let Some(window) = web_sys::window()
+            && let Ok(history) = window.history()
+        {
             let _ = history.back();
         }
     }
@@ -125,7 +122,9 @@ pub fn back() {
 pub fn forward() {
     #[cfg(target_arch = "wasm32")]
     {
-        if let Some(window) = web_sys::window() && let Ok(history) = window.history() {
+        if let Some(window) = web_sys::window()
+            && let Ok(history) = window.history()
+        {
             let _ = history.forward();
         }
     }
@@ -191,12 +190,10 @@ fn ensure_popstate_listener() {
                     *s.borrow_mut() = initial_search();
                 });
                 hooks::mark_dirty_and_redraw();
-            }
+            },
         );
-        let _ = window.add_event_listener_with_callback(
-            "popstate",
-            closure.as_ref().unchecked_ref()
-        );
+        let _ =
+            window.add_event_listener_with_callback("popstate", closure.as_ref().unchecked_ref());
         closure.forget();
     }
     #[cfg(not(target_arch = "wasm32"))]

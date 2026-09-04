@@ -1,25 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 use crate::{
-    AnimationManager,
-    BackdropFilterCommand,
-    BoxShadowCommand,
-    DrawCommand,
-    FilteredCommand,
-    ImageCommand,
-    LayoutContext,
-    LayoutEngine,
-    PaintContext,
-    Position,
-    RectCommand,
-    RenderBackend,
-    RenderCache,
-    StrokeCommand,
-    SystemTheme,
-    TriangleCommand,
-    VariableIconCommand,
-    Widget,
+    AnimationManager, BackdropFilterCommand, BoxShadowCommand, DrawCommand, FilteredCommand,
+    ImageCommand, LayoutContext, LayoutEngine, PaintContext, Position, RectCommand, RenderBackend,
+    RenderCache, StrokeCommand, SystemTheme, TriangleCommand, VariableIconCommand, Widget,
+    WidgetPath,
 };
-use std::collections::HashSet;
 use web_time::Instant;
 
 /// Backend-agnostic frame orchestration: layout, paint-tree walk, command
@@ -30,30 +15,74 @@ pub struct FrameRenderer {
     anim: AnimationManager,
     last_tick: Instant,
     force_layout: bool,
+    frame_arena: FrameArena,
+}
+
+/// Resettable storage for data whose lifetime is exactly one frame.
+///
+/// `clear` resets lengths without releasing capacity, giving the paint hot
+/// path bump-arena behavior after the high-water mark has been reached.
+#[derive(Default)]
+struct FrameArena {
+    commands: Vec<(i32, DrawCommand)>,
+    focus_commands: Vec<RectCommand>,
+    top_commands: Vec<DrawCommand>,
+    rects: Vec<RectCommand>,
+    triangles: Vec<TriangleCommand>,
+    images: Vec<ImageCommand>,
+    shadows: Vec<BoxShadowCommand>,
+    strokes: Vec<StrokeCommand>,
+    icons: Vec<VariableIconCommand>,
+    decorations: Vec<RectCommand>,
+    paint_scratch: Vec<DrawCommand>,
+    path: WidgetPath,
+}
+
+impl FrameArena {
+    fn reset(&mut self) {
+        self.commands.clear();
+        self.focus_commands.clear();
+        self.top_commands.clear();
+        self.rects.clear();
+        self.triangles.clear();
+        self.images.clear();
+        self.shadows.clear();
+        self.strokes.clear();
+        self.icons.clear();
+        self.decorations.clear();
+        self.paint_scratch.clear();
+        self.path.restore(0);
+    }
 }
 
 impl FrameRenderer {
+    /// Creates a value with its default configuration.
     pub fn new() -> Self {
         Self {
             render_cache: RenderCache::new(),
             anim: AnimationManager::new(),
             last_tick: Instant::now(),
             force_layout: false,
+            frame_arena: FrameArena::default(),
         }
     }
 
+    /// Returns or updates the `anim` value.
     pub fn anim(&mut self) -> &mut AnimationManager {
         &mut self.anim
     }
 
+    /// Returns whether the `is_animating` condition is satisfied.
     pub fn is_animating(&self) -> bool {
         self.anim.is_animating()
     }
 
+    /// Returns or updates the `resize` value.
     pub fn resize(&mut self) {
         self.force_layout = true;
     }
 
+    /// Returns or updates the `render_frame` value.
     pub fn render_frame(
         &mut self,
         tree: &mut [Box<dyn Widget>],
@@ -61,7 +90,7 @@ impl FrameRenderer {
         theme: SystemTheme,
         scale_factor: f32,
         width: u32,
-        height: u32
+        height: u32,
     ) {
         let now = Instant::now();
         let dt = now.duration_since(self.last_tick);
@@ -78,10 +107,9 @@ impl FrameRenderer {
             return;
         }
 
-        let needs_full_layout =
-            std::mem::take(&mut self.force_layout) ||
-            tree_needs_layout(tree) ||
-            self.anim.active_keys().any(|k| k.property.affects_layout());
+        let needs_full_layout = std::mem::take(&mut self.force_layout)
+            || tree_needs_layout(tree)
+            || self.anim.active_keys().any(|k| k.property.affects_layout());
 
         let mut layout_ctx = LayoutContext {
             text: backend.text_measurer(),
@@ -95,7 +123,7 @@ impl FrameRenderer {
                 &mut layout_ctx,
                 &mut self.render_cache,
                 width as f32,
-                height as f32
+                height as f32,
             );
             LayoutEngine::sync_scroll_offsets(tree);
             reset_layout_dirty_recursive(tree);
@@ -108,27 +136,42 @@ impl FrameRenderer {
             LayoutEngine::reflow_scroll(tree, scale_factor);
         }
 
-        let mut commands: Vec<(i32, DrawCommand)> = Vec::new();
-        let mut focus_commands: Vec<RectCommand> = Vec::new();
-        let mut top_commands: Vec<DrawCommand> = Vec::new();
-        let mut live_keys: HashSet<String> = HashSet::new();
+        let mut frame_arena = std::mem::take(&mut self.frame_arena);
+        frame_arena.reset();
+        self.render_cache.begin_frame();
+        let FrameArena {
+            commands,
+            focus_commands,
+            top_commands,
+            rects: rect_buf,
+            triangles: tri_buf,
+            images: img_buf,
+            shadows: shadow_buf,
+            strokes: stroke_buf,
+            icons: icon_buf,
+            decorations,
+            paint_scratch,
+            path,
+        } = &mut frame_arena;
 
         for (i, node) in tree.iter().enumerate() {
-            let segment = crate::path_segment(node.as_ref(), i);
+            let checkpoint = path.checkpoint();
+            path.push(node.as_ref(), i);
             paint_recursive(
                 node.as_ref(),
-                &segment,
+                path,
                 &mut self.render_cache,
-                &mut commands,
-                &mut focus_commands,
-                &mut top_commands,
-                &mut live_keys,
+                commands,
+                focus_commands,
+                top_commands,
+                paint_scratch,
                 None,
                 scale_factor,
-                0
+                0,
             );
+            path.restore(checkpoint);
         }
-        self.render_cache.retain_keys(&live_keys);
+        self.render_cache.finish_frame();
 
         for node in tree.iter_mut() {
             reset_dirty_recursive(node.as_mut());
@@ -152,13 +195,6 @@ impl FrameRenderer {
         }
 
         let mut current_kind: Option<RunKind> = None;
-        let mut rect_buf: Vec<RectCommand> = Vec::new();
-        let mut tri_buf: Vec<TriangleCommand> = Vec::new();
-        let mut img_buf: Vec<ImageCommand> = Vec::new();
-        let mut shadow_buf: Vec<BoxShadowCommand> = Vec::new();
-        let mut stroke_buf: Vec<crate::StrokeCommand> = Vec::new();
-        let mut icon_buf: Vec<VariableIconCommand> = Vec::new();
-
         macro_rules! flush_run {
             () => {
                 match current_kind {
@@ -169,7 +205,8 @@ impl FrameRenderer {
                     Some(RunKind::Stroke) => backend.draw_strokes(&stroke_buf),
                     Some(RunKind::Text) => {
                         backend.flush_text();
-                        let decorations = backend.take_text_decorations();
+                        decorations.clear();
+                        backend.drain_text_decorations(decorations);
                         if !decorations.is_empty() {
                             backend.draw_rects(&decorations);
                         }
@@ -191,7 +228,7 @@ impl FrameRenderer {
         // Draws each contiguous run of same-type commands in the order
         // z-index (then paint order) puts them in, instead of always
         // drawing every rect, then every triangle, then every image/text.
-        for (_z, command) in commands {
+        for (_z, command) in commands.drain(..) {
             match command {
                 DrawCommand::Text(cmd) => {
                     if current_kind != Some(RunKind::Text) {
@@ -255,7 +292,7 @@ impl FrameRenderer {
                         &filtered.commands,
                         &filtered.chain,
                         filtered.bounds,
-                        filtered.clip_rect
+                        filtered.clip_rect,
                     );
                 }
                 DrawCommand::BackdropFilter(cmd) => {
@@ -268,7 +305,7 @@ impl FrameRenderer {
                         &cmd.chain,
                         cmd.bounds,
                         cmd.clip_rect,
-                        cmd.radius
+                        cmd.radius,
                     );
                 }
             }
@@ -280,43 +317,39 @@ impl FrameRenderer {
         // top layer itself, commands still interleave by paint order
         // (rect/triangle/image/text) instead of being grouped by type.
         if !top_commands.is_empty() {
-            let mut top_rect_buf: Vec<RectCommand> = Vec::new();
-            let mut top_tri_buf: Vec<TriangleCommand> = Vec::new();
-            let mut top_img_buf: Vec<ImageCommand> = Vec::new();
-            let mut top_shadow_buf: Vec<BoxShadowCommand> = Vec::new();
-            let mut top_stroke_buf: Vec<StrokeCommand> = Vec::new();
-            let mut top_icon_buf: Vec<VariableIconCommand> = Vec::new();
             let mut top_kind: Option<RunKind> = None;
 
             macro_rules! flush_top_run {
                 () => {
                     match top_kind {
-                        Some(RunKind::Rect) => backend.draw_rects(&top_rect_buf),
-                        Some(RunKind::Triangle) => backend.draw_triangles(&top_tri_buf),
-                        Some(RunKind::Image) => backend.draw_images(&top_img_buf),
+                        Some(RunKind::Rect) => backend.draw_rects(rect_buf),
+                        Some(RunKind::Triangle) => backend.draw_triangles(tri_buf),
+                        Some(RunKind::Image) => backend.draw_images(img_buf),
                         Some(RunKind::Text) => {
                             backend.flush_text();
-                            let decorations = backend.take_text_decorations();
+                            decorations.clear();
+                            backend.drain_text_decorations(decorations);
                             if !decorations.is_empty() {
                                 backend.draw_rects(&decorations);
                             }
                         }
-                        Some(RunKind::BoxShadow) => backend.draw_box_shadows(&top_shadow_buf),
-                        Some(RunKind::Stroke) => backend.draw_strokes(&top_stroke_buf),
+                        Some(RunKind::BoxShadow) => backend.draw_box_shadows(shadow_buf),
+                        Some(RunKind::Stroke) => backend.draw_strokes(stroke_buf),
                         Some(RunKind::Filtered) => {}
                         Some(RunKind::BackdropFilter) => {}
-                        Some(RunKind::VariableIcon) => backend.draw_variable_icons(&top_icon_buf),
+                        Some(RunKind::VariableIcon) => backend.draw_variable_icons(icon_buf),
                         None => {}
                     }
-                    top_rect_buf.clear();
-                    top_tri_buf.clear();
-                    top_img_buf.clear();
-                    top_stroke_buf.clear();
-                    top_icon_buf.clear();
+                    rect_buf.clear();
+                    tri_buf.clear();
+                    img_buf.clear();
+                    shadow_buf.clear();
+                    stroke_buf.clear();
+                    icon_buf.clear();
                 };
             }
 
-            for command in top_commands {
+            for command in top_commands.drain(..) {
                 match command {
                     DrawCommand::Text(cmd) => {
                         if top_kind != Some(RunKind::Text) {
@@ -330,42 +363,42 @@ impl FrameRenderer {
                             flush_top_run!();
                             top_kind = Some(RunKind::Rect);
                         }
-                        top_rect_buf.push(cmd);
+                        rect_buf.push(cmd);
                     }
                     DrawCommand::Triangle(cmd) => {
                         if top_kind != Some(RunKind::Triangle) {
                             flush_top_run!();
                             top_kind = Some(RunKind::Triangle);
                         }
-                        top_tri_buf.push(cmd);
+                        tri_buf.push(cmd);
                     }
                     DrawCommand::Image(cmd) => {
                         if top_kind != Some(RunKind::Image) {
                             flush_top_run!();
                             top_kind = Some(RunKind::Image);
                         }
-                        top_img_buf.push(*cmd);
+                        img_buf.push(*cmd);
                     }
                     DrawCommand::BoxShadow(cmd) => {
-                        if current_kind != Some(RunKind::BoxShadow) {
+                        if top_kind != Some(RunKind::BoxShadow) {
                             flush_top_run!();
-                            current_kind = Some(RunKind::BoxShadow);
+                            top_kind = Some(RunKind::BoxShadow);
                         }
-                        top_shadow_buf.push(cmd);
+                        shadow_buf.push(cmd);
                     }
                     DrawCommand::Stroke(cmd) => {
                         if top_kind != Some(RunKind::Stroke) {
                             flush_top_run!();
                             top_kind = Some(RunKind::Stroke);
                         }
-                        top_stroke_buf.push(cmd);
+                        stroke_buf.push(cmd);
                     }
                     DrawCommand::VariableIcon(cmd) => {
                         if top_kind != Some(RunKind::VariableIcon) {
                             flush_top_run!();
                             top_kind = Some(RunKind::VariableIcon);
                         }
-                        top_icon_buf.push(*cmd);
+                        icon_buf.push(*cmd);
                     }
                     DrawCommand::Filtered(_) => {}
                     // Overlay/top-layer content never produces a backdrop
@@ -381,10 +414,11 @@ impl FrameRenderer {
         // layer. All text (main pass and top layer) is already flushed to
         // the GPU by this point via the per-run flush_text() calls above.
         if !focus_commands.is_empty() {
-            backend.draw_rects(&focus_commands);
+            backend.draw_rects(focus_commands);
         }
 
         backend.end_frame();
+        self.frame_arena = frame_arena;
     }
 }
 
@@ -415,30 +449,29 @@ fn effective_z_index(widget: &dyn Widget, parent_z_index: i32) -> i32 {
 #[allow(clippy::too_many_arguments)]
 fn paint_recursive(
     widget: &dyn Widget,
-    path: &str,
+    path: &mut WidgetPath,
     cache: &mut RenderCache,
     commands: &mut Vec<(i32, DrawCommand)>,
     focus_commands: &mut Vec<RectCommand>,
     top_commands: &mut Vec<DrawCommand>,
-    live_keys: &mut HashSet<String>,
+    paint_scratch: &mut Vec<DrawCommand>,
     clip_rect: Option<(f32, f32, f32, f32)>,
     scale_factor: f32,
-    parent_z_index: i32
+    parent_z_index: i32,
 ) {
     let layout_box = *widget.layout_box();
 
     if let Some((cx, cy, cw, ch)) = clip_rect {
-        let visible =
-            layout_box.x < cx + cw &&
-            layout_box.x + layout_box.width > cx &&
-            layout_box.y < cy + ch &&
-            layout_box.y + layout_box.height > cy;
+        let visible = layout_box.x < cx + cw
+            && layout_box.x + layout_box.width > cx
+            && layout_box.y < cy + ch
+            && layout_box.y + layout_box.height > cy;
         if !visible {
             return;
         }
     }
 
-    live_keys.insert(path.to_string());
+    cache.mark_live(path.as_str());
 
     let z_index = effective_z_index(widget, parent_z_index);
 
@@ -455,9 +488,9 @@ fn paint_recursive(
             path,
             cache,
             &mut subtree,
-            live_keys,
+            paint_scratch,
             scale_factor,
-            z_index
+            z_index,
         );
         subtree.sort_by_key(|(z, _)| *z);
 
@@ -467,7 +500,9 @@ fn paint_recursive(
         // before the (possibly blurred) content composites on top of them.
         let mut shadow_layer: Vec<(i32, DrawCommand)> = Vec::new();
         subtree.retain(|(z, cmd)| {
-            if let DrawCommand::BoxShadow(sc) = cmd && !sc.inset {
+            if let DrawCommand::BoxShadow(sc) = cmd
+                && !sc.inset
+            {
                 shadow_layer.push((*z, cmd.clone()));
                 return false;
             }
@@ -481,65 +516,69 @@ fn paint_recursive(
 
         let b = layout_box;
         let filtered_cmd = FilteredCommand {
-            commands: subtree
-                .into_iter()
-                .map(|(_, c)| c)
-                .collect(),
+            commands: subtree.into_iter().map(|(_, c)| c).collect(),
             chain: chain.clone(),
             bounds: (b.x, b.y, b.width, b.height),
             clip_rect,
         };
         commands.push((z_index, DrawCommand::Filtered(Box::new(filtered_cmd))));
-        paint_chrome_layers_inline(widget, clip_rect, scale_factor, top_commands, focus_commands);
+        paint_chrome_layers_inline(
+            widget,
+            clip_rect,
+            scale_factor,
+            top_commands,
+            focus_commands,
+            paint_scratch,
+        );
         return;
     }
 
-    let own_commands: Vec<DrawCommand> = match cache.try_reuse(path, layout_box, widget.is_dirty()) {
-        Some(cached) => cached.to_vec(),
+    paint_scratch.clear();
+    match cache.try_reuse(path.as_str(), layout_box, widget.is_dirty()) {
+        Some(cached) => paint_scratch.extend_from_slice(cached),
         None => {
-            let mut local = Vec::new();
             {
-                let mut paint_ctx = PaintContext::new(&mut local, scale_factor);
+                let mut paint_ctx = PaintContext::new(paint_scratch, scale_factor);
                 widget.paint(&mut paint_ctx);
             }
-            cache.store(path, layout_box, local.clone());
-            local
+            cache.store(path.as_str(), layout_box, paint_scratch.clone());
         }
-    };
+    }
 
     if let Some(backdrop_chain) = widget.backdrop_filter().filter(|c| !c.is_empty()) {
         let b = layout_box;
         let own_bounds = (b.x, b.y, b.width, b.height);
         let radius = widget
             .computed_style()
-            .border.as_ref()
+            .border
+            .as_ref()
             .and_then(|border| border.radius)
             .map(|r| r.to_physical_array(scale_factor, b.width, b.height))
             .unwrap_or([0.0; 4]);
         let backdrop_clip = Some(clip_intersect(clip_rect, own_bounds));
-        let mut backdrop_cmd = Some(
-            DrawCommand::BackdropFilter(
-                Box::new(BackdropFilterCommand {
-                    chain: backdrop_chain.clone(),
-                    bounds: own_bounds,
-                    clip_rect: backdrop_clip,
-                    radius,
-                })
-            )
-        );
+        let mut backdrop_cmd = Some(DrawCommand::BackdropFilter(Box::new(
+            BackdropFilterCommand {
+                chain: backdrop_chain.clone(),
+                bounds: own_bounds,
+                clip_rect: backdrop_clip,
+                radius,
+            },
+        )));
 
         // paint_box emits an outset box-shadow before its background rect;
         // capturing right before that rect keeps the shadow's own halo
         // outside the box unblurred, while the background and everything
         // after it composites on top of the blurred result instead of the
         // shadow's near-opaque fill hiding it.
-        let insert_at = own_commands
+        let insert_at = paint_scratch
             .iter()
             .take_while(|c| matches!(c, DrawCommand::BoxShadow(_)))
             .count();
 
-        for (i, mut command) in own_commands.into_iter().enumerate() {
-            if i == insert_at && let Some(cmd) = backdrop_cmd.take() {
+        for (i, mut command) in paint_scratch.drain(..).enumerate() {
+            if i == insert_at
+                && let Some(cmd) = backdrop_cmd.take()
+            {
                 commands.push((z_index, cmd));
             }
             apply_clip(&mut command, clip_rect);
@@ -549,7 +588,7 @@ fn paint_recursive(
             commands.push((z_index, cmd));
         }
     } else {
-        for mut command in own_commands {
+        for mut command in paint_scratch.drain(..) {
             apply_clip(&mut command, clip_rect);
             commands.push((z_index, command));
         }
@@ -561,37 +600,46 @@ fn paint_recursive(
     };
 
     for (i, child) in widget.children().iter().enumerate() {
-        let segment = crate::path_segment(child.as_ref(), i);
-        let child_path = format!("{path}.{segment}");
+        let checkpoint = path.checkpoint();
+        path.push(child.as_ref(), i);
 
         if child.is_portal() {
             paint_portal_subtree(
                 child.as_ref(),
-                &child_path,
+                path,
                 cache,
                 top_commands,
                 focus_commands,
-                live_keys,
-                scale_factor
+                paint_scratch,
+                scale_factor,
             );
+            path.restore(checkpoint);
             continue;
         }
 
         paint_recursive(
             child.as_ref(),
-            &child_path,
+            path,
             cache,
             commands,
             focus_commands,
             top_commands,
-            live_keys,
+            paint_scratch,
             child_clip,
             scale_factor,
-            z_index
+            z_index,
         );
+        path.restore(checkpoint);
     }
 
-    paint_chrome_layers_inline(widget, clip_rect, scale_factor, top_commands, focus_commands);
+    paint_chrome_layers_inline(
+        widget,
+        clip_rect,
+        scale_factor,
+        top_commands,
+        focus_commands,
+        paint_scratch,
+    );
 }
 
 /// Records a widget's own `paint()` output plus every descendant's,
@@ -605,30 +653,27 @@ fn paint_recursive(
 #[allow(clippy::too_many_arguments)]
 fn paint_subtree_for_filter(
     widget: &dyn Widget,
-    path: &str,
+    path: &mut WidgetPath,
     cache: &mut RenderCache,
     out: &mut Vec<(i32, DrawCommand)>,
-    live_keys: &mut HashSet<String>,
+    paint_scratch: &mut Vec<DrawCommand>,
     scale_factor: f32,
-    z_index: i32
+    z_index: i32,
 ) {
-    live_keys.insert(path.to_string());
+    cache.mark_live(path.as_str());
 
-    let own_commands: Vec<DrawCommand> = match
-        cache.try_reuse(path, *widget.layout_box(), widget.is_dirty())
-    {
-        Some(cached) => cached.to_vec(),
+    paint_scratch.clear();
+    match cache.try_reuse(path.as_str(), *widget.layout_box(), widget.is_dirty()) {
+        Some(cached) => paint_scratch.extend_from_slice(cached),
         None => {
-            let mut local = Vec::new();
             {
-                let mut paint_ctx = PaintContext::new(&mut local, scale_factor);
+                let mut paint_ctx = PaintContext::new(paint_scratch, scale_factor);
                 widget.paint(&mut paint_ctx);
             }
-            cache.store(path, *widget.layout_box(), local.clone());
-            local
+            cache.store(path.as_str(), *widget.layout_box(), paint_scratch.clone());
         }
-    };
-    for command in own_commands {
+    }
+    for command in paint_scratch.drain(..) {
         out.push((z_index, command));
     }
 
@@ -636,18 +681,19 @@ fn paint_subtree_for_filter(
         if child.is_portal() {
             continue;
         }
-        let segment = crate::path_segment(child.as_ref(), i);
-        let child_path = format!("{path}.{segment}");
+        let checkpoint = path.checkpoint();
+        path.push(child.as_ref(), i);
         let child_z = effective_z_index(child.as_ref(), z_index);
         paint_subtree_for_filter(
             child.as_ref(),
-            &child_path,
+            path,
             cache,
             out,
-            live_keys,
+            paint_scratch,
             scale_factor,
-            child_z
+            child_z,
         );
+        path.restore(checkpoint);
     }
 }
 
@@ -661,34 +707,35 @@ fn paint_chrome_layers_inline(
     clip_rect: Option<(f32, f32, f32, f32)>,
     scale_factor: f32,
     top_commands: &mut Vec<DrawCommand>,
-    focus_commands: &mut Vec<RectCommand>
+    focus_commands: &mut Vec<RectCommand>,
+    paint_scratch: &mut Vec<DrawCommand>,
 ) {
-    let mut overlay = Vec::new();
+    paint_scratch.clear();
     {
-        let mut paint_ctx = PaintContext::new(&mut overlay, scale_factor);
+        let mut paint_ctx = PaintContext::new(paint_scratch, scale_factor);
         widget.paint_overlay(&mut paint_ctx);
     }
-    for mut command in overlay {
+    for mut command in paint_scratch.drain(..) {
         apply_clip(&mut command, clip_rect);
         top_commands.push(command);
     }
 
-    let mut top_local = Vec::new();
+    paint_scratch.clear();
     {
-        let mut paint_ctx = PaintContext::new(&mut top_local, scale_factor);
+        let mut paint_ctx = PaintContext::new(paint_scratch, scale_factor);
         widget.paint_top(&mut paint_ctx);
     }
-    for mut command in top_local {
+    for mut command in paint_scratch.drain(..) {
         apply_clip(&mut command, clip_rect);
         top_commands.push(command);
     }
 
-    let mut focus_local = Vec::new();
+    paint_scratch.clear();
     {
-        let mut paint_ctx = PaintContext::new(&mut focus_local, scale_factor);
+        let mut paint_ctx = PaintContext::new(paint_scratch, scale_factor);
         widget.paint_focus(&mut paint_ctx);
     }
-    for mut command in focus_local {
+    for mut command in paint_scratch.drain(..) {
         apply_clip(&mut command, clip_rect);
         if let DrawCommand::Rect(rect_cmd) = command {
             focus_commands.push(rect_cmd);
@@ -698,7 +745,7 @@ fn paint_chrome_layers_inline(
 
 fn clip_intersect(
     existing: Option<(f32, f32, f32, f32)>,
-    ancestor: (f32, f32, f32, f32)
+    ancestor: (f32, f32, f32, f32),
 ) -> (f32, f32, f32, f32) {
     let Some((ex, ey, ew, eh)) = existing else {
         return ancestor;
@@ -732,63 +779,64 @@ fn apply_clip(command: &mut DrawCommand, clip_rect: Option<(f32, f32, f32, f32)>
 #[allow(clippy::too_many_arguments)]
 fn paint_portal_subtree(
     widget: &dyn Widget,
-    path: &str,
+    path: &mut WidgetPath,
     cache: &mut RenderCache,
     top_commands: &mut Vec<DrawCommand>,
     focus_commands: &mut Vec<RectCommand>,
-    live_keys: &mut HashSet<String>,
-    scale_factor: f32
+    paint_scratch: &mut Vec<DrawCommand>,
+    scale_factor: f32,
 ) {
     let layout_box = *widget.layout_box();
-    live_keys.insert(path.to_string());
+    cache.mark_live(path.as_str());
 
-    let own_commands: Vec<DrawCommand> = match cache.try_reuse(path, layout_box, widget.is_dirty()) {
-        Some(cached) => cached.to_vec(),
+    paint_scratch.clear();
+    match cache.try_reuse(path.as_str(), layout_box, widget.is_dirty()) {
+        Some(cached) => paint_scratch.extend_from_slice(cached),
         None => {
-            let mut local = Vec::new();
             {
-                let mut paint_ctx = PaintContext::new(&mut local, scale_factor);
+                let mut paint_ctx = PaintContext::new(paint_scratch, scale_factor);
                 widget.paint(&mut paint_ctx);
             }
-            cache.store(path, layout_box, local.clone());
-            local
+            cache.store(path.as_str(), layout_box, paint_scratch.clone());
         }
-    };
-    top_commands.extend(own_commands);
+    }
+    top_commands.append(paint_scratch);
 
     for (i, child) in widget.children().iter().enumerate() {
-        let segment = crate::path_segment(child.as_ref(), i);
+        let checkpoint = path.checkpoint();
+        path.push(child.as_ref(), i);
         paint_portal_subtree(
             child.as_ref(),
-            &format!("{path}.{segment}"),
+            path,
             cache,
             top_commands,
             focus_commands,
-            live_keys,
-            scale_factor
+            paint_scratch,
+            scale_factor,
         );
+        path.restore(checkpoint);
     }
 
-    let mut overlay = Vec::new();
+    paint_scratch.clear();
     {
-        let mut paint_ctx = PaintContext::new(&mut overlay, scale_factor);
+        let mut paint_ctx = PaintContext::new(paint_scratch, scale_factor);
         widget.paint_overlay(&mut paint_ctx);
     }
-    top_commands.extend(overlay);
+    top_commands.append(paint_scratch);
 
-    let mut top_local = Vec::new();
+    paint_scratch.clear();
     {
-        let mut paint_ctx = PaintContext::new(&mut top_local, scale_factor);
+        let mut paint_ctx = PaintContext::new(paint_scratch, scale_factor);
         widget.paint_top(&mut paint_ctx);
     }
-    top_commands.extend(top_local);
+    top_commands.append(paint_scratch);
 
-    let mut focus_local = Vec::new();
+    paint_scratch.clear();
     {
-        let mut paint_ctx = PaintContext::new(&mut focus_local, scale_factor);
+        let mut paint_ctx = PaintContext::new(paint_scratch, scale_factor);
         widget.paint_focus(&mut paint_ctx);
     }
-    for command in focus_local {
+    for command in paint_scratch.drain(..) {
         if let DrawCommand::Rect(rect_cmd) = command {
             focus_commands.push(rect_cmd);
         }
@@ -805,12 +853,13 @@ fn reset_dirty_recursive(widget: &mut dyn Widget) {
 }
 
 fn tree_needs_layout(tree: &[Box<dyn Widget>]) -> bool {
-    tree.iter().any(|w| widget_needs_layout_recursive(w.as_ref()))
+    tree.iter()
+        .any(|w| widget_needs_layout_recursive(w.as_ref()))
 }
 
 fn widget_needs_layout_recursive(widget: &dyn Widget) -> bool {
-    widget.is_layout_dirty() ||
-        widget
+    widget.is_layout_dirty()
+        || widget
             .children()
             .iter()
             .any(|c| widget_needs_layout_recursive(c.as_ref()))
@@ -822,5 +871,30 @@ fn reset_layout_dirty_recursive(tree: &mut [Box<dyn Widget>]) {
         if let Some(children) = widget.children_mut() {
             reset_layout_dirty_recursive(children);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::FrameArena;
+
+    #[test]
+    fn frame_arena_reset_retains_high_water_capacities() {
+        let mut arena = FrameArena::default();
+        arena.commands.reserve(64);
+        arena.rects.reserve(128);
+        arena.paint_scratch.reserve(32);
+
+        let capacities = (
+            arena.commands.capacity(),
+            arena.rects.capacity(),
+            arena.paint_scratch.capacity(),
+        );
+        arena.reset();
+
+        assert_eq!(arena.commands.capacity(), capacities.0);
+        assert_eq!(arena.rects.capacity(), capacities.1);
+        assert_eq!(arena.paint_scratch.capacity(), capacities.2);
+        assert!(arena.path.as_str().is_empty());
     }
 }

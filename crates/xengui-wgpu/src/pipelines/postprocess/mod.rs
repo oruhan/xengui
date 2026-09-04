@@ -10,20 +10,20 @@
 //! reusable textures sized to the source, so a filtered widget never
 //! allocates a new GPU texture on frames where its size hasn't changed.
 #![allow(clippy::too_many_arguments)]
+mod blit_pass;
+mod box_shadow_pass;
 mod color_pass;
 mod kawase_pass;
-mod blit_pass;
 mod texture_pool;
-mod box_shadow_pass;
 
-pub use color_pass::ColorFilterPass;
-pub use kawase_pass::KawasePass;
 pub use blit_pass::BlitPass;
 pub use box_shadow_pass::BoxShadowEngine;
 pub(crate) use box_shadow_pass::directional_shadow_padding;
+pub use color_pass::ColorFilterPass;
+pub use kawase_pass::KawasePass;
 use texture_pool::TexturePool;
 
-use xengui::{ BoxShadowCommand, Filter, FilterChain };
+use xengui::{BoxShadowCommand, Filter, FilterChain};
 
 /// Physical-pixel padding needed around a filtered subtree so blur can
 /// sample past its own edges without clipping. `chain.max_blur_radius()`
@@ -104,7 +104,7 @@ impl PostProcessEngine {
         src_w: u32,
         src_h: u32,
         chain: &FilterChain,
-        scale_factor: f32
+        scale_factor: f32,
     ) -> FilterOutput {
         let padding_px = padding_for_chain(chain, scale_factor);
         let (out_w, out_h) = padded_dims(src_w, src_h, padding_px);
@@ -127,7 +127,7 @@ impl PostProcessEngine {
             out_h,
             offset_uv,
             scale_uv,
-            None
+            None,
         );
 
         current = self.run_chain(
@@ -138,7 +138,7 @@ impl PostProcessEngine {
             out_w,
             out_h,
             chain,
-            scale_factor
+            scale_factor,
         );
 
         FilterOutput {
@@ -166,7 +166,7 @@ impl PostProcessEngine {
         width: u32,
         height: u32,
         chain: &FilterChain,
-        scale_factor: f32
+        scale_factor: f32,
     ) -> FilterOutput {
         log::trace!(
             "PostProcessEngine::apply_prepadded size={width}x{height} scale_factor={scale_factor}"
@@ -183,7 +183,7 @@ impl PostProcessEngine {
             height,
             (0.0, 0.0),
             (1.0, 1.0),
-            None
+            None,
         );
 
         current = self.run_chain(
@@ -194,7 +194,7 @@ impl PostProcessEngine {
             width,
             height,
             chain,
-            scale_factor
+            scale_factor,
         );
 
         FilterOutput {
@@ -218,22 +218,15 @@ impl PostProcessEngine {
         w: u32,
         h: u32,
         chain: &FilterChain,
-        scale_factor: f32
+        scale_factor: f32,
     ) -> texture_pool::PooledTexture {
         let mut segment: Vec<&Filter> = Vec::new();
 
         for filter in chain.iter() {
             if filter.requires_blur_pass() {
                 if !segment.is_empty() {
-                    current = self.run_color_segment(
-                        device,
-                        queue,
-                        encoder,
-                        &current,
-                        &segment,
-                        w,
-                        h
-                    );
+                    current =
+                        self.run_color_segment(device, queue, encoder, &current, &segment, w, h);
                     segment.clear();
                 }
                 current = match filter {
@@ -250,21 +243,19 @@ impl PostProcessEngine {
                             w,
                             h,
                             physical_radius,
-                            &mut self.pool
+                            &mut self.pool,
                         )
                     }
-                    Filter::DropShadow(shadow) => {
-                        self.run_drop_shadow(
-                            device,
-                            queue,
-                            encoder,
-                            &current,
-                            w,
-                            h,
-                            shadow,
-                            scale_factor
-                        )
-                    }
+                    Filter::DropShadow(shadow) => self.run_drop_shadow(
+                        device,
+                        queue,
+                        encoder,
+                        &current,
+                        w,
+                        h,
+                        shadow,
+                        scale_factor,
+                    ),
                     _ => unreachable!("requires_blur_pass() only true for Blur/DropShadow"),
                 };
             } else {
@@ -294,7 +285,7 @@ impl PostProcessEngine {
         target_width: u32,
         target_height: u32,
         source_uv_rect: (f32, f32, f32, f32),
-        radius: [f32; 4]
+        radius: [f32; 4],
     ) {
         self.blit.run_over(
             device,
@@ -307,7 +298,7 @@ impl PostProcessEngine {
             target_width,
             target_height,
             source_uv_rect,
-            radius
+            radius,
         );
     }
 
@@ -323,7 +314,7 @@ impl PostProcessEngine {
         source: &wgpu::TextureView,
         target: &wgpu::TextureView,
         target_width: u32,
-        target_height: u32
+        target_height: u32,
     ) {
         self.blit.run(
             device,
@@ -335,7 +326,7 @@ impl PostProcessEngine {
             target_height,
             (0.0, 0.0),
             (1.0, 1.0),
-            None
+            None,
         );
     }
 
@@ -348,10 +339,19 @@ impl PostProcessEngine {
         source: &texture_pool::PooledTexture,
         segment: &[&Filter],
         w: u32,
-        h: u32
+        h: u32,
     ) -> texture_pool::PooledTexture {
         let target = self.pool.acquire(device, w, h);
-        self.color.run(device, queue, encoder, &source.view, &target.view, w, h, segment);
+        self.color.run(
+            device,
+            queue,
+            encoder,
+            &source.view,
+            &target.view,
+            w,
+            h,
+            segment,
+        );
         target
     }
 
@@ -365,7 +365,7 @@ impl PostProcessEngine {
         w: u32,
         h: u32,
         shadow: &xengui::DropShadow,
-        scale_factor: f32
+        scale_factor: f32,
     ) -> texture_pool::PooledTexture {
         // 1. Extract a tinted silhouette from the source's alpha channel.
         let silhouette = self.pool.acquire(device, w, h);
@@ -379,7 +379,7 @@ impl PostProcessEngine {
             h,
             (0.0, 0.0),
             (1.0, 1.0),
-            Some(shadow.color)
+            Some(shadow.color),
         );
 
         // 2. Blur the silhouette.
@@ -391,7 +391,7 @@ impl PostProcessEngine {
             w,
             h,
             shadow.blur_radius.value() * scale_factor,
-            &mut self.pool
+            &mut self.pool,
         );
 
         // 3. Composite: blurred silhouette offset, then original on top.
@@ -410,7 +410,7 @@ impl PostProcessEngine {
             h,
             offset_uv,
             (1.0, 1.0),
-            None
+            None,
         );
         self.blit.run_over(
             device,
@@ -423,7 +423,7 @@ impl PostProcessEngine {
             w,
             h,
             (0.0, 0.0, 1.0, 1.0),
-            [0.0; 4]
+            [0.0; 4],
         );
 
         composited
@@ -440,7 +440,7 @@ impl PostProcessEngine {
         target_view: &wgpu::TextureView,
         target_width: u32,
         target_height: u32,
-        cmds: &[BoxShadowCommand]
+        cmds: &[BoxShadowCommand],
     ) {
         self.box_shadow.draw_batch(
             device,
@@ -451,7 +451,7 @@ impl PostProcessEngine {
             target_view,
             target_width,
             target_height,
-            cmds
+            cmds,
         );
     }
 }

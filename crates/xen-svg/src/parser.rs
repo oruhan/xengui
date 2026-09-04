@@ -1,16 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 use super::{
-    FillRule,
-    LineCap,
-    LineJoin,
-    PathCommand,
-    SvgAttributes,
-    SvgColor,
-    SvgDocument,
-    SvgElement,
-    SvgImageSource,
-    Transform2D,
-    parse_transform,
+    FillRule, LineCap, LineJoin, PathCommand, SvgAttributes, SvgColor, SvgDocument, SvgElement,
+    SvgImageSource, Transform2D, parse_transform,
 };
 use crate::Color;
 use std::collections::HashMap;
@@ -27,12 +18,19 @@ pub fn parse_svg(input: &str) -> Result<SvgDocument, String> {
         return Err("no <svg> root element found".to_string());
     };
 
-    let view_box = tags[root].attrs
+    let view_box = tags[root]
+        .attrs
         .get("viewBox")
         .and_then(|v| parse_view_box(v))
         .or_else(|| {
-            let w = tags[root].attrs.get("width").and_then(|v| parse_length_attr(v));
-            let h = tags[root].attrs.get("height").and_then(|v| parse_length_attr(v));
+            let w = tags[root]
+                .attrs
+                .get("width")
+                .and_then(|v| parse_length_attr(v));
+            let h = tags[root]
+                .attrs
+                .get("height")
+                .and_then(|v| parse_length_attr(v));
             match (w, h) {
                 (Some(w), Some(h)) if w > 0.0 && h > 0.0 => Some((0.0, 0.0, w, h)),
                 _ => None,
@@ -55,7 +53,7 @@ pub fn parse_svg(input: &str) -> Result<SvgDocument, String> {
         "svg",
         &root_attrs,
         &images_by_id,
-        &patterns_by_id
+        &patterns_by_id,
     );
 
     Ok(SvgDocument { view_box, elements })
@@ -63,7 +61,11 @@ pub fn parse_svg(input: &str) -> Result<SvgDocument, String> {
 
 fn parse_length_attr(value: &str) -> Option<f32> {
     let value = value.trim();
-    value.strip_suffix("px").unwrap_or(value).parse::<f32>().ok()
+    value
+        .strip_suffix("px")
+        .unwrap_or(value)
+        .parse::<f32>()
+        .ok()
 }
 
 fn parse_view_box(value: &str) -> Option<(f32, f32, f32, f32)> {
@@ -99,21 +101,34 @@ fn collect_images_by_id(tags: &[Tag]) -> HashMap<String, ImageDef> {
         let Some(id) = tag.attrs.get("id") else {
             continue;
         };
-        let Some(href) = tag.attrs.get("href").or_else(|| tag.attrs.get("xlink:href")) else {
+        let Some(href) = tag
+            .attrs
+            .get("href")
+            .or_else(|| tag.attrs.get("xlink:href"))
+        else {
             continue;
         };
-        let width = tag.attrs
+        let width = tag
+            .attrs
             .get("width")
             .and_then(|v| v.parse::<f32>().ok())
             .unwrap_or(0.0);
-        let height = tag.attrs
+        let height = tag
+            .attrs
             .get("height")
             .and_then(|v| v.parse::<f32>().ok())
             .unwrap_or(0.0);
         if width <= 0.0 || height <= 0.0 {
             continue;
         }
-        map.insert(id.clone(), ImageDef { source: resolve_href(href), width, height });
+        map.insert(
+            id.clone(),
+            ImageDef {
+                source: resolve_href(href),
+                width,
+                height,
+            },
+        );
     }
     map
 }
@@ -127,7 +142,8 @@ fn collect_patterns_by_id(tags: &[Tag]) -> HashMap<String, PatternDef> {
                 i += 1;
                 continue;
             };
-            let object_bounding_box = tags[i].attrs
+            let object_bounding_box = tags[i]
+                .attrs
                 .get("patternContentUnits")
                 .map(|v| v != "userSpaceOnUse")
                 .unwrap_or(true);
@@ -146,11 +162,15 @@ fn collect_patterns_by_id(tags: &[Tag]) -> HashMap<String, PatternDef> {
                     _ => {}
                 }
                 if found.is_none() && tags[j].name == "use" {
-                    let href = tags[j].attrs
+                    let href = tags[j]
+                        .attrs
                         .get("href")
                         .or_else(|| tags[j].attrs.get("xlink:href"));
-                    if let Some(href) = href && let Some(image_id) = href.strip_prefix('#') {
-                        let transform = tags[j].attrs
+                    if let Some(href) = href
+                        && let Some(image_id) = href.strip_prefix('#')
+                    {
+                        let transform = tags[j]
+                            .attrs
                             .get("transform")
                             .map(|v| parse_transform(v))
                             .unwrap_or(Transform2D::IDENTITY);
@@ -192,7 +212,7 @@ fn resolve_pattern_image_rect(
     rect_w: f32,
     rect_h: f32,
     img_w: f32,
-    img_h: f32
+    img_h: f32,
 ) -> Option<(f32, f32, f32, f32)> {
     let (x0, y0) = pattern.transform.apply(0.0, 0.0);
     let (x1, y1) = pattern.transform.apply(img_w, img_h);
@@ -331,12 +351,11 @@ fn parse_attrs(input: &str) -> HashMap<String, String> {
             while matches!(chars.peek(), Some((_, c)) if c.is_whitespace()) {
                 chars.next();
             }
-            if let Some(&(_, quote)) = chars.peek() && (quote == '"' || quote == '\'') {
+            if let Some(&(_, quote)) = chars.peek()
+                && (quote == '"' || quote == '\'')
+            {
                 chars.next();
-                let value_start = chars
-                    .peek()
-                    .map(|&(idx, _)| idx)
-                    .unwrap_or(input.len());
+                let value_start = chars.peek().map(|&(idx, _)| idx).unwrap_or(input.len());
                 let mut value_end = value_start;
                 while let Some(&(idx, c)) = chars.peek() {
                     if c == quote {
@@ -371,7 +390,7 @@ fn parse_children(
     parent_name: &str,
     parent_attrs: &SvgAttributes,
     images_by_id: &HashMap<String, ImageDef>,
-    patterns_by_id: &HashMap<String, PatternDef>
+    patterns_by_id: &HashMap<String, PatternDef>,
 ) -> Vec<SvgElement> {
     let mut elements = Vec::new();
 
@@ -386,13 +405,8 @@ fn parse_children(
                 return elements;
             }
             TagKind::SelfClose => {
-                if
-                    let Some(element) = build_element(
-                        tag,
-                        parent_attrs,
-                        images_by_id,
-                        patterns_by_id
-                    )
+                if let Some(element) =
+                    build_element(tag, parent_attrs, images_by_id, patterns_by_id)
                 {
                     elements.push(element);
                 }
@@ -411,20 +425,15 @@ fn parse_children(
                         "g",
                         &group_attrs,
                         images_by_id,
-                        patterns_by_id
+                        patterns_by_id,
                     );
                     elements.push(SvgElement::Group {
                         children,
                         attrs: group_attrs,
                     });
                 } else {
-                    if
-                        let Some(element) = build_element(
-                            tag,
-                            parent_attrs,
-                            images_by_id,
-                            patterns_by_id
-                        )
+                    if let Some(element) =
+                        build_element(tag, parent_attrs, images_by_id, patterns_by_id)
                     {
                         elements.push(element);
                     }
@@ -458,33 +467,32 @@ fn build_element(
     tag: &Tag,
     parent_attrs: &SvgAttributes,
     images_by_id: &HashMap<String, ImageDef>,
-    patterns_by_id: &HashMap<String, PatternDef>
+    patterns_by_id: &HashMap<String, PatternDef>,
 ) -> Option<SvgElement> {
     let attrs = build_attrs(&tag.attrs, parent_attrs);
-    let get = |key: &str|
+    let get = |key: &str| {
         tag.attrs
             .get(key)
             .and_then(|v| v.parse::<f32>().ok())
-            .unwrap_or(0.0);
+            .unwrap_or(0.0)
+    };
 
     match tag.name.as_str() {
         "path" => {
             let d = tag.attrs.get("d")?;
-            Some(SvgElement::Path { commands: parse_path_data(d), attrs })
+            Some(SvgElement::Path {
+                commands: parse_path_data(d),
+                attrs,
+            })
         }
         "rect" => {
-            if
-                let Some(fill_value) = tag.attrs.get("fill") &&
-                let Some(pattern_id) = parse_pattern_url(fill_value) &&
-                let Some(pattern) = patterns_by_id.get(pattern_id) &&
-                let Some(image) = images_by_id.get(&pattern.image_id)
+            if let Some(fill_value) = tag.attrs.get("fill")
+                && let Some(pattern_id) = parse_pattern_url(fill_value)
+                && let Some(pattern) = patterns_by_id.get(pattern_id)
+                && let Some(image) = images_by_id.get(&pattern.image_id)
             {
-                let (rect_x, rect_y, rect_w, rect_h) = (
-                    get("x"),
-                    get("y"),
-                    get("width"),
-                    get("height"),
-                );
+                let (rect_x, rect_y, rect_w, rect_h) =
+                    (get("x"), get("y"), get("width"), get("height"));
                 return resolve_pattern_image_rect(
                     pattern,
                     rect_x,
@@ -492,8 +500,9 @@ fn build_element(
                     rect_w,
                     rect_h,
                     image.width,
-                    image.height
-                ).map(|(x, y, width, height)| SvgElement::Image {
+                    image.height,
+                )
+                .map(|(x, y, width, height)| SvgElement::Image {
                     x,
                     y,
                     width,
@@ -512,17 +521,24 @@ fn build_element(
                 attrs,
             })
         }
-        "circle" => Some(SvgElement::Circle { cx: get("cx"), cy: get("cy"), r: get("r"), attrs }),
-        "line" =>
-            Some(SvgElement::Line {
-                x1: get("x1"),
-                y1: get("y1"),
-                x2: get("x2"),
-                y2: get("y2"),
-                attrs,
-            }),
+        "circle" => Some(SvgElement::Circle {
+            cx: get("cx"),
+            cy: get("cy"),
+            r: get("r"),
+            attrs,
+        }),
+        "line" => Some(SvgElement::Line {
+            x1: get("x1"),
+            y1: get("y1"),
+            x2: get("x2"),
+            y2: get("y2"),
+            attrs,
+        }),
         "image" => {
-            let href = tag.attrs.get("href").or_else(|| tag.attrs.get("xlink:href"))?;
+            let href = tag
+                .attrs
+                .get("href")
+                .or_else(|| tag.attrs.get("xlink:href"))?;
             Some(SvgElement::Image {
                 x: get("x"),
                 y: get("y"),
@@ -557,7 +573,9 @@ fn build_attrs(source: &HashMap<String, String>, parent: &SvgAttributes) -> SvgA
     if let Some(v) = source.get("id") {
         attrs.id = Some(v.clone());
     }
-    if let Some(v) = source.get("fill") && !v.trim_start().starts_with("url(") {
+    if let Some(v) = source.get("fill")
+        && !v.trim_start().starts_with("url(")
+    {
         attrs.fill = parse_paint(v);
     }
     if let Some(v) = source.get("fill-rule") {
@@ -617,10 +635,12 @@ fn parse_paint(value: &str) -> SvgColor {
         "none" => SvgColor::None,
         "currentColor" => SvgColor::Current,
         _ => {
-            if let Some(inner) = value.strip_prefix("rgba(").and_then(|s| s.strip_suffix(')')) {
+            if let Some(inner) = value
+                .strip_prefix("rgba(")
+                .and_then(|s| s.strip_suffix(')'))
+            {
                 parse_rgb_like(inner, 1.0).into()
-            } else if
-                let Some(inner) = value.strip_prefix("rgb(").and_then(|s| s.strip_suffix(')'))
+            } else if let Some(inner) = value.strip_prefix("rgb(").and_then(|s| s.strip_suffix(')'))
             {
                 parse_rgb_like(inner, 1.0).into()
             } else {
@@ -695,10 +715,9 @@ fn percent_decode(input: &str) -> String {
     let mut out = Vec::with_capacity(bytes.len());
     let mut i = 0;
     while i < bytes.len() {
-        if
-            bytes[i] == b'%' &&
-            i + 2 < bytes.len() &&
-            let Ok(byte) = u8::from_str_radix(&input[i + 1..i + 3], 16)
+        if bytes[i] == b'%'
+            && i + 2 < bytes.len()
+            && let Ok(byte) = u8::from_str_radix(&input[i + 1..i + 3], 16)
         {
             out.push(byte);
             i += 3;
@@ -731,13 +750,12 @@ fn parse_rgb_like(inner: &str, default_alpha: f32) -> Color {
 
     match parts.as_slice() {
         [r, g, b] => Color::rgba_f32(channel(r), channel(g), channel(b), default_alpha),
-        [r, g, b, a] =>
-            Color::rgba_f32(
-                channel(r),
-                channel(g),
-                channel(b),
-                a.trim().parse().unwrap_or(default_alpha)
-            ),
+        [r, g, b, a] => Color::rgba_f32(
+            channel(r),
+            channel(g),
+            channel(b),
+            a.trim().parse().unwrap_or(default_alpha),
+        ),
         _ => {
             log::error!("xen-svg: malformed rgb()/rgba() value: 'rgb({inner})'");
             Color::BLACK
@@ -777,7 +795,11 @@ fn parse_path_data(d: &str) -> Vec<PathCommand> {
         let relative = op.is_lowercase();
 
         let resolve = |relative: bool, x: f32, y: f32, from: (f32, f32)| {
-            if relative { (from.0 + x, from.1 + y) } else { (x, y) }
+            if relative {
+                (from.0 + x, from.1 + y)
+            } else {
+                (x, y)
+            }
         };
 
         match op.to_ascii_uppercase() {
@@ -862,7 +884,16 @@ fn parse_path_data(d: &str) -> Vec<PathCommand> {
                 let sweep = tokens.flag();
                 let (x, y) = (tokens.number(), tokens.number());
                 let end = resolve(relative, x, y, cursor);
-                push_arc(cursor, end, rx, ry, x_axis_rotation, large_arc, sweep, &mut commands);
+                push_arc(
+                    cursor,
+                    end,
+                    rx,
+                    ry,
+                    x_axis_rotation,
+                    large_arc,
+                    sweep,
+                    &mut commands,
+                );
                 cursor = end;
                 last_cubic_ctrl = None;
                 last_quad_ctrl = None;
@@ -894,7 +925,7 @@ fn push_arc(
     x_axis_rotation_deg: f32,
     large_arc: bool,
     sweep: bool,
-    out: &mut Vec<PathCommand>
+    out: &mut Vec<PathCommand>,
 ) {
     // Coincident endpoints draw nothing at all (spec F.6.2).
     if (from.0 - to.0).abs() < f32::EPSILON && (from.1 - to.1).abs() < f32::EPSILON {
@@ -937,7 +968,11 @@ fn push_arc(
     let sign = if large_arc == sweep { -1.0 } else { 1.0 };
     let num = (rx_sq * ry_sq - rx_sq * y1p_sq - ry_sq * x1p_sq).max(0.0);
     let den = rx_sq * y1p_sq + ry_sq * x1p_sq;
-    let co = if den > f32::EPSILON { sign * (num / den).sqrt() } else { 0.0 };
+    let co = if den > f32::EPSILON {
+        sign * (num / den).sqrt()
+    } else {
+        0.0
+    };
 
     let cxp = co * ((rx * y1p) / ry);
     let cyp = co * -((ry * x1p) / rx);
@@ -948,7 +983,9 @@ fn push_arc(
     // Step 5: the start angle and the total angle swept.
     let angle_between = |ux: f32, uy: f32, vx: f32, vy: f32| -> f32 {
         let dot = ux * vx + uy * vy;
-        let len = ((ux * ux + uy * uy) * (vx * vx + vy * vy)).sqrt().max(f32::EPSILON);
+        let len = ((ux * ux + uy * uy) * (vx * vx + vy * vy))
+            .sqrt()
+            .max(f32::EPSILON);
         let mut a = (dot / len).clamp(-1.0, 1.0).acos();
         if ux * vy - uy * vx < 0.0 {
             a = -a;
@@ -972,7 +1009,9 @@ fn push_arc(
 
     // Step 6: split into segments of at most 90 degrees and approximate
     // each with a cubic bezier using the standard circular-arc magic number.
-    let segment_count = (delta_angle.abs() / std::f32::consts::FRAC_PI_2).ceil().max(1.0) as u32;
+    let segment_count = (delta_angle.abs() / std::f32::consts::FRAC_PI_2)
+        .ceil()
+        .max(1.0) as u32;
     let segment_angle = delta_angle / (segment_count as f32);
     let alpha = (segment_angle / 4.0).tan() * (4.0 / 3.0);
 
@@ -996,7 +1035,10 @@ fn push_arc(
         let map = |p: (f32, f32)| -> (f32, f32) {
             let ex = p.0 * rx;
             let ey = p.1 * ry;
-            (cx + cos_phi * ex - sin_phi * ey, cy + sin_phi * ex + cos_phi * ey)
+            (
+                cx + cos_phi * ex - sin_phi * ey,
+                cy + sin_phi * ex + cos_phi * ey,
+            )
         };
 
         let (c1x, c1y) = map(ctrl1);
@@ -1026,7 +1068,11 @@ struct PathTokenizer<'a> {
 
 impl<'a> PathTokenizer<'a> {
     fn new(source: &'a str) -> Self {
-        Self { chars: source.char_indices().peekable(), source, pushed_back: None }
+        Self {
+            chars: source.char_indices().peekable(),
+            source,
+            pushed_back: None,
+        }
     }
 
     fn push_back(&mut self, token: PathToken) {

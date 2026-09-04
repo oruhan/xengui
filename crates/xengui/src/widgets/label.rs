@@ -1,36 +1,17 @@
 // SPDX-License-Identifier: Apache-2.0
 use crate::{
-    AnimationManager,
-    Background,
-    Color,
-    Constraints,
-    Cursor,
-    ElementState,
-    EventCtx,
-    EventStatus,
-    InputEvent,
-    Interaction,
-    LayoutBox,
-    MULTI_CLICK_DISTANCE_DP,
-    MULTI_CLICK_INTERVAL,
-    MeasureContext,
-    MeasureResult,
-    MouseButton,
-    PaintContext,
-    RectCommand,
-    Style,
-    StyleBuilder,
-    TextCommand,
-    Widget,
-    WidgetBase,
-    WidgetId,
-    constants::{ DEFAULT_CURSOR_ICON, DEFAULT_FONT_SIZE },
+    AnimationManager, Background, Color, Constraints, Cursor, ElementState, EventCtx, EventStatus,
+    InputEvent, Interaction, LayoutBox, MULTI_CLICK_DISTANCE_DP, MULTI_CLICK_INTERVAL,
+    MeasureContext, MeasureResult, MouseButton, PaintContext, RectCommand, Style, StyleBuilder,
+    TextCommand, Widget, WidgetBase, WidgetId,
+    constants::{DEFAULT_CURSOR_ICON, DEFAULT_FONT_SIZE},
 };
 use smol_str::SmolStr;
-use std::cell::{ Cell, RefCell };
+use std::cell::{Cell, RefCell};
 use web_time::Instant;
 
 #[macro_export]
+/// Expands the `props` convenience syntax.
 macro_rules! props {
     ($($field:ident: $val:expr),* $(,)?) => {
         #[allow(clippy::needless_update)]
@@ -41,6 +22,7 @@ macro_rules! props {
     };
 }
 
+/// Data and behavior represented by `Label`.
 pub struct Label {
     base: WidgetBase,
     anim_id: WidgetId,
@@ -63,6 +45,7 @@ pub struct Label {
 }
 
 impl Label {
+    /// Creates a value with its default configuration.
     pub fn new() -> Self {
         let mut interaction = Interaction::new();
         interaction.focusable = false;
@@ -93,12 +76,14 @@ impl Label {
         label
     }
 
+    /// Returns or updates the `label` value.
     pub fn label(mut self, content: impl Into<SmolStr>) -> Self {
         self.content = content.into();
         self.base.mark_dirty();
         self
     }
 
+    /// Returns or updates the `selectable` value.
     pub fn selectable(mut self, value: bool) -> Self {
         self.selectable = value;
         self.base.mark_dirty();
@@ -127,9 +112,11 @@ impl Label {
         // Only claims a hover cursor when it actually needs one (text
         // selection); a plain label wrapped by a clickable ancestor must
         // not shadow that ancestor's own cursor.
-        self.base.interaction.hover_cursor = self.base.computed_style.cursor.or(
-            self.selectable.then_some(Cursor::Text)
-        );
+        self.base.interaction.hover_cursor = self
+            .base
+            .computed_style
+            .cursor
+            .or(self.selectable.then_some(Cursor::Text));
     }
 
     fn index_for_offset(&self, local_x: f32) -> usize {
@@ -150,7 +137,13 @@ impl Label {
     }
 
     fn char_class(c: char) -> u8 {
-        if c.is_whitespace() { 0 } else if c.is_alphanumeric() || c == '_' { 1 } else { 2 }
+        if c.is_whitespace() {
+            0
+        } else if c.is_alphanumeric() || c == '_' {
+            1
+        } else {
+            2
+        }
     }
 
     fn word_bounds_at(&self, idx: usize) -> (usize, usize) {
@@ -207,8 +200,14 @@ impl Widget for Label {
 
         // Logical metrics; TextMeasurer converts to physical internally.
         let font_size = style.font_size.unwrap_or(DEFAULT_FONT_SIZE).value();
-        let letter_spacing = style.letter_spacing.map(|ls| ls.value().value()).unwrap_or(0.0);
-        let line_height = style.line_height.map(|lh| lh.value().value()).unwrap_or(0.0);
+        let letter_spacing = style
+            .letter_spacing
+            .map(|ls| ls.value().value())
+            .unwrap_or(0.0);
+        let line_height = style
+            .line_height
+            .map(|lh| lh.value().value())
+            .unwrap_or(0.0);
 
         self.measured_max_width.set(constraints.max_width);
 
@@ -221,7 +220,7 @@ impl Widget for Label {
             letter_spacing,
             line_height,
             constraints.max_width,
-            scale_factor
+            scale_factor,
         );
 
         self.content_size.set((result.width, result.height));
@@ -235,19 +234,17 @@ impl Widget for Label {
                 style.font_style.unwrap_or_default(),
                 letter_spacing,
                 line_height,
-                scale_factor
+                scale_factor,
             );
         }
 
         let padding = style.padding.unwrap_or_default();
-        let width =
-            result.width +
-            padding.left.to_physical(scale_factor) +
-            padding.right.to_physical(scale_factor);
-        let height =
-            result.height +
-            padding.top.to_physical(scale_factor) +
-            padding.bottom.to_physical(scale_factor);
+        let width = result.width
+            + padding.left.to_physical(scale_factor)
+            + padding.right.to_physical(scale_factor);
+        let height = result.height
+            + padding.top.to_physical(scale_factor)
+            + padding.bottom.to_physical(scale_factor);
         let (width, height) = constraints.constrain_size(width, height);
 
         MeasureResult {
@@ -272,7 +269,11 @@ impl Widget for Label {
         let mut text_style = style.clone();
         text_style.font_size.get_or_insert(DEFAULT_FONT_SIZE);
 
-        let selection = if self.selectable { self.text_selection() } else { None };
+        let selection = if self.selectable {
+            self.text_selection()
+        } else {
+            None
+        };
         let mut sel_bounds: Option<(f32, f32)> = None;
 
         if let Some((start, end)) = selection {
@@ -282,11 +283,11 @@ impl Widget for Label {
                 ctx.draw_rect(RectCommand {
                     position: (text_x + start_x, text_y),
                     size: (end_x - start_x, content_h.max(1.0)),
-                    background: Some(
-                        Background::Color(
-                            style.selection_background.unwrap_or(Color::rgba(90, 140, 230, 100))
-                        )
-                    ),
+                    background: Some(Background::Color(
+                        style
+                            .selection_background
+                            .unwrap_or(Color::rgba(90, 140, 230, 100)),
+                    )),
                     border_radius: style.selection_border_radius.map(Into::into),
                     border_width: style.selection_border_width,
                     border_color: style.selection_border_color,
@@ -347,13 +348,20 @@ impl Widget for Label {
     }
 
     fn event(&mut self, event: &InputEvent, ctx: &mut EventCtx) -> EventStatus {
-        if
-            self.selectable &&
-            let InputEvent::MouseInput { state, button: MouseButton::Left, position } = event
+        if self.selectable
+            && let InputEvent::MouseInput {
+                state,
+                button: MouseButton::Left,
+                position,
+            } = event
         {
-            let padding_left = self.base.computed_style.padding
+            let padding_left = self
+                .base
+                .computed_style
+                .padding
                 .unwrap_or_default()
-                .left.to_physical(self.scale_factor.get());
+                .left
+                .to_physical(self.scale_factor.get());
             let local_x = position.0 - self.layout_box.x - padding_left;
             let idx = self.index_for_offset(local_x);
 
@@ -362,12 +370,11 @@ impl Widget for Label {
                     let now = Instant::now();
                     let (last_x, last_y) = self.last_click_pos.get();
                     let click_distance = MULTI_CLICK_DISTANCE_DP * self.scale_factor.get();
-                    let same_spot =
-                        (position.0 - last_x).abs() < click_distance &&
-                        (position.1 - last_y).abs() < click_distance;
-                    let is_repeat =
-                        same_spot &&
-                        self.last_click_time
+                    let same_spot = (position.0 - last_x).abs() < click_distance
+                        && (position.1 - last_y).abs() < click_distance;
+                    let is_repeat = same_spot
+                        && self
+                            .last_click_time
                             .get()
                             .is_some_and(|t| now.duration_since(t) < MULTI_CLICK_INTERVAL);
                     let click_count = if is_repeat {
@@ -457,9 +464,13 @@ impl Widget for Label {
     }
 
     fn text_index_at(&self, point: (f32, f32)) -> usize {
-        let padding_left = self.base.computed_style.padding
+        let padding_left = self
+            .base
+            .computed_style
+            .padding
             .unwrap_or_default()
-            .left.to_physical(self.scale_factor.get());
+            .left
+            .to_physical(self.scale_factor.get());
         let local_x = point.0 - self.layout_box.x - padding_left;
         self.index_for_offset(local_x)
     }
@@ -469,7 +480,8 @@ impl Widget for Label {
             return;
         }
         self.selection_anchor.set(Some(0));
-        self.selection_cursor.set(Some(self.content.chars().count()));
+        self.selection_cursor
+            .set(Some(self.content.chars().count()));
         self.base.dirty = true;
     }
 
@@ -478,14 +490,9 @@ impl Widget for Label {
             return false;
         };
 
-        self.content == other.content &&
-            self.base.style == other.base.style &&
-            self.base.hover_style == other.base.hover_style &&
-            self.base.pressed_style == other.base.pressed_style &&
-            self.base.disabled_style == other.base.disabled_style &&
-            self.base.focus_style == other.base.focus_style &&
-            self.base.focused_hover_style == other.base.focused_hover_style &&
-            self.selectable == other.selectable
+        self.content == other.content
+            && self.base.authored_styles_eq(&other.base)
+            && self.selectable == other.selectable
     }
 
     fn cascade_style(&mut self, parent: &Style, anim: &mut AnimationManager) {

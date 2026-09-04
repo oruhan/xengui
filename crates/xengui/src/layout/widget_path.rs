@@ -4,13 +4,14 @@ use std::fmt::Write;
 
 pub(crate) type PathCheckpoint = usize;
 
+#[derive(Default)]
 pub(crate) struct WidgetPath {
     buf: String,
 }
 
 impl WidgetPath {
     pub(crate) fn new() -> Self {
-        Self { buf: String::new() }
+        Self::default()
     }
 
     #[inline]

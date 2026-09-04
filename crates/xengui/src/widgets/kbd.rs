@@ -1,38 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 use crate::{
-    AnimKey,
-    AnimLayer,
-    AnimProperty,
-    AnimValue,
-    AnimationManager,
-    Background,
-    BorderRadius,
-    Color,
-    Constraints,
-    Cursor,
-    Easing,
-    Edges,
-    ElementState,
-    EventCtx,
-    EventStatus,
-    InputEvent,
-    Interaction,
-    LayoutBox,
-    Length,
-    MeasureContext,
-    MeasureResult,
-    MouseButton,
-    PaintContext,
-    RectCommand,
-    Style,
-    StyleBuilder,
-    TextCommand,
-    Transition,
-    Widget,
-    WidgetBase,
-    WidgetContent,
-    WidgetId,
-    constants::DEFAULT_FONT_SIZE,
+    AnimKey, AnimLayer, AnimProperty, AnimValue, AnimationManager, Background, BorderRadius, Color,
+    Constraints, Cursor, Easing, Edges, ElementState, EventCtx, EventStatus, InputEvent,
+    Interaction, LayoutBox, Length, MeasureContext, MeasureResult, MouseButton, PaintContext,
+    RectCommand, Style, StyleBuilder, TextCommand, Transition, Widget, WidgetBase, WidgetContent,
+    WidgetId, constants::DEFAULT_FONT_SIZE,
 };
 use smol_str::SmolStr;
 use std::cell::Cell;
@@ -40,9 +12,8 @@ use web_time::Duration;
 
 /// Vertical depth (logical px) of the 3D "well" beneath the keycap.
 const KBD_DEPTH: f32 = 3.0;
-const KBD_PRESS_TRANSITION: Transition = Transition::new(Duration::from_millis(90)).easing(
-    Easing::EaseOut
-);
+const KBD_PRESS_TRANSITION: Transition =
+    Transition::new(Duration::from_millis(90)).easing(Easing::EaseOut);
 
 /// Displays a single keyboard key or shortcut (e.g. "Ctrl", "⌘K"), styled
 /// like a physical keycap that presses flush into its own base on click.
@@ -57,6 +28,7 @@ pub struct Kbd {
 }
 
 impl Kbd {
+    /// Creates a value with its default configuration.
     pub fn new() -> Self {
         let mut interaction = Interaction::new();
         interaction.hover_cursor = Some(Cursor::Pointer);
@@ -79,6 +51,7 @@ impl Kbd {
         kbd
     }
 
+    /// Returns or updates the `label` value.
     pub fn label(mut self, content: impl Into<SmolStr>) -> Self {
         self.content = content.into();
         self.mark_dirty();
@@ -137,21 +110,19 @@ impl Widget for Kbd {
             0.0,
             0.0,
             None,
-            scale_factor
+            scale_factor,
         );
 
         self.content_size.set((result.width, result.height));
 
         let padding = style.padding.unwrap_or_default();
-        let width =
-            result.width +
-            padding.left.to_physical(scale_factor) +
-            padding.right.to_physical(scale_factor);
-        let height =
-            result.height +
-            padding.top.to_physical(scale_factor) +
-            padding.bottom.to_physical(scale_factor) +
-            KBD_DEPTH * scale_factor;
+        let width = result.width
+            + padding.left.to_physical(scale_factor)
+            + padding.right.to_physical(scale_factor);
+        let height = result.height
+            + padding.top.to_physical(scale_factor)
+            + padding.bottom.to_physical(scale_factor)
+            + KBD_DEPTH * scale_factor;
 
         let (width, height) = constraints.constrain_size(width, height);
         MeasureResult::new(width, height)
@@ -164,7 +135,7 @@ impl Widget for Kbd {
             self.layout_box,
             style.scale.unwrap_or(1.0),
             style.transform_origin.unwrap_or_default(),
-            sf
+            sf,
         );
         let t = self.press_progress.get();
         let theme = crate::current_theme();
@@ -178,10 +149,18 @@ impl Widget for Kbd {
 
         let (border_color, border_width) = match style.border.as_ref() {
             Some(bo) => (bo.color, bo.top.to_physical(sf)),
-            None => (if hovered { theme.outline } else { theme.outline_variant }, 1.0 * sf),
+            None => (
+                if hovered {
+                    theme.outline
+                } else {
+                    theme.outline_variant
+                },
+                1.0 * sf,
+            ),
         };
 
-        let radius = style.border
+        let radius = style
+            .border
             .as_ref()
             .and_then(|bo| bo.radius)
             .map(|r| r.max_value() * sf)
@@ -191,7 +170,7 @@ impl Widget for Kbd {
             border_color.r() * 0.75,
             border_color.g() * 0.75,
             border_color.b() * 0.75,
-            border_color.a()
+            border_color.a(),
         );
 
         ctx.draw_rect(RectCommand {
@@ -206,17 +185,14 @@ impl Widget for Kbd {
 
         let cap_height = (b.height - depth).max(1.0);
 
-        let cap_background = style.background
+        let cap_background = style
+            .background
             .clone()
-            .unwrap_or(
-                Background::Color(
-                    if hovered {
-                        theme.surface_container_high
-                    } else {
-                        theme.surface_container
-                    }
-                )
-            );
+            .unwrap_or(Background::Color(if hovered {
+                theme.surface_container_high
+            } else {
+                theme.surface_container
+            }));
 
         ctx.draw_rect(RectCommand {
             position: (b.x, b.y + lift),
@@ -234,13 +210,11 @@ impl Widget for Kbd {
 
         let mut text_style = style.clone();
         text_style.font_size.get_or_insert(Length::px(13.0));
-        text_style.color.get_or_insert(
-            if hovered {
-                theme.on_surface
-            } else {
-                theme.on_surface_variant
-            }
-        );
+        text_style.color.get_or_insert(if hovered {
+            theme.on_surface
+        } else {
+            theme.on_surface_variant
+        });
 
         ctx.draw_text(TextCommand {
             text: self.content.clone(),
@@ -307,7 +281,7 @@ impl Widget for Kbd {
         let Some(other) = other.as_any().downcast_ref::<Kbd>() else {
             return false;
         };
-        self.content == other.content && self.base.style == other.base.style
+        self.content == other.content && self.base.authored_styles_eq(&other.base)
     }
 
     fn cascade_style(&mut self, parent: &Style, anim: &mut AnimationManager) {
@@ -323,7 +297,11 @@ impl Widget for Kbd {
             layer: AnimLayer::Root,
             property: AnimProperty::Scale,
         };
-        anim.set_target(key, AnimValue([target, 0.0, 0.0, 0.0]), Some(KBD_PRESS_TRANSITION));
+        anim.set_target(
+            key,
+            AnimValue([target, 0.0, 0.0, 0.0]),
+            Some(KBD_PRESS_TRANSITION),
+        );
         match anim.value(key) {
             Some(v) => {
                 self.press_progress.set(v.0[0]);

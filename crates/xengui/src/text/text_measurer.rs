@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{ FontStyle, FontWeight, MeasureResult };
+use crate::{FontStyle, FontWeight, MeasureResult};
 
 /// Provides text measurement services to the layout system.
 ///
@@ -29,7 +29,7 @@ pub trait TextMeasurer {
         letter_spacing: f32,
         line_height: f32,
         max_width: Option<f32>,
-        scale_factor: f32
+        scale_factor: f32,
     ) -> MeasureResult;
 
     /// Returns the horizontal advance of every character boundary.
@@ -56,7 +56,7 @@ pub trait TextMeasurer {
         font_style: FontStyle,
         letter_spacing: f32,
         line_height: f32,
-        scale_factor: f32
+        scale_factor: f32,
     ) -> Vec<f32>;
 
     /// Returns the font ascent in physical pixels. `font_size` is logical.
@@ -66,7 +66,7 @@ pub trait TextMeasurer {
         font_size: f32,
         font_weight: FontWeight,
         font_style: FontStyle,
-        scale_factor: f32
+        scale_factor: f32,
     ) -> f32;
 
     /// Returns the font descent in physical pixels. `font_size` is logical.
@@ -76,7 +76,7 @@ pub trait TextMeasurer {
         font_size: f32,
         font_weight: FontWeight,
         font_style: FontStyle,
-        scale_factor: f32
+        scale_factor: f32,
     ) -> f32;
 
     /// Returns the recommended line height in physical pixels. `font_size` is logical.
@@ -86,6 +86,6 @@ pub trait TextMeasurer {
         font_size: f32,
         font_weight: FontWeight,
         font_style: FontStyle,
-        scale_factor: f32
+        scale_factor: f32,
     ) -> f32;
 }

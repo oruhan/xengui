@@ -16,3 +16,6 @@ categories = ["gui", "graphics", "game-development"]
 
 [dependencies]
 web-time = { workspace = true }
+
+[lints]
+workspace = true

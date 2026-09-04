@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
+use rodio::{Decoder, OutputStream, OutputStreamHandle, Sink, Source};
 use std::fs::File;
-use std::io::{ BufReader, Cursor };
+use std::io::{BufReader, Cursor};
 use std::path::Path;
 use web_time::Duration;
-use rodio::{ Decoder, OutputStream, OutputStreamHandle, Sink, Source };
 
-use crate::{ AudioBackend, AudioError, PlaybackState };
+use crate::{AudioBackend, AudioError, PlaybackState};
 
 pub struct RodioBackend {
     // Must stay alive for the whole backend lifetime, or the output
@@ -20,9 +20,8 @@ pub struct RodioBackend {
 
 impl RodioBackend {
     pub fn new() -> Result<Self, AudioError> {
-        let (stream, handle) = OutputStream::try_default().map_err(|e|
-            AudioError::Device(e.to_string())
-        )?;
+        let (stream, handle) =
+            OutputStream::try_default().map_err(|e| AudioError::Device(e.to_string()))?;
         Ok(Self {
             _stream: stream,
             handle,
@@ -34,7 +33,8 @@ impl RodioBackend {
     }
 
     fn load_decoder<R>(&mut self, decoder: Decoder<R>) -> Result<(), AudioError>
-        where R: std::io::Read + std::io::Seek + Send + Sync + 'static
+    where
+        R: std::io::Read + std::io::Seek + Send + Sync + 'static,
     {
         let sink = Sink::try_new(&self.handle).map_err(|e| AudioError::Device(e.to_string()))?;
         sink.set_volume(self.volume);
@@ -52,16 +52,14 @@ impl RodioBackend {
 impl AudioBackend for RodioBackend {
     fn load_from_path(&mut self, path: &Path) -> Result<(), AudioError> {
         let file = File::open(path).map_err(|e| AudioError::Io(e.to_string()))?;
-        let decoder = Decoder::new(BufReader::new(file)).map_err(|e|
-            AudioError::Decode(e.to_string())
-        )?;
+        let decoder =
+            Decoder::new(BufReader::new(file)).map_err(|e| AudioError::Decode(e.to_string()))?;
         self.load_decoder(decoder)
     }
 
     fn load_from_bytes(&mut self, bytes: Vec<u8>) -> Result<(), AudioError> {
-        let decoder = Decoder::new(Cursor::new(bytes)).map_err(|e|
-            AudioError::Decode(e.to_string())
-        )?;
+        let decoder =
+            Decoder::new(Cursor::new(bytes)).map_err(|e| AudioError::Decode(e.to_string()))?;
         self.load_decoder(decoder)
     }
 
@@ -91,7 +89,8 @@ impl AudioBackend for RodioBackend {
         let Some(sink) = &self.sink else {
             return Err(AudioError::NotLoaded);
         };
-        sink.try_seek(position).map_err(|e| AudioError::Seek(e.to_string()))
+        sink.try_seek(position)
+            .map_err(|e| AudioError::Seek(e.to_string()))
     }
 
     fn set_volume(&mut self, volume: f32) {

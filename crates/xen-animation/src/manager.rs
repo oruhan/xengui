@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-use super::{ AnimValue, Transition };
+use super::{AnimValue, Transition};
 use std::collections::HashMap;
 use std::hash::Hash;
 use web_time::Duration;
@@ -53,7 +53,10 @@ pub struct AnimationManager<K: Eq + Hash + Copy> {
 
 impl<K: Eq + Hash + Copy> Default for AnimationManager<K> {
     fn default() -> Self {
-        Self { active: HashMap::new(), resting: HashMap::new() }
+        Self {
+            active: HashMap::new(),
+            resting: HashMap::new(),
+        }
     }
 }
 
@@ -80,7 +83,7 @@ impl<K: Eq + Hash + Copy> AnimationManager<K> {
         key: K,
         target: AnimValue,
         transition: Option<Transition>,
-        premultiplied: bool
+        premultiplied: bool,
     ) {
         let Some(transition) = transition else {
             self.active.remove(&key);
@@ -105,13 +108,16 @@ impl<K: Eq + Hash + Copy> AnimationManager<K> {
                     return;
                 }
 
-                self.active.insert(key, Anim {
-                    from,
-                    to: target,
-                    transition,
-                    elapsed: Duration::ZERO,
-                    premultiplied,
-                });
+                self.active.insert(
+                    key,
+                    Anim {
+                        from,
+                        to: target,
+                        transition,
+                        elapsed: Duration::ZERO,
+                        premultiplied,
+                    },
+                );
             }
         }
     }

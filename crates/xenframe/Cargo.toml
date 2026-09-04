@@ -1,6 +1,6 @@
 [package]
 name = "xenframe"
-version = "0.1.1"
+version = "0.1.2"
 edition = { workspace = true }
 rust-version = { workspace = true }
 authors = ["randseas <waultbank@gmail.com>"]
@@ -51,3 +51,6 @@ windows-sys = { version = "0.61.2", features = [
     "Win32_UI_Controls",
     "Win32_UI_Shell"
 ] }
+
+[lints]
+workspace = true

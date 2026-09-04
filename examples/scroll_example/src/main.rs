@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
-use xenframe::{ App, AppConfig };
 #[cfg(not(target_arch = "wasm32"))]
 use xenframe::WindowPosition;
+use xenframe::{App, AppConfig};
 
 use xengui::*;
 
@@ -15,8 +15,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     #[cfg(not(target_arch = "wasm32"))]
     {
-        let _ = env_logger::Builder
-            ::new()
+        let _ = env_logger::Builder::new()
             .filter_module("xengui", log::LevelFilter::Info)
             .filter_level(log::LevelFilter::Warn)
             .format_timestamp(None)
@@ -39,9 +38,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     app.with_font(
         "Noto_Sans",
-        include_bytes!(
-            concat!(env!("CARGO_MANIFEST_DIR"), "/fonts/NotoSans-VariableFont.ttf")
-        ).to_vec()
+        include_bytes!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/fonts/NotoSans-VariableFont.ttf"
+        ))
+        .to_vec(),
     );
 
     app.render(|| {
@@ -59,7 +60,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         .label("Scroll example")
                         .font_size(14)
                         .color(Color::NEUTRAL_500)
-                        .margin(Edges::only(0, 0, 0, 10))
+                        .margin(Edges::only(0, 0, 0, 10)),
                 )
                 .child(
                     View::new()
@@ -73,11 +74,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 .background(Color::NEUTRAL_100)
                                 .border(Border::all(1, Color::NEUTRAL_200).radius(6))
                                 .padding(Edges::only(10, 4, 10, 6))
-                                .hover_style(|s, _theme: &Theme|
-                                    s
-                                        .background(Color::NEUTRAL_200)
+                                .hover_style(|s, _theme: &Theme| {
+                                    s.background(Color::NEUTRAL_200)
                                         .border(Border::all(1, Color::NEUTRAL_300).radius(6))
-                                )
+                                }),
                         )
                         .child(
                             Button::new()
@@ -87,12 +87,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 .background(Color::NEUTRAL_100)
                                 .border(Border::all(1, Color::NEUTRAL_200).radius(6))
                                 .padding(Edges::only(10, 4, 10, 6))
-                                .hover_style(|s, _theme: &Theme|
-                                    s
-                                        .background(Color::NEUTRAL_200)
+                                .hover_style(|s, _theme: &Theme| {
+                                    s.background(Color::NEUTRAL_200)
                                         .border(Border::all(1, Color::NEUTRAL_300).radius(6))
-                                )
-                        )
+                                }),
+                        ),
                 )
                 .child(
                     View::new()
@@ -107,19 +106,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             let mut children: Vec<Box<dyn Widget>> = Vec::with_capacity(50);
 
                             for i in 0..50 {
-                                children.push(
-                                    Box::new(
-                                        Label::new()
-                                            .key(i.to_string())
-                                            .label(label)
-                                            .color(Color::NEUTRAL_500)
-                                    )
-                                );
+                                children.push(Box::new(
+                                    Label::new()
+                                        .key(i.to_string())
+                                        .label(label)
+                                        .color(Color::NEUTRAL_500),
+                                ));
                             }
 
-                            View::new().flex_direction(FlexDirection::Column).children_vec(children)
-                        })
-                )
+                            View::new()
+                                .flex_direction(FlexDirection::Column)
+                                .children_vec(children)
+                        }),
+                ),
         )
     });
 

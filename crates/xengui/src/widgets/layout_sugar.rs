@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-use crate::{ Display, FlexDirection, StyleBuilder, View };
+use crate::{Display, FlexDirection, StyleBuilder, View};
 
 /// Sugar for `View::new().display(Display::Flex).flex_direction(FlexDirection::Row)`.
 /// `Row::new()` returns a plain [`View`], so every builder method
@@ -9,8 +9,11 @@ pub struct Row;
 
 impl Row {
     #[allow(clippy::new_ret_no_self)]
+    /// Creates a value with its default configuration.
     pub fn new() -> View {
-        View::new().display(Display::Flex).flex_direction(FlexDirection::Row)
+        View::new()
+            .display(Display::Flex)
+            .flex_direction(FlexDirection::Row)
     }
 }
 
@@ -22,7 +25,10 @@ pub struct Column;
 
 impl Column {
     #[allow(clippy::new_ret_no_self)]
+    /// Creates a value with its default configuration.
     pub fn new() -> View {
-        View::new().display(Display::Flex).flex_direction(FlexDirection::Column)
+        View::new()
+            .display(Display::Flex)
+            .flex_direction(FlexDirection::Column)
     }
 }

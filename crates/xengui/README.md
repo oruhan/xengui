@@ -14,7 +14,7 @@
 - Retained components with state, effects, resources, and context.
 - Flexbox and CSS Grid layout powered by `taffy`.
 - Responsive values, themes, transitions, filters, shadows, and interaction states.
-- Built-in views, labels, buttons, form controls, text boxes, images, SVG, menus, portals, and tables.
+- Built-in views, labels, buttons, badges, progress bars, separators, form controls, text boxes, images, SVG, menus, portals, and tables.
 - Backend-independent paint commands through the `RenderBackend` abstraction.
 - Native and WebAssembly-compatible task and platform abstractions.
 
@@ -22,7 +22,7 @@
 
 ```toml
 [dependencies]
-xengui = "0.2.7"
+xengui = "0.2.8"
 ```
 
 Most applications also need [`xenframe`](../xenframe) for the event loop and [`xengui-wgpu`](../xengui-wgpu) for rendering.
@@ -55,7 +55,7 @@ The minimum supported Rust version is 1.92. The core crate supports native and `
 ## Documentation and support
 
 - [API reference](https://docs.rs/xengui)
-- [Project documentation](https://xengui.vercel.app/docs/xengui)
+- [Guides and live examples](https://xengui.vercel.app/docs)
 - [Issues](https://github.com/randseas/xengui/issues)
 
 ## License

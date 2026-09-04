@@ -1,7 +1,7 @@
-use wasm_bindgen_futures::{ spawn_local, JsFuture };
+use wasm_bindgen_futures::{JsFuture, spawn_local};
 use web_sys::window;
 
-use crate::{ ClipboardBackend, ClipboardError };
+use crate::{ClipboardBackend, ClipboardError};
 
 pub struct WasmClipboard;
 
@@ -57,10 +57,8 @@ impl ClipboardBackend for WasmClipboard {
     }
 
     fn has_text(&self, callback: Box<dyn FnOnce(Result<bool, ClipboardError>) + Send>) {
-        self.get_text(
-            Box::new(move |result| {
-                callback(result.map(|text| text.is_some()));
-            })
-        );
+        self.get_text(Box::new(move |result| {
+            callback(result.map(|text| text.is_some()));
+        }));
     }
 }

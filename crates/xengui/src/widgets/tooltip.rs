@@ -1,57 +1,35 @@
 // SPDX-License-Identifier: Apache-2.0
 use crate::{
-    AnimKey,
-    AnimLayer,
-    AnimProperty,
-    AnimValue,
-    AnimationManager,
-    Background,
-    Border,
-    BorderRadius,
-    BoxShadow,
-    Color,
-    Constraints,
-    Easing,
-    Edges,
-    EventCtx,
-    EventStatus,
-    InputEvent,
-    LayoutBox,
-    Length,
-    MeasureContext,
-    MeasureResult,
-    PaintContext,
-    RectCommand,
-    Style,
-    StyleBuilder,
-    TextCommand,
-    Transition,
-    Widget,
-    WidgetBase,
-    WidgetId,
+    AnimKey, AnimLayer, AnimProperty, AnimValue, AnimationManager, Background, Border,
+    BorderRadius, BoxShadow, Color, Constraints, Easing, Edges, EventCtx, EventStatus, InputEvent,
+    LayoutBox, Length, MeasureContext, MeasureResult, PaintContext, RectCommand, Style,
+    StyleBuilder, TextCommand, Transition, Widget, WidgetBase, WidgetId,
     constants::DEFAULT_FONT_SIZE,
 };
 use smol_str::SmolStr;
 use std::cell::Cell;
-use web_time::{ Duration, Instant };
+use web_time::{Duration, Instant};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+/// Available `TooltipPlacement` choices.
 pub enum TooltipPlacement {
     #[default]
+    /// The `Top` variant.
     Top,
+    /// The `Bottom` variant.
     Bottom,
+    /// The `Left` variant.
     Left,
+    /// The `Right` variant.
     Right,
 }
 
 const DEFAULT_DELAY: Duration = Duration::from_millis(400);
 const DEFAULT_GAP: f32 = 6.0;
-const FADE_TRANSITION: Transition = Transition::new(Duration::from_millis(120)).easing(
-    Easing::EaseOut
-);
-const SCALE_TRANSITION: Transition = Transition::new(Duration::from_millis(140)).easing(
-    Easing::EaseOut
-);
+const FADE_TRANSITION: Transition =
+    Transition::new(Duration::from_millis(120)).easing(Easing::EaseOut);
+const SCALE_TRANSITION: Transition =
+    Transition::new(Duration::from_millis(140)).easing(Easing::EaseOut);
 const TOOLTIP_PADDING_X: f32 = 8.0;
 const TOOLTIP_PADDING_Y: f32 = 5.0;
 
@@ -86,6 +64,7 @@ pub struct Tooltip {
 }
 
 impl Tooltip {
+    /// Creates a value with its default configuration.
     pub fn new(text: impl Into<SmolStr>) -> Self {
         Self {
             base: WidgetBase::new(crate::Interaction::new()),
@@ -113,6 +92,7 @@ impl Tooltip {
         }
     }
 
+    /// Returns or updates the `key` value.
     pub fn key(mut self, key: impl Into<SmolStr>) -> Self {
         self.base.key = Some(key.into());
         self
@@ -125,53 +105,63 @@ impl Tooltip {
         self
     }
 
+    /// Returns or updates the `placement` value.
     pub fn placement(mut self, placement: TooltipPlacement) -> Self {
         self.placement = placement;
         self
     }
 
+    /// Returns or updates the `delay` value.
     pub fn delay(mut self, delay: Duration) -> Self {
         self.delay = delay;
         self
     }
 
+    /// Returns or updates the `gap` value.
     pub fn gap(mut self, gap: f32) -> Self {
         self.gap = gap;
         self
     }
 
+    /// Returns or updates the `background` value.
     pub fn background(mut self, color: Color) -> Self {
         self.background = Some(Background::Color(color));
         self
     }
 
+    /// Returns or updates the `text_color` value.
     pub fn text_color(mut self, color: Color) -> Self {
         self.text_color = Some(color);
         self
     }
 
+    /// Returns or updates the `padding` value.
     pub fn padding(mut self, padding: impl Into<Edges>) -> Self {
         self.padding = Some(padding.into());
         self
     }
 
+    /// Returns or updates the `border_radius` value.
     pub fn border_radius(mut self, radius: impl Into<Length>) -> Self {
         self.border_radius = Some(radius.into());
         self
     }
 
+    /// Returns or updates the `border` value.
     pub fn border(mut self, border: Border) -> Self {
         self.border = Some(border);
         self
     }
 
+    /// Returns or updates the `font_size` value.
     pub fn font_size(mut self, size: impl Into<Length>) -> Self {
         self.font_size = Some(size.into());
         self
     }
 
     fn effective_padding(&self) -> Edges {
-        self.padding.unwrap_or_else(|| Edges::symmetric(TOOLTIP_PADDING_X, TOOLTIP_PADDING_Y))
+        self.padding
+            .unwrap_or_else(|| Edges::symmetric(TOOLTIP_PADDING_X, TOOLTIP_PADDING_Y))
     }
 
     fn recompute_style(&mut self) {
@@ -182,12 +172,18 @@ impl Tooltip {
         let (w, h) = size;
         match self.placement {
             TooltipPlacement::Top => (anchor.x + (anchor.width - w) * 0.5, anchor.y - h - self.gap),
-            TooltipPlacement::Bottom =>
-                (anchor.x + (anchor.width - w) * 0.5, anchor.y + anchor.height + self.gap),
-            TooltipPlacement::Left =>
-                (anchor.x - w - self.gap, anchor.y + (anchor.height - h) * 0.5),
-            TooltipPlacement::Right =>
-                (anchor.x + anchor.width + self.gap, anchor.y + (anchor.height - h) * 0.5),
+            TooltipPlacement::Bottom => (
+                anchor.x + (anchor.width - w) * 0.5,
+                anchor.y + anchor.height + self.gap,
+            ),
+            TooltipPlacement::Left => (
+                anchor.x - w - self.gap,
+                anchor.y + (anchor.height - h) * 0.5,
+            ),
+            TooltipPlacement::Right => (
+                anchor.x + anchor.width + self.gap,
+                anchor.y + (anchor.height - h) * 0.5,
+            ),
         }
     }
 }
@@ -267,7 +263,7 @@ impl Widget for Tooltip {
             0.0,
             0.0,
             None,
-            sf
+            sf,
         );
 
         let padding = self.effective_padding();
@@ -298,21 +294,30 @@ impl Widget for Tooltip {
         let (x, y) = self.box_position(self.layout_box, size);
         let scale = self.scale_progress.get();
 
-        let raw_box = LayoutBox { x, y, width: size.0, height: size.1 };
+        let raw_box = LayoutBox {
+            x,
+            y,
+            width: size.0,
+            height: size.1,
+        };
         let popup_box = crate::scaled_layout_box(raw_box, scale);
 
-        let bg = self.background
+        let bg = self
+            .background
             .clone()
             .unwrap_or(Background::Color(theme.surface_container_highest));
         let bg_color = bg.representative_color();
-        let radius = self.border_radius.unwrap_or(Length::px(8.0)).to_physical(sf) * scale;
-        let border = self.border.unwrap_or_else(|| Border::all(1.0, theme.outline_variant));
+        let radius = self
+            .border_radius
+            .unwrap_or(Length::px(8.0))
+            .to_physical(sf)
+            * scale;
+        let border = self
+            .border
+            .unwrap_or_else(|| Border::all(1.0, theme.outline_variant));
 
         if let Some(shadows) = &self.base.computed_style.box_shadow {
-            for shadow in shadows
-                .iter()
-                .rev()
-                .filter(|s: &&BoxShadow| !s.inset) {
+            for shadow in shadows.iter().rev().filter(|s: &&BoxShadow| !s.inset) {
                 let mut faded = *shadow;
                 faded.color = faded.color.with_alpha_f32(faded.color.a() * opacity);
                 self.paint_shadow_layer(ctx, popup_box, [radius; 4], &faded, sf);
@@ -322,7 +327,9 @@ impl Widget for Tooltip {
         ctx.draw_rect(RectCommand {
             position: (popup_box.x, popup_box.y),
             size: (popup_box.width, popup_box.height),
-            background: Some(Background::Color(bg_color.with_alpha_f32(bg_color.a() * opacity))),
+            background: Some(Background::Color(
+                bg_color.with_alpha_f32(bg_color.a() * opacity),
+            )),
             border_radius: Some(BorderRadius::all(Length::px(radius))),
             border_width: Some(Length::px(border.top.to_physical(sf) * scale)),
             border_color: Some(border.color.with_alpha_f32(border.color.a() * opacity)),
@@ -330,10 +337,15 @@ impl Widget for Tooltip {
         });
 
         let padding = self.effective_padding();
-        let text_color = self.text_color.unwrap_or(theme.on_surface).with_alpha_f32(opacity);
+        let text_color = self
+            .text_color
+            .unwrap_or(theme.on_surface)
+            .with_alpha_f32(opacity);
 
         let mut text_style = self.base.computed_style.clone();
-        text_style.font_size.get_or_insert(self.font_size.unwrap_or(DEFAULT_FONT_SIZE));
+        text_style
+            .font_size
+            .get_or_insert(self.font_size.unwrap_or(DEFAULT_FONT_SIZE));
         text_style.color = Some(text_color);
 
         ctx.draw_text(TextCommand {
@@ -381,10 +393,9 @@ impl Widget for Tooltip {
                 }
             }
             InputEvent::AnimationTick { .. } => {
-                if
-                    !self.showing.get() &&
-                    let Some(start) = self.hover_start.get() &&
-                    Instant::now().duration_since(start) >= self.delay
+                if !self.showing.get()
+                    && let Some(start) = self.hover_start.get()
+                    && Instant::now().duration_since(start) >= self.delay
                 {
                     self.showing.set(true);
                     self.base.dirty = true;
@@ -416,17 +427,17 @@ impl Widget for Tooltip {
             return false;
         };
 
-        self.text == other.text &&
-            self.placement == other.placement &&
-            self.delay == other.delay &&
-            self.gap == other.gap &&
-            self.background == other.background &&
-            self.text_color == other.text_color &&
-            self.padding == other.padding &&
-            self.border_radius == other.border_radius &&
-            self.font_size == other.font_size &&
-            self.border == other.border &&
-            self.base.style == other.base.style
+        self.text == other.text
+            && self.placement == other.placement
+            && self.delay == other.delay
+            && self.gap == other.gap
+            && self.background == other.background
+            && self.text_color == other.text_color
+            && self.padding == other.padding
+            && self.border_radius == other.border_radius
+            && self.font_size == other.font_size
+            && self.border == other.border
+            && self.base.authored_styles_eq(&other.base)
     }
 
     fn cascade_style(&mut self, parent: &Style, anim: &mut AnimationManager) {
@@ -439,11 +450,16 @@ impl Widget for Tooltip {
             layer: AnimLayer::Root,
             property: AnimProperty::Opacity,
         };
-        let transition = self.base.computed_style.transition_overrides.opacity
+        let transition = self
+            .base
+            .computed_style
+            .transition_overrides
+            .opacity
             .or(self.base.computed_style.transition)
             .unwrap_or(FADE_TRANSITION);
         anim.set_target(key, AnimValue([target, 0.0, 0.0, 0.0]), Some(transition));
-        self.opacity_anim.set(anim.value(key).map_or(target, |v| v.0[0]));
+        self.opacity_anim
+            .set(anim.value(key).map_or(target, |v| v.0[0]));
 
         let scale_target = if self.showing.get() { 1.0 } else { 0.92 };
         let scale_key = AnimKey {
@@ -454,9 +470,10 @@ impl Widget for Tooltip {
         anim.set_target(
             scale_key,
             AnimValue([scale_target, 0.0, 0.0, 0.0]),
-            Some(SCALE_TRANSITION)
+            Some(SCALE_TRANSITION),
         );
-        self.scale_progress.set(anim.value(scale_key).map_or(scale_target, |v| v.0[0]));
+        self.scale_progress
+            .set(anim.value(scale_key).map_or(scale_target, |v| v.0[0]));
 
         for child in self.children.iter_mut() {
             child.cascade_style(&self.base.computed_style, anim);

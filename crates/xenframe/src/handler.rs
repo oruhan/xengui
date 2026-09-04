@@ -1,49 +1,111 @@
+use crate::{
+    App,
+    event::XenEvent,
+    keyboard::{convert_ime_event, convert_keyboard_event},
+    mouse::{convert_element_state, convert_mouse_button, convert_scroll_delta},
+    window::Fullscreen,
+};
 use std::sync::Arc;
 use web_time::Instant;
 #[cfg(target_arch = "wasm32")]
 use winit::window::Window;
 use winit::{
     event::WindowEvent,
-    event_loop::{ ActiveEventLoop, ControlFlow },
-    window::{ WindowAttributes, WindowId },
+    event_loop::{ActiveEventLoop, ControlFlow},
+    window::{WindowAttributes, WindowId},
 };
 use xengui::{
-    ElementState,
-    EventCtx,
-    EventStatus,
-    InputEvent,
-    Key,
-    KeyState,
-    MULTI_CLICK_DISTANCE_DP,
-    MULTI_CLICK_INTERVAL,
-    ModifiersState,
-    MouseButton,
-    Theme,
-    any_wants_animation,
-    clear_text_selection_recursive,
-    dispatch_animation_tick,
-    dispatch_focus_within_transition,
-    dispatch_hover_transition,
-    dispatch_positional,
-    dispatch_to_path,
-    find_widget_mut,
+    ElementState, EventCtx, EventStatus, InputEvent, Key, KeyState, MULTI_CLICK_DISTANCE_DP,
+    MULTI_CLICK_INTERVAL, ModifiersState, MouseButton, Theme, any_wants_animation,
+    clear_text_selection_recursive, dispatch_animation_tick, dispatch_focus_within_transition,
+    dispatch_hover_transition, dispatch_positional, dispatch_to_path, find_widget_mut,
     hit_test_path,
-    hooks::{ self, set_redraw_handle },
-    mark_tree_dirty,
-    path_is_within,
-    select_all_text_recursive,
-    update_global_text_selection,
-};
-use crate::{
-    App,
-    event::XenEvent,
-    keyboard::{ convert_ime_event, convert_keyboard_event },
-    mouse::{ convert_element_state, convert_mouse_button, convert_scroll_delta },
-    window::Fullscreen,
+    hooks::{self, set_redraw_handle},
+    mark_tree_dirty, path_is_within, select_all_text_recursive, update_global_text_selection,
 };
 
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::JsCast;
+
+impl App {
+    #[cfg(not(target_arch = "wasm32"))]
+    pub(crate) fn recover_renderer(&mut self, error: xengui_wgpu::RendererError) {
+        use xengui_wgpu::RendererError;
+
+        if !matches!(
+            error,
+            RendererError::DeviceLost(_) | RendererError::Internal(_)
+        ) {
+            log::error!("unrecoverable renderer error: {error}");
+            return;
+        }
+
+        let Some(window) = self.window.clone() else {
+            log::error!("cannot recover renderer without a window: {error}");
+            return;
+        };
+        let size = window.inner_size();
+        log::warn!("recovering renderer after: {error}");
+        self.renderer = None;
+        match xengui_wgpu::WgpuWindowRenderer::new_with_options(
+            window.clone(),
+            size.width,
+            size.height,
+            self.config.fonts.clone(),
+            self.config.renderer,
+        ) {
+            Ok(renderer) => {
+                self.renderer = Some(renderer);
+                window.request_redraw();
+                log::info!("renderer recovery succeeded");
+            }
+            Err(recovery_error) => log::error!("renderer recovery failed: {recovery_error}"),
+        }
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    pub(crate) fn recover_renderer(&mut self, error: xengui_wgpu::RendererError) {
+        use crate::overlay::show_fatal_overlay;
+        use xengui_wgpu::RendererError;
+
+        if !matches!(
+            error,
+            RendererError::DeviceLost(_) | RendererError::Internal(_)
+        ) {
+            log::error!("unrecoverable renderer error: {error}");
+            return;
+        }
+        let (Some(window), Some(proxy)) = (self.window.clone(), self.event_proxy.clone()) else {
+            log::error!("cannot recover renderer without a window and event proxy: {error}");
+            return;
+        };
+        let size = window.inner_size();
+        let fonts = self.config.fonts.clone();
+        let options = self.config.renderer;
+        self.renderer = None;
+        log::warn!("recovering renderer after: {error}");
+        wasm_bindgen_futures::spawn_local(async move {
+            match xengui_wgpu::WgpuWindowRenderer::new_with_options(
+                window,
+                size.width,
+                size.height,
+                fonts,
+                options,
+            )
+            .await
+            {
+                Ok(renderer) => {
+                    let _ = proxy.send_event(XenEvent::RendererReady(Box::new(renderer)));
+                }
+                Err(recovery_error) => {
+                    let message = format!("xengui: renderer recovery failed\n\n{recovery_error}");
+                    log::error!("{message}");
+                    show_fatal_overlay(&message);
+                }
+            }
+        });
+    }
+}
 
 #[cfg(target_arch = "wasm32")]
 fn sync_canvas_position(window: &Arc<Window>) {
@@ -62,7 +124,7 @@ fn sync_canvas_position(window: &Arc<Window>) {
     let style = canvas.style();
     let _ = style.set_property(
         "transform",
-        &format!("translate({}px, {}px)", vv.offset_left(), vv.offset_top())
+        &format!("translate({}px, {}px)", vv.offset_left(), vv.offset_top()),
     );
 }
 
@@ -74,14 +136,12 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
         }
 
         // Parse custom fullscreen configurations into winit primitives
-        let winit_fullscreen = self.config.fullscreen.as_ref().map(|f| {
-            match f {
-                Fullscreen::Borderless(monitor) => {
-                    winit::window::Fullscreen::Borderless(monitor.clone())
-                }
-                Fullscreen::Exclusive(video_mode) => {
-                    winit::window::Fullscreen::Exclusive(video_mode.clone())
-                }
+        let winit_fullscreen = self.config.fullscreen.as_ref().map(|f| match f {
+            Fullscreen::Borderless(monitor) => {
+                winit::window::Fullscreen::Borderless(monitor.clone())
+            }
+            Fullscreen::Exclusive(video_mode) => {
+                winit::window::Fullscreen::Exclusive(video_mode.clone())
             }
         });
 
@@ -94,12 +154,10 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
         {
             attributes = attributes
                 .with_title(&self.config.title)
-                .with_inner_size(
-                    winit::dpi::LogicalSize::new(
-                        self.config.width as f64,
-                        self.config.height as f64
-                    )
-                )
+                .with_inner_size(winit::dpi::LogicalSize::new(
+                    self.config.width as f64,
+                    self.config.height as f64,
+                ))
                 .with_resizable(self.config.resizable)
                 .with_decorations(self.config.decorations);
         }
@@ -114,7 +172,7 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
         let window = Arc::new(
             event_loop
                 .create_window(attributes)
-                .expect("Critical Error: Could not create window context.")
+                .expect("Critical Error: Could not create window context."),
         );
 
         #[cfg(not(target_arch = "wasm32"))]
@@ -146,21 +204,18 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
         {
             use crate::WindowPosition;
 
-            if
-                let WindowPosition::Center = self.config.position &&
-                !self.config.start_maximized &&
-                let Some(monitor) = window.current_monitor()
+            if let WindowPosition::Center = self.config.position
+                && !self.config.start_maximized
+                && let Some(monitor) = window.current_monitor()
             {
                 use winit::dpi::PhysicalPosition;
 
                 let monitor_size = monitor.size();
                 let window_size = window.outer_size();
-                window.set_outer_position(
-                    PhysicalPosition::new(
-                        ((monitor_size.width as i32) - (window_size.width as i32)) / 2,
-                        ((monitor_size.height as i32) - (window_size.height as i32)) / 2
-                    )
-                );
+                window.set_outer_position(PhysicalPosition::new(
+                    ((monitor_size.width as i32) - (window_size.width as i32)) / 2,
+                    ((monitor_size.height as i32) - (window_size.height as i32)) / 2,
+                ));
             }
         }
 
@@ -170,22 +225,22 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
 
             // Reads the browser's actual color-scheme preference on startup
             // instead of hardcoding Dark.
-            let prefers_dark = web_sys
-                ::window()
+            let prefers_dark = web_sys::window()
                 .and_then(|w| w.match_media("(prefers-color-scheme: dark)").ok().flatten())
                 .map(|mql| mql.matches())
                 .unwrap_or(false);
 
-            self.config.theme = Some(
-                if prefers_dark {
-                    winit::window::Theme::Dark
-                } else {
-                    winit::window::Theme::Light
-                }
-            );
+            self.config.theme = Some(if prefers_dark {
+                winit::window::Theme::Dark
+            } else {
+                winit::window::Theme::Light
+            });
 
-            use winit::{ platform::web::WindowExtWebSys, window::Window };
-            use std::{ cell::{ Cell, RefCell }, rc::Rc };
+            use std::{
+                cell::{Cell, RefCell},
+                rc::Rc,
+            };
+            use winit::{platform::web::WindowExtWebSys, window::Window};
 
             fn animate_canvas_resize(
                 window: &Arc<Window>,
@@ -194,13 +249,12 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
                 anim_running: Rc<Cell<bool>>,
                 anim_target: Rc<Cell<(f64, f64)>>,
                 target_w: f64,
-                target_h: f64
+                target_h: f64,
             ) {
                 if !*initial_resize_done.borrow() {
                     *initial_resize_done.borrow_mut() = true;
 
-                    let phys = winit::dpi::LogicalSize
-                        ::new(target_w, target_h)
+                    let phys = winit::dpi::LogicalSize::new(target_w, target_h)
                         .to_physical::<u32>(window.scale_factor());
 
                     let _ = window.request_inner_size(phys);
@@ -219,12 +273,10 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
                     return;
                 }
 
-                use xen_animation::{ AnimValue, Easing, Transition };
+                use xen_animation::{AnimValue, Easing, Transition};
 
                 let current = window.inner_size().to_logical::<f64>(window.scale_factor());
-                if
-                    (current.width - target_w).abs() < 1.0 &&
-                    (current.height - target_h).abs() < 1.0
+                if (current.width - target_w).abs() < 1.0 && (current.height - target_h).abs() < 1.0
                 {
                     return;
                 }
@@ -235,14 +287,12 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
                 // visible in the gap until the animation catches up, so
                 // snap directly instead of animating in that case.
                 const SNAP_THRESHOLD_PX: f64 = 150.0;
-                if
-                    (current.width - target_w).abs() > SNAP_THRESHOLD_PX ||
-                    (current.height - target_h).abs() > SNAP_THRESHOLD_PX
+                if (current.width - target_w).abs() > SNAP_THRESHOLD_PX
+                    || (current.height - target_h).abs() > SNAP_THRESHOLD_PX
                 {
                     anim_running.set(false);
                     anim_target.set((target_w, target_h));
-                    let phys = winit::dpi::LogicalSize
-                        ::new(target_w, target_h)
+                    let phys = winit::dpi::LogicalSize::new(target_w, target_h)
                         .to_physical::<u32>(window.scale_factor());
                     let _ = window.request_inner_size(phys);
                     window.request_redraw();
@@ -251,17 +301,14 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
 
                 anim_target.set((target_w, target_h));
 
-                anim_manager
-                    .borrow_mut()
-                    .set_target(
-                        (),
-                        AnimValue([target_w as f32, target_h as f32, 0.0, 0.0]),
-                        Some(
-                            Transition::new(web_time::Duration::from_millis(220)).easing(
-                                Easing::EaseOut
-                            )
-                        )
-                    );
+                anim_manager.borrow_mut().set_target(
+                    (),
+                    AnimValue([target_w as f32, target_h as f32, 0.0, 0.0]),
+                    Some(
+                        Transition::new(web_time::Duration::from_millis(220))
+                            .easing(Easing::EaseOut),
+                    ),
+                );
 
                 if anim_running.replace(true) {
                     return;
@@ -277,52 +324,53 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
                 let target_handle = anim_target;
                 let last_tick = Rc::new(RefCell::new(web_time::Instant::now()));
 
-                *tick_handle.borrow_mut() = Some(
-                    wasm_bindgen::closure::Closure::new(move || {
-                        let now = web_time::Instant::now();
-                        let dt = now.duration_since(*last_tick.borrow());
-                        *last_tick.borrow_mut() = now;
+                *tick_handle.borrow_mut() = Some(wasm_bindgen::closure::Closure::new(move || {
+                    let now = web_time::Instant::now();
+                    let dt = now.duration_since(*last_tick.borrow());
+                    *last_tick.borrow_mut() = now;
 
-                        let (still_animating, value) = {
-                            let mut manager = manager_handle.borrow_mut();
+                    let (still_animating, value) = {
+                        let mut manager = manager_handle.borrow_mut();
 
-                            manager.tick(dt);
+                        manager.tick(dt);
 
-                            (manager.is_animating(), manager.value(()))
-                        };
+                        (manager.is_animating(), manager.value(()))
+                    };
 
-                        let (w, h) = match value {
-                            Some(v) => (v.0[0] as f64, v.0[1] as f64),
-                            None => target_handle.get(),
-                        };
+                    let (w, h) = match value {
+                        Some(v) => (v.0[0] as f64, v.0[1] as f64),
+                        None => target_handle.get(),
+                    };
 
-                        // Resizes the canvas itself every frame, so its drawing
-                        // buffer's aspect ratio always matches what the surface
-                        // is configured for - no stretching between frames.
-                        let phys = winit::dpi::LogicalSize
-                            ::new(w, h)
-                            .to_physical::<u32>(window.scale_factor());
-                        let _ = window.request_inner_size(phys);
-                        window.request_redraw();
+                    // Resizes the canvas itself every frame, so its drawing
+                    // buffer's aspect ratio always matches what the surface
+                    // is configured for - no stretching between frames.
+                    let phys = winit::dpi::LogicalSize::new(w, h)
+                        .to_physical::<u32>(window.scale_factor());
+                    let _ = window.request_inner_size(phys);
+                    window.request_redraw();
 
-                        if !still_animating {
-                            running_handle.set(false);
-                        }
+                    if !still_animating {
+                        running_handle.set(false);
+                    }
 
-                        if still_animating && let Some(web_window) = web_sys::window() {
-                            let callback = tick.borrow();
-                            let callback = callback.as_ref().unwrap();
+                    if still_animating && let Some(web_window) = web_sys::window() {
+                        let callback = tick.borrow();
+                        let callback = callback.as_ref().unwrap();
 
-                            let _ = web_window.request_animation_frame(
-                                callback.as_ref().unchecked_ref()
-                            );
-                        }
-                    })
-                );
+                        let _ =
+                            web_window.request_animation_frame(callback.as_ref().unchecked_ref());
+                    }
+                }));
 
                 if let Some(web_window) = web_sys::window() {
                     let _ = web_window.request_animation_frame(
-                        tick_handle.borrow().as_ref().unwrap().as_ref().unchecked_ref()
+                        tick_handle
+                            .borrow()
+                            .as_ref()
+                            .unwrap()
+                            .as_ref()
+                            .unchecked_ref(),
                     );
                 }
             }
@@ -332,21 +380,15 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
                 initial_resize_done: Rc<RefCell<bool>>,
                 anim_manager: Rc<RefCell<xen_animation::AnimationManager<()>>>,
                 anim_running: Rc<Cell<bool>>,
-                anim_target: Rc<Cell<(f64, f64)>>
+                anim_target: Rc<Cell<(f64, f64)>>,
             ) {
                 if let Some(web_window) = web_sys::window() {
                     let (inner_w, inner_h) = if let Some(vv) = web_window.visual_viewport() {
                         (Some(vv.width()), Some(vv.height()))
                     } else {
                         (
-                            web_window
-                                .inner_width()
-                                .ok()
-                                .and_then(|val| val.as_f64()),
-                            web_window
-                                .inner_height()
-                                .ok()
-                                .and_then(|val| val.as_f64()),
+                            web_window.inner_width().ok().and_then(|val| val.as_f64()),
+                            web_window.inner_height().ok().and_then(|val| val.as_f64()),
                         )
                     };
 
@@ -360,7 +402,7 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
                             anim_running,
                             anim_target,
                             w_val,
-                            h_val
+                            h_val,
                         );
                         window.request_redraw();
                     }
@@ -368,9 +410,8 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
             }
 
             let initial_resize_done = self.initial_resize_done.clone();
-            let anim_manager: Rc<RefCell<xen_animation::AnimationManager<()>>> = Rc::new(
-                RefCell::new(xen_animation::AnimationManager::new())
-            );
+            let anim_manager: Rc<RefCell<xen_animation::AnimationManager<()>>> =
+                Rc::new(RefCell::new(xen_animation::AnimationManager::new()));
             let anim_running: Rc<Cell<bool>> = Rc::new(Cell::new(false));
             let anim_target: Rc<Cell<(f64, f64)>> = Rc::new(Cell::new((0.0, 0.0)));
 
@@ -380,7 +421,7 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
                     self.initial_resize_done.clone(),
                     anim_manager.clone(),
                     anim_running.clone(),
-                    anim_target.clone()
+                    anim_target.clone(),
                 );
 
                 if let Some(web_window) = web_sys::window() {
@@ -396,13 +437,13 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
                             initial_resize_done_clone.clone(),
                             anim_manager_clone.clone(),
                             anim_running_clone.clone(),
-                            anim_target_clone.clone()
+                            anim_target_clone.clone(),
                         );
                     });
 
                     let _ = web_window.add_event_listener_with_callback(
                         "resize",
-                        closure.as_ref().unchecked_ref()
+                        closure.as_ref().unchecked_ref(),
                     );
                     closure.forget();
 
@@ -413,28 +454,27 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
                         let anim_running_clone = anim_running.clone();
                         let anim_target_clone = anim_target.clone();
 
-                        let vv_closure = wasm_bindgen::closure::Closure::<dyn FnMut()>::new(
-                            move || {
+                        let vv_closure =
+                            wasm_bindgen::closure::Closure::<dyn FnMut()>::new(move || {
                                 log::info!("visual viewport resize");
                                 sync_canvas_to_viewport(
                                     &window_for_vv,
                                     initial_resize_done_clone.clone(),
                                     anim_manager_clone.clone(),
                                     anim_running_clone.clone(),
-                                    anim_target_clone.clone()
+                                    anim_target_clone.clone(),
                                 );
-                            }
-                        );
+                            });
                         let _ = vv.add_event_listener_with_callback(
                             "resize",
-                            vv_closure.as_ref().unchecked_ref()
+                            vv_closure.as_ref().unchecked_ref(),
                         );
                         vv_closure.forget();
 
                         let window_for_vv_scroll = window.clone();
 
-                        let vv_scroll_closure = wasm_bindgen::closure::Closure::<dyn FnMut()>::new(
-                            move || {
+                        let vv_scroll_closure =
+                            wasm_bindgen::closure::Closure::<dyn FnMut()>::new(move || {
                                 // Visual viewport "scroll" fires continuously while
                                 // the page pans under the toolbar during a touch
                                 // drag; only the canvas's on-screen position needs
@@ -442,11 +482,10 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
                                 // through the full resize path is what caused the
                                 // scroll stutter.
                                 sync_canvas_position(&window_for_vv_scroll);
-                            }
-                        );
+                            });
                         let _ = vv.add_event_listener_with_callback(
                             "scroll",
-                            vv_scroll_closure.as_ref().unchecked_ref()
+                            vv_scroll_closure.as_ref().unchecked_ref(),
                         );
                         vv_scroll_closure.forget();
                     }
@@ -461,7 +500,8 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
         // the wrong breakpoint on startup.
         let initial_logical_width = window
             .inner_size()
-            .to_logical::<f32>(window.scale_factor()).width;
+            .to_logical::<f32>(window.scale_factor())
+            .width;
         xengui::set_current_breakpoint_from_width(initial_logical_width);
         let breakpoint_changed = xengui::current_breakpoint() != self.last_breakpoint;
         if breakpoint_changed {
@@ -480,23 +520,21 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
         set_redraw_handle(std::rc::Rc::new(crate::redraw::WinitRedraw(window.clone())));
 
         if let Some(proxy) = &self.event_proxy {
-            xengui::task::set_executor_waker(
-                std::sync::Arc::new(crate::executor::WinitExecutorWaker(proxy.clone()))
-            );
+            xengui::task::set_executor_waker(std::sync::Arc::new(
+                crate::executor::WinitExecutorWaker(proxy.clone()),
+            ));
         }
 
         #[cfg(not(target_arch = "wasm32"))]
         {
-            let user_fonts = std::mem::take(&mut self.config.fonts);
             let size = window.inner_size();
-            match
-                xengui_wgpu::WgpuWindowRenderer::new(
-                    window.clone(),
-                    size.width,
-                    size.height,
-                    user_fonts
-                )
-            {
+            match xengui_wgpu::WgpuWindowRenderer::new_with_options(
+                window.clone(),
+                size.width,
+                size.height,
+                self.config.fonts.clone(),
+                self.config.renderer,
+            ) {
                 Ok(renderer) => {
                     self.renderer = Some(renderer);
                     log::info!("application resumed, gpu context ready");
@@ -515,25 +553,26 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
             if let Some(proxy) = &self.event_proxy {
                 let window_clone = window.clone();
                 let proxy_clone = proxy.clone();
-                let user_fonts = std::mem::take(&mut self.config.fonts);
+                let user_fonts = self.config.fonts.clone();
+                let renderer_options = self.config.renderer;
                 let size = window_clone.inner_size();
 
                 wasm_bindgen_futures::spawn_local(async move {
                     log::info!("renderer init: adapter/device request starting");
                     let t0 = web_time::Instant::now();
-                    match
-                        xengui_wgpu::WgpuWindowRenderer::new(
-                            window_clone,
-                            size.width,
-                            size.height,
-                            user_fonts
-                        ).await
+                    match xengui_wgpu::WgpuWindowRenderer::new_with_options(
+                        window_clone,
+                        size.width,
+                        size.height,
+                        user_fonts,
+                        renderer_options,
+                    )
+                    .await
                     {
                         Ok(renderer) => {
                             log::info!("renderer init: succeeded in {:?}", t0.elapsed());
-                            let _ = proxy_clone.send_event(
-                                XenEvent::RendererReady(Box::new(renderer))
-                            );
+                            let _ =
+                                proxy_clone.send_event(XenEvent::RendererReady(Box::new(renderer)));
                         }
                         Err(e) => {
                             let message = format!("xengui: renderer init failed\n\n{e}");
@@ -548,14 +587,15 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
                     // Escape's keydown never reaches the page while the browser
                     // is exiting fullscreen or pointer lock (spec-mandated, not
                     // overridable) - fullscreenchange is the only signal we get.
-                    let fs_closure = wasm_bindgen::closure::Closure::<dyn FnMut()>::new(move || {
-                        let _ = proxy_clone.send_event(XenEvent::CancelSelection);
-                    });
+                    let fs_closure =
+                        wasm_bindgen::closure::Closure::<dyn FnMut()>::new(move || {
+                            let _ = proxy_clone.send_event(XenEvent::CancelSelection);
+                        });
                     let _ = document.add_event_listener_with_callback_and_bool(
                         "keydown",
                         fs_closure.as_ref().unchecked_ref(),
-                        true // capture phase: runs before winit's canvas listener,
-                        // so a stopPropagation() there can't swallow this
+                        true, // capture phase: runs before winit's canvas listener,
+                              // so a stopPropagation() there can't swallow this
                     );
                     fs_closure.forget();
 
@@ -564,40 +604,41 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
                     // listener doesn't reliably surface Escape, so it's
                     // also caught here independently of winit's pipeline.
                     let proxy_clone2 = proxy.clone();
-                    let key_closure = wasm_bindgen::closure::Closure::<
-                        dyn FnMut(web_sys::KeyboardEvent)
-                    >::new(move |event: web_sys::KeyboardEvent| {
-                        if event.key() == "Escape" {
-                            event.prevent_default();
-                            let _ = proxy_clone2.send_event(XenEvent::CancelSelection);
-                            return;
-                        }
+                    let key_closure =
+                        wasm_bindgen::closure::Closure::<dyn FnMut(web_sys::KeyboardEvent)>::new(
+                            move |event: web_sys::KeyboardEvent| {
+                                if event.key() == "Escape" {
+                                    event.prevent_default();
+                                    let _ = proxy_clone2.send_event(XenEvent::CancelSelection);
+                                    return;
+                                }
 
-                        if event.key() == "Control" {
-                            event.prevent_default();
-                        }
-
-                        // winit's web backend deliberately skips preventDefault for
-                        // modifier combos (to avoid blocking browser shortcuts like
-                        // Ctrl+R), so the browser's own select-all/cut/copy/paste
-                        // fires alongside ours and interferes with focus/selection.
-                        // Stop the browser default only for the combos widgets
-                        // already implements itself.
-                        let cmd = event.ctrl_key() || event.meta_key();
-                        if cmd {
-                            match event.key().as_str() {
-                                "a" | "A" | "x" | "X" | "c" | "C" | "v" | "V" => {
+                                if event.key() == "Control" {
                                     event.prevent_default();
                                 }
-                                _ => {}
-                            }
-                        }
-                    });
+
+                                // winit's web backend deliberately skips preventDefault for
+                                // modifier combos (to avoid blocking browser shortcuts like
+                                // Ctrl+R), so the browser's own select-all/cut/copy/paste
+                                // fires alongside ours and interferes with focus/selection.
+                                // Stop the browser default only for the combos widgets
+                                // already implements itself.
+                                let cmd = event.ctrl_key() || event.meta_key();
+                                if cmd {
+                                    match event.key().as_str() {
+                                        "a" | "A" | "x" | "X" | "c" | "C" | "v" | "V" => {
+                                            event.prevent_default();
+                                        }
+                                        _ => {}
+                                    }
+                                }
+                            },
+                        );
                     let _ = document.add_event_listener_with_callback_and_bool(
                         "keydown",
                         key_closure.as_ref().unchecked_ref(),
-                        true // capture phase: runs before winit's canvas listener,
-                        // so a stopPropagation() there can't swallow this
+                        true, // capture phase: runs before winit's canvas listener,
+                              // so a stopPropagation() there can't swallow this
                     );
                     key_closure.forget();
                 }
@@ -605,13 +646,12 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
                 // Live-updates active_theme whenever the browser's
                 // color-scheme preference flips, mirroring native's
                 // WindowEvent::ThemeChanged.
-                if
-                    let Some(web_window) = web_sys::window() &&
-                    let Ok(Some(mql)) = web_window.match_media("(prefers-color-scheme: dark)")
+                if let Some(web_window) = web_sys::window()
+                    && let Ok(Some(mql)) = web_window.match_media("(prefers-color-scheme: dark)")
                 {
                     let proxy_clone = proxy.clone();
                     let theme_closure: wasm_bindgen::closure::Closure<
-                        dyn FnMut(web_sys::MediaQueryListEvent)
+                        dyn FnMut(web_sys::MediaQueryListEvent),
                     > = wasm_bindgen::closure::Closure::new(
                         move |event: web_sys::MediaQueryListEvent| {
                             let theme = if event.matches() {
@@ -621,11 +661,11 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
                             };
 
                             let _ = proxy_clone.send_event(XenEvent::SystemThemeChanged(theme));
-                        }
+                        },
                     );
                     let _ = mql.add_event_listener_with_callback(
                         "change",
-                        theme_closure.as_ref().unchecked_ref()
+                        theme_closure.as_ref().unchecked_ref(),
                     );
                     theme_closure.forget();
                 }
@@ -647,17 +687,24 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
                     let size = window.inner_size();
                     let theme = crate::window::system_theme(self.config.theme);
                     let scale_factor = window.scale_factor() as f32;
-                    if let Some(renderer) = &mut self.renderer {
+                    let resize_error = if let Some(renderer) = &mut self.renderer {
                         // Forces a real configure+render with the window's
                         // actual current size, in case it changed between
                         // renderer init (async) and this point.
-                        renderer.resize(
-                            &mut self.root,
-                            theme,
-                            scale_factor,
-                            size.width,
-                            size.height
-                        );
+                        renderer
+                            .try_resize(
+                                &mut self.root,
+                                theme,
+                                scale_factor,
+                                size.width,
+                                size.height,
+                            )
+                            .err()
+                    } else {
+                        None
+                    };
+                    if let Some(error) = resize_error {
+                        self.recover_renderer(error);
                     }
                     self.recheck_breakpoint();
                     window.request_redraw();
@@ -671,7 +718,9 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
                 log::info!("browser color-scheme changed: {:?}", new_theme);
 
                 let system_switched = self.sync_active_theme_with_system();
-                let active_is_auto = self.config.themes
+                let active_is_auto = self
+                    .config
+                    .themes
                     .get(self.config.active_theme)
                     .is_some_and(Theme::is_auto);
 
@@ -745,12 +794,18 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
 
                 if self.renderer.is_some() {
                     let theme = crate::window::system_theme(self.config.theme);
-                    let scale_factor = self.window
+                    let scale_factor = self
+                        .window
                         .as_ref()
                         .map_or(1.0, |w| w.scale_factor() as f32);
 
-                    if let Some(renderer) = &mut self.renderer {
-                        renderer.render_frame(&mut self.root, theme, scale_factor);
+                    let render_error = self.renderer.as_mut().and_then(|renderer| {
+                        renderer
+                            .try_render_frame(&mut self.root, theme, scale_factor)
+                            .err()
+                    });
+                    if let Some(error) = render_error {
+                        self.recover_renderer(error);
                     }
 
                     self.recalc_hover_at_cursor();
@@ -763,9 +818,8 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
                     // Keeps requesting frames while anything still wants to animate,
                     // so ControlFlow::Wait doesn't stall mid-animation.
                     let is_animating = self.renderer.as_ref().is_some_and(|r| r.is_animating());
-                    if
-                        (any_wants_animation(&self.root) || is_animating) &&
-                        let Some(window) = &self.window
+                    if (any_wants_animation(&self.root) || is_animating)
+                        && let Some(window) = &self.window
                     {
                         window.request_redraw();
                     }
@@ -780,7 +834,11 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
                 }
             }
             WindowEvent::Resized(new_size) => {
-                log::info!("WindowEvent::Resized {:?} at {:?}", new_size, web_time::Instant::now());
+                log::info!(
+                    "WindowEvent::Resized {:?} at {:?}",
+                    new_size,
+                    web_time::Instant::now()
+                );
                 #[cfg(target_os = "windows")]
                 {
                     self.resize_synced(new_size.width, new_size.height);
@@ -788,18 +846,26 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
                 #[cfg(not(target_os = "windows"))]
                 {
                     let theme = crate::window::system_theme(self.config.theme);
-                    let scale_factor = self.window
+                    let scale_factor = self
+                        .window
                         .as_ref()
                         .map_or(1.0, |w| w.scale_factor() as f32);
 
-                    if let Some(renderer) = &mut self.renderer {
-                        renderer.resize(
-                            &mut self.root,
-                            theme,
-                            scale_factor,
-                            new_size.width,
-                            new_size.height
-                        );
+                    let resize_error = if let Some(renderer) = &mut self.renderer {
+                        renderer
+                            .try_resize(
+                                &mut self.root,
+                                theme,
+                                scale_factor,
+                                new_size.width,
+                                new_size.height,
+                            )
+                            .err()
+                    } else {
+                        None
+                    };
+                    if let Some(error) = resize_error {
+                        self.recover_renderer(error);
                     }
 
                     self.recalc_hover_at_cursor();
@@ -823,7 +889,9 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
                 log::info!("theme changed: {:?}", new_theme);
 
                 let system_switched = self.sync_active_theme_with_system();
-                let active_is_auto = self.config.themes
+                let active_is_auto = self
+                    .config
+                    .themes
                     .get(self.config.active_theme)
                     .is_some_and(Theme::is_auto);
 
@@ -858,7 +926,7 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
                         &mut self.root,
                         self.input.hovered_path.as_deref(),
                         new_hover.as_deref(),
-                        &mut ctx
+                        &mut ctx,
                     );
                     self.apply_event_ctx(ctx);
                     self.input.hovered_path = new_hover.clone();
@@ -872,15 +940,14 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
                         &mut self.root,
                         path,
                         &(InputEvent::MouseMoved { position: point }),
-                        &mut ctx
+                        &mut ctx,
                     );
                     self.apply_event_ctx(ctx);
                 }
 
-                if
-                    let Some(anchor) = self.input.text_drag_anchor &&
-                    update_global_text_selection(&mut self.root, anchor, point) &&
-                    let Some(window) = &self.window
+                if let Some(anchor) = self.input.text_drag_anchor
+                    && update_global_text_selection(&mut self.root, anchor, point)
+                    && let Some(window) = &self.window
                 {
                     window.request_redraw();
                 }
@@ -905,9 +972,8 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
                     return;
                 };
 
-                if
-                    state == winit::event::ElementState::Pressed &&
-                    button == winit::event::MouseButton::Left
+                if state == winit::event::ElementState::Pressed
+                    && button == winit::event::MouseButton::Left
                 {
                     self.input.text_drag_anchor = Some(point);
                 }
@@ -918,7 +984,10 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
                 let path = if state == winit::event::ElementState::Released {
                     self.input.pressed_path.clone()
                 } else {
-                    self.input.hovered_path.clone().or_else(|| hit_test_path(&self.root, point))
+                    self.input
+                        .hovered_path
+                        .clone()
+                        .or_else(|| hit_test_path(&self.root, point))
                 };
 
                 if state == winit::event::ElementState::Pressed {
@@ -926,22 +995,21 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
 
                     // A click outside the focused widget's own subtree releases focus.
                     if let Some(focused) = self.input.focused_path.clone() {
-                        let stays_focused = path
-                            .as_deref()
-                            .is_some_and(|p| path_is_within(p, &focused));
+                        let stays_focused =
+                            path.as_deref().is_some_and(|p| path_is_within(p, &focused));
                         if !stays_focused {
                             let mut ctx = EventCtx::new();
                             dispatch_to_path(
                                 &mut self.root,
                                 &focused,
                                 &InputEvent::FocusLost,
-                                &mut ctx
+                                &mut ctx,
                             );
                             dispatch_focus_within_transition(
                                 &mut self.root,
                                 Some(&focused),
                                 None,
-                                &mut ctx
+                                &mut ctx,
                             );
                             self.input.focused_path = None;
                             #[cfg(target_arch = "wasm32")]
@@ -957,38 +1025,31 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
                     // (e.g. an icon) whose own on_click is unset even
                     // though a wrapping button's is.
                     let ancestors = xengui::ancestor_paths(p);
-                    let hit_is_clickable = ancestors
-                        .iter()
-                        .any(|ancestor| {
-                            find_widget_mut(&mut self.root, ancestor).is_some_and(|w|
-                                w.interaction().is_some_and(|i| i.on_click.is_some())
-                            )
-                        });
+                    let hit_is_clickable = ancestors.iter().any(|ancestor| {
+                        find_widget_mut(&mut self.root, ancestor)
+                            .is_some_and(|w| w.interaction().is_some_and(|i| i.on_click.is_some()))
+                    });
                     if hit_is_clickable {
                         return false;
                     }
-                    ancestors
-                        .iter()
-                        .any(|ancestor| {
-                            find_widget_mut(&mut self.root, ancestor).is_some_and(|w|
-                                w.interaction().is_some_and(|i| i.drag_region)
-                            )
-                        })
+                    ancestors.iter().any(|ancestor| {
+                        find_widget_mut(&mut self.root, ancestor)
+                            .is_some_and(|w| w.interaction().is_some_and(|i| i.drag_region))
+                    })
                 });
 
-                if
-                    state == winit::event::ElementState::Pressed &&
-                    button == winit::event::MouseButton::Left &&
-                    is_drag_region
+                if state == winit::event::ElementState::Pressed
+                    && button == winit::event::MouseButton::Left
+                    && is_drag_region
                 {
                     let window = self.window.clone();
                     let scale_factor = window.as_ref().map_or(1.0, |w| w.scale_factor() as f32);
                     let click_distance = MULTI_CLICK_DISTANCE_DP * scale_factor;
 
                     let is_double_click = self.last_titlebar_click.is_some_and(|(t, p)| {
-                        Instant::now().duration_since(t) < MULTI_CLICK_INTERVAL &&
-                            (p.0 - point.0).abs() < click_distance &&
-                            (p.1 - point.1).abs() < click_distance
+                        Instant::now().duration_since(t) < MULTI_CLICK_INTERVAL
+                            && (p.0 - point.0).abs() < click_distance
+                            && (p.1 - point.1).abs() < click_distance
                     });
                     self.last_titlebar_click = Some((Instant::now(), point));
 
@@ -1012,7 +1073,7 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
                             button: convert_mouse_button(button),
                             position: point,
                         }),
-                        &mut ctx
+                        &mut ctx,
                     );
                     if ctx.take_suppress_text_drag() {
                         self.input.text_drag_anchor = None;
@@ -1029,7 +1090,9 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
                 let Some(point) = self.input.cursor_pos else {
                     return;
                 };
-                let path = self.input.hovered_path
+                let path = self
+                    .input
+                    .hovered_path
                     .clone()
                     .or_else(|| hit_test_path(&self.root, point));
 
@@ -1043,7 +1106,7 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
                             position: point,
                             modifiers: self.input.modifiers,
                         }),
-                        &mut ctx
+                        &mut ctx,
                     );
                     self.apply_event_ctx(ctx);
                 }
@@ -1076,10 +1139,9 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
                 // Toggles the built-in render/repaint inspector, handled
                 // globally like Tab just below - not routed through
                 // whatever widget currently has focus.
-                if
-                    keyboard_event.key == Key::F12 &&
-                    keyboard_event.state == KeyState::Pressed &&
-                    !keyboard_event.repeat
+                if keyboard_event.key == Key::F12
+                    && keyboard_event.state == KeyState::Pressed
+                    && !keyboard_event.repeat
                 {
                     self.devtools_open = !self.devtools_open;
                     xengui::devtools::set_enabled(self.devtools_open);
@@ -1092,10 +1154,9 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
                     return;
                 }
 
-                if
-                    keyboard_event.key == Key::Tab &&
-                    keyboard_event.state == KeyState::Pressed &&
-                    !keyboard_event.repeat
+                if keyboard_event.key == Key::Tab
+                    && keyboard_event.state == KeyState::Pressed
+                    && !keyboard_event.repeat
                 {
                     self.advance_focus(self.input.modifiers.shift);
                     return;
@@ -1113,18 +1174,17 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
                             event: keyboard_event.clone(),
                             modifiers: self.input.modifiers,
                         }),
-                        &mut ctx
+                        &mut ctx,
                     );
                     self.apply_event_ctx(ctx);
                 }
 
                 // Page-wide select-all / copy, only when no focused widget
                 // already consumed the shortcut for itself (e.g. TextBox).
-                if
-                    status == EventStatus::Ignored &&
-                    keyboard_event.state == KeyState::Pressed &&
-                    !keyboard_event.repeat &&
-                    (self.input.modifiers.ctrl || self.input.modifiers.super_key)
+                if status == EventStatus::Ignored
+                    && keyboard_event.state == KeyState::Pressed
+                    && !keyboard_event.repeat
+                    && (self.input.modifiers.ctrl || self.input.modifiers.super_key)
                 {
                     match keyboard_event.key {
                         Key::Character('a' | 'A') => {
@@ -1144,13 +1204,12 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
                 // Directional focus navigation, only when the focused widget
                 // itself didn't consume the arrow key (e.g. TextBox uses
                 // arrows for caret movement instead).
-                if
-                    status == EventStatus::Ignored &&
-                    keyboard_event.state == KeyState::Pressed &&
-                    !keyboard_event.repeat &&
-                    !self.input.modifiers.ctrl &&
-                    !self.input.modifiers.super_key &&
-                    !self.input.modifiers.alt
+                if status == EventStatus::Ignored
+                    && keyboard_event.state == KeyState::Pressed
+                    && !keyboard_event.repeat
+                    && !self.input.modifiers.ctrl
+                    && !self.input.modifiers.super_key
+                    && !self.input.modifiers.alt
                 {
                     match keyboard_event.key {
                         Key::ArrowDown | Key::ArrowRight => self.advance_focus(false),
@@ -1176,7 +1235,7 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
                         &mut self.root,
                         &path,
                         &InputEvent::Ime(convert_ime_event(ime_event)),
-                        &mut ctx
+                        &mut ctx,
                     );
                     self.apply_event_ctx(ctx);
                 }
@@ -1205,7 +1264,7 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
                             button: MouseButton::Left,
                             position: point,
                         }),
-                        &mut ctx
+                        &mut ctx,
                     );
                     self.apply_event_ctx(ctx);
                 }
@@ -1254,7 +1313,9 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
             }
         }
 
-        if let Some(renderer) = &self.renderer && renderer.is_animating() {
+        if let Some(renderer) = &self.renderer
+            && renderer.is_animating()
+        {
             if let Some(window) = &self.window {
                 window.request_redraw();
             }

@@ -21,11 +21,11 @@ opt-level = 2
 opt-level = 1
 
 [workspace.dependencies]
-xengui = { version = "0.2.7", path = "crates/xengui" }
-xenframe = { version = "0.1.1", path = "crates/xenframe" }
+xengui = { version = "0.2.8", path = "crates/xengui" }
+xenframe = { version = "0.1.2", path = "crates/xenframe" }
 xen-router = { version = "0.1.0", path = "crates/xen-router" }
 xen-router-build = { version = "0.1.0", path = "crates/xen-router-build" }
-xengui-wgpu = { version = "0.1.1", path = "crates/xengui-wgpu" }
+xengui-wgpu = { version = "0.1.2", path = "crates/xengui-wgpu" }
 xen-clipboard = { version = "0.1.7", path = "crates/xen-clipboard" }
 xen-animation = { version = "0.1.4", path = "crates/xen-animation" }
 xengui-icons = { version = "0.1.0", path = "crates/xengui-icons" }
@@ -61,7 +61,8 @@ console_log = "1.1.0"
 swash = "0.2.10"
 
 [workspace.lints.rust]
-unsafe_code = "forbid"
+unsafe_code = "deny"
 
 [workspace.lints.clippy]
-pedantic = { level = "warn", priority = -1 }
+correctness = { level = "deny", priority = -1 }
+suspicious = { level = "deny", priority = -1 }

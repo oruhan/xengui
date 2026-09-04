@@ -6,13 +6,20 @@
 
 use crate::Color;
 
+/// Behavior required from `IntoSvgColor` implementations.
 pub trait IntoSvgColor {
+    /// Returns or updates the `into_svg_color` value.
     fn into_svg_color(self) -> xen_svg::SvgColor;
 }
 
 impl IntoSvgColor for Color {
     fn into_svg_color(self) -> xen_svg::SvgColor {
-        xen_svg::SvgColor::Solid(xen_svg::Color::rgba_f32(self.r(), self.g(), self.b(), self.a()))
+        xen_svg::SvgColor::Solid(xen_svg::Color::rgba_f32(
+            self.r(),
+            self.g(),
+            self.b(),
+            self.a(),
+        ))
     }
 }
 
@@ -22,6 +29,7 @@ impl IntoSvgColor for xen_svg::SvgColor {
     }
 }
 
+/// Returns or updates the `from_svg_color` value.
 pub fn from_svg_color(color: xen_svg::Color) -> Color {
     Color::rgba_f32(color.r(), color.g(), color.b(), color.a())
 }

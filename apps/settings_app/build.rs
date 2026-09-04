@@ -1,9 +1,9 @@
 // build.rs
+use ico::IconDir;
+use image::imageops::FilterType;
+use image::io::Reader as ImageReader;
 use std::fs::File;
 use std::path::Path;
-use ico::IconDir;
-use image::io::Reader as ImageReader;
-use image::imageops::FilterType;
 
 fn main() {
     // Rerun the build if icon.png changes

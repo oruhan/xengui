@@ -1,37 +1,31 @@
 // SPDX-License-Identifier: Apache-2.0
 use crate::{
-    Align,
-    Background,
-    Border,
-    Color,
-    Display,
-    Edges,
-    FlexDirection,
-    Interaction,
-    Label,
-    LayoutBox,
-    Length,
-    Render,
-    Style,
-    StyleBuilder,
-    View,
-    Widget,
-    WidgetBase,
-    WidgetId,
+    Align, Background, Border, Color, Display, Edges, FlexDirection, Interaction, Label, LayoutBox,
+    Length, Render, Style, StyleBuilder, View, Widget, WidgetBase, WidgetId,
 };
 use smol_str::SmolStr;
 
+/// Data and behavior represented by `TableColumn`.
 pub struct TableColumn {
+    /// The `header` value carried by this type.
     pub header: SmolStr,
+    /// The `width` value carried by this type.
     pub width: Length,
+    /// The `align` value carried by this type.
     pub align: Align,
 }
 
 impl TableColumn {
+    /// Creates a value with its default configuration.
     pub fn new(header: impl Into<SmolStr>, width: impl Into<Length>) -> Self {
-        Self { header: header.into(), width: width.into(), align: Align::Start }
+        Self {
+            header: header.into(),
+            width: width.into(),
+            align: Align::Start,
+        }
     }
 
+    /// Returns or updates the `align` value.
     pub fn align(mut self, align: Align) -> Self {
         self.align = align;
         self
@@ -41,20 +35,25 @@ impl TableColumn {
 // Cells are stored as factories instead of built widgets, since a
 // composite widget's `render` only gets `&self` and can't move a
 // non-Clone `Box<dyn Widget>` out of it.
+/// Data and behavior represented by `TableRow`.
 pub struct TableRow {
     cells: Vec<Box<dyn Fn() -> Box<dyn Widget>>>,
 }
 
 impl TableRow {
+    /// Creates a value with its default configuration.
     pub fn new() -> Self {
         Self { cells: Vec::new() }
     }
 
+    /// Returns or updates the `cell` value.
     pub fn cell<W: Widget + 'static>(mut self, build: impl (Fn() -> W) + 'static) -> Self {
-        self.cells.push(Box::new(move || Box::new(build()) as Box<dyn Widget>));
+        self.cells
+            .push(Box::new(move || Box::new(build()) as Box<dyn Widget>));
         self
     }
 
+    /// Returns or updates the `text` value.
     pub fn text(self, content: impl Into<SmolStr>) -> Self {
         let content = content.into();
         self.cell(move || Label::new().label(content.clone()))
@@ -97,6 +96,7 @@ pub struct Table {
 }
 
 impl Table {
+    /// Creates a value with its default configuration.
     pub fn new() -> Self {
         Self {
             base: WidgetBase::new(Interaction::new()),
@@ -123,56 +123,67 @@ impl Table {
         }
     }
 
+    /// Returns or updates the `column` value.
     pub fn column(mut self, column: TableColumn) -> Self {
         self.columns.push(column);
         self
     }
 
+    /// Returns or updates the `columns` value.
     pub fn columns(mut self, columns: impl Into<Vec<TableColumn>>) -> Self {
         self.columns = columns.into();
         self
     }
 
+    /// Returns or updates the `row` value.
     pub fn row(mut self, row: TableRow) -> Self {
         self.rows.push(row);
         self
     }
 
+    /// Returns or updates the `rows` value.
     pub fn rows(mut self, rows: impl Into<Vec<TableRow>>) -> Self {
         self.rows = rows.into();
         self
     }
 
+    /// Returns or updates the `show_header` value.
     pub fn show_header(mut self, value: bool) -> Self {
         self.show_header = value;
         self
     }
 
+    /// Returns or updates the `header_background` value.
     pub fn header_background(mut self, background: impl Into<Background>) -> Self {
         self.header_background = Some(background.into());
         self
     }
 
+    /// Returns or updates the `header_text_color` value.
     pub fn header_text_color(mut self, color: Color) -> Self {
         self.header_text_color = Some(color);
         self
     }
 
+    /// Returns or updates the `header_padding` value.
     pub fn header_padding(mut self, padding: impl Into<Edges>) -> Self {
         self.header_padding = Some(padding.into());
         self
     }
 
+    /// Returns or updates the `row_background` value.
     pub fn row_background(mut self, background: impl Into<Background>) -> Self {
         self.row_background = Some(background.into());
         self
     }
 
+    /// Returns or updates the `row_alt_background` value.
     pub fn row_alt_background(mut self, background: impl Into<Background>) -> Self {
         self.row_alt_background = Some(background.into());
         self
     }
 
+    /// Returns or updates the `row_hover_background` value.
     pub fn row_hover_background(mut self, background: impl Into<Background>) -> Self {
         self.row_hover_background = Some(background.into());
         self
@@ -187,16 +198,19 @@ impl Table {
         self
     }
 
+    /// Returns or updates the `cell_padding` value.
     pub fn cell_padding(mut self, padding: impl Into<Edges>) -> Self {
         self.cell_padding = Some(padding.into());
         self
     }
 
+    /// Returns or updates the `border_color` value.
     pub fn border_color(mut self, color: Color) -> Self {
         self.border_color = Some(color);
         self
     }
 
+    /// Returns or updates the `row_height` value.
     pub fn row_height(mut self, height: impl Into<Length>) -> Self {
         self.row_height = Some(height.into());
         self
@@ -223,7 +237,9 @@ impl Render for Table {
     fn render(&self) -> Box<dyn Widget> {
         let theme = crate::current_theme();
         let border_color = self.border_color.unwrap_or(theme.outline_variant);
-        let cell_padding = self.cell_padding.unwrap_or_else(|| Edges::symmetric(10.0, 8.0));
+        let cell_padding = self
+            .cell_padding
+            .unwrap_or_else(|| Edges::symmetric(10.0, 8.0));
 
         let mut root = View::new()
             .display(Display::Flex)
@@ -235,7 +251,9 @@ impl Render for Table {
                 .display(Display::Flex)
                 .flex_direction(FlexDirection::Row)
                 .background(
-                    self.header_background.clone().unwrap_or(Background::Color(theme.surface))
+                    self.header_background
+                        .clone()
+                        .unwrap_or(Background::Color(theme.surface)),
                 )
                 // Rounds the header's top corners to match the table's own
                 // outer radius instead of squaring it off.
@@ -270,9 +288,10 @@ impl Render for Table {
                 self.row_alt_background
                     .clone()
                     .or_else(|| self.row_background.clone())
-                    .or_else(||
-                        self.striped.then_some(Background::Color(theme.surface_container_high))
-                    )
+                    .or_else(|| {
+                        self.striped
+                            .then_some(Background::Color(theme.surface_container_high))
+                    })
             } else {
                 self.row_background
                     .clone()
@@ -305,11 +324,13 @@ impl Render for Table {
             }
 
             for (col_index, cell_build) in row.cells.iter().enumerate() {
-                let width = self.columns
+                let width = self
+                    .columns
                     .get(col_index)
                     .map(|c| c.width)
                     .unwrap_or(Length::pct(100.0));
-                let align = self.columns
+                let align = self
+                    .columns
                     .get(col_index)
                     .map(|c| c.align)
                     .unwrap_or(Align::Start);

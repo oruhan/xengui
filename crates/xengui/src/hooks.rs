@@ -1,26 +1,30 @@
 // SPDX-License-Identifier: Apache-2.0
+use crate::RedrawRequester;
 use smol_str::SmolStr;
 use std::any::Any;
-use std::cell::{ Cell, RefCell };
-use std::collections::{ HashMap, HashSet };
+use std::cell::{Cell, RefCell};
+use std::collections::{HashMap, HashSet};
 use std::marker::PhantomData;
 use std::rc::Rc;
-use crate::RedrawRequester;
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
+/// Data and behavior represented by `ComponentId`.
 pub struct ComponentId(SmolStr);
 
 impl ComponentId {
+    /// Returns or updates the `root` value.
     pub fn root() -> Self {
         Self(SmolStr::new("root"))
     }
 
+    /// Returns or updates the `as_str` value.
     pub fn as_str(&self) -> &str {
         self.0.as_str()
     }
 }
 
 #[derive(Clone, Debug)]
+/// Data and behavior represented by `ComponentKey`.
 pub struct ComponentKey(SmolStr);
 
 impl From<&str> for ComponentKey {
@@ -61,7 +65,10 @@ struct ComponentState {
 
 impl ComponentState {
     fn new() -> Self {
-        Self { slots: Vec::new(), cursor: 0 }
+        Self {
+            slots: Vec::new(),
+            cursor: 0,
+        }
     }
 }
 
@@ -81,29 +88,16 @@ thread_local! {
     static PENDING_EFFECTS: RefCell<Vec<PendingEffect>> = const { RefCell::new(Vec::new()) };
 }
 
+/// Returns or updates the `begin_render` value.
 pub fn begin_render() {
     // Lets a render whose reconciliation gets superseded before finishing
     // be identified later, so its queued effects are never executed.
     RENDER_GENERATION.with(|g| g.set(g.get() + 1));
 
-    // Prunes hook state against the LIVE set built up over the *entire*
-    // previous cycle (structural build, reconciliation, and first-mount
-    // cascade) - composite widgets only call component() during
-    // reconciliation/cascade, both of which run after end_render used to
-    // already fire, so pruning here (right before those calls happen
-    // again) is what keeps their state alive across renders.
-    LIVE_COMPONENTS.with(|live| {
-        let live = live.borrow();
-        HOOK_STORE.with(|store| {
-            store.borrow_mut().retain(|id, state| {
-                let keep = live.contains(id);
-                if !keep {
-                    run_unmount_cleanups(state);
-                }
-                keep
-            });
-        });
-    });
+    // The live set belongs to the render that is about to start. Hook
+    // state is pruned only after reconciliation commits, because composite
+    // widgets register themselves during reconciliation rather than during
+    // the root builder call.
     LIVE_COMPONENTS.with(|s| s.borrow_mut().clear());
 
     COMPONENT_STACK.with(|s| {
@@ -116,6 +110,7 @@ pub fn begin_render() {
     });
 }
 
+/// Returns or updates the `end_render` value.
 pub fn end_render() {
     // Pruning now happens at the start of the next begin_render, once the
     // previous cycle's LIVE set (which composite widgets only finish
@@ -137,10 +132,12 @@ fn run_unmount_cleanups(state: &ComponentState) {
     }
 }
 
+/// Returns or updates the `take_dirty` value.
 pub fn take_dirty() -> bool {
     DIRTY.with(|d| d.replace(false))
 }
 
+/// Updates the `set_redraw_handle` value.
 pub fn set_redraw_handle(handle: Rc<dyn RedrawRequester>) {
     REDRAW_HANDLE.with(|h| {
         *h.borrow_mut() = Some(handle);
@@ -157,26 +154,20 @@ fn request_redraw() {
 
 fn current_component_id() -> ComponentId {
     COMPONENT_STACK.with(|s| {
-        s.borrow()
-            .last()
-            .cloned()
-            .unwrap_or_else(|| {
-                panic!(
-                    "use_state: called outside a component() scope. \
+        s.borrow().last().cloned().unwrap_or_else(|| {
+            panic!(
+                "use_state: called outside a component() scope. \
                  use_state can only be used within App::render's root function or \
                  inside a component(key, ...) scope."
-                )
-            })
+            )
+        })
     })
 }
 
 fn push_component(key: ComponentKey) -> ComponentId {
-    let id = COMPONENT_STACK.with(|s| {
-        match s.borrow().last() {
-            Some(parent) =>
-                ComponentId(SmolStr::new(format!("{}\u{1f}{}", parent.as_str(), key.0))),
-            None => ComponentId(key.0),
-        }
+    let id = COMPONENT_STACK.with(|s| match s.borrow().last() {
+        Some(parent) => ComponentId(SmolStr::new(format!("{}\u{1f}{}", parent.as_str(), key.0))),
+        None => ComponentId(key.0),
     });
 
     HOOK_STORE.with(|store| {
@@ -265,7 +256,9 @@ pub fn use_state<T: Clone + 'static>(initial: T) -> (T, SetState<T>) {
         state.cursor += 1;
 
         if idx == state.slots.len() {
-            state.slots.push(Rc::new(RefCell::new(Box::new(initial) as Box<dyn Any>)));
+            state
+                .slots
+                .push(Rc::new(RefCell::new(Box::new(initial) as Box<dyn Any>)));
         }
 
         (state.slots[idx].clone(), idx)
@@ -293,6 +286,7 @@ pub fn use_state<T: Clone + 'static>(initial: T) -> (T, SetState<T>) {
     )
 }
 
+/// Data and behavior represented by `SetState`.
 pub struct SetState<T> {
     slot: Rc<RefCell<Box<dyn Any>>>,
     _marker: PhantomData<T>,
@@ -308,6 +302,7 @@ impl<T> Clone for SetState<T> {
 }
 
 impl<T: 'static> SetState<T> {
+    /// Returns or updates the `set` value.
     pub fn set(&self, value: T) {
         *self.slot.borrow_mut() = Box::new(value);
         DIRTY.with(|d| d.set(true));
@@ -317,6 +312,7 @@ impl<T: 'static> SetState<T> {
         request_redraw();
     }
 
+    /// Returns or updates the `update` value.
     pub fn update(&self, f: impl FnOnce(&mut T)) {
         {
             let mut borrowed = self.slot.borrow_mut();
@@ -334,6 +330,7 @@ impl<T: 'static> SetState<T> {
     }
 }
 
+/// Returns or updates the `mark_dirty_and_redraw` value.
 pub fn mark_dirty_and_redraw() {
     DIRTY.with(|d| d.set(true));
     request_redraw();
@@ -376,6 +373,7 @@ fn deps_changed(old: &DepsSnapshot, new: &DepsSnapshot) -> bool {
 /// erased snapshot. Implemented for `()` (no dependencies - runs once),
 /// owned arrays, and array/slice references.
 pub trait EffectDeps {
+    /// Returns or updates the `snapshot` value.
     fn snapshot(self) -> DepsSnapshot;
 }
 
@@ -407,6 +405,7 @@ impl<T: PartialEq + Clone + 'static> EffectDeps for &[T] {
 /// cleanup, anything callable once becomes the cleanup that runs before
 /// the next execution (or on unmount).
 pub trait EffectCleanup {
+    /// Returns or updates the `into_cleanup` value.
     fn into_cleanup(self) -> Option<Box<dyn FnOnce()>>;
 }
 
@@ -451,7 +450,10 @@ struct PendingEffect {
 /// Panics if called outside a `component()` scope, or if the order of
 /// hook invocations changes between rebuilds (see [`use_state`]).
 pub fn use_effect<F, R, D>(effect: F, deps: D)
-    where F: FnOnce() -> R + 'static, R: EffectCleanup + 'static, D: EffectDeps
+where
+    F: FnOnce() -> R + 'static,
+    R: EffectCleanup + 'static,
+    D: EffectDeps,
 {
     let id = current_component_id();
     let new_deps = deps.snapshot();
@@ -466,18 +468,14 @@ pub fn use_effect<F, R, D>(effect: F, deps: D)
         state.cursor += 1;
 
         if idx == state.slots.len() {
-            state.slots.push(
-                Rc::new(
-                    RefCell::new(
-                        Box::new(EffectRecord {
-                            deps: None,
-                            cleanup: None,
-                            mounted: false,
-                            pending: false,
-                        }) as Box<dyn Any>
-                    )
-                )
-            );
+            state
+                .slots
+                .push(Rc::new(RefCell::new(Box::new(EffectRecord {
+                    deps: None,
+                    cleanup: None,
+                    mounted: false,
+                    pending: false,
+                }) as Box<dyn Any>)));
         }
 
         (state.slots[idx].clone(), idx)
@@ -504,10 +502,10 @@ pub fn use_effect<F, R, D>(effect: F, deps: D)
         return;
     }
 
-    slot
-        .borrow_mut()
+    slot.borrow_mut()
         .downcast_mut::<EffectRecord>()
-        .expect("use_effect: internal error").pending = true;
+        .expect("use_effect: internal error")
+        .pending = true;
 
     let run: BoxedEffectFn = Box::new(move || effect().into_cleanup());
 
@@ -529,6 +527,24 @@ pub fn run_pending_effects() {
     let generation = current_generation();
     let pending = PENDING_EFFECTS.with(|q| std::mem::take(&mut *q.borrow_mut()));
 
+    // Reconciliation has committed at this point, so LIVE_COMPONENTS now
+    // contains every root and composite component in the committed tree.
+    // Removing hook state here makes unmount cleanup happen in the same
+    // commit that removed the component, without pruning composites before
+    // reconciliation has had a chance to render them.
+    LIVE_COMPONENTS.with(|live| {
+        let live = live.borrow();
+        HOOK_STORE.with(|store| {
+            store.borrow_mut().retain(|id, state| {
+                let keep = live.contains(id);
+                if !keep {
+                    run_unmount_cleanups(state);
+                }
+                keep
+            });
+        });
+    });
+
     for entry in pending {
         // An effect queued by a render that got superseded before its
         // reconciliation finished was never actually committed, so it
@@ -539,7 +555,9 @@ pub fn run_pending_effects() {
 
         let old_cleanup = {
             let mut boxed = entry.slot.borrow_mut();
-            let record = boxed.downcast_mut::<EffectRecord>().expect("use_effect: internal error");
+            let record = boxed
+                .downcast_mut::<EffectRecord>()
+                .expect("use_effect: internal error");
             record.pending = false;
             record.cleanup.take()
         };
@@ -551,7 +569,9 @@ pub fn run_pending_effects() {
         let new_cleanup = (entry.run)();
 
         let mut boxed = entry.slot.borrow_mut();
-        let record = boxed.downcast_mut::<EffectRecord>().expect("use_effect: internal error");
+        let record = boxed
+            .downcast_mut::<EffectRecord>()
+            .expect("use_effect: internal error");
         record.deps = Some(entry.new_deps);
         record.cleanup = new_cleanup;
         record.mounted = true;
@@ -568,13 +588,18 @@ use std::future::Future;
 
 /// Snapshot of an async resource's current lifecycle state.
 pub enum ResourceState<T, E> {
+    /// The `Idle` variant.
     Idle,
+    /// The `Loading` variant.
     Loading,
+    /// The `Ready` variant.
     Ready(T),
+    /// The `Error` variant.
     Error(E),
 }
 
 impl<T, E> ResourceState<T, E> {
+    /// Returns or updates the `data` value.
     pub fn data(&self) -> Option<&T> {
         match self {
             Self::Ready(value) => Some(value),
@@ -582,6 +607,7 @@ impl<T, E> ResourceState<T, E> {
         }
     }
 
+    /// Returns or updates the `error` value.
     pub fn error(&self) -> Option<&E> {
         match self {
             Self::Error(err) => Some(err),
@@ -589,6 +615,7 @@ impl<T, E> ResourceState<T, E> {
         }
     }
 
+    /// Returns whether the `is_loading` condition is satisfied.
     pub fn is_loading(&self) -> bool {
         matches!(self, Self::Loading)
     }
@@ -615,26 +642,32 @@ pub struct Resource<T, E> {
 }
 
 impl<T, E> Resource<T, E> {
+    /// Returns or updates the `data` value.
     pub fn data(&self) -> Option<&T> {
         self.state.data()
     }
 
+    /// Returns or updates the `error` value.
     pub fn error(&self) -> Option<&E> {
         self.state.error()
     }
 
+    /// Returns or updates the `loading` value.
     pub fn loading(&self) -> bool {
         self.state.is_loading()
     }
 
+    /// Returns whether the `has_value` condition is satisfied.
     pub fn has_value(&self) -> bool {
         self.data().is_some()
     }
 
+    /// Returns whether the `has_error` condition is satisfied.
     pub fn has_error(&self) -> bool {
         self.error().is_some()
     }
 
+    /// Returns or updates the `state` value.
     pub fn state(&self) -> &ResourceState<T, E> {
         &self.state
     }
@@ -670,14 +703,13 @@ fn spawn_resource_load<D, T, E, LF, Fut>(
     gen_cell: Rc<Cell<u64>>,
     loader: LF,
     deps: D,
-    set_state: SetState<ResourceState<T, E>>
-)
-    where
-        D: 'static,
-        T: 'static,
-        E: 'static,
-        LF: Fn(D) -> Fut + 'static,
-        Fut: Future<Output = Result<T, E>> + 'static
+    set_state: SetState<ResourceState<T, E>>,
+) where
+    D: 'static,
+    T: 'static,
+    E: 'static,
+    LF: Fn(D) -> Fut + 'static,
+    Fut: Future<Output = Result<T, E>> + 'static,
 {
     let my_generation = gen_cell.get() + 1;
     gen_cell.set(my_generation);
@@ -711,13 +743,13 @@ fn spawn_resource_load<D, T, E, LF, Fut>(
 /// Panics if called outside a `component()` scope, or if the order of
 /// hook invocations changes between rebuilds (see [`use_state`]).
 pub fn use_resource<D, T, E, DF, LF, Fut>(deps_fn: DF, loader: LF) -> Resource<T, E>
-    where
-        D: PartialEq + Clone + 'static,
-        T: Clone + 'static,
-        E: Clone + 'static,
-        DF: Fn() -> D,
-        LF: Fn(D) -> Fut + Clone + 'static,
-        Fut: Future<Output = Result<T, E>> + 'static
+where
+    D: PartialEq + Clone + 'static,
+    T: Clone + 'static,
+    E: Clone + 'static,
+    DF: Fn() -> D,
+    LF: Fn(D) -> Fut + Clone + 'static,
+    Fut: Future<Output = Result<T, E>> + 'static,
 {
     let deps = deps_fn();
 
@@ -740,7 +772,7 @@ pub fn use_resource<D, T, E, DF, LF, Fut>(deps_fn: DF, loader: LF) -> Resource<T
                 spawn_resource_load(gen_cell, loader, deps, set_state);
             }
         },
-        [deps]
+        [deps],
     );
 
     let do_refresh: Rc<dyn Fn()> = {
@@ -763,22 +795,23 @@ pub fn use_resource<D, T, E, DF, LF, Fut>(deps_fn: DF, loader: LF) -> Resource<T
         })
     };
 
-    Resource { state, do_refresh, do_invalidate }
+    Resource {
+        state,
+        do_refresh,
+        do_invalidate,
+    }
 }
 
 /// Sugar for [`use_resource`] when the loader has no dependencies - runs
 /// once on mount and only reloads via an explicit `refresh()`.
 pub fn use_resource_once<T, E, LF, Fut>(loader: LF) -> Resource<T, E>
-    where
-        T: Clone + 'static,
-        E: Clone + 'static,
-        LF: Fn() -> Fut + Clone + 'static,
-        Fut: Future<Output = Result<T, E>> + 'static
+where
+    T: Clone + 'static,
+    E: Clone + 'static,
+    LF: Fn() -> Fut + Clone + 'static,
+    Fut: Future<Output = Result<T, E>> + 'static,
 {
-    use_resource(
-        || (),
-        move |()| loader()
-    )
+    use_resource(|| (), move |()| loader())
 }
 
 #[cfg(test)]
@@ -792,9 +825,12 @@ mod effect_tests {
         let build = || {
             component("effect_mount_root", || {
                 let log = log.clone();
-                use_effect(move || {
-                    log.borrow_mut().push("mount".to_string());
-                }, ());
+                use_effect(
+                    move || {
+                        log.borrow_mut().push("mount".to_string());
+                    },
+                    (),
+                );
             });
         };
 
@@ -822,7 +858,7 @@ mod effect_tests {
                     move || {
                         log.borrow_mut().push(format!("run:{value}"));
                     },
-                    [value]
+                    [value],
                 );
             });
         };
@@ -842,7 +878,10 @@ mod effect_tests {
         end_render();
         run_pending_effects();
 
-        assert_eq!(*log.borrow(), vec!["run:1".to_string(), "run:2".to_string()]);
+        assert_eq!(
+            *log.borrow(),
+            vec!["run:1".to_string(), "run:2".to_string()]
+        );
     }
 
     #[test]
@@ -859,7 +898,7 @@ mod effect_tests {
                             log.borrow_mut().push(format!("cleanup:{value}"));
                         }
                     },
-                    [value]
+                    [value],
                 );
             });
         };
@@ -876,7 +915,11 @@ mod effect_tests {
 
         assert_eq!(
             *log.borrow(),
-            vec!["run:1".to_string(), "cleanup:1".to_string(), "run:2".to_string()]
+            vec![
+                "run:1".to_string(),
+                "cleanup:1".to_string(),
+                "run:2".to_string()
+            ]
         );
 
         // Third render omits the child entirely, so its cleanup must fire

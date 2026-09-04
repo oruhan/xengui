@@ -8,12 +8,21 @@ This package contains the official XenGui website and browser demo. The site is 
 ## Routes
 
 - `/` presents the project landing page.
-- `/docs` introduces core XenGui concepts.
+- `/docs` provides the end-to-end learning path, live widget examples, and links to the generated API reference.
 - `/examples` previews common widgets.
 - `/playground` pairs sample code with a live component.
 - `/showcase` demonstrates an application-scale responsive interface.
 
 Routes are generated from the `app/` directory by `xen-router-build`.
+
+## Documentation model
+
+The website and rustdoc have complementary roles:
+
+- `xengui.vercel.app/docs` contains curated guides, runnable examples, and architectural explanations.
+- `docs.rs` builds the authoritative API reference directly from each published crate's rustdoc comments.
+
+Keep public types, methods, invariants, and failure behavior in rustdoc. Keep task-oriented tutorials and cross-crate workflows on the website, linking to rustdoc instead of duplicating API inventories by hand.
 
 ## Local development
 

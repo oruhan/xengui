@@ -1,4 +1,4 @@
-use xengui::{ Theme };
+use xengui::Theme;
 
 #[cfg(not(target_arch = "wasm32"))]
 use crate::WindowPosition;
@@ -21,6 +21,9 @@ pub enum AppThemeMode {
 
 pub struct AppConfig {
     pub title: String,
+
+    /// GPU backend, presentation, and multisampling policy.
+    pub renderer: xengui_wgpu::RendererOptions,
 
     /// Initial window width in pixels.
     #[cfg(not(target_arch = "wasm32"))]
@@ -106,6 +109,7 @@ impl Default for AppConfig {
     fn default() -> Self {
         Self {
             title: "XenGui App".to_string(),
+            renderer: xengui_wgpu::RendererOptions::default(),
 
             #[cfg(not(target_arch = "wasm32"))]
             width: 800,

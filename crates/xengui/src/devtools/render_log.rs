@@ -4,9 +4,9 @@
 //! resize debugging) - this one is keyed by widget path and carries a
 //! human-readable reason string.
 
-use std::cell::{ Cell, RefCell };
+use std::cell::{Cell, RefCell};
 use std::collections::VecDeque;
-use web_time::{ Instant, SystemTime, UNIX_EPOCH };
+use web_time::{Instant, SystemTime, UNIX_EPOCH};
 
 /// Widget key assigned to the DevTools panel when it's mounted into the
 /// app's root wrapper (see `xenframe::App::schedule_render`). Shared here
@@ -16,20 +16,32 @@ use web_time::{ Instant, SystemTime, UNIX_EPOCH };
 pub const DEVTOOLS_PANEL_KEY: &str = "xengui_devtools_panel";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+/// Available `RenderEventKind` choices.
 pub enum RenderEventKind {
+    /// The `Rerender` variant.
     Rerender,
+    /// The `Repaint` variant.
     Repaint,
+    /// The `Layout` variant.
     Layout,
+    /// The `Warning` variant.
     Warning,
+    /// The `Error` variant.
     Error,
 }
 
 #[derive(Clone, Debug)]
+/// Data and behavior represented by `RenderLogEntry`.
 pub struct RenderLogEntry {
+    /// The `epoch_millis` value carried by this type.
     pub epoch_millis: u128,
+    /// The `kind` value carried by this type.
     pub kind: RenderEventKind,
+    /// The `widget_path` value carried by this type.
     pub widget_path: String,
+    /// The `widget_name` value carried by this type.
     pub widget_name: &'static str,
+    /// The `reason` value carried by this type.
     pub reason: String,
 }
 
@@ -43,6 +55,7 @@ thread_local! {
     static SUPPRESS_DEPTH: Cell<u32> = const { Cell::new(0) };
 }
 
+/// Updates the `set_enabled` value.
 pub fn set_enabled(enabled: bool) {
     ENABLED.with(|e| e.set(enabled));
     if !enabled {
@@ -50,6 +63,7 @@ pub fn set_enabled(enabled: bool) {
     }
 }
 
+/// Returns whether the `is_enabled` condition is satisfied.
 pub fn is_enabled() -> bool {
     ENABLED.with(Cell::get)
 }
@@ -73,9 +87,11 @@ fn is_suppressed() -> bool {
 // segments is the panel's own keyed segment - matches the panel widget
 // itself and everything nested under it (resize handle, buttons, rows...).
 fn is_devtools_panel_path(widget_path: &str) -> bool {
-    widget_path
-        .split('.')
-        .any(|segment| segment.strip_prefix('k').is_some_and(|key| key == DEVTOOLS_PANEL_KEY))
+    widget_path.split('.').any(|segment| {
+        segment
+            .strip_prefix('k')
+            .is_some_and(|key| key == DEVTOOLS_PANEL_KEY)
+    })
 }
 
 fn notify_new_entry() {
@@ -83,9 +99,7 @@ fn notify_new_entry() {
         let now = Instant::now();
         let due = cell
             .get()
-            .is_none_or(|last| {
-                (now.duration_since(last).as_millis() as u64) >= NOTIFY_THROTTLE_MS
-            });
+            .is_none_or(|last| (now.duration_since(last).as_millis() as u64) >= NOTIFY_THROTTLE_MS);
         if due {
             cell.set(Some(now));
         }
@@ -120,26 +134,55 @@ fn push(kind: RenderEventKind, widget_path: &str, widget_name: &'static str, rea
     notify_new_entry();
 }
 
+/// Returns or updates the `log_rerender` value.
 pub fn log_rerender(widget_path: &str, widget_name: &'static str, reason: impl Into<String>) {
-    push(RenderEventKind::Rerender, widget_path, widget_name, reason.into());
+    push(
+        RenderEventKind::Rerender,
+        widget_path,
+        widget_name,
+        reason.into(),
+    );
 }
 
+/// Returns or updates the `log_repaint` value.
 pub fn log_repaint(widget_path: &str, widget_name: &'static str, reason: impl Into<String>) {
-    push(RenderEventKind::Repaint, widget_path, widget_name, reason.into());
+    push(
+        RenderEventKind::Repaint,
+        widget_path,
+        widget_name,
+        reason.into(),
+    );
 }
 
 /// Logs that a full layout pass (taffy tree rebuild + re-apply) actually
 /// ran this frame, as opposed to the cheaper cascade/reflow-only path.
 pub fn log_layout(widget_path: &str, widget_name: &'static str, reason: impl Into<String>) {
-    push(RenderEventKind::Layout, widget_path, widget_name, reason.into());
+    push(
+        RenderEventKind::Layout,
+        widget_path,
+        widget_name,
+        reason.into(),
+    );
 }
 
+/// Returns or updates the `log_warning` value.
 pub fn log_warning(widget_path: &str, widget_name: &'static str, reason: impl Into<String>) {
-    push(RenderEventKind::Warning, widget_path, widget_name, reason.into());
+    push(
+        RenderEventKind::Warning,
+        widget_path,
+        widget_name,
+        reason.into(),
+    );
 }
 
+/// Returns or updates the `log_error` value.
 pub fn log_error(widget_path: &str, widget_name: &'static str, reason: impl Into<String>) {
-    push(RenderEventKind::Error, widget_path, widget_name, reason.into());
+    push(
+        RenderEventKind::Error,
+        widget_path,
+        widget_name,
+        reason.into(),
+    );
 }
 
 /// Snapshot of every entry recorded so far, oldest first.

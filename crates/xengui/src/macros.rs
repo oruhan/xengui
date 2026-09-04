@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
+/// Allows a widget to receive shorthand text content from [`view!`](crate::view!).
 pub trait WidgetContent: Sized {
+    /// Returns the widget with its primary text content replaced.
     fn with_content(self, content: impl Into<smol_str::SmolStr>) -> Self;
 }
 
@@ -34,6 +36,7 @@ macro_rules! view {
 }
 
 #[macro_export]
+/// Expands builder-like properties and child declarations used by [`view!`](crate::view!).
 macro_rules! view_props {
     ($acc:expr;) => { $acc };
 
@@ -102,10 +105,12 @@ macro_rules! view_props {
 }
 
 #[macro_export]
+/// Expands the `impl_themed_style_builders` convenience syntax.
 macro_rules! impl_themed_style_builders {
     ($ty:ty; $($method:ident => $field:ident),+ $(,)?) => {
         impl $ty {
             $(
+                #[doc = concat!("Builds the themed `", stringify!($method), "` style state.")]
                 pub fn $method(
                     mut self,
                     build: impl FnOnce($crate::StylePatch, &$crate::Theme) -> $crate::StylePatch
@@ -121,6 +126,7 @@ macro_rules! impl_themed_style_builders {
     (base $ty:ty; $($method:ident => $field:ident),+ $(,)?) => {
         impl $ty {
             $(
+                #[doc = concat!("Builds the themed `", stringify!($method), "` style state.")]
                 pub fn $method(
                     mut self,
                     build: impl FnOnce($crate::StylePatch, &$crate::Theme) -> $crate::StylePatch
@@ -136,6 +142,7 @@ macro_rules! impl_themed_style_builders {
 }
 
 #[macro_export]
+/// Expands the `impl_common_style_builders` convenience syntax.
 macro_rules! impl_common_style_builders {
     (base $ty:ty) => {
         impl $ty {
@@ -151,46 +158,57 @@ macro_rules! impl_common_style_builders {
             /// trigger it from anywhere (e.g. `dom::click("submitBtn")`), the same
             /// way HTML's `id` + JS's `getElementById(id).click()` work.
             pub fn id(mut self, id: impl Into<smol_str::SmolStr>) -> Self {
-               self.base.id = Some(id.into());
-              self
+                self.base.id = Some(id.into());
+                self
             }
 
+            /// Selects the font family used by this widget's text.
             pub fn font(mut self, font: impl Into<smol_str::SmolStr>) -> Self {
                 self.base.style.font = Some(font.into());
                 self.mark_dirty();
                 self
             }
 
+            /// Sets the background used while the pointer hovers this widget.
             pub fn hover_background<M>(
                 mut self,
                 background: impl $crate::IntoThemed<$crate::Background, M>,
             ) -> Self {
-                self.base.hover_style.get_or_insert_with($crate::Style::default).background =
-                    Some(background.resolve_themed());
+                self.base
+                    .hover_style
+                    .get_or_insert_with($crate::Style::default)
+                    .background = Some(background.resolve_themed());
                 self.mark_dirty();
                 self
             }
 
+            /// Sets the background used while this widget is pressed.
             pub fn pressed_background<M>(
                 mut self,
                 background: impl $crate::IntoThemed<$crate::Background, M>,
             ) -> Self {
-                self.base.pressed_style.get_or_insert_with($crate::Style::default).background =
-                    Some(background.resolve_themed());
+                self.base
+                    .pressed_style
+                    .get_or_insert_with($crate::Style::default)
+                    .background = Some(background.resolve_themed());
                 self.mark_dirty();
                 self
             }
 
+            /// Sets the background used while this widget is disabled.
             pub fn disabled_background<M>(
                 mut self,
                 background: impl $crate::IntoThemed<$crate::Background, M>,
             ) -> Self {
-                self.base.disabled_style.get_or_insert_with($crate::Style::default).background =
-                    Some(background.resolve_themed());
+                self.base
+                    .disabled_style
+                    .get_or_insert_with($crate::Style::default)
+                    .background = Some(background.resolve_themed());
                 self.mark_dirty();
                 self
             }
 
+            /// Enables or disables input handling for this widget.
             pub fn enabled(mut self, enabled: bool) -> Self {
                 self.base.interaction.set_enabled(enabled);
                 self.mark_dirty();
@@ -292,7 +310,7 @@ macro_rules! impl_composite_widget {
             fn measure(
                 &self,
                 _ctx: &mut $crate::MeasureContext,
-                _constraints: $crate::Constraints
+                _constraints: $crate::Constraints,
             ) -> $crate::MeasureResult {
                 $crate::MeasureResult::new(0.0, 0.0)
             }
@@ -302,7 +320,7 @@ macro_rules! impl_composite_widget {
             fn cascade_style(
                 &mut self,
                 parent: &$crate::Style,
-                anim: &mut $crate::AnimationManager
+                anim: &mut $crate::AnimationManager,
             ) {
                 self.base.inherited_style = parent.clone();
                 self.base.recompute_style();

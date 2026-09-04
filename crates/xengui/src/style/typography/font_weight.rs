@@ -1,21 +1,32 @@
 // SPDX-License-Identifier: Apache-2.0
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Default)]
+/// Available `FontWeight` choices.
 pub enum FontWeight {
+    /// The `Thin` variant.
     Thin,
+    /// The `ExtraLight` variant.
     ExtraLight,
+    /// The `Light` variant.
     Light,
 
     #[default]
+    /// The `Regular` variant.
     Regular,
 
+    /// The `Medium` variant.
     Medium,
+    /// The `SemiBold` variant.
     SemiBold,
+    /// The `Bold` variant.
     Bold,
+    /// The `ExtraBold` variant.
     ExtraBold,
+    /// The `Black` variant.
     Black,
 }
 
 impl FontWeight {
+    /// Returns or updates the `to_numeric` value.
     pub const fn to_numeric(self) -> u16 {
         match self {
             Self::Thin => 100,

@@ -1,40 +1,22 @@
 // SPDX-License-Identifier: Apache-2.0
 use crate::{
-    AnimationManager,
-    Align,
-    Color,
-    Constraints,
-    EventCtx,
-    EventStatus,
-    InputEvent,
-    Interaction,
-    JustifyContent,
-    LayoutBox,
-    Length,
-    MeasureContext,
-    MeasureResult,
-    PaintContext,
-    RectCommand,
-    Style,
-    StyleBuilder,
-    TextCommand,
-    TriangleCommand,
-    Widget,
-    WidgetBase,
-    WidgetContent,
-    WidgetId,
-    constants::{ DEFAULT_CURSOR_ICON, DEFAULT_FONT_SIZE, DEFAULT_POINTER_CURSOR_ICON },
+    Align, AnimationManager, Color, Constraints, EventCtx, EventStatus, InputEvent, Interaction,
+    JustifyContent, LayoutBox, Length, MeasureContext, MeasureResult, PaintContext, RectCommand,
+    Style, StyleBuilder, TextCommand, TriangleCommand, Widget, WidgetBase, WidgetContent, WidgetId,
+    constants::{DEFAULT_CURSOR_ICON, DEFAULT_FONT_SIZE, DEFAULT_POINTER_CURSOR_ICON},
 };
 use smol_str::SmolStr;
 use std::cell::Cell;
 use std::sync::Arc;
-use xen_svg::{ SvgDocument, SvgTriangle, parse_svg, tessellate_document };
+use xen_svg::{SvgDocument, SvgTriangle, parse_svg, tessellate_document};
 
 /// Where the icon sits relative to the label along the content's main axis.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub enum IconPosition {
     #[default]
+    /// The `Start` variant.
     Start,
+    /// The `End` variant.
     End,
 }
 
@@ -72,6 +54,7 @@ pub struct Button {
 }
 
 impl Button {
+    /// Creates a value with its default configuration.
     pub fn new() -> Self {
         let mut interaction = Interaction::new();
         interaction.focusable = true;
@@ -126,12 +109,14 @@ impl Button {
         self
     }
 
+    /// Returns or updates the `icon_gap` value.
     pub fn icon_gap(mut self, gap: f32) -> Self {
         self.icon_gap = gap;
         self.mark_dirty();
         self
     }
 
+    /// Returns or updates the `icon_position` value.
     pub fn icon_position(mut self, position: IconPosition) -> Self {
         self.icon_position = position;
         self.mark_dirty();
@@ -162,15 +147,15 @@ impl Button {
     // style-overlay logic lives in WidgetBase::recompute_style.
     fn recompute_style(&mut self) {
         self.base.recompute_style();
-        self.base.interaction.hover_cursor = self.base.computed_style.cursor.or(
-            Some(
-                if self.base.interaction.enabled {
+        self.base.interaction.hover_cursor =
+            self.base
+                .computed_style
+                .cursor
+                .or(Some(if self.base.interaction.enabled {
                     DEFAULT_POINTER_CURSOR_ICON
                 } else {
                     DEFAULT_CURSOR_ICON
-                }
-            )
-        );
+                }));
     }
 }
 
@@ -214,8 +199,14 @@ impl Widget for Button {
 
         // Logical metrics; TextMeasurer converts to physical internally.
         let font_size = style.font_size.unwrap_or(DEFAULT_FONT_SIZE).value();
-        let letter_spacing = style.letter_spacing.map(|ls| ls.value().value()).unwrap_or(0.0);
-        let line_height = style.line_height.map(|lh| lh.value().value()).unwrap_or(0.0);
+        let letter_spacing = style
+            .letter_spacing
+            .map(|ls| ls.value().value())
+            .unwrap_or(0.0);
+        let line_height = style
+            .line_height
+            .map(|lh| lh.value().value())
+            .unwrap_or(0.0);
 
         let result = ctx.text.measure(
             &self.content,
@@ -226,7 +217,7 @@ impl Widget for Button {
             letter_spacing,
             line_height,
             constraints.max_width,
-            scale_factor
+            scale_factor,
         );
 
         self.content_size.set((result.width, result.height));
@@ -241,19 +232,21 @@ impl Widget for Button {
         } else {
             0.0
         };
-        let combined_w = if has_icon { icon_w + gap + result.width } else { result.width };
+        let combined_w = if has_icon {
+            icon_w + gap + result.width
+        } else {
+            result.width
+        };
         let combined_h = result.height.max(icon_h);
 
         let padding = style.padding.unwrap_or_default();
 
-        let width =
-            combined_w +
-            padding.left.to_physical(scale_factor) +
-            padding.right.to_physical(scale_factor);
-        let height =
-            combined_h +
-            padding.top.to_physical(scale_factor) +
-            padding.bottom.to_physical(scale_factor);
+        let width = combined_w
+            + padding.left.to_physical(scale_factor)
+            + padding.right.to_physical(scale_factor);
+        let height = combined_h
+            + padding.top.to_physical(scale_factor)
+            + padding.bottom.to_physical(scale_factor);
 
         let (width, height) = constraints.constrain_size(width, height);
 
@@ -269,8 +262,14 @@ impl Widget for Button {
 
         // Logical metrics; TextMeasurer converts to physical internally.
         let font_size = style.font_size.unwrap_or(DEFAULT_FONT_SIZE).value();
-        let letter_spacing = style.letter_spacing.map(|ls| ls.value().value()).unwrap_or(0.0);
-        let line_height = style.line_height.map(|lh| lh.value().value()).unwrap_or(0.0);
+        let letter_spacing = style
+            .letter_spacing
+            .map(|ls| ls.value().value())
+            .unwrap_or(0.0);
+        let line_height = style
+            .line_height
+            .map(|lh| lh.value().value())
+            .unwrap_or(0.0);
 
         let result = ctx.text.measure(
             &self.content,
@@ -281,13 +280,14 @@ impl Widget for Button {
             letter_spacing,
             line_height,
             None,
-            scale_factor
+            scale_factor,
         );
 
         self.content_size.set((result.width, result.height));
 
         let (icon_w, icon_h) = self.icon_natural_size();
-        self.icon_render_size.set((icon_w * scale_factor, icon_h * scale_factor));
+        self.icon_render_size
+            .set((icon_w * scale_factor, icon_h * scale_factor));
     }
 
     fn paint(&self, ctx: &mut PaintContext) {
@@ -299,19 +299,17 @@ impl Widget for Button {
             self.layout_box,
             scale,
             style.transform_origin.unwrap_or_default(),
-            sf
+            sf,
         );
-        let radius = style.border
+        let radius = style
+            .border
             .as_ref()
             .and_then(|b| b.radius)
             .map(|r| r.to_physical_array(sf, background_box.width, background_box.height))
             .unwrap_or([0.0; 4]);
 
         if let Some(shadows) = &style.box_shadow {
-            for shadow in shadows
-                .iter()
-                .rev()
-                .filter(|s| !s.inset) {
+            for shadow in shadows.iter().rev().filter(|s| !s.inset) {
                 self.paint_shadow_layer(ctx, background_box, radius, shadow, sf);
             }
         }
@@ -333,10 +331,7 @@ impl Widget for Button {
         }
 
         if let Some(shadows) = &style.box_shadow {
-            for shadow in shadows
-                .iter()
-                .rev()
-                .filter(|s| s.inset) {
+            for shadow in shadows.iter().rev().filter(|s| s.inset) {
                 self.paint_shadow_layer(ctx, background_box, radius, shadow, sf);
             }
         }
@@ -357,8 +352,16 @@ impl Widget for Button {
         let available_w = (self.layout_box.width - pad_l - pad_r).max(0.0);
         let available_h = (self.layout_box.height - pad_t - pad_b).max(0.0);
 
-        let gap = if has_icon && !self.content.is_empty() { self.icon_gap * sf } else { 0.0 };
-        let combined_w = if has_icon { icon_w + gap + text_w } else { text_w };
+        let gap = if has_icon && !self.content.is_empty() {
+            self.icon_gap * sf
+        } else {
+            0.0
+        };
+        let combined_w = if has_icon {
+            icon_w + gap + text_w
+        } else {
+            text_w
+        };
         let combined_h = text_h.max(icon_h);
 
         let justify = style.justify_content.unwrap_or(JustifyContent::Center);
@@ -391,33 +394,27 @@ impl Widget for Button {
                 let icon_center_y = icon_y + icon_h * 0.5;
                 let scaled_icon_w = icon_w * content_scale;
                 let scaled_icon_h = icon_h * content_scale;
-                let scaled_icon_x = (
-                    pivot_x +
-                    (icon_center_x - pivot_x) * content_scale -
-                    scaled_icon_w * 0.5
-                ).round();
-                let scaled_icon_y = (
-                    pivot_y +
-                    (icon_center_y - pivot_y) * content_scale -
-                    scaled_icon_h * 0.5
-                ).round();
+                let scaled_icon_x = (pivot_x + (icon_center_x - pivot_x) * content_scale
+                    - scaled_icon_w * 0.5)
+                    .round();
+                let scaled_icon_y = (pivot_y + (icon_center_y - pivot_y) * content_scale
+                    - scaled_icon_h * 0.5)
+                    .round();
 
                 let icon_scale = (scaled_icon_w / vb_w).min(scaled_icon_h / vb_h);
-                let icon_offset_x = (
-                    scaled_icon_x +
-                    (scaled_icon_w - vb_w * icon_scale) * 0.5
-                ).round();
-                let icon_offset_y = (
-                    scaled_icon_y +
-                    (scaled_icon_h - vb_h * icon_scale) * 0.5
-                ).round();
+                let icon_offset_x =
+                    (scaled_icon_x + (scaled_icon_w - vb_w * icon_scale) * 0.5).round();
+                let icon_offset_y =
+                    (scaled_icon_y + (scaled_icon_h - vb_h * icon_scale) * 0.5).round();
 
-                let inherited_color = self.icon_tint.unwrap_or(style.color.unwrap_or(Color::BLACK));
+                let inherited_color = self
+                    .icon_tint
+                    .unwrap_or(style.color.unwrap_or(Color::BLACK));
                 let inherited_svg_color = xen_svg::Color::rgba_f32(
                     inherited_color.r(),
                     inherited_color.g(),
                     inherited_color.b(),
-                    inherited_color.a()
+                    inherited_color.a(),
                 );
 
                 for triangle in self.icon_triangles.iter() {
@@ -457,7 +454,8 @@ impl Widget for Button {
         };
 
         let mut text_style = style.clone();
-        let base_font_size = text_style.font_size
+        let base_font_size = text_style
+            .font_size
             .map(|f| f.value())
             .unwrap_or(DEFAULT_FONT_SIZE.value());
         text_style.font_size = Some(Length::px(base_font_size * content_scale));
@@ -479,9 +477,8 @@ impl Widget for Button {
         if let InputEvent::AnimationTick { .. } = event {
             if let Some(id) = &self.base.id {
                 for action in crate::dom::take_actions(id) {
-                    if
-                        matches!(action, crate::dom::DomAction::Click) &&
-                        let Some(cb) = self.base.interaction.on_click.as_mut()
+                    if matches!(action, crate::dom::DomAction::Click)
+                        && let Some(cb) = self.base.interaction.on_click.as_mut()
                     {
                         cb(ctx);
                     }
@@ -498,9 +495,8 @@ impl Widget for Button {
         if matches!(status, EventStatus::Handled) {
             self.recompute_style();
 
-            if
-                self.base.computed_style != before_style ||
-                self.base.interaction.focus_visible != before_focus_visible
+            if self.base.computed_style != before_style
+                || self.base.interaction.focus_visible != before_focus_visible
             {
                 self.base.dirty = true;
                 ctx.request_redraw();
@@ -521,18 +517,13 @@ impl Widget for Button {
             _ => false,
         };
 
-        self.content == other.content &&
-            self.base.style == other.base.style &&
-            self.base.hover_style == other.base.hover_style &&
-            self.base.pressed_style == other.base.pressed_style &&
-            self.base.disabled_style == other.base.disabled_style &&
-            self.base.focus_style == other.base.focus_style &&
-            self.base.focused_hover_style == other.base.focused_hover_style &&
-            icon_eq &&
-            self.icon_position == other.icon_position &&
-            self.icon_gap == other.icon_gap &&
-            self.icon_size == other.icon_size &&
-            self.icon_tint == other.icon_tint
+        self.content == other.content
+            && self.base.authored_styles_eq(&other.base)
+            && icon_eq
+            && self.icon_position == other.icon_position
+            && self.icon_gap == other.icon_gap
+            && self.icon_size == other.icon_size
+            && self.icon_tint == other.icon_tint
     }
 
     fn cascade_style(&mut self, parent: &Style, anim: &mut AnimationManager) {
@@ -555,8 +546,8 @@ impl Widget for Button {
     }
 
     fn wants_animation_frame(&self) -> bool {
-        self.base.interaction.enabled &&
-            self.base.id.as_deref().is_some_and(crate::dom::has_pending)
+        self.base.interaction.enabled
+            && self.base.id.as_deref().is_some_and(crate::dom::has_pending)
     }
 
     fn transfer_interaction_state(&mut self, old: &dyn Widget) {

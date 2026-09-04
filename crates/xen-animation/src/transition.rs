@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
-use web_time::Duration;
 use super::Easing;
+use web_time::Duration;
 
 /// Describes how a single animated value should move from its current
 /// value to a new target: how long it takes, how long to wait before
@@ -18,7 +18,11 @@ pub struct Transition {
 impl Transition {
     /// Creates a transition with the given duration, no delay, and linear easing.
     pub const fn new(duration: Duration) -> Self {
-        Self { duration, delay: Duration::ZERO, easing: Easing::Linear }
+        Self {
+            duration,
+            delay: Duration::ZERO,
+            easing: Easing::Linear,
+        }
     }
 
     /// Returns a copy of this transition with `delay` set.

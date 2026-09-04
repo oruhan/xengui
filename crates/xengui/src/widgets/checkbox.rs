@@ -1,47 +1,20 @@
 // SPDX-License-Identifier: Apache-2.0
 use crate::{
-    AnimKey,
-    AnimLayer,
-    AnimProperty,
-    AnimValue,
-    AnimationManager,
-    Background,
-    BorderRadius,
-    Color,
-    Constraints,
-    Easing,
-    ElementState,
-    EventCtx,
-    EventStatus,
-    InputEvent,
-    Interaction,
-    Key,
-    KeyState,
-    LayoutBox,
-    Length,
-    MeasureContext,
-    MeasureResult,
-    MouseButton,
-    PaintContext,
-    RectCommand,
-    Style,
-    StyleBuilder,
-    Transition,
-    VariableIconCommand,
-    Widget,
-    WidgetBase,
+    AnimKey, AnimLayer, AnimProperty, AnimValue, AnimationManager, Background, BorderRadius, Color,
+    Constraints, Easing, ElementState, EventCtx, EventStatus, InputEvent, Interaction, Key,
+    KeyState, LayoutBox, Length, MeasureContext, MeasureResult, MouseButton, PaintContext,
+    RectCommand, Style, StyleBuilder, Transition, VariableIconCommand, Widget, WidgetBase,
     WidgetId,
-    constants::{ DEFAULT_CURSOR_ICON, DEFAULT_POINTER_CURSOR_ICON, DISABLED_WIDGET_OPACITY },
+    constants::{DEFAULT_CURSOR_ICON, DEFAULT_POINTER_CURSOR_ICON, DISABLED_WIDGET_OPACITY},
 };
 use std::cell::Cell;
 use web_time::Duration;
-use xengui_icons::material_symbols::{ codepoints, IconAxes, MaterialSymbolsVariable };
+use xengui_icons::material_symbols::{IconAxes, MaterialSymbolsVariable, codepoints};
 
 type ChangeCallback = Box<dyn FnMut(bool, &mut EventCtx)>;
 
-const CHECK_TRANSITION: Transition = Transition::new(Duration::from_millis(180)).easing(
-    Easing::EaseOut
-);
+const CHECK_TRANSITION: Transition =
+    Transition::new(Duration::from_millis(180)).easing(Easing::EaseOut);
 
 fn lerp_color(a: Color, b: Color, t: f32) -> Color {
     let blended = AnimValue(a.to_f32_array()).lerp_premultiplied(AnimValue(b.to_f32_array()), t);
@@ -71,6 +44,7 @@ pub struct Checkbox {
 }
 
 impl Checkbox {
+    /// Creates a value with its default configuration.
     pub fn new() -> Self {
         let mut interaction = Interaction::new();
         interaction.focusable = true;
@@ -97,6 +71,7 @@ impl Checkbox {
         checkbox
     }
 
+    /// Returns or updates the `checked` value.
     pub fn checked(mut self, checked: bool) -> Self {
         self.checked = checked;
         self.mark_dirty();
@@ -111,12 +86,14 @@ impl Checkbox {
         self
     }
 
+    /// Returns or updates the `size` value.
     pub fn size(mut self, size: f32) -> Self {
         self.size = size;
         self.mark_dirty();
         self
     }
 
+    /// Returns or updates the `check_color` value.
     pub fn check_color(mut self, color: Color) -> Self {
         self.check_color = Some(color);
         self.mark_dirty();
@@ -154,6 +131,7 @@ impl Checkbox {
         self
     }
 
+    /// Registers the `on_change` callback.
     pub fn on_change(mut self, f: impl FnMut(bool, &mut EventCtx) + 'static) -> Self {
         self.on_change = Some(Box::new(f));
         self
@@ -161,22 +139,26 @@ impl Checkbox {
 
     fn recompute_style(&mut self) {
         self.base.recompute_style();
-        self.base.interaction.hover_cursor = self.base.computed_style.cursor.or(
-            Some(
-                if self.base.interaction.enabled {
+        self.base.interaction.hover_cursor =
+            self.base
+                .computed_style
+                .cursor
+                .or(Some(if self.base.interaction.enabled {
                     DEFAULT_POINTER_CURSOR_ICON
                 } else {
                     DEFAULT_CURSOR_ICON
-                }
-            )
-        );
+                }));
     }
 
     fn toggle(&mut self, ctx: &mut EventCtx) {
         // Coming from indeterminate, a click lands directly on unchecked -
         // toggling `checked` here (which was already false) would flash a
         // fully-checked frame before external state's own update lands.
-        self.checked = if self.indeterminate { false } else { !self.checked };
+        self.checked = if self.indeterminate {
+            false
+        } else {
+            !self.checked
+        };
         self.indeterminate = false;
         self.base.dirty = true;
         if let Some(cb) = self.on_change.as_mut() {
@@ -226,14 +208,19 @@ impl Widget for Checkbox {
             self.layout_box,
             style.scale.unwrap_or(1.0),
             style.transform_origin.unwrap_or_default(),
-            sf
+            sf,
         );
         let theme = crate::current_theme();
 
         let t = self.check_progress.get();
-        let dim = if self.base.interaction.enabled { 1.0 } else { DISABLED_WIDGET_OPACITY };
+        let dim = if self.base.interaction.enabled {
+            1.0
+        } else {
+            DISABLED_WIDGET_OPACITY
+        };
 
-        let radius = style.border
+        let radius = style
+            .border
             .as_ref()
             .and_then(|bo| bo.radius)
             .map(|r| Length::px(r.max_value()).to_physical(sf))
@@ -241,15 +228,19 @@ impl Widget for Checkbox {
 
         let border = style.border.as_ref();
 
-        let unchecked_fill = style.background
+        let unchecked_fill = style
+            .background
             .clone()
             .unwrap_or(Background::Color(Color::TRANSPARENT))
             .representative_color();
-        let checked_fill = style.background
+        let checked_fill = style
+            .background
             .clone()
             .unwrap_or(Background::Color(theme.primary))
             .representative_color();
-        let unchecked_border = border.map(|bo| bo.color).unwrap_or(theme.on_surface_variant);
+        let unchecked_border = border
+            .map(|bo| bo.color)
+            .unwrap_or(theme.on_surface_variant);
         let checked_border = border.map(|bo| bo.color).unwrap_or(theme.primary);
 
         let fill_base = lerp_color(unchecked_fill, checked_fill, t);
@@ -264,7 +255,9 @@ impl Widget for Checkbox {
             border_radius: Some(BorderRadius::all(Length::px(radius))),
             border_color: Some(border_color),
             border_width: Some(
-                border.map(|bo| Length::px(bo.top.to_physical(sf))).unwrap_or(Length::px(2.0 * sf))
+                border
+                    .map(|bo| Length::px(bo.top.to_physical(sf)))
+                    .unwrap_or(Length::px(2.0 * sf)),
             ),
             clip_rect: None,
         });
@@ -283,9 +276,9 @@ impl Widget for Checkbox {
                 self.check_codepoint
             };
 
-            let axes = self.check_icon_axes.unwrap_or_else(||
-                IconAxes::default().fill(1.0).weight(600.0)
-            );
+            let axes = self
+                .check_icon_axes
+                .unwrap_or_else(|| IconAxes::default().fill(1.0).weight(600.0));
 
             ctx.draw_variable_icon(VariableIconCommand {
                 position: (icon_x, icon_y),
@@ -330,11 +323,14 @@ impl Widget for Checkbox {
                 button: MouseButton::Left,
                 ..
             } => self.base.interaction.pressed && self.base.interaction.hovered,
-            InputEvent::KeyInput { event: key_event, .. } =>
-                self.base.interaction.focused &&
-                    !key_event.repeat &&
-                    key_event.state == KeyState::Pressed &&
-                    matches!(key_event.key, Key::Enter | Key::Space),
+            InputEvent::KeyInput {
+                event: key_event, ..
+            } => {
+                self.base.interaction.focused
+                    && !key_event.repeat
+                    && key_event.state == KeyState::Pressed
+                    && matches!(key_event.key, Key::Enter | Key::Space)
+            }
             _ => false,
         };
 
@@ -350,9 +346,8 @@ impl Widget for Checkbox {
         if matches!(status, EventStatus::Handled) {
             self.recompute_style();
 
-            if
-                self.base.computed_style != before_style ||
-                self.base.interaction.focus_visible != before_focus_visible
+            if self.base.computed_style != before_style
+                || self.base.interaction.focus_visible != before_focus_visible
             {
                 self.base.dirty = true;
                 ctx.request_redraw();
@@ -367,20 +362,15 @@ impl Widget for Checkbox {
             return false;
         };
 
-        self.checked == other.checked &&
-            self.indeterminate == other.indeterminate &&
-            self.size == other.size &&
-            self.check_color == other.check_color &&
-            self.check_codepoint == other.check_codepoint &&
-            self.indeterminate_codepoint == other.indeterminate_codepoint &&
-            self.icons_enabled == other.icons_enabled &&
-            self.check_icon_axes == other.check_icon_axes &&
-            self.base.style == other.base.style &&
-            self.base.hover_style == other.base.hover_style &&
-            self.base.pressed_style == other.base.pressed_style &&
-            self.base.disabled_style == other.base.disabled_style &&
-            self.base.focus_style == other.base.focus_style &&
-            self.base.focused_hover_style == other.base.focused_hover_style
+        self.checked == other.checked
+            && self.indeterminate == other.indeterminate
+            && self.size == other.size
+            && self.check_color == other.check_color
+            && self.check_codepoint == other.check_codepoint
+            && self.indeterminate_codepoint == other.indeterminate_codepoint
+            && self.icons_enabled == other.icons_enabled
+            && self.check_icon_axes == other.check_icon_axes
+            && self.base.authored_styles_eq(&other.base)
     }
 
     fn cascade_style(&mut self, parent: &Style, anim: &mut AnimationManager) {
@@ -392,13 +382,21 @@ impl Widget for Checkbox {
 
         // Drives the fill/border blend and checkmark draw-in toward the
         // current `checked` state every frame.
-        let target = if self.checked || self.indeterminate { 1.0 } else { 0.0 };
+        let target = if self.checked || self.indeterminate {
+            1.0
+        } else {
+            0.0
+        };
         let key = AnimKey {
             widget: self.anim_id,
             layer: AnimLayer::Content,
             property: AnimProperty::Opacity,
         };
-        anim.set_target(key, AnimValue([target, 0.0, 0.0, 0.0]), Some(CHECK_TRANSITION));
+        anim.set_target(
+            key,
+            AnimValue([target, 0.0, 0.0, 0.0]),
+            Some(CHECK_TRANSITION),
+        );
         match anim.value(key) {
             Some(v) => {
                 self.check_progress.set(v.0[0]);
@@ -429,7 +427,8 @@ impl Widget for Checkbox {
     fn transfer_measured_state(&mut self, old: &dyn Widget) {
         if let Some(old) = old.as_any().downcast_ref::<Checkbox>() {
             self.check_progress.set(old.check_progress.get());
-            self.display_indeterminate.set(old.display_indeterminate.get());
+            self.display_indeterminate
+                .set(old.display_indeterminate.get());
         }
     }
 
@@ -443,8 +442,8 @@ impl Widget for Checkbox {
     }
 
     fn wants_animation_frame(&self) -> bool {
-        self.base.interaction.enabled &&
-            self.base.id.as_deref().is_some_and(crate::dom::has_pending)
+        self.base.interaction.enabled
+            && self.base.id.as_deref().is_some_and(crate::dom::has_pending)
     }
 
     fn anim_id(&self) -> WidgetId {

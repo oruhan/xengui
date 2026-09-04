@@ -22,3 +22,6 @@ windows-sys = { version = "0.61.2", features = [
 wasm-bindgen-futures = { workspace = true }
 web-sys = { version = "0.3", features = ["Window", "Navigator", "Clipboard"] }
 js-sys = "0.3"
+
+[lints]
+workspace = true

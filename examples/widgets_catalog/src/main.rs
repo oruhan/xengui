@@ -4,18 +4,17 @@
 use std::cell::Cell;
 use std::rc::Rc;
 use web_time::Duration;
-use xenframe::{ App, AppConfig };
 #[cfg(not(target_arch = "wasm32"))]
 use xenframe::WindowPosition;
+use xenframe::{App, AppConfig};
 use xengui::*;
-use xengui_icons::{ IconAxes, codepoints };
+use xengui_icons::{IconAxes, codepoints};
 
 #[path = "../components/mod.rs"]
 mod components;
 use components::*;
 
-const WAND_ICON: &str =
-    r#"<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24"
+const WAND_ICON: &str = r#"<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24"
 viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
 stroke-linecap="round" stroke-linejoin="round">
 <path d="m21.64 3.64-1.28-1.28a1.21 1.21 0 0 0-1.72 0L2.36 18.64a1.21 1.21 0 0 0 0 1.72l1.28 1.28a1.2 1.2 0 0 0 1.72 0L21.64 5.36a1.2 1.2 0 0 0 0-1.72"/>
@@ -48,11 +47,65 @@ fn section(theme: &Theme, title: &str, subtitle: &str, body: impl Widget + 'stat
                         .label(title)
                         .font_size(18.0)
                         .font_weight(FontWeight::SemiBold)
-                        .color(theme.on_surface)
+                        .color(theme.on_surface),
                 )
-                .child(Label::new().label(subtitle).font_size(13.0).color(theme.on_surface_variant))
+                .child(
+                    Label::new()
+                        .label(subtitle)
+                        .font_size(13.0)
+                        .color(theme.on_surface_variant),
+                ),
         )
         .child(body)
+}
+
+fn section_status_indicators(theme: &Theme) -> View {
+    section(
+        theme,
+        "Badge, ProgressBar & Separator",
+        "Compact status labels, determinate progress, and horizontal/vertical grouping lines.",
+        Column::new()
+            .gap(0.0, 14.0)
+            .child(
+                Row::new()
+                    .gap(8.0, 8.0)
+                    .flex_wrap(FlexWrap::Wrap)
+                    .child(Badge::new().label("Ready"))
+                    .child(
+                        Badge::new()
+                            .label("Beta")
+                            .background(theme.tertiary_container)
+                            .color(theme.on_tertiary_container),
+                    )
+                    .child(
+                        Badge::new()
+                            .label("3 updates")
+                            .background(theme.primary_container)
+                            .color(theme.on_primary_container),
+                    ),
+            )
+            .child(Separator::new())
+            .child(
+                Column::new()
+                    .gap(0.0, 6.0)
+                    .child(
+                        Label::new()
+                            .label("Installation · 68%")
+                            .font_size(13.0)
+                            .color(theme.on_surface),
+                    )
+                    .child(ProgressBar::new().value(0.68).bar_height(8.0)),
+            )
+            .child(
+                Row::new()
+                    .height(36.0)
+                    .gap(12.0, 0.0)
+                    .align_items(Align::Center)
+                    .child(Label::new().label("Left").color(theme.on_surface_variant))
+                    .child(Separator::new().orientation(SeparatorOrientation::Vertical))
+                    .child(Label::new().label("Right").color(theme.on_surface_variant)),
+            ),
+    )
 }
 
 fn section_buttons(theme: &Theme, click_count: i32, set_click_count: SetState<i32>) -> View {
@@ -115,7 +168,7 @@ fn section_buttons(theme: &Theme, click_count: i32, set_click_count: SetState<i3
             .child(icon_start)
             .child(icon_end)
             .child(disabled)
-            .child(test)
+            .child(test),
     )
 }
 
@@ -124,14 +177,19 @@ fn section_checkbox(
     checked: bool,
     indeterminate: bool,
     set_checked: SetState<bool>,
-    set_indeterminate: SetState<bool>
+    set_indeterminate: SetState<bool>,
 ) -> View {
     let row = |theme: &Theme, checkbox: Checkbox, text: &str| -> View {
         Row::new()
             .gap(8.0, 0.0)
             .align_items(Align::Center)
             .child(checkbox)
-            .child(Label::new().label(text).color(theme.on_surface).font_size(13.0))
+            .child(
+                Label::new()
+                    .label(text)
+                    .color(theme.on_surface)
+                    .font_size(13.0),
+            )
     };
 
     let live = row(
@@ -139,7 +197,7 @@ fn section_checkbox(
         Checkbox::new()
             .checked(checked)
             .on_change(move |value, _ctx| set_checked.set(value)),
-        "Interactive"
+        "Interactive",
     );
 
     let indet = row(
@@ -148,18 +206,18 @@ fn section_checkbox(
             .checked(false)
             .indeterminate(indeterminate)
             .on_change(move |_value, _ctx| set_indeterminate.set(!indeterminate)),
-        "Indeterminate (click the box to toggle)"
+        "Indeterminate (click the box to toggle)",
     );
 
     let checked_disabled = row(
         theme,
         Checkbox::new().checked(true).enabled(false),
-        "Disabled + checked"
+        "Disabled + checked",
     );
     let unchecked_disabled = row(
         theme,
         Checkbox::new().checked(false).enabled(false),
-        "Disabled + unchecked"
+        "Disabled + unchecked",
     );
 
     section(
@@ -171,7 +229,7 @@ fn section_checkbox(
             .child(live)
             .child(indet)
             .child(checked_disabled)
-            .child(unchecked_disabled)
+            .child(unchecked_disabled),
     )
 }
 
@@ -181,50 +239,79 @@ fn section_switch(theme: &Theme, switch_on: bool, set_switch_on: SetState<bool>)
             .gap(10.0, 0.0)
             .align_items(Align::Center)
             .child(switch)
-            .child(Label::new().label(text).color(theme.on_surface).font_size(13.0))
+            .child(
+                Label::new()
+                    .label(text)
+                    .color(theme.on_surface)
+                    .font_size(13.0),
+            )
     };
 
     let live = row(
         theme,
-        Switch::new()
-            .checked(switch_on)
-            .on_change({
-                let set_switch_on = set_switch_on.clone();
-                move |value, _ctx| set_switch_on.set(value)
-            }),
-        "Interactive"
+        Switch::new().checked(switch_on).on_change({
+            let set_switch_on = set_switch_on.clone();
+            move |value, _ctx| set_switch_on.set(value)
+        }),
+        "Interactive",
     );
-    let small = row(theme, Switch::new().checked(switch_on).size(0.7), "Scaled (size 0.7)");
-    let on_disabled = row(theme, Switch::new().checked(true).enabled(false), "Disabled + on");
-    let off_disabled = row(theme, Switch::new().checked(false).enabled(false), "Disabled + off");
+    let small = row(
+        theme,
+        Switch::new().checked(switch_on).size(0.7),
+        "Scaled (size 0.7)",
+    );
+    let on_disabled = row(
+        theme,
+        Switch::new().checked(true).enabled(false),
+        "Disabled + on",
+    );
+    let off_disabled = row(
+        theme,
+        Switch::new().checked(false).enabled(false),
+        "Disabled + off",
+    );
 
     section(
         theme,
         "Switch",
         "Material-style toggle with an animated thumb, plus scaled and disabled variants.",
-        Column::new().gap(0.0, 10.0).child(live).child(small).child(on_disabled).child(off_disabled)
+        Column::new()
+            .gap(0.0, 10.0)
+            .child(live)
+            .child(small)
+            .child(on_disabled)
+            .child(off_disabled),
     )
 }
 
 fn section_radio(theme: &Theme, selected: usize, set_selected: SetState<usize>) -> View {
-    let option = |theme: &Theme, index: usize, label: &str, set_selected: SetState<usize>| -> View {
-        Row::new()
-            .gap(8.0, 0.0)
-            .align_items(Align::Center)
-            .child(
-                RadioButton::new()
-                    .selected(selected == index)
-                    .on_select(move |_ctx| set_selected.set(index))
-            )
-            .child(Label::new().label(label).color(theme.on_surface).font_size(13.0))
-    };
+    let option =
+        |theme: &Theme, index: usize, label: &str, set_selected: SetState<usize>| -> View {
+            Row::new()
+                .gap(8.0, 0.0)
+                .align_items(Align::Center)
+                .child(
+                    RadioButton::new()
+                        .selected(selected == index)
+                        .on_select(move |_ctx| set_selected.set(index)),
+                )
+                .child(
+                    Label::new()
+                        .label(label)
+                        .color(theme.on_surface)
+                        .font_size(13.0),
+                )
+        };
 
     let disabled_option = Row::new()
         .gap(8.0, 0.0)
         .align_items(Align::Center)
         .child(RadioButton::new().selected(false).enabled(false))
         .child(
-            Label::new().label("Disabled option").color(theme.on_surface_variant).font_size(13.0)
+            Label::new()
+                .label("Disabled option")
+                .color(theme.on_surface_variant)
+                .font_size(13.0),
         );
 
     section(
@@ -237,7 +324,7 @@ fn section_radio(theme: &Theme, selected: usize, set_selected: SetState<usize>) 
             .child(option(theme, 0, "Option A", set_selected.clone()))
             .child(option(theme, 1, "Option B", set_selected.clone()))
             .child(option(theme, 2, "Option C", set_selected.clone()))
-            .child(disabled_option)
+            .child(disabled_option),
     )
 }
 
@@ -247,9 +334,13 @@ fn section_textbox(theme: &Theme, text_value: &str, set_text_value: SetState<Str
             .background(theme.surface)
             .border(Border::all(1.0, theme.outline).radius(8.0))
             .focus_style(|s, theme: &Theme| {
-                s.border(Border::all(1.5, theme.primary).radius(8.0)).outline(
-                    Outline::new(1.5, theme.primary, Some(BorderRadius::all(8.0)), 0.0)
-                )
+                s.border(Border::all(1.5, theme.primary).radius(8.0))
+                    .outline(Outline::new(
+                        1.5,
+                        theme.primary,
+                        Some(BorderRadius::all(8.0)),
+                        0.0,
+                    ))
             })
     };
 
@@ -258,10 +349,13 @@ fn section_textbox(theme: &Theme, text_value: &str, set_text_value: SetState<Str
             .value(text_value.to_string())
             .placeholder("Type something…")
             .on_change(move |value, _ctx| set_text_value.set(value.to_string())),
-        theme
+        theme,
     );
 
-    let limited = styled(TextBox::new().placeholder("Max 8 characters").max_length(8), theme);
+    let limited = styled(
+        TextBox::new().placeholder("Max 8 characters").max_length(8),
+        theme,
+    );
     let read_only = styled(TextBox::new().value("Read only value"), theme).read_only(true);
     let disabled = styled(TextBox::new().value("Disabled"), theme).enabled(false);
 
@@ -269,7 +363,12 @@ fn section_textbox(theme: &Theme, text_value: &str, set_text_value: SetState<Str
         theme,
         "TextBox",
         "Controlled value, max_length, read_only, and disabled states.",
-        Column::new().gap(0.0, 10.0).child(live).child(limited).child(read_only).child(disabled)
+        Column::new()
+            .gap(0.0, 10.0)
+            .child(live)
+            .child(limited)
+            .child(read_only)
+            .child(disabled),
     )
 }
 
@@ -305,7 +404,12 @@ fn section_link(theme: &Theme) -> View {
         theme,
         "Link",
         "Selectable text, new-tab target, and a disabled state.",
-        Column::new().gap(0.0, 8.0).child(normal).child(selectable).child(new_tab).child(disabled)
+        Column::new()
+            .gap(0.0, 8.0)
+            .child(normal)
+            .child(selectable)
+            .child(new_tab)
+            .child(disabled),
     )
 }
 
@@ -323,28 +427,37 @@ fn section_image_svg(theme: &Theme) -> View {
                     .overflow_y(Overflow::Hidden)
                     .child(
                         Image::new()
-                            .bytes(
-                                include_bytes!(
-                                    concat!(env!("CARGO_MANIFEST_DIR"), "/assets/ferris.png")
-                                )
-                            )
+                            .bytes(include_bytes!(concat!(
+                                env!("CARGO_MANIFEST_DIR"),
+                                "/assets/ferris.png"
+                            )))
                             .object_fit(fit)
                             .width(90.0)
-                            .height(60.0)
-                    )
+                            .height(60.0),
+                    ),
             )
-            .child(Label::new().label(label).color(theme.on_surface_variant).font_size(11.0))
+            .child(
+                Label::new()
+                    .label(label)
+                    .color(theme.on_surface_variant)
+                    .font_size(11.0),
+            )
     };
 
     // Programmatically built SVG (as opposed to Svg::from_string parsing markup).
     let built_svg = Svg::new()
         .view_box(0.0, 0.0, 24.0, 24.0)
         .circle(12.0, 12.0, 10.0, |c| c.fill(theme.primary))
-        .rect(7.0, 7.0, 10.0, 10.0, |r| r.radius(2.0).fill(Color::WHITE.with_alpha(200)))
+        .rect(7.0, 7.0, 10.0, 10.0, |r| {
+            r.radius(2.0).fill(Color::WHITE.with_alpha(200))
+        })
         .width(40.0)
         .height(40.0);
 
-    let wand_svg = Svg::from_string(WAND_ICON).width(28.0).height(28.0).color(theme.on_background);
+    let wand_svg = Svg::from_string(WAND_ICON)
+        .width(28.0)
+        .height(28.0)
+        .color(theme.on_background);
 
     section(
         theme,
@@ -358,15 +471,15 @@ fn section_image_svg(theme: &Theme) -> View {
                     .child(fit_demo(theme, ObjectFit::Fill, "Fill"))
                     .child(fit_demo(theme, ObjectFit::Contain, "Contain"))
                     .child(fit_demo(theme, ObjectFit::Cover, "Cover"))
-                    .child(fit_demo(theme, ObjectFit::None, "None"))
+                    .child(fit_demo(theme, ObjectFit::None, "None")),
             )
             .child(
                 Row::new()
                     .gap(16.0, 0.0)
                     .align_items(Align::Center)
                     .child(built_svg)
-                    .child(wand_svg)
-            )
+                    .child(wand_svg),
+            ),
     )
 }
 
@@ -381,7 +494,12 @@ fn section_tooltip(theme: &Theme) -> View {
                     .padding(Edges::symmetric(12.0, 8.0))
                     .background(theme.surface_container)
                     .border(Border::all(1.0, theme.outline_variant).radius(8.0))
-                    .child(Label::new().label(text).color(theme.on_surface).font_size(12.0))
+                    .child(
+                        Label::new()
+                            .label(text)
+                            .color(theme.on_surface)
+                            .font_size(12.0),
+                    ),
             )
     };
 
@@ -393,9 +511,24 @@ fn section_tooltip(theme: &Theme) -> View {
             .gap(16.0, 0.0)
             .flex_wrap(FlexWrap::Wrap)
             .child(chip(theme, TooltipPlacement::Top, "Top", "I appear above"))
-            .child(chip(theme, TooltipPlacement::Bottom, "Bottom", "I appear below"))
-            .child(chip(theme, TooltipPlacement::Left, "Left", "I appear to the left"))
-            .child(chip(theme, TooltipPlacement::Right, "Right", "I appear to the right"))
+            .child(chip(
+                theme,
+                TooltipPlacement::Bottom,
+                "Bottom",
+                "I appear below",
+            ))
+            .child(chip(
+                theme,
+                TooltipPlacement::Left,
+                "Left",
+                "I appear to the left",
+            ))
+            .child(chip(
+                theme,
+                TooltipPlacement::Right,
+                "Right",
+                "I appear to the right",
+            )),
     )
 }
 
@@ -403,20 +536,30 @@ fn section_richtext_kbd(theme: &Theme, text_value: &str) -> View {
     let richtext = RichText::new()
         .font_size(14.0)
         .span(TextSpan::new("Normal, ").color(theme.on_surface))
-        .span(TextSpan::new("bold, ").color(theme.on_surface).weight(FontWeight::Bold))
-        .span(TextSpan::new("italic, ").color(theme.on_surface).style(FontStyle::Italic))
         .span(
-            TextSpan::new("underlined, ").color(theme.primary).decoration(TextDecoration::UNDERLINE)
+            TextSpan::new("bold, ")
+                .color(theme.on_surface)
+                .weight(FontWeight::Bold),
+        )
+        .span(
+            TextSpan::new("italic, ")
+                .color(theme.on_surface)
+                .style(FontStyle::Italic),
+        )
+        .span(
+            TextSpan::new("underlined, ")
+                .color(theme.primary)
+                .decoration(TextDecoration::UNDERLINE),
         )
         .span(
             TextSpan::new("strikethrough ")
                 .color(theme.on_surface_variant)
-                .decoration(TextDecoration::STRIKETHROUGH)
+                .decoration(TextDecoration::STRIKETHROUGH),
         )
         .span(
             TextSpan::new(format!("and live: \"{text_value}\""))
                 .color(theme.tertiary)
-                .weight(FontWeight::SemiBold)
+                .weight(FontWeight::SemiBold),
         );
 
     let kbd_row = Row::new()
@@ -428,14 +571,17 @@ fn section_richtext_kbd(theme: &Theme, text_value: &str) -> View {
         .child(Label::new().label("+").color(theme.on_surface_variant))
         .child(Kbd::new().label("P"))
         .child(
-            Label::new().label("  command palette").color(theme.on_surface_variant).font_size(12.0)
+            Label::new()
+                .label("  command palette")
+                .color(theme.on_surface_variant)
+                .font_size(12.0),
         );
 
     section(
         theme,
         "RichText & Kbd",
         "Mixed inline span styling (color/weight/style/decoration) and keyboard-shortcut badges.",
-        Column::new().gap(0.0, 12.0).child(richtext).child(kbd_row)
+        Column::new().gap(0.0, 12.0).child(richtext).child(kbd_row),
     )
 }
 
@@ -445,25 +591,38 @@ fn section_table(theme: &Theme) -> View {
         .striped(true)
         .row_hover_background(theme.surface_container_high)
         .border_color(theme.outline_variant)
-        .columns(
-            vec![
-                TableColumn::new("Widget", Length::pct(45.0)),
-                TableColumn::new("Category", Length::pct(30.0)),
-                TableColumn::new("Status", Length::pct(25.0))
-            ]
-        )
+        .columns(vec![
+            TableColumn::new("Widget", Length::pct(45.0)),
+            TableColumn::new("Category", Length::pct(30.0)),
+            TableColumn::new("Status", Length::pct(25.0)),
+        ])
         .row(TableRow::new().text("Button").text("Input").text("Stable"))
-        .row(TableRow::new().text("Checkbox").text("Input").text("Stable"))
+        .row(
+            TableRow::new()
+                .text("Checkbox")
+                .text("Input")
+                .text("Stable"),
+        )
         .row(TableRow::new().text("Switch").text("Input").text("Stable"))
-        .row(TableRow::new().text("ContextMenu").text("Overlay").text("Stable"))
-        .row(TableRow::new().text("SplitPane").text("Layout").text("Stable"))
+        .row(
+            TableRow::new()
+                .text("ContextMenu")
+                .text("Overlay")
+                .text("Stable"),
+        )
+        .row(
+            TableRow::new()
+                .text("SplitPane")
+                .text("Layout")
+                .text("Stable"),
+        )
         .row(TableRow::new().text("Portal").text("Layout").text("Stable"));
 
     section(
         theme,
         "Table",
         "Composite widget built from View/Label; striped rows and a custom hover background.",
-        table
+        table,
     )
 }
 
@@ -476,9 +635,14 @@ fn section_variable_icons(theme: &Theme) -> View {
                 VariableIcon::new(codepoints::CHECK)
                     .size(28.0)
                     .axes(IconAxes::default().fill(fill).weight(weight))
-                    .color(theme.primary)
+                    .color(theme.primary),
             )
-            .child(Label::new().label(label).color(theme.on_surface_variant).font_size(11.0))
+            .child(
+                Label::new()
+                    .label(label)
+                    .color(theme.on_surface_variant)
+                    .font_size(11.0),
+            )
     };
 
     section(
@@ -491,7 +655,7 @@ fn section_variable_icons(theme: &Theme) -> View {
             .child(sample(theme, 0.0, 300.0, "wght 300"))
             .child(sample(theme, 0.0, 700.0, "wght 700"))
             .child(sample(theme, 1.0, 400.0, "fill 1, wght 400"))
-            .child(sample(theme, 1.0, 700.0, "fill 1, wght 700"))
+            .child(sample(theme, 1.0, 700.0, "fill 1, wght 700")),
     )
 }
 
@@ -501,7 +665,12 @@ fn cursor_chip(theme: &Theme, cursor: Cursor, label: &str) -> View {
         .background(theme.surface_container)
         .border(Border::all(1.0, theme.outline_variant).radius(6.0))
         .cursor(cursor)
-        .child(Label::new().label(label).color(theme.on_surface).font_size(12.0))
+        .child(
+            Label::new()
+                .label(label)
+                .color(theme.on_surface)
+                .font_size(12.0),
+        )
 }
 
 fn section_cursors(theme: &Theme) -> View {
@@ -517,7 +686,7 @@ fn section_cursors(theme: &Theme) -> View {
             .child(cursor_chip(theme, Cursor::Crosshair, "Crosshair"))
             .child(cursor_chip(theme, Cursor::NotAllowed, "NotAllowed"))
             .child(cursor_chip(theme, Cursor::Text, "Text"))
-            .child(cursor_chip(theme, Cursor::EwResize, "EwResize"))
+            .child(cursor_chip(theme, Cursor::EwResize, "EwResize")),
     )
 }
 
@@ -525,39 +694,39 @@ fn section_style_playground(theme: &Theme) -> View {
     let gradient_card = View::new()
         .width(150.0)
         .height(90.0)
-        .background(
-            Background::LinearGradient(
-                LinearGradient::new(
-                    135.0,
-                    vec![
-                        GradientStop::new(Color::VIOLET_400, 0.0),
-                        GradientStop::new(Color::PINK_400, 1.0)
-                    ]
-                )
-            )
-        )
+        .background(Background::LinearGradient(LinearGradient::new(
+            135.0,
+            vec![
+                GradientStop::new(Color::VIOLET_400, 0.0),
+                GradientStop::new(Color::PINK_400, 1.0),
+            ],
+        )))
         .border(Border::all(0.0, Color::TRANSPARENT).radius(12.0))
         .align_items(Align::Center)
         .justify_content(JustifyContent::Center)
-        .child(Label::new().label("LinearGradient").color(Color::WHITE).font_size(12.0));
+        .child(
+            Label::new()
+                .label("LinearGradient")
+                .color(Color::WHITE)
+                .font_size(12.0),
+        );
 
     let radial_card = View::new()
         .width(150.0)
         .height(90.0)
-        .background(
-            Background::RadialGradient(
-                RadialGradient::new(
-                    vec![
-                        GradientStop::new(Color::CYAN_300, 0.0),
-                        GradientStop::new(Color::BLUE_700, 1.0)
-                    ]
-                )
-            )
-        )
+        .background(Background::RadialGradient(RadialGradient::new(vec![
+            GradientStop::new(Color::CYAN_300, 0.0),
+            GradientStop::new(Color::BLUE_700, 1.0),
+        ])))
         .border(Border::all(0.0, Color::TRANSPARENT).radius(12.0))
         .align_items(Align::Center)
         .justify_content(JustifyContent::Center)
-        .child(Label::new().label("RadialGradient").color(Color::WHITE).font_size(12.0));
+        .child(
+            Label::new()
+                .label("RadialGradient")
+                .color(Color::WHITE)
+                .font_size(12.0),
+        );
 
     let shadow_card = View::new()
         .width(150.0)
@@ -565,45 +734,63 @@ fn section_style_playground(theme: &Theme) -> View {
         .margin(Edges::all(10.0))
         .background(theme.surface)
         .border(Border::all(1.0, theme.outline_variant).radius(12.0))
-        .box_shadow(
-            vec![
-                BoxShadow::new(0.0, 8.0, 20.0, Color::BLACK.with_alpha(70)),
-                BoxShadow::new(0.0, 1.0, 3.0, Color::BLACK.with_alpha(120))
-            ]
-        )
+        .box_shadow(vec![
+            BoxShadow::new(0.0, 8.0, 20.0, Color::BLACK.with_alpha(70)),
+            BoxShadow::new(0.0, 1.0, 3.0, Color::BLACK.with_alpha(120)),
+        ])
         .align_items(Align::Center)
         .justify_content(JustifyContent::Center)
-        .child(Label::new().label("box_shadow x2").color(theme.on_surface).font_size(12.0));
+        .child(
+            Label::new()
+                .label("box_shadow x2")
+                .color(theme.on_surface)
+                .font_size(12.0),
+        );
 
     let filter_card = View::new()
         .width(150.0)
         .height(90.0)
-        .background(
-            Background::LinearGradient(
-                LinearGradient::new(
-                    90.0,
-                    vec![
-                        GradientStop::new(Color::LIME_400, 0.0),
-                        GradientStop::new(Color::TEAL_500, 1.0)
-                    ]
-                )
-            )
-        )
+        .background(Background::LinearGradient(LinearGradient::new(
+            90.0,
+            vec![
+                GradientStop::new(Color::LIME_400, 0.0),
+                GradientStop::new(Color::TEAL_500, 1.0),
+            ],
+        )))
         .border(Border::all(0.0, Color::TRANSPARENT).radius(12.0))
-        .filter(FilterChain::new().push(Filter::Grayscale(0.6)).push(Filter::Brightness(1.1)))
+        .filter(
+            FilterChain::new()
+                .push(Filter::Grayscale(0.6))
+                .push(Filter::Brightness(1.1)),
+        )
         .align_items(Align::Center)
         .justify_content(JustifyContent::Center)
-        .child(Label::new().label("Filter chain").color(Color::WHITE).font_size(12.0));
+        .child(
+            Label::new()
+                .label("Filter chain")
+                .color(Color::WHITE)
+                .font_size(12.0),
+        );
 
     let drop_shadow_card = View::new()
         .width(150.0)
         .height(90.0)
         .margin(Edges::all(10.0))
         .background(theme.surface)
-        .filter(Filter::DropShadow(DropShadow::new(3.0, 6.0, 8.0, Color::BLACK.with_alpha(140))))
+        .filter(Filter::DropShadow(DropShadow::new(
+            3.0,
+            6.0,
+            8.0,
+            Color::BLACK.with_alpha(140),
+        )))
         .align_items(Align::Center)
         .justify_content(JustifyContent::Center)
-        .child(Label::new().label("Filter::DropShadow").color(theme.on_surface).font_size(12.0));
+        .child(
+            Label::new()
+                .label("Filter::DropShadow")
+                .color(theme.on_surface)
+                .font_size(12.0),
+        );
 
     // Two stacked layers: a gradient behind, and a translucent absolute
     // overlay with backdrop_filter blurring whatever is already painted
@@ -616,17 +803,13 @@ fn section_style_playground(theme: &Theme) -> View {
             View::new()
                 .width(Length::pct(100.0))
                 .height(Length::pct(100.0))
-                .background(
-                    Background::LinearGradient(
-                        LinearGradient::new(
-                            45.0,
-                            vec![
-                                GradientStop::new(Color::ORANGE_400, 0.0),
-                                GradientStop::new(Color::FUCHSIA_500, 1.0)
-                            ]
-                        )
-                    )
-                )
+                .background(Background::LinearGradient(LinearGradient::new(
+                    45.0,
+                    vec![
+                        GradientStop::new(Color::ORANGE_400, 0.0),
+                        GradientStop::new(Color::FUCHSIA_500, 1.0),
+                    ],
+                ))),
         )
         .child(
             View::new()
@@ -639,7 +822,12 @@ fn section_style_playground(theme: &Theme) -> View {
                 .backdrop_filter(Filter::Blur(Length::px(6.0)))
                 .align_items(Align::Center)
                 .justify_content(JustifyContent::Center)
-                .child(Label::new().label("backdrop_filter").color(Color::WHITE).font_size(12.0))
+                .child(
+                    Label::new()
+                        .label("backdrop_filter")
+                        .color(Color::WHITE)
+                        .font_size(12.0),
+                ),
         );
 
     let radius_card = View::new()
@@ -649,17 +837,32 @@ fn section_style_playground(theme: &Theme) -> View {
         .border(Border::all(2.0, theme.outline).radius(BorderRadius::only(28.0, 4.0, 28.0, 4.0)))
         .align_items(Align::Center)
         .justify_content(JustifyContent::Center)
-        .child(Label::new().label("Per-corner radius").color(theme.on_primary).font_size(12.0));
+        .child(
+            Label::new()
+                .label("Per-corner radius")
+                .color(theme.on_primary)
+                .font_size(12.0),
+        );
 
     let outline_card = View::new()
         .width(150.0)
         .height(90.0)
         .background(theme.surface)
         .border(Border::all(1.0, theme.outline_variant).radius(8.0))
-        .outline(Outline::new(2.0, theme.primary, Some(BorderRadius::all(10.0)), 3.0))
+        .outline(Outline::new(
+            2.0,
+            theme.primary,
+            Some(BorderRadius::all(10.0)),
+            3.0,
+        ))
         .align_items(Align::Center)
         .justify_content(JustifyContent::Center)
-        .child(Label::new().label("Static outline").color(theme.on_surface).font_size(12.0));
+        .child(
+            Label::new()
+                .label("Static outline")
+                .color(theme.on_surface)
+                .font_size(12.0),
+        );
 
     // cursor(...) also activates Interaction::is_active(), which is what
     // lets a plain View receive hover state and apply hover_style at all.
@@ -674,7 +877,10 @@ fn section_style_playground(theme: &Theme) -> View {
         .align_items(Align::Center)
         .justify_content(JustifyContent::Center)
         .child(
-            Label::new().label("Hover: transition_colors").color(theme.on_surface).font_size(12.0)
+            Label::new()
+                .label("Hover: transition_colors")
+                .color(theme.on_surface)
+                .font_size(12.0),
         );
 
     section(
@@ -692,7 +898,7 @@ fn section_style_playground(theme: &Theme) -> View {
             .child(backdrop_card)
             .child(radius_card)
             .child(outline_card)
-            .child(hover_card)
+            .child(hover_card),
     )
 }
 
@@ -705,7 +911,10 @@ fn scroll_demo_box(theme: &Theme, overscroll: Overscroll, label: &str) -> View {
 
     for i in 1..=20 {
         inner = inner.child(
-            Label::new().label(format!("{label} item {i}")).color(theme.on_surface).font_size(12.0)
+            Label::new()
+                .label(format!("{label} item {i}"))
+                .color(theme.on_surface)
+                .font_size(12.0),
         );
     }
 
@@ -733,7 +942,7 @@ fn section_scrolling(theme: &Theme) -> View {
             .flex_wrap(FlexWrap::Wrap)
             .child(scroll_demo_box(theme, Overscroll::Disabled, "Disabled"))
             .child(scroll_demo_box(theme, Overscroll::Bounce, "Bounce"))
-            .child(scroll_demo_box(theme, Overscroll::Glow, "Glow"))
+            .child(scroll_demo_box(theme, Overscroll::Glow, "Glow")),
     )
 }
 
@@ -745,7 +954,12 @@ fn grid_cell(theme: &Theme, label: &str) -> View {
         .height(48.0)
         .background(theme.surface_container)
         .border(Border::all(1.0, theme.outline_variant).radius(6.0))
-        .child(Label::new().label(label).color(theme.on_surface).font_size(13.0))
+        .child(
+            Label::new()
+                .label(label)
+                .color(theme.on_surface)
+                .font_size(13.0),
+        )
 }
 
 fn section_grid(theme: &Theme) -> View {
@@ -755,7 +969,11 @@ fn section_grid(theme: &Theme) -> View {
     let grid = View::new()
         .display(Display::Grid)
         .width(Length::pct(100.0))
-        .grid_template_columns(vec![GridTrack::Fr(1.0), GridTrack::Fr(1.0), GridTrack::Fr(1.0)])
+        .grid_template_columns(vec![
+            GridTrack::Fr(1.0),
+            GridTrack::Fr(1.0),
+            GridTrack::Fr(1.0),
+        ])
         .gap(10.0, 10.0)
         .child(grid_cell(theme, "1"))
         .child(wide)
@@ -766,12 +984,16 @@ fn section_grid(theme: &Theme) -> View {
         theme,
         "CSS Grid layout",
         "Display::Grid with grid_template_columns and explicit grid_column placement.",
-        grid
+        grid,
     )
 }
 
 fn section_portal(theme: &Theme, open: bool, set_open: SetState<bool>) -> View {
-    let toggle_label = if open { "Hide portal content" } else { "Show portal content" };
+    let toggle_label = if open {
+        "Hide portal content"
+    } else {
+        "Show portal content"
+    };
 
     let mut clipper = View::new()
         .width(260.0)
@@ -785,7 +1007,7 @@ fn section_portal(theme: &Theme, open: bool, set_open: SetState<bool>) -> View {
             Label::new()
                 .label("This box clips overflow (overflow_y: Hidden).")
                 .color(theme.on_surface_variant)
-                .font_size(12.0)
+                .font_size(12.0),
         );
 
     if open {
@@ -806,9 +1028,9 @@ fn section_portal(theme: &Theme, open: bool, set_open: SetState<bool>) -> View {
                         Label::new()
                             .label("Escaped the clip via Portal")
                             .color(theme.on_primary)
-                            .font_size(12.0)
-                    )
-            )
+                            .font_size(12.0),
+                    ),
+            ),
         );
     }
 
@@ -816,19 +1038,16 @@ fn section_portal(theme: &Theme, open: bool, set_open: SetState<bool>) -> View {
         theme,
         "Portal",
         "Renders unclipped in the top paint layer, escaping an ancestor's overflow clip.",
-        Column::new()
-            .gap(0.0, 10.0)
-            .child(clipper)
-            .child(
-                Button::new()
-                    .label(toggle_label)
-                    .font_size(13.0)
-                    .padding(Edges::symmetric(10.0, 6.0))
-                    .background(theme.surface_container)
-                    .color(theme.on_surface)
-                    .border(Border::all(1.0, theme.outline_variant).radius(6.0))
-                    .on_click(move |_ctx| set_open.set(!open))
-            )
+        Column::new().gap(0.0, 10.0).child(clipper).child(
+            Button::new()
+                .label(toggle_label)
+                .font_size(13.0)
+                .padding(Edges::symmetric(10.0, 6.0))
+                .background(theme.surface_container)
+                .color(theme.on_surface)
+                .border(Border::all(1.0, theme.outline_variant).radius(6.0))
+                .on_click(move |_ctx| set_open.set(!open)),
+        ),
     )
 }
 
@@ -840,17 +1059,26 @@ fn section_splitpane(theme: &Theme, left_size: Rc<Cell<f32>>, right_size: Rc<Cel
             .align_items(Align::Center)
             .justify_content(JustifyContent::Center)
             .background(theme.surface_container)
-            .child(Label::new().label(label).color(theme.on_surface).font_size(12.0))
+            .child(
+                Label::new()
+                    .label(label)
+                    .color(theme.on_surface)
+                    .font_size(12.0),
+            )
     };
 
     let pane = split_pane(
         Some(
-            SplitPanel::new(panel(theme, "Left panel"), left_size).min_size(100.0).max_size(260.0)
+            SplitPanel::new(panel(theme, "Left panel"), left_size)
+                .min_size(100.0)
+                .max_size(260.0),
         ),
         panel(theme, "Center content"),
         Some(
-            SplitPanel::new(panel(theme, "Right panel"), right_size).min_size(100.0).max_size(260.0)
-        )
+            SplitPanel::new(panel(theme, "Right panel"), right_size)
+                .min_size(100.0)
+                .max_size(260.0),
+        ),
     );
 
     section(
@@ -862,7 +1090,7 @@ fn section_splitpane(theme: &Theme, left_size: Rc<Cell<f32>>, right_size: Rc<Cel
             .height(220.0)
             .border(Border::all(1.0, theme.outline_variant).radius(8.0))
             .overflow_x(Overflow::Hidden)
-            .child(pane)
+            .child(pane),
     )
 }
 
@@ -873,9 +1101,21 @@ fn section_composite(theme: &Theme) -> View {
         "TestButton is composed from View/Label via the Render trait and its own use_state, reconciled like any built-in widget.",
         Row::new()
             .gap(10.0, 0.0)
-            .child(TestButton::new().label("Composite A").color(Color::BLUE_500))
-            .child(TestButton::new().label("Composite B").color(Color::VIOLET_500))
-            .child(TestButton::new().label("Composite C").color(Color::EMERALD_500))
+            .child(
+                TestButton::new()
+                    .label("Composite A")
+                    .color(Color::BLUE_500),
+            )
+            .child(
+                TestButton::new()
+                    .label("Composite B")
+                    .color(Color::VIOLET_500),
+            )
+            .child(
+                TestButton::new()
+                    .label("Composite C")
+                    .color(Color::EMERALD_500),
+            ),
     )
 }
 
@@ -892,8 +1132,8 @@ fn section_devtools_hint(theme: &Theme) -> View {
                 Label::new()
                     .label("toggle the DevTools panel")
                     .color(theme.on_surface_variant)
-                    .font_size(13.0)
-            )
+                    .font_size(13.0),
+            ),
     )
 }
 
@@ -906,8 +1146,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     #[cfg(not(target_arch = "wasm32"))]
     {
-        let _ = env_logger::Builder
-            ::new()
+        let _ = env_logger::Builder::new()
             .filter_module("xengui", log::LevelFilter::Info)
             .filter_level(log::LevelFilter::Warn)
             .format_timestamp(None)
@@ -933,9 +1172,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     app.with_font(
         "Noto_Sans",
-        include_bytes!(
-            concat!(env!("CARGO_MANIFEST_DIR"), "/fonts/NotoSans-VariableFont.ttf")
-        ).to_vec()
+        include_bytes!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/fonts/NotoSans-VariableFont.ttf"
+        ))
+        .to_vec(),
     );
 
     app.render(|| {
@@ -998,6 +1239,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .padding(Edges::only(24.0, 8.0, 24.0, 24.0))
             .gap(0.0, 16.0)
             .child(section_buttons(&theme, click_count, set_click_count.clone()))
+            .child(section_status_indicators(&theme))
             .child(
                 section_checkbox(
                     &theme,

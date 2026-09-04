@@ -2,6 +2,7 @@
 use crate::style::Length;
 
 #[derive(Clone, Copy, Debug, PartialEq, Default)]
+/// Data and behavior represented by `LineHeight`.
 pub struct LineHeight(Length);
 
 impl LineHeight {

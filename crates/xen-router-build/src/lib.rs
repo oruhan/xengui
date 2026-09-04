@@ -27,7 +27,7 @@
 
 use std::env;
 use std::fs;
-use std::path::{ Path, PathBuf };
+use std::path::{Path, PathBuf};
 
 struct DirNode {
     name: String,
@@ -147,20 +147,29 @@ fn collect(
     routes: &mut Vec<RouteEntry>,
     mods: &mut Vec<ModDecl>,
     root_notfound: &mut Option<String>,
-    warnings: &mut Vec<String>
+    warnings: &mut Vec<String>,
 ) {
     dir_path_stack.push(node.name.clone());
     let dir_path = dir_path_stack.join("/");
 
     if let Some(layout_path) = &node.layout {
         let module = format!("layout_{}", sanitize(&dir_path));
-        mods.push(ModDecl { module: module.clone(), abs_path: layout_path.clone() });
-        layout_stack.push(LayoutRef { key: format!("layout:{dir_path}"), module });
+        mods.push(ModDecl {
+            module: module.clone(),
+            abs_path: layout_path.clone(),
+        });
+        layout_stack.push(LayoutRef {
+            key: format!("layout:{dir_path}"),
+            module,
+        });
     }
 
     if let Some(notfound_path) = &node.notfound {
         let module = format!("notfound_{}", sanitize(&dir_path));
-        mods.push(ModDecl { module: module.clone(), abs_path: notfound_path.clone() });
+        mods.push(ModDecl {
+            module: module.clone(),
+            abs_path: notfound_path.clone(),
+        });
         if dir_path_stack.len() == 1 {
             *root_notfound = Some(module);
         } else {
@@ -174,7 +183,10 @@ fn collect(
 
     if let Some(page_path) = &node.page {
         let module = format!("page_{}", sanitize(&dir_path));
-        mods.push(ModDecl { module: module.clone(), abs_path: page_path.clone() });
+        mods.push(ModDecl {
+            module: module.clone(),
+            abs_path: page_path.clone(),
+        });
 
         let pattern = if url_stack.is_empty() {
             "/".to_string()
@@ -182,7 +194,11 @@ fn collect(
             format!("/{}", url_stack.join("/"))
         };
 
-        routes.push(RouteEntry { pattern, page_module: module, layouts: layout_stack.clone() });
+        routes.push(RouteEntry {
+            pattern,
+            page_module: module,
+            layouts: layout_stack.clone(),
+        });
     }
 
     for child in &node.children {
@@ -211,7 +227,7 @@ fn collect(
             routes,
             mods,
             root_notfound,
-            warnings
+            warnings,
         );
 
         if pushed_url {
@@ -253,11 +269,9 @@ fn emit_route_closure(route: &RouteEntry) -> String {
 ///
 /// Call this from the downstream crate's own `build.rs`.
 pub fn generate(app_dir: &str) {
-    let manifest_dir = env
-        ::var("CARGO_MANIFEST_DIR")
+    let manifest_dir = env::var("CARGO_MANIFEST_DIR")
         .expect("xen-router-build: CARGO_MANIFEST_DIR not set - call generate() from build.rs");
-    let out_dir = env
-        ::var("OUT_DIR")
+    let out_dir = env::var("OUT_DIR")
         .expect("xen-router-build: OUT_DIR not set - call generate() from build.rs");
 
     let app_path = Path::new(&manifest_dir).join(app_dir);
@@ -281,7 +295,7 @@ pub fn generate(app_dir: &str) {
         &mut routes,
         &mut mods,
         &mut root_notfound,
-        &mut warnings
+        &mut warnings,
     );
 
     for warning in &warnings {
@@ -293,9 +307,11 @@ pub fn generate(app_dir: &str) {
 
     for m in &mods {
         println!("cargo:rerun-if-changed={}", m.abs_path.display());
-        out.push_str(
-            &format!("#[path = {:?}]\nmod {};\n", m.abs_path.display().to_string(), m.module)
-        );
+        out.push_str(&format!(
+            "#[path = {:?}]\nmod {};\n",
+            m.abs_path.display().to_string(),
+            m.module
+        ));
     }
     out.push('\n');
 
@@ -306,13 +322,18 @@ pub fn generate(app_dir: &str) {
         out.push_str(&emit_route_closure(route));
     }
     if let Some(module) = &root_notfound {
-        out.push_str(&format!("    router = router.not_found(|| {module}::not_found());\n"));
+        out.push_str(&format!(
+            "    router = router.not_found(|| {module}::not_found());\n"
+        ));
     }
     out.push_str("    router\n");
     out.push_str("}\n");
 
     let out_file = Path::new(&out_dir).join("xen_router_generated.rs");
-    fs::write(&out_file, out).unwrap_or_else(|e|
-        panic!("xen-router-build: failed to write {}: {e}", out_file.display())
-    );
+    fs::write(&out_file, out).unwrap_or_else(|e| {
+        panic!(
+            "xen-router-build: failed to write {}: {e}",
+            out_file.display()
+        )
+    });
 }

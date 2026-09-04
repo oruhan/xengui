@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-use std::cell::{ Cell, RefCell };
+use std::cell::{Cell, RefCell};
 use std::sync::Arc;
 use winit::window::Window;
 

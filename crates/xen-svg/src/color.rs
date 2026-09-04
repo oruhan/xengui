@@ -11,7 +11,12 @@ pub struct Color {
 }
 
 impl Color {
-    pub const BLACK: Self = Self { r: 0.0, g: 0.0, b: 0.0, a: 1.0 };
+    pub const BLACK: Self = Self {
+        r: 0.0,
+        g: 0.0,
+        b: 0.0,
+        a: 1.0,
+    };
 
     pub const fn rgba_f32(r: f32, g: f32, b: f32, a: f32) -> Self {
         Self { r, g, b, a }
@@ -41,36 +46,28 @@ impl Color {
         let expanded: String;
         let hex = match hex.len() {
             3 | 4 => {
-                expanded = hex
-                    .chars()
-                    .flat_map(|c| [c, c])
-                    .collect();
+                expanded = hex.chars().flat_map(|c| [c, c]).collect();
                 expanded.as_str()
             }
             _ => hex,
         };
 
-        let parse_channel = |s: &str| -> Option<f32> {
-            u8::from_str_radix(s, 16)
-                .ok()
-                .map(|v| (v as f32) / 255.0)
-        };
+        let parse_channel =
+            |s: &str| -> Option<f32> { u8::from_str_radix(s, 16).ok().map(|v| (v as f32) / 255.0) };
 
         let parsed = match hex.len() {
-            6 =>
-                (
-                    parse_channel(&hex[0..2]),
-                    parse_channel(&hex[2..4]),
-                    parse_channel(&hex[4..6]),
-                    Some(1.0),
-                ),
-            8 =>
-                (
-                    parse_channel(&hex[0..2]),
-                    parse_channel(&hex[2..4]),
-                    parse_channel(&hex[4..6]),
-                    parse_channel(&hex[6..8]),
-                ),
+            6 => (
+                parse_channel(&hex[0..2]),
+                parse_channel(&hex[2..4]),
+                parse_channel(&hex[4..6]),
+                Some(1.0),
+            ),
+            8 => (
+                parse_channel(&hex[0..2]),
+                parse_channel(&hex[2..4]),
+                parse_channel(&hex[4..6]),
+                parse_channel(&hex[6..8]),
+            ),
             _ => (None, None, None, None),
         };
 

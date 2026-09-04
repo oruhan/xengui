@@ -7,11 +7,13 @@
 //! device and render target (e.g. a Bevy render node) should build
 //! `WgpuPipelines` once and call `begin_frame` directly instead.
 
-mod pipelines;
 mod backend;
-mod window_renderer;
 mod msaa;
+mod pipelines;
+mod window_renderer;
 
-pub use backend::{ WgpuFrame, WgpuPipelines };
-pub use window_renderer::WgpuWindowRenderer;
+pub use backend::{WgpuFrame, WgpuPipelines};
 pub use msaa::SampleCount;
+pub use window_renderer::{
+    FrameOutcome, PresentModePreference, RendererError, RendererOptions, WgpuWindowRenderer,
+};

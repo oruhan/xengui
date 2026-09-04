@@ -3,8 +3,8 @@
 //! mask and blurring it through the same Dual Kawase pipeline used for
 //! `Filter::Blur`, instead of an analytic single-pass approximation.
 use super::kawase_pass::KawasePass;
-use super::texture_pool::{ PooledTexture, TexturePool };
-use xengui::{ BoxShadowCommand, ShadowDirection, paint };
+use super::texture_pool::{PooledTexture, TexturePool};
+use xengui::{BoxShadowCommand, ShadowDirection, paint};
 
 #[repr(C)]
 #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
@@ -118,7 +118,7 @@ impl BoxShadowEngine {
         let mask_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("Box Shadow Mask Shader"),
             source: wgpu::ShaderSource::Wgsl(
-                include_str!("../shaders/box_shadow_mask.wgsl").into()
+                include_str!("../shaders/box_shadow_mask.wgsl").into(),
             ),
         });
         let mask_layout = device.create_pipeline_layout(
@@ -126,7 +126,7 @@ impl BoxShadowEngine {
                 label: Some("Box Shadow Mask Pipeline Layout"),
                 bind_group_layouts: &[],
                 immediate_size: 0,
-            })
+            }),
         );
         let mask_pipeline = device.create_render_pipeline(
             &(wgpu::RenderPipelineDescriptor {
@@ -148,17 +148,15 @@ impl BoxShadowEngine {
                     module: &mask_shader,
                     entry_point: Some("fs_main"),
                     compilation_options: Default::default(),
-                    targets: &[
-                        Some(wgpu::ColorTargetState {
-                            format,
-                            blend: None,
-                            write_mask: wgpu::ColorWrites::ALL,
-                        }),
-                    ],
+                    targets: &[Some(wgpu::ColorTargetState {
+                        format,
+                        blend: None,
+                        write_mask: wgpu::ColorWrites::ALL,
+                    })],
                 }),
                 multiview_mask: None,
                 cache: None,
-            })
+            }),
         );
 
         let composite_bind_group_layout = device.create_bind_group_layout(
@@ -182,12 +180,12 @@ impl BoxShadowEngine {
                         count: None,
                     },
                 ],
-            })
+            }),
         );
         let composite_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("Box Shadow Composite Shader"),
             source: wgpu::ShaderSource::Wgsl(
-                include_str!("../shaders/box_shadow_composite.wgsl").into()
+                include_str!("../shaders/box_shadow_composite.wgsl").into(),
             ),
         });
         let composite_layout = device.create_pipeline_layout(
@@ -195,7 +193,7 @@ impl BoxShadowEngine {
                 label: Some("Box Shadow Composite Pipeline Layout"),
                 bind_group_layouts: &[Some(&composite_bind_group_layout)],
                 immediate_size: 0,
-            })
+            }),
         );
         let composite_pipeline = device.create_render_pipeline(
             &(wgpu::RenderPipelineDescriptor {
@@ -217,17 +215,15 @@ impl BoxShadowEngine {
                     module: &composite_shader,
                     entry_point: Some("fs_main"),
                     compilation_options: Default::default(),
-                    targets: &[
-                        Some(wgpu::ColorTargetState {
-                            format,
-                            blend: Some(wgpu::BlendState::PREMULTIPLIED_ALPHA_BLENDING),
-                            write_mask: wgpu::ColorWrites::ALL,
-                        }),
-                    ],
+                    targets: &[Some(wgpu::ColorTargetState {
+                        format,
+                        blend: Some(wgpu::BlendState::PREMULTIPLIED_ALPHA_BLENDING),
+                        write_mask: wgpu::ColorWrites::ALL,
+                    })],
                 }),
                 multiview_mask: None,
                 cache: None,
-            })
+            }),
         );
 
         let mask_sampler = device.create_sampler(
@@ -238,10 +234,15 @@ impl BoxShadowEngine {
                 mag_filter: wgpu::FilterMode::Linear,
                 min_filter: wgpu::FilterMode::Linear,
                 ..Default::default()
-            })
+            }),
         );
 
-        Self { mask_pipeline, composite_pipeline, composite_bind_group_layout, mask_sampler }
+        Self {
+            mask_pipeline,
+            composite_pipeline,
+            composite_bind_group_layout,
+            mask_sampler,
+        }
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -255,7 +256,7 @@ impl BoxShadowEngine {
         target_view: &wgpu::TextureView,
         target_width: u32,
         target_height: u32,
-        cmds: &[BoxShadowCommand]
+        cmds: &[BoxShadowCommand],
     ) {
         for cmd in cmds {
             self.draw_one(
@@ -267,7 +268,7 @@ impl BoxShadowEngine {
                 target_view,
                 target_width,
                 target_height,
-                cmd
+                cmd,
             );
         }
     }
@@ -283,7 +284,7 @@ impl BoxShadowEngine {
         target_view: &wgpu::TextureView,
         target_width: u32,
         target_height: u32,
-        cmd: &BoxShadowCommand
+        cmd: &BoxShadowCommand,
     ) {
         if cmd.color.a() <= 0.0 || cmd.shadow_size.0 <= 0.0 || cmd.shadow_size.1 <= 0.0 {
             return;
@@ -294,7 +295,10 @@ impl BoxShadowEngine {
         let padding = cmd.blur * 3.0 + 4.0;
         let mask_w = (cmd.shadow_size.0 + padding * 2.0).ceil().max(1.0) as u32;
         let mask_h = (cmd.shadow_size.1 + padding * 2.0).ceil().max(1.0) as u32;
-        let mask_origin = (cmd.shadow_position.0 - padding, cmd.shadow_position.1 - padding);
+        let mask_origin = (
+            cmd.shadow_position.0 - padding,
+            cmd.shadow_position.1 - padding,
+        );
 
         let mask_tex = pool.acquire(device, mask_w, mask_h);
         self.render_mask(device, queue, encoder, &mask_tex, mask_w, mask_h, cmd);
@@ -307,7 +311,7 @@ impl BoxShadowEngine {
             mask_w,
             mask_h,
             cmd.blur * 0.5,
-            pool
+            pool,
         );
 
         // Outset composites the whole padded mask rect directly; inset is
@@ -332,7 +336,7 @@ impl BoxShadowEngine {
             box_radius,
             mask_origin,
             (mask_w as f32, mask_h as f32),
-            cmd
+            cmd,
         );
     }
 
@@ -344,14 +348,17 @@ impl BoxShadowEngine {
         target: &PooledTexture,
         width: u32,
         height: u32,
-        cmd: &BoxShadowCommand
+        cmd: &BoxShadowCommand,
     ) {
         let half_w = (width as f32) * 0.5;
         let half_h = (height as f32) * 0.5;
         let shape_half = [cmd.shadow_size.0 * 0.5, cmd.shadow_size.1 * 0.5];
 
         let ndc = |x: f32, y: f32| -> [f32; 2] {
-            [(x / (width as f32)) * 2.0 - 1.0, 1.0 - (y / (height as f32)) * 2.0]
+            [
+                (x / (width as f32)) * 2.0 - 1.0,
+                1.0 - (y / (height as f32)) * 2.0,
+            ]
         };
 
         let mk = |local: [f32; 2]| MaskVertex {
@@ -376,29 +383,27 @@ impl BoxShadowEngine {
                 size: (std::mem::size_of::<MaskVertex>() * VERTICES_PER_QUAD) as u64,
                 usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
                 mapped_at_creation: false,
-            })
+            }),
         );
         queue.write_buffer(&vertex_buffer, 0, bytemuck::cast_slice(&vertices));
 
         let mut pass = encoder.begin_render_pass(
             &(wgpu::RenderPassDescriptor {
                 label: Some("Box Shadow Mask Pass"),
-                color_attachments: &[
-                    Some(wgpu::RenderPassColorAttachment {
-                        view: &target.view,
-                        resolve_target: None,
-                        ops: wgpu::Operations {
-                            load: wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT),
-                            store: wgpu::StoreOp::Store,
-                        },
-                        depth_slice: None,
-                    }),
-                ],
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: &target.view,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT),
+                        store: wgpu::StoreOp::Store,
+                    },
+                    depth_slice: None,
+                })],
                 depth_stencil_attachment: None,
                 timestamp_writes: None,
                 occlusion_query_set: None,
                 multiview_mask: None,
-            })
+            }),
         );
         pass.set_pipeline(&self.mask_pipeline);
         pass.set_vertex_buffer(0, vertex_buffer.slice(..));
@@ -421,7 +426,7 @@ impl BoxShadowEngine {
         box_radius: f32,
         mask_origin: (f32, f32),
         mask_size: (f32, f32),
-        cmd: &BoxShadowCommand
+        cmd: &BoxShadowCommand,
     ) {
         if quad_size.0 <= 0.0 || quad_size.1 <= 0.0 {
             return;
@@ -439,16 +444,13 @@ impl BoxShadowEngine {
                     cmd.box_position,
                     cmd.box_size,
                     target_width,
-                    target_height
-                )
+                    target_height,
+                ),
             )
         };
 
-        let (sx, sy, sw, sh) = paint::draw_command::scissor_for_clip(
-            effective_clip,
-            target_width,
-            target_height
-        );
+        let (sx, sy, sw, sh) =
+            paint::draw_command::scissor_for_clip(effective_clip, target_width, target_height);
 
         if sw == 0 || sh == 0 {
             return;
@@ -463,7 +465,10 @@ impl BoxShadowEngine {
         let inv_h = 2.0 / (target_height.max(1) as f32);
         let ndc = |x: f32, y: f32| -> [f32; 2] { [x * inv_w - 1.0, 1.0 - y * inv_h] };
         let mask_uv = |wx: f32, wy: f32| -> [f32; 2] {
-            [(wx - mask_origin.0) / mask_size.0, (wy - mask_origin.1) / mask_size.1]
+            [
+                (wx - mask_origin.0) / mask_size.0,
+                (wy - mask_origin.1) / mask_size.1,
+            ]
         };
 
         let corners = [
@@ -498,7 +503,7 @@ impl BoxShadowEngine {
                 size: (std::mem::size_of::<CompositeVertex>() * VERTICES_PER_QUAD) as u64,
                 usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
                 mapped_at_creation: false,
-            })
+            }),
         );
         queue.write_buffer(&vertex_buffer, 0, bytemuck::cast_slice(&vertices));
 
@@ -516,33 +521,38 @@ impl BoxShadowEngine {
                         resource: wgpu::BindingResource::Sampler(&self.mask_sampler),
                     },
                 ],
-            })
+            }),
         );
 
         let mut pass = encoder.begin_render_pass(
             &(wgpu::RenderPassDescriptor {
                 label: Some("Box Shadow Composite Pass"),
-                color_attachments: &[
-                    Some(wgpu::RenderPassColorAttachment {
-                        view: target_view,
-                        resolve_target: None,
-                        ops: wgpu::Operations {
-                            load: wgpu::LoadOp::Load,
-                            store: wgpu::StoreOp::Store,
-                        },
-                        depth_slice: None,
-                    }),
-                ],
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: target_view,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Load,
+                        store: wgpu::StoreOp::Store,
+                    },
+                    depth_slice: None,
+                })],
                 depth_stencil_attachment: None,
                 timestamp_writes: None,
                 occlusion_query_set: None,
                 multiview_mask: None,
-            })
+            }),
         );
         pass.set_pipeline(&self.composite_pipeline);
         pass.set_bind_group(0, &bind_group, &[]);
         pass.set_vertex_buffer(0, vertex_buffer.slice(..));
-        pass.set_viewport(0.0, 0.0, target_width as f32, target_height as f32, 0.0, 1.0);
+        pass.set_viewport(
+            0.0,
+            0.0,
+            target_width as f32,
+            target_height as f32,
+            0.0,
+            1.0,
+        );
         pass.set_scissor_rect(sx, sy, sw, sh);
         pass.draw(0..VERTICES_PER_QUAD as u32, 0..1);
     }
@@ -555,7 +565,7 @@ impl BoxShadowEngine {
 // what's actually visible after the composite-time scissor clip below.
 pub(crate) fn directional_shadow_padding(
     direction: ShadowDirection,
-    full: f32
+    full: f32,
 ) -> (f32, f32, f32, f32) {
     use ShadowDirection::*;
     match direction {
@@ -580,7 +590,7 @@ fn direction_clip_rect(
     box_position: (f32, f32),
     box_size: (f32, f32),
     target_width: u32,
-    target_height: u32
+    target_height: u32,
 ) -> Option<(f32, f32, f32, f32)> {
     use ShadowDirection::*;
     let (bx, by) = box_position;
@@ -601,7 +611,7 @@ fn direction_clip_rect(
 
 fn intersect_rects(
     a: Option<(f32, f32, f32, f32)>,
-    b: Option<(f32, f32, f32, f32)>
+    b: Option<(f32, f32, f32, f32)>,
 ) -> Option<(f32, f32, f32, f32)> {
     match (a, b) {
         (None, None) => None,

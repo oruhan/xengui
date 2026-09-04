@@ -1,13 +1,19 @@
 // SPDX-License-Identifier: Apache-2.0
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
+/// Data and behavior represented by `LayoutBox`.
 pub struct LayoutBox {
+    /// The `x` value carried by this type.
     pub x: f32,
+    /// The `y` value carried by this type.
     pub y: f32,
+    /// The `width` value carried by this type.
     pub width: f32,
+    /// The `height` value carried by this type.
     pub height: f32,
 }
 
 impl LayoutBox {
+    /// Returns whether the `contains_rounded` condition is satisfied.
     pub fn contains_rounded(&self, point: (f32, f32), radius: f32) -> bool {
         let (px, py) = point;
 
@@ -35,12 +41,10 @@ impl LayoutBox {
             } else {
                 (self.x + r, self.y + self.height - r) // bottom-left
             }
+        } else if py < self.y + r {
+            (self.x + self.width - r, self.y + r) // top-right
         } else {
-            if py < self.y + r {
-                (self.x + self.width - r, self.y + r) // top-right
-            } else {
-                (self.x + self.width - r, self.y + self.height - r) // bottom-right
-            }
+            (self.x + self.width - r, self.y + self.height - r) // bottom-right
         };
 
         let dx = px - cx;

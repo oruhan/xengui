@@ -5,7 +5,9 @@
 /// theme type into this before calling into xengui's renderer.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub enum SystemTheme {
+    /// The `Light` variant.
     Light,
     #[default]
+    /// The `Dark` variant.
     Dark,
 }

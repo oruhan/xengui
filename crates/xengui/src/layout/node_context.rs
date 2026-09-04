@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{ MeasureResult, WidgetId };
+use crate::{MeasureResult, WidgetId};
 
 /// Context associated with a layout node.
 ///

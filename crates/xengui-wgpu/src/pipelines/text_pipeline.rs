@@ -1,28 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0
-use xengui::{
-    Background, Color, DEFAULT_LINE_HEIGHT_RATIO, FontStyle, FontWeight, MeasureResult, RectCommand, SystemTheme, TextAlign, TextCommand, TextDecoration, TextMeasurer, constants::DEFAULT_FONT_SIZE,
-};
 use glyphon::{
-    Attrs,
-    Buffer as GlyphonBuffer,
-    Cache,
-    Color as GlyphonColor,
-    Family,
-    FontSystem,
-    Metrics,
-    Resolution,
-    Shaping,
-    Style as GlyphonStyle,
-    SwashCache,
-    TextArea,
-    TextAtlas,
-    TextBounds,
-    TextRenderer,
-    Viewport,
-    Weight as GlyphonWeight,
+    Attrs, Buffer as GlyphonBuffer, Cache, Color as GlyphonColor, Family, FontSystem, Metrics,
+    Resolution, Shaping, Style as GlyphonStyle, SwashCache, TextArea, TextAtlas, TextBounds,
+    TextRenderer, Viewport, Weight as GlyphonWeight,
 };
 use std::collections::HashMap;
 use std::sync::Arc;
+use xengui::{
+    Background, Color, DEFAULT_LINE_HEIGHT_RATIO, FontStyle, FontWeight, MeasureResult,
+    RectCommand, SystemTheme, TextAlign, TextCommand, TextDecoration, TextMeasurer,
+    constants::DEFAULT_FONT_SIZE,
+};
 
 #[derive(Clone, PartialEq, Eq, Hash)]
 struct ShapeKey {
@@ -62,7 +50,7 @@ impl TextPipeline {
         queue: &wgpu::Queue,
         surface_format: wgpu::TextureFormat,
         user_fonts: Vec<(String, Vec<u8>)>,
-        sample_count: u32
+        sample_count: u32,
     ) -> Result<Self, String> {
         #[cfg(target_arch = "wasm32")]
         if user_fonts.is_empty() {
@@ -76,10 +64,9 @@ impl TextPipeline {
             let before = font_system.db().faces().count();
             font_system.db_mut().load_font_data(data.clone());
 
-            if
-                font_system.db().faces().count() > before &&
-                let Some(face) = font_system.db().faces().last() &&
-                let Some((family_name, _)) = face.families.first()
+            if font_system.db().faces().count() > before
+                && let Some(face) = font_system.db().faces().last()
+                && let Some((family_name, _)) = face.families.first()
             {
                 user_font_map.insert(name.clone(), family_name.clone());
             }
@@ -90,7 +77,9 @@ impl TextPipeline {
 
         #[cfg(target_arch = "wasm32")]
         let default_family_name: Option<String> = {
-            let name = user_fonts.first().and_then(|(name, _)| user_font_map.get(name).cloned());
+            let name = user_fonts
+                .first()
+                .and_then(|(name, _)| user_font_map.get(name).cloned());
             match name {
                 Some(n) => Some(n),
                 None => {
@@ -110,7 +99,7 @@ impl TextPipeline {
                 mask: !0,
                 alpha_to_coverage_enabled: false,
             },
-            None
+            None,
         );
         let viewport = Viewport::new(device, &cache);
 
@@ -133,16 +122,22 @@ impl TextPipeline {
         default_family_name: &'a Option<String>,
         font: Option<&str>,
         weight: FontWeight,
-        style: FontStyle
+        style: FontStyle,
     ) -> Attrs<'a> {
         let family = font
             .and_then(|n| user_font_map.get(n))
             .map(|s| Family::Name(s.as_str()))
             .unwrap_or_else(|| {
-                default_family_name.as_deref().map(Family::Name).unwrap_or(Family::SansSerif)
+                default_family_name
+                    .as_deref()
+                    .map(Family::Name)
+                    .unwrap_or(Family::SansSerif)
             });
 
-        Attrs::new().family(family).weight(convert_weight(weight)).style(convert_style(style))
+        Attrs::new()
+            .family(family)
+            .weight(convert_weight(weight))
+            .style(convert_style(style))
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -160,7 +155,7 @@ impl TextPipeline {
         decoration: TextDecoration,
         decoration_color: Color,
         max_width: Option<f32>,
-        clip_rect: Option<(f32, f32, f32, f32)>
+        clip_rect: Option<(f32, f32, f32, f32)>,
     ) {
         let final_line_height = resolve_line_height(scale, line_height);
 
@@ -193,7 +188,7 @@ impl TextPipeline {
                 &self.default_family_name,
                 font,
                 weight,
-                style
+                style,
             );
 
             let metrics = Metrics::new(scale, final_line_height);
@@ -226,25 +221,23 @@ impl TextPipeline {
                 scale,
                 decoration,
                 decoration_color,
-                clip_rect
+                clip_rect,
             );
         }
 
         let bounds = match clip_rect {
-            Some((x, y, w, h)) =>
-                TextBounds {
-                    left: x.round() as i32,
-                    top: y.round() as i32,
-                    right: (x + w).round() as i32,
-                    bottom: (y + h).round() as i32,
-                },
-            None =>
-                TextBounds {
-                    left: i32::MIN,
-                    top: i32::MIN,
-                    right: i32::MAX,
-                    bottom: i32::MAX,
-                },
+            Some((x, y, w, h)) => TextBounds {
+                left: x.round() as i32,
+                top: y.round() as i32,
+                right: (x + w).round() as i32,
+                bottom: (y + h).round() as i32,
+            },
+            None => TextBounds {
+                left: i32::MIN,
+                top: i32::MIN,
+                right: i32::MAX,
+                bottom: i32::MAX,
+            },
         };
 
         self.pending.push(PendingText {
@@ -265,7 +258,7 @@ impl TextPipeline {
         scale: f32,
         decoration: TextDecoration,
         fallback_color: Color,
-        clip_rect: Option<(f32, f32, f32, f32)>
+        clip_rect: Option<(f32, f32, f32, f32)>,
     ) {
         let thickness = decoration
             .width()
@@ -319,6 +312,10 @@ impl TextPipeline {
         std::mem::take(&mut self.pending_decorations)
     }
 
+    pub fn drain_decorations(&mut self, out: &mut Vec<RectCommand>) {
+        out.append(&mut self.pending_decorations);
+    }
+
     /// Shapes `text` and returns (width, height, baseline).
     ///
     /// `height` spans from the top of the first shaped line to the bottom
@@ -335,14 +332,14 @@ impl TextPipeline {
         style: FontStyle,
         scale: f32,
         line_height: f32,
-        max_width: Option<f32>
+        max_width: Option<f32>,
     ) -> (f32, f32, f32) {
         let attrs = Self::resolve_attrs(
             &self.user_font_map,
             &self.default_family_name,
             font,
             weight,
-            style
+            style,
         );
         let final_line_height = resolve_line_height(scale, line_height);
         let metrics = Metrics::new(scale, final_line_height);
@@ -394,17 +391,10 @@ impl TextPipeline {
         style: FontStyle,
         scale: f32,
         line_height: f32,
-        max_width: Option<f32>
+        max_width: Option<f32>,
     ) -> (f32, f32) {
-        let (width, height, _baseline) = self.measure_raw(
-            text,
-            font,
-            weight,
-            style,
-            scale,
-            line_height,
-            max_width
-        );
+        let (width, height, _baseline) =
+            self.measure_raw(text, font, weight, style, scale, line_height, max_width);
 
         (width, height)
     }
@@ -415,18 +405,24 @@ impl TextPipeline {
             SystemTheme::Light => Color::BLACK,
         });
 
-        let scale = command.style.font_size
+        let scale = command
+            .style
+            .font_size
             .map(|s| s.to_physical(scale_factor))
             .unwrap_or(DEFAULT_FONT_SIZE.to_physical(scale_factor));
 
         let weight = command.style.font_weight.unwrap_or_default();
         let style = command.style.font_style.unwrap_or_default();
 
-        let letter_spacing = command.style.letter_spacing
+        let letter_spacing = command
+            .style
+            .letter_spacing
             .map(|ls| ls.value().to_physical(scale_factor))
             .unwrap_or(0.0);
 
-        let line_height = command.style.line_height
+        let line_height = command
+            .style
+            .line_height
             .map(|lh| lh.value().to_physical(scale_factor))
             .unwrap_or(0.0);
 
@@ -437,7 +433,7 @@ impl TextPipeline {
             (color.r() * 255.0).round() as u8,
             (color.g() * 255.0).round() as u8,
             (color.b() * 255.0).round() as u8,
-            (color.a() * 255.0).round() as u8
+            (color.a() * 255.0).round() as u8,
         );
 
         let position = command.position;
@@ -456,7 +452,7 @@ impl TextPipeline {
                 decoration,
                 color,
                 command.max_width,
-                command.clip_rect
+                command.clip_rect,
             );
             return;
         }
@@ -471,7 +467,7 @@ impl TextPipeline {
             style,
             scale,
             line_height,
-            None
+            None,
         );
         let extra_spacing = if command.text.is_empty() {
             0.0
@@ -504,7 +500,7 @@ impl TextPipeline {
                 TextDecoration::NONE,
                 color,
                 None,
-                command.clip_rect
+                command.clip_rect,
             );
 
             let (advance, _, _) = self.measure_raw(
@@ -514,7 +510,7 @@ impl TextPipeline {
                 style,
                 scale,
                 line_height,
-                None
+                None,
             );
             cursor_x += advance + letter_spacing;
         }
@@ -562,11 +558,12 @@ impl TextPipeline {
         encoder: &mut wgpu::CommandEncoder,
         view: &wgpu::TextureView,
         width: u32,
-        height: u32
+        height: u32,
     ) -> Result<(), String> {
         self.viewport.update(queue, Resolution { width, height });
 
-        let text_areas: Vec<TextArea> = self.pending
+        let text_areas: Vec<TextArea> = self
+            .pending
             .iter()
             .map(|p| TextArea {
                 buffer: p.buffer.as_ref(),
@@ -587,7 +584,7 @@ impl TextPipeline {
                 &mut self.atlas,
                 &self.viewport,
                 text_areas,
-                &mut self.swash_cache
+                &mut self.swash_cache,
             )
             .map_err(|e| e.to_string())?;
 
@@ -595,22 +592,20 @@ impl TextPipeline {
             let mut pass = encoder.begin_render_pass(
                 &(wgpu::RenderPassDescriptor {
                     label: Some("text_pipeline_pass"),
-                    color_attachments: &[
-                        Some(wgpu::RenderPassColorAttachment {
-                            view,
-                            resolve_target: None,
-                            depth_slice: None,
-                            ops: wgpu::Operations {
-                                load: wgpu::LoadOp::Load,
-                                store: wgpu::StoreOp::Store,
-                            },
-                        }),
-                    ],
+                    color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                        view,
+                        resolve_target: None,
+                        depth_slice: None,
+                        ops: wgpu::Operations {
+                            load: wgpu::LoadOp::Load,
+                            store: wgpu::StoreOp::Store,
+                        },
+                    })],
                     depth_stencil_attachment: None,
                     timestamp_writes: None,
                     occlusion_query_set: None,
                     multiview_mask: None,
-                })
+                }),
             );
 
             self.renderer
@@ -641,7 +636,7 @@ impl TextMeasurer for TextPipeline {
         letter_spacing: f32,
         line_height: f32,
         max_width: Option<f32>,
-        scale_factor: f32
+        scale_factor: f32,
     ) -> MeasureResult {
         // The only place logical metrics become physical, so no caller
         // has to scale them itself.
@@ -649,15 +644,8 @@ impl TextMeasurer for TextPipeline {
         let letter_spacing = letter_spacing * scale_factor;
         let line_height = line_height * scale_factor;
 
-        let (width, height, baseline) = self.measure_raw(
-            text,
-            font,
-            weight,
-            style,
-            font_size,
-            line_height,
-            max_width
-        );
+        let (width, height, baseline) =
+            self.measure_raw(text, font, weight, style, font_size, line_height, max_width);
 
         let extra = if text.is_empty() {
             0.0
@@ -681,7 +669,7 @@ impl TextMeasurer for TextPipeline {
         font_style: FontStyle,
         letter_spacing: f32,
         line_height: f32,
-        scale_factor: f32
+        scale_factor: f32,
     ) -> Vec<f32> {
         let font_size = font_size * scale_factor;
         let letter_spacing = letter_spacing * scale_factor;
@@ -705,7 +693,7 @@ impl TextMeasurer for TextPipeline {
                 font_style,
                 font_size,
                 line_height,
-                None
+                None,
             );
 
             cursor += advance;
@@ -725,7 +713,7 @@ impl TextMeasurer for TextPipeline {
         font_size: f32,
         font_weight: FontWeight,
         font_style: FontStyle,
-        scale_factor: f32
+        scale_factor: f32,
     ) -> f32 {
         let (_, _, baseline) = self.measure_raw(
             " ",
@@ -734,7 +722,7 @@ impl TextMeasurer for TextPipeline {
             font_style,
             font_size * scale_factor,
             0.0,
-            None
+            None,
         );
         baseline
     }
@@ -745,7 +733,7 @@ impl TextMeasurer for TextPipeline {
         font_size: f32,
         font_weight: FontWeight,
         font_style: FontStyle,
-        scale_factor: f32
+        scale_factor: f32,
     ) -> f32 {
         let (_, height, baseline) = self.measure_raw(
             " ",
@@ -754,7 +742,7 @@ impl TextMeasurer for TextPipeline {
             font_style,
             font_size * scale_factor,
             0.0,
-            None
+            None,
         );
         height - baseline
     }
@@ -765,7 +753,7 @@ impl TextMeasurer for TextPipeline {
         font_size: f32,
         font_weight: FontWeight,
         font_style: FontStyle,
-        scale_factor: f32
+        scale_factor: f32,
     ) -> f32 {
         let (_, height, _) = self.measure_raw(
             " ",
@@ -774,7 +762,7 @@ impl TextMeasurer for TextPipeline {
             font_style,
             font_size * scale_factor,
             0.0,
-            None
+            None,
         );
         height
     }
@@ -803,7 +791,11 @@ fn convert_style(style: FontStyle) -> GlyphonStyle {
 }
 
 fn resolve_line_height(scale: f32, line_height: f32) -> f32 {
-    if line_height > 0.0 { line_height } else { scale * DEFAULT_LINE_HEIGHT_RATIO }
+    if line_height > 0.0 {
+        line_height
+    } else {
+        scale * DEFAULT_LINE_HEIGHT_RATIO
+    }
 }
 
 fn map_text_align(align: TextAlign) -> glyphon::cosmic_text::Align {

@@ -1,17 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 use crate::{
-    LayoutBox,
-    LayoutContext,
-    MeasureContext,
-    Position,
-    RenderCache,
-    Style,
-    Widget,
-    WidgetPath,
+    LayoutBox, LayoutContext, MeasureContext, Position, RenderCache, Style, Widget, WidgetPath,
     style_to_taffy,
 };
 use taffy::prelude::*;
 
+/// Data and behavior represented by `LayoutEngine`.
 pub struct LayoutEngine;
 
 impl LayoutEngine {
@@ -25,12 +19,13 @@ impl LayoutEngine {
         }
     }
 
+    /// Returns or updates the `layout` value.
     pub fn layout(
         tree: &mut [Box<dyn Widget>],
         ctx: &mut LayoutContext,
         cache: &mut RenderCache,
         viewport_width: f32,
-        viewport_height: f32
+        viewport_height: f32,
     ) {
         // Lets Length::ViewportWidth/ViewportHeight resolve against the
         // current frame's viewport size during measurement and layout.
@@ -67,10 +62,13 @@ impl LayoutEngine {
             .expect("cannot create taffy root node");
 
         taffy
-            .compute_layout(root_id, Size {
-                width: AvailableSpace::Definite(viewport_width),
-                height: AvailableSpace::Definite(viewport_height),
-            })
+            .compute_layout(
+                root_id,
+                Size {
+                    width: AvailableSpace::Definite(viewport_width),
+                    height: AvailableSpace::Definite(viewport_height),
+                },
+            )
             .expect("cannot calculate taffy layout");
 
         let viewport = (viewport_width, viewport_height);
@@ -86,7 +84,7 @@ impl LayoutEngine {
                 viewport_height,
                 ctx.scale_factor,
                 viewport,
-                None
+                None,
             );
         }
     }
@@ -117,7 +115,7 @@ fn build_taffy_node(
     taffy: &mut TaffyTree<()>,
     ctx: &mut LayoutContext,
     cache: &mut RenderCache,
-    path: &mut WidgetPath
+    path: &mut WidgetPath,
 ) -> NodeId {
     let mut measure_ctx = MeasureContext::new(ctx.text, ctx.scale_factor);
 
@@ -128,7 +126,11 @@ fn build_taffy_node(
     widget.on_layout_pass(&mut measure_ctx);
 
     let children = widget.children();
-    let mut style = style_to_taffy(widget.computed_style(), ctx.scale_factor, !children.is_empty());
+    let mut style = style_to_taffy(
+        widget.computed_style(),
+        ctx.scale_factor,
+        !children.is_empty(),
+    );
     let children = widget.children();
 
     if children.is_empty() {
@@ -208,7 +210,9 @@ fn build_taffy_node(
                 id
             })
             .collect();
-        taffy.new_with_children(style, &child_ids).expect("cannot create taffy node")
+        taffy
+            .new_with_children(style, &child_ids)
+            .expect("cannot create taffy node")
     }
 }
 
@@ -223,9 +227,11 @@ fn apply_layout(
     parent_height: f32,
     scale_factor: f32,
     viewport: (f32, f32),
-    scroll_viewport: Option<LayoutBox>
+    scroll_viewport: Option<LayoutBox>,
 ) {
-    let layout = taffy.layout(node_id).expect("cannot find taffy layout result");
+    let layout = taffy
+        .layout(node_id)
+        .expect("cannot find taffy layout result");
     let abs_x = parent_x + layout.location.x;
     let abs_y = parent_y + layout.location.y;
     let abs_right = abs_x + layout.size.width;
@@ -262,23 +268,23 @@ fn apply_layout(
         }
     }
 
-    if position == Position::Sticky && let Some(container) = scroll_viewport {
+    if position == Position::Sticky
+        && let Some(container) = scroll_viewport
+    {
         let style = widget.computed_style();
         if let Some(top) = style.top {
             snapped_y = snapped_y.max(container.y + top.to_physical(scale_factor));
         }
         if let Some(bottom) = style.bottom {
-            snapped_y = snapped_y.min(
-                container.y + container.height - height - bottom.to_physical(scale_factor)
-            );
+            snapped_y = snapped_y
+                .min(container.y + container.height - height - bottom.to_physical(scale_factor));
         }
         if let Some(left) = style.left {
             snapped_x = snapped_x.max(container.x + left.to_physical(scale_factor));
         }
         if let Some(right) = style.right {
-            snapped_x = snapped_x.min(
-                container.x + container.width - width - right.to_physical(scale_factor)
-            );
+            snapped_x = snapped_x
+                .min(container.x + container.width - width - right.to_physical(scale_factor));
         }
     }
 
@@ -286,10 +292,9 @@ fn apply_layout(
     // widget's percentage min-width is excluded from taffy's own pass
     // (see style_to_taffy) and resolved here instead, against the real
     // parent width, so it can't overflow past the actual container.
-    if
-        widget.children().is_empty() &&
-        let Some(min_size) = widget.computed_style().min_size &&
-        let Some(crate::Length::Percent(p)) = min_size.width
+    if widget.children().is_empty()
+        && let Some(min_size) = widget.computed_style().min_size
+        && let Some(crate::Length::Percent(p)) = min_size.width
     {
         width = width.max(parent_width * (p / 100.0));
     }
@@ -300,10 +305,9 @@ fn apply_layout(
     // don't get it forwarded (to avoid locking their auto-width
     // measurement), so it's resolved here instead, against the real
     // parent height.
-    if
-        widget.children().is_empty() &&
-        let Some(min_size) = widget.computed_style().min_size &&
-        let Some(crate::Length::Percent(p)) = min_size.height
+    if widget.children().is_empty()
+        && let Some(min_size) = widget.computed_style().min_size
+        && let Some(crate::Length::Percent(p)) = min_size.height
     {
         height = height.max(parent_height * (p / 100.0));
     }
@@ -323,14 +327,12 @@ fn apply_layout(
         let children_ref = widget.children();
 
         for (i, &child_id) in ids.iter().enumerate() {
-            let out_of_flow = children_ref
-                .get(i)
-                .is_some_and(|c| {
-                    matches!(
-                        c.computed_style().position.unwrap_or_default(),
-                        Position::Absolute | Position::Fixed
-                    )
-                });
+            let out_of_flow = children_ref.get(i).is_some_and(|c| {
+                matches!(
+                    c.computed_style().position.unwrap_or_default(),
+                    Position::Absolute | Position::Fixed
+                )
+            });
             if out_of_flow {
                 continue;
             }
@@ -346,7 +348,12 @@ fn apply_layout(
 
     let next_scroll_viewport = widget
         .clip_children()
-        .map(|(x, y, w, h)| LayoutBox { x, y, width: w, height: h })
+        .map(|(x, y, w, h)| LayoutBox {
+            x,
+            y,
+            width: w,
+            height: h,
+        })
         .or(scroll_viewport);
 
     if let (Some(children), Some(ids)) = (widget.children_mut(), child_ids) {
@@ -361,7 +368,7 @@ fn apply_layout(
                 height,
                 scale_factor,
                 viewport,
-                next_scroll_viewport
+                next_scroll_viewport,
             );
         }
     }
@@ -370,16 +377,23 @@ fn apply_layout(
 fn reflow_scroll_recursive(
     widget: &mut dyn Widget,
     scroll_viewport: Option<LayoutBox>,
-    scale_factor: f32
+    scale_factor: f32,
 ) {
     let (dx, dy) = widget.take_scroll_delta();
 
     let next_scroll_viewport = widget
         .clip_children()
-        .map(|(x, y, w, h)| LayoutBox { x, y, width: w, height: h })
+        .map(|(x, y, w, h)| LayoutBox {
+            x,
+            y,
+            width: w,
+            height: h,
+        })
         .or(scroll_viewport);
 
-    if (dx != 0.0 || dy != 0.0) && let Some(children) = widget.children_mut() {
+    if (dx != 0.0 || dy != 0.0)
+        && let Some(children) = widget.children_mut()
+    {
         for child in children.iter_mut() {
             translate_subtree(child.as_mut(), -dx, -dy, next_scroll_viewport, scale_factor);
         }
@@ -402,7 +416,7 @@ fn translate_subtree(
     dx: f32,
     dy: f32,
     scroll_viewport: Option<LayoutBox>,
-    scale_factor: f32
+    scale_factor: f32,
 ) {
     let position = widget.computed_style().position.unwrap_or_default();
 
@@ -425,23 +439,25 @@ fn translate_subtree(
         height: b.height,
     };
 
-    if position == Position::Sticky && let Some(container) = scroll_viewport {
+    if position == Position::Sticky
+        && let Some(container) = scroll_viewport
+    {
         let style = widget.computed_style();
         if let Some(top) = style.top {
             moved.y = moved.y.max(container.y + top.to_physical(scale_factor));
         }
         if let Some(bottom) = style.bottom {
             moved.y = moved.y.min(
-                container.y + container.height - moved.height - bottom.to_physical(scale_factor)
+                container.y + container.height - moved.height - bottom.to_physical(scale_factor),
             );
         }
         if let Some(left) = style.left {
             moved.x = moved.x.max(container.x + left.to_physical(scale_factor));
         }
         if let Some(right) = style.right {
-            moved.x = moved.x.min(
-                container.x + container.width - moved.width - right.to_physical(scale_factor)
-            );
+            moved.x = moved
+                .x
+                .min(container.x + container.width - moved.width - right.to_physical(scale_factor));
         }
     }
 
@@ -455,7 +471,12 @@ fn translate_subtree(
 
     let next_scroll_viewport = widget
         .clip_children()
-        .map(|(x, y, w, h)| LayoutBox { x, y, width: w, height: h })
+        .map(|(x, y, w, h)| LayoutBox {
+            x,
+            y,
+            width: w,
+            height: h,
+        })
         .or(scroll_viewport);
 
     if let Some(children) = widget.children_mut() {
@@ -465,7 +486,7 @@ fn translate_subtree(
                 effective_dx,
                 effective_dy,
                 next_scroll_viewport,
-                scale_factor
+                scale_factor,
             );
         }
     }

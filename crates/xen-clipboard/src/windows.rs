@@ -1,23 +1,21 @@
-use std::{ ptr, slice };
+#![allow(unsafe_code)]
+
+use std::{ptr, slice};
 
 use windows_sys::Win32::{
     Foundation::HWND,
     System::{
         DataExchange::{
-            CloseClipboard,
-            EmptyClipboard,
-            GetClipboardData,
-            IsClipboardFormatAvailable,
-            OpenClipboard,
-            SetClipboardData,
+            CloseClipboard, EmptyClipboard, GetClipboardData, IsClipboardFormatAvailable,
+            OpenClipboard, SetClipboardData,
         },
-        Memory::{ GlobalAlloc, GlobalLock, GlobalUnlock, GMEM_MOVEABLE },
+        Memory::{GMEM_MOVEABLE, GlobalAlloc, GlobalLock, GlobalUnlock},
     },
 };
 
 const CF_UNICODETEXT: u32 = 13;
 
-use crate::{ ClipboardError };
+use crate::ClipboardError;
 
 use super::ClipboardBackend;
 
@@ -119,6 +117,8 @@ impl ClipboardBackend for WindowsClipboard {
     }
 
     fn has_text(&self, callback: Box<dyn FnOnce(Result<bool, ClipboardError>) + Send>) {
-        callback(Ok(unsafe { IsClipboardFormatAvailable(CF_UNICODETEXT) != 0 }));
+        callback(Ok(unsafe {
+            IsClipboardFormatAvailable(CF_UNICODETEXT) != 0
+        }));
     }
 }

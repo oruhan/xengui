@@ -23,9 +23,11 @@ pub fn convert_mouse_button(button: winit::event::MouseButton) -> xengui::MouseB
 /// Converts a winit scroll delta into xengui's own.
 pub fn convert_scroll_delta(delta: winit::event::MouseScrollDelta) -> xengui::MouseScrollDelta {
     match delta {
-        winit::event::MouseScrollDelta::LineDelta(x, y) =>
-            xengui::MouseScrollDelta::LineDelta(x, y),
-        winit::event::MouseScrollDelta::PixelDelta(pos) =>
-            xengui::MouseScrollDelta::PixelDelta(pos.x, pos.y),
+        winit::event::MouseScrollDelta::LineDelta(x, y) => {
+            xengui::MouseScrollDelta::LineDelta(x, y)
+        }
+        winit::event::MouseScrollDelta::PixelDelta(pos) => {
+            xengui::MouseScrollDelta::PixelDelta(pos.x, pos.y)
+        }
     }
 }

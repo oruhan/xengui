@@ -5,11 +5,11 @@
 //! standard weight/style/stretch axes, not the custom GRAD/opsz/FILL
 //! axes Material Symbols needs blended continuously.
 use std::collections::HashMap;
-use swash::scale::{ Render, ScaleContext, Source };
-use swash::zeno::Format;
-use swash::FontRef;
-use xengui::{ paint, VariableIconCommand };
 use std::sync::Arc;
+use swash::FontRef;
+use swash::scale::{Render, ScaleContext, Source};
+use swash::zeno::Format;
+use xengui::{VariableIconCommand, paint};
 
 #[repr(C)]
 #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
@@ -78,7 +78,7 @@ impl VariableIconPipeline {
     pub fn new(
         device: &wgpu::Device,
         surface_format: wgpu::TextureFormat,
-        sample_count: u32
+        sample_count: u32,
     ) -> Self {
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("Variable Icon Shader"),
@@ -106,7 +106,7 @@ impl VariableIconPipeline {
                         count: None,
                     },
                 ],
-            })
+            }),
         );
 
         let layout = device.create_pipeline_layout(
@@ -114,7 +114,7 @@ impl VariableIconPipeline {
                 label: Some("Variable Icon Pipeline Layout"),
                 bind_group_layouts: &[Some(&bind_group_layout)],
                 immediate_size: 0,
-            })
+            }),
         );
 
         let pipeline = device.create_render_pipeline(
@@ -141,17 +141,15 @@ impl VariableIconPipeline {
                     module: &shader,
                     entry_point: Some("fs_main"),
                     compilation_options: Default::default(),
-                    targets: &[
-                        Some(wgpu::ColorTargetState {
-                            format: surface_format,
-                            blend: Some(wgpu::BlendState::PREMULTIPLIED_ALPHA_BLENDING),
-                            write_mask: wgpu::ColorWrites::ALL,
-                        }),
-                    ],
+                    targets: &[Some(wgpu::ColorTargetState {
+                        format: surface_format,
+                        blend: Some(wgpu::BlendState::PREMULTIPLIED_ALPHA_BLENDING),
+                        write_mask: wgpu::ColorWrites::ALL,
+                    })],
                 }),
                 multiview_mask: None,
                 cache: None,
-            })
+            }),
         );
 
         let sampler = device.create_sampler(
@@ -162,7 +160,7 @@ impl VariableIconPipeline {
                 mag_filter: wgpu::FilterMode::Linear,
                 min_filter: wgpu::FilterMode::Linear,
                 ..Default::default()
-            })
+            }),
         );
 
         let vertex_capacity = DEFAULT_ICON_CAPACITY * VERTICES_PER_ICON;
@@ -172,7 +170,7 @@ impl VariableIconPipeline {
                 size: (vertex_capacity * std::mem::size_of::<Vertex>()) as u64,
                 usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
                 mapped_at_creation: false,
-            })
+            }),
         );
 
         Self {
@@ -225,7 +223,7 @@ impl VariableIconPipeline {
         &mut self,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
-        cmd: &VariableIconCommand
+        cmd: &VariableIconCommand,
     ) -> Option<GlyphKey> {
         let physical_size = cmd.size.1.max(cmd.size.0);
         let key = GlyphKey {
@@ -251,13 +249,15 @@ impl VariableIconPipeline {
             return None;
         }
 
-        let variation_settings: Vec<(swash::Tag, f32)> = cmd.axes
+        let variation_settings: Vec<(swash::Tag, f32)> = cmd
+            .axes
             .to_variations()
             .into_iter()
-            .map(|(tag, value)| { (u32::from_be_bytes(tag), value) })
+            .map(|(tag, value)| (u32::from_be_bytes(tag), value))
             .collect();
 
-        let mut scaler = self.scale_context
+        let mut scaler = self
+            .scale_context
             .builder(font)
             .size(physical_size)
             .hint(true)
@@ -278,14 +278,18 @@ impl VariableIconPipeline {
         let texture = device.create_texture(
             &(wgpu::TextureDescriptor {
                 label: Some("xengui variable icon glyph"),
-                size: wgpu::Extent3d { width, height, depth_or_array_layers: 1 },
+                size: wgpu::Extent3d {
+                    width,
+                    height,
+                    depth_or_array_layers: 1,
+                },
                 mip_level_count: 1,
                 sample_count: 1,
                 dimension: wgpu::TextureDimension::D2,
                 format: wgpu::TextureFormat::R8Unorm,
                 usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
                 view_formats: &[],
-            })
+            }),
         );
 
         queue.write_texture(
@@ -301,7 +305,11 @@ impl VariableIconPipeline {
                 bytes_per_row: Some(width),
                 rows_per_image: Some(height),
             },
-            wgpu::Extent3d { width, height, depth_or_array_layers: 1 }
+            wgpu::Extent3d {
+                width,
+                height,
+                depth_or_array_layers: 1,
+            },
         );
 
         let view = texture.create_view(&Default::default());
@@ -319,13 +327,16 @@ impl VariableIconPipeline {
                         resource: wgpu::BindingResource::Sampler(&self.sampler),
                     },
                 ],
-            })
+            }),
         );
 
-        self.glyphs.insert(key, CachedGlyph {
-            bind_group,
-            size: (width as f32, height as f32),
-        });
+        self.glyphs.insert(
+            key,
+            CachedGlyph {
+                bind_group,
+                size: (width as f32, height as f32),
+            },
+        );
 
         Some(key)
     }
@@ -337,7 +348,7 @@ impl VariableIconPipeline {
         render_pass: &mut wgpu::RenderPass<'_>,
         surface_width: u32,
         surface_height: u32,
-        cmds: &[VariableIconCommand]
+        cmds: &[VariableIconCommand],
     ) {
         if cmds.is_empty() {
             return;
@@ -376,17 +387,19 @@ impl VariableIconPipeline {
             let p2 = ndc(gx, gy);
             let p3 = ndc(gx + glyph.size.0, gy);
 
-            let mk = |screen: [f32; 2], uv: [f32; 2]| Vertex { position: screen, uv, tint };
-            vertices.extend_from_slice(
-                &[
-                    mk(p0, [0.0, 0.0]),
-                    mk(p1, [1.0, 0.0]),
-                    mk(p2, [0.0, 1.0]),
-                    mk(p2, [0.0, 1.0]),
-                    mk(p1, [1.0, 0.0]),
-                    mk(p3, [1.0, 1.0]),
-                ]
-            );
+            let mk = |screen: [f32; 2], uv: [f32; 2]| Vertex {
+                position: screen,
+                uv,
+                tint,
+            };
+            vertices.extend_from_slice(&[
+                mk(p0, [0.0, 0.0]),
+                mk(p1, [1.0, 0.0]),
+                mk(p2, [0.0, 1.0]),
+                mk(p2, [0.0, 1.0]),
+                mk(p1, [1.0, 0.0]),
+                mk(p3, [1.0, 1.0]),
+            ]);
             keys.push(Some(key));
         }
 
@@ -395,13 +408,20 @@ impl VariableIconPipeline {
         queue.write_buffer(
             &self.vertex_buffer,
             (base_vertex * std::mem::size_of::<Vertex>()) as u64,
-            bytemuck::cast_slice(&vertices)
+            bytemuck::cast_slice(&vertices),
         );
         self.write_offset += vertices.len();
 
         render_pass.set_pipeline(&self.pipeline);
         render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
-        render_pass.set_viewport(0.0, 0.0, surface_width as f32, surface_height as f32, 0.0, 1.0);
+        render_pass.set_viewport(
+            0.0,
+            0.0,
+            surface_width as f32,
+            surface_height as f32,
+            0.0,
+            1.0,
+        );
 
         let mut vertex_cursor = base_vertex;
         for (cmd, key) in cmds.iter().zip(keys.iter()) {
@@ -410,11 +430,8 @@ impl VariableIconPipeline {
             };
             let glyph = &self.glyphs[key];
 
-            let (sx, sy, sw, sh) = paint::draw_command::scissor_for_clip(
-                cmd.clip_rect,
-                surface_width,
-                surface_height
-            );
+            let (sx, sy, sw, sh) =
+                paint::draw_command::scissor_for_clip(cmd.clip_rect, surface_width, surface_height);
             if sw == 0 || sh == 0 {
                 vertex_cursor += VERTICES_PER_ICON;
                 continue;
@@ -423,7 +440,7 @@ impl VariableIconPipeline {
             render_pass.set_bind_group(0, &glyph.bind_group, &[]);
             render_pass.draw(
                 vertex_cursor as u32..(vertex_cursor + VERTICES_PER_ICON) as u32,
-                0..1
+                0..1,
             );
             vertex_cursor += VERTICES_PER_ICON;
         }
@@ -440,7 +457,7 @@ impl VariableIconPipeline {
                 size: (self.vertex_capacity * std::mem::size_of::<Vertex>()) as u64,
                 usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
                 mapped_at_creation: false,
-            })
+            }),
         );
     }
 }

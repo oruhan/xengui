@@ -1,24 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 use crate::{
-    AnimationManager,
-    Color,
-    Constraints,
-    EventCtx,
-    EventStatus,
-    InputEvent,
-    Interaction,
-    LayoutBox,
-    MeasureContext,
-    MeasureResult,
-    PaintContext,
-    Style,
-    StyleBuilder,
-    VariableIconCommand,
-    Widget,
-    WidgetBase,
-    WidgetId,
+    AnimationManager, Color, Constraints, EventCtx, EventStatus, InputEvent, Interaction,
+    LayoutBox, MeasureContext, MeasureResult, PaintContext, Style, StyleBuilder,
+    VariableIconCommand, Widget, WidgetBase, WidgetId,
 };
-use xengui_icons::material_symbols::{ IconAxes, MaterialSymbolsVariable };
+use xengui_icons::material_symbols::{IconAxes, MaterialSymbolsVariable};
 
 /// A single Material Symbols glyph rendered straight from the variable
 /// font, with `weight`/`grade`/`optical_size`/`fill` blended continuously
@@ -36,6 +22,7 @@ pub struct VariableIcon {
 }
 
 impl VariableIcon {
+    /// Creates a value with its default configuration.
     pub fn new(codepoint: char) -> Self {
         Self {
             base: WidgetBase::new(Interaction::new()),
@@ -58,18 +45,21 @@ impl VariableIcon {
         self
     }
 
+    /// Returns or updates the `axes` value.
     pub fn axes(mut self, axes: IconAxes) -> Self {
         self.axes = axes;
         self.mark_dirty();
         self
     }
 
+    /// Returns or updates the `size` value.
     pub fn size(mut self, size: f32) -> Self {
         self.size = size;
         self.mark_dirty();
         self
     }
 
+    /// Returns or updates the `color` value.
     pub fn color(mut self, color: Color) -> Self {
         self.color = Some(color);
         self.mark_dirty();
@@ -124,7 +114,9 @@ impl Widget for VariableIcon {
         self.paint_box(ctx);
         self.paint_outline(ctx);
 
-        let color = self.color.unwrap_or(self.base.computed_style.color.unwrap_or(Color::BLACK));
+        let color = self
+            .color
+            .unwrap_or(self.base.computed_style.color.unwrap_or(Color::BLACK));
 
         ctx.draw_variable_icon(VariableIconCommand {
             position: (self.layout_box.x, self.layout_box.y),
@@ -153,13 +145,13 @@ impl Widget for VariableIcon {
         let Some(other) = other.as_any().downcast_ref::<VariableIcon>() else {
             return false;
         };
-        self.codepoint == other.codepoint &&
-            self.font.as_ptr() == other.font.as_ptr() &&
-            self.font.len() == other.font.len() &&
-            self.axes == other.axes &&
-            self.size == other.size &&
-            self.color == other.color &&
-            self.base.style == other.base.style
+        self.codepoint == other.codepoint
+            && self.font.as_ptr() == other.font.as_ptr()
+            && self.font.len() == other.font.len()
+            && self.axes == other.axes
+            && self.size == other.size
+            && self.color == other.color
+            && self.base.authored_styles_eq(&other.base)
     }
 
     fn cascade_style(&mut self, parent: &Style, anim: &mut AnimationManager) {

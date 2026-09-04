@@ -1,44 +1,18 @@
 // SPDX-License-Identifier: Apache-2.0
 use crate::{
-    AnimationManager,
-    Background,
-    Color,
-    Constraints,
-    Cursor,
-    ElementState,
-    EventCtx,
-    EventStatus,
-    InputEvent,
-    Interaction,
-    Key,
-    KeyState,
-    LayoutBox,
-    MULTI_CLICK_DISTANCE_DP,
-    MULTI_CLICK_INTERVAL,
-    MeasureContext,
-    MeasureResult,
-    MouseButton,
-    PaintContext,
-    RectCommand,
-    Style,
-    StyleBuilder,
-    TextCommand,
-    TextDecoration,
-    Widget,
-    WidgetBase,
-    WidgetContent,
-    WidgetId,
+    AnimationManager, Background, Color, Constraints, Cursor, ElementState, EventCtx, EventStatus,
+    InputEvent, Interaction, Key, KeyState, LayoutBox, MULTI_CLICK_DISTANCE_DP,
+    MULTI_CLICK_INTERVAL, MeasureContext, MeasureResult, MouseButton, PaintContext, RectCommand,
+    Style, StyleBuilder, TextCommand, TextDecoration, Widget, WidgetBase, WidgetContent, WidgetId,
     constants::{
-        DEFAULT_CURSOR_ICON,
-        DEFAULT_FONT_SIZE,
-        DEFAULT_LINK_COLOR,
-        DEFAULT_POINTER_CURSOR_ICON,
+        DEFAULT_CURSOR_ICON, DEFAULT_FONT_SIZE, DEFAULT_LINK_COLOR, DEFAULT_POINTER_CURSOR_ICON,
     },
 };
 use smol_str::SmolStr;
-use std::cell::{ Cell, RefCell };
+use std::cell::{Cell, RefCell};
 use web_time::Instant;
 
+/// Data and behavior represented by `Link`.
 pub struct Link {
     base: WidgetBase,
     anim_id: WidgetId,
@@ -64,6 +38,7 @@ pub struct Link {
 }
 
 impl Link {
+    /// Creates a value with its default configuration.
     pub fn new() -> Self {
         let mut interaction = Interaction::new();
         interaction.focusable = true;
@@ -97,12 +72,14 @@ impl Link {
         link
     }
 
+    /// Returns or updates the `label` value.
     pub fn label(mut self, content: impl Into<SmolStr>) -> Self {
         self.content = content.into();
         self.mark_dirty();
         self
     }
 
+    /// Returns or updates the `selectable` value.
     pub fn selectable(mut self, selectable: bool) -> Self {
         self.selectable = selectable;
         self.mark_dirty();
@@ -127,17 +104,14 @@ impl Link {
     fn recompute_style(&mut self) {
         self.base.recompute_style();
 
-        self.base.interaction.hover_cursor = self.base.computed_style.cursor.or(
-            Some(
-                if self.selectable {
-                    Cursor::Text
-                } else if self.href.is_some() {
-                    DEFAULT_POINTER_CURSOR_ICON
-                } else {
-                    DEFAULT_CURSOR_ICON
-                }
-            )
-        );
+        self.base.interaction.hover_cursor =
+            self.base.computed_style.cursor.or(Some(if self.selectable {
+                Cursor::Text
+            } else if self.href.is_some() {
+                DEFAULT_POINTER_CURSOR_ICON
+            } else {
+                DEFAULT_CURSOR_ICON
+            }));
     }
 
     fn open_href(&self, _force_new_tab: bool) {
@@ -150,7 +124,11 @@ impl Link {
         #[cfg(target_arch = "wasm32")]
         {
             if let Some(window) = web_sys::window() {
-                let target = if self.target_blank || _force_new_tab { "_blank" } else { "_self" };
+                let target = if self.target_blank || _force_new_tab {
+                    "_blank"
+                } else {
+                    "_self"
+                };
                 let _ = window.open_with_url_and_target(&url, target);
             }
         }
@@ -179,7 +157,13 @@ impl Link {
     }
 
     fn char_class(c: char) -> u8 {
-        if c.is_whitespace() { 0 } else if c.is_alphanumeric() || c == '_' { 1 } else { 2 }
+        if c.is_whitespace() {
+            0
+        } else if c.is_alphanumeric() || c == '_' {
+            1
+        } else {
+            2
+        }
     }
 
     fn word_bounds_at(&self, idx: usize) -> (usize, usize) {
@@ -243,8 +227,14 @@ impl Widget for Link {
 
         // Logical metrics; TextMeasurer converts to physical internally.
         let font_size = style.font_size.unwrap_or(DEFAULT_FONT_SIZE).value();
-        let letter_spacing = style.letter_spacing.map(|ls| ls.value().value()).unwrap_or(0.0);
-        let line_height = style.line_height.map(|lh| lh.value().value()).unwrap_or(0.0);
+        let letter_spacing = style
+            .letter_spacing
+            .map(|ls| ls.value().value())
+            .unwrap_or(0.0);
+        let line_height = style
+            .line_height
+            .map(|lh| lh.value().value())
+            .unwrap_or(0.0);
 
         self.measured_max_width.set(constraints.max_width);
 
@@ -257,7 +247,7 @@ impl Widget for Link {
             letter_spacing,
             line_height,
             constraints.max_width,
-            scale_factor
+            scale_factor,
         );
 
         self.content_size.set((result.width, result.height));
@@ -271,19 +261,17 @@ impl Widget for Link {
                 style.font_style.unwrap_or_default(),
                 letter_spacing,
                 line_height,
-                scale_factor
+                scale_factor,
             );
         }
 
         let padding = style.padding.unwrap_or_default();
-        let width =
-            result.width +
-            padding.left.to_physical(scale_factor) +
-            padding.right.to_physical(scale_factor);
-        let height =
-            result.height +
-            padding.top.to_physical(scale_factor) +
-            padding.bottom.to_physical(scale_factor);
+        let width = result.width
+            + padding.left.to_physical(scale_factor)
+            + padding.right.to_physical(scale_factor);
+        let height = result.height
+            + padding.top.to_physical(scale_factor)
+            + padding.bottom.to_physical(scale_factor);
         let (width, height) = constraints.constrain_size(width, height);
 
         MeasureResult {
@@ -310,10 +298,16 @@ impl Widget for Link {
         text_style.color.get_or_insert(DEFAULT_LINK_COLOR);
 
         if self.base.interaction.hovered {
-            text_style.text_decoration.get_or_insert(TextDecoration::UNDERLINE);
+            text_style
+                .text_decoration
+                .get_or_insert(TextDecoration::UNDERLINE);
         }
 
-        let selection = if self.selectable { self.text_selection() } else { None };
+        let selection = if self.selectable {
+            self.text_selection()
+        } else {
+            None
+        };
         let mut sel_bounds: Option<(f32, f32)> = None;
 
         if let Some((start, end)) = selection {
@@ -323,11 +317,11 @@ impl Widget for Link {
                 ctx.draw_rect(RectCommand {
                     position: (text_x + start_x, text_y),
                     size: (end_x - start_x, content_h.max(1.0)),
-                    background: Some(
-                        Background::Color(
-                            style.selection_background.unwrap_or(Color::rgba(90, 140, 230, 100))
-                        )
-                    ),
+                    background: Some(Background::Color(
+                        style
+                            .selection_background
+                            .unwrap_or(Color::rgba(90, 140, 230, 100)),
+                    )),
                     border_radius: style.selection_border_radius.map(Into::into),
                     border_width: style.selection_border_width,
                     border_color: style.selection_border_color,
@@ -395,58 +389,62 @@ impl Widget for Link {
         // Consumed on Pressed so a scrollable ancestor's View doesn't read
         // this as the start of a middle-click AutoScroll gesture; the
         // actual navigation still happens on Released, below.
-        if
-            let InputEvent::MouseInput {
-                state: ElementState::Pressed,
-                button: MouseButton::Middle,
-                ..
-            } = event &&
-            self.base.interaction.hovered &&
-            self.href.is_some()
+        if let InputEvent::MouseInput {
+            state: ElementState::Pressed,
+            button: MouseButton::Middle,
+            ..
+        } = event
+            && self.base.interaction.hovered
+            && self.href.is_some()
         {
             return EventStatus::Handled;
         }
 
         // Middle-click opens the link in a new tab, matching browser convention.
-        if
-            let InputEvent::MouseInput {
-                state: ElementState::Released,
-                button: MouseButton::Middle,
-                ..
-            } = event &&
-            self.base.interaction.hovered &&
-            self.href.is_some()
+        if let InputEvent::MouseInput {
+            state: ElementState::Released,
+            button: MouseButton::Middle,
+            ..
+        } = event
+            && self.base.interaction.hovered
+            && self.href.is_some()
         {
             self.open_href(true);
             return EventStatus::Handled;
         }
 
         if self.selectable {
-            if
-                let InputEvent::MouseInput {
-                    state: ElementState::Pressed,
-                    button: MouseButton::Left,
-                    position,
-                } = event
+            if let InputEvent::MouseInput {
+                state: ElementState::Pressed,
+                button: MouseButton::Left,
+                position,
+            } = event
             {
-                let padding_left = self.base.computed_style.padding
+                let padding_left = self
+                    .base
+                    .computed_style
+                    .padding
                     .unwrap_or_default()
-                    .left.to_physical(self.scale_factor.get());
+                    .left
+                    .to_physical(self.scale_factor.get());
                 let local_x = position.0 - self.layout_box.x - padding_left;
                 let idx = self.index_for_offset(local_x);
 
                 let now = Instant::now();
                 let (last_x, last_y) = self.last_click_pos.get();
                 let click_distance = MULTI_CLICK_DISTANCE_DP * self.scale_factor.get();
-                let same_spot =
-                    (position.0 - last_x).abs() < click_distance &&
-                    (position.1 - last_y).abs() < click_distance;
-                let is_repeat =
-                    same_spot &&
-                    self.last_click_time
+                let same_spot = (position.0 - last_x).abs() < click_distance
+                    && (position.1 - last_y).abs() < click_distance;
+                let is_repeat = same_spot
+                    && self
+                        .last_click_time
                         .get()
                         .is_some_and(|t| now.duration_since(t) < MULTI_CLICK_INTERVAL);
-                let click_count = if is_repeat { (self.click_count.get() + 1).min(3) } else { 1 };
+                let click_count = if is_repeat {
+                    (self.click_count.get() + 1).min(3)
+                } else {
+                    1
+                };
                 self.click_count.set(click_count);
                 self.last_click_time.set(Some(now));
                 self.last_click_pos.set(*position);
@@ -475,10 +473,16 @@ impl Widget for Link {
                 }
             }
 
-            if let InputEvent::MouseMoved { position } = event && self.dragging.get() {
-                let padding_left = self.base.computed_style.padding
+            if let InputEvent::MouseMoved { position } = event
+                && self.dragging.get()
+            {
+                let padding_left = self
+                    .base
+                    .computed_style
+                    .padding
                     .unwrap_or_default()
-                    .left.value();
+                    .left
+                    .value();
                 let local_x = position.0 - self.layout_box.x - padding_left;
                 let idx = self.index_for_offset(local_x);
                 if self.selection_anchor.get() != Some(idx) {
@@ -487,13 +491,14 @@ impl Widget for Link {
                 return EventStatus::Handled;
             }
 
-            if
-                matches!(event, InputEvent::MouseInput {
+            if matches!(
+                event,
+                InputEvent::MouseInput {
                     state: ElementState::Released,
                     button: MouseButton::Left,
                     ..
-                })
-            {
+                }
+            ) {
                 self.dragging.set(false);
             }
         }
@@ -503,16 +508,20 @@ impl Widget for Link {
                 state: ElementState::Released,
                 button: MouseButton::Left,
                 ..
-            } =>
-                self.base.interaction.pressed &&
-                    self.base.interaction.hovered &&
-                    !self.moved_during_press.get() &&
-                    self.click_count.get() <= 1,
-            InputEvent::KeyInput { event: key_event, .. } =>
-                self.base.interaction.focused &&
-                    !key_event.repeat &&
-                    key_event.state == KeyState::Pressed &&
-                    matches!(key_event.key, Key::Enter | Key::Space),
+            } => {
+                self.base.interaction.pressed
+                    && self.base.interaction.hovered
+                    && !self.moved_during_press.get()
+                    && self.click_count.get() <= 1
+            }
+            InputEvent::KeyInput {
+                event: key_event, ..
+            } => {
+                self.base.interaction.focused
+                    && !key_event.repeat
+                    && key_event.state == KeyState::Pressed
+                    && matches!(key_event.key, Key::Enter | Key::Space)
+            }
             _ => false,
         };
 
@@ -529,10 +538,9 @@ impl Widget for Link {
         if matches!(status, EventStatus::Handled) {
             self.recompute_style();
 
-            if
-                self.base.computed_style != before_style ||
-                self.base.interaction.focus_visible != before_focus_visible ||
-                self.base.interaction.hovered != before_hovered
+            if self.base.computed_style != before_style
+                || self.base.interaction.focus_visible != before_focus_visible
+                || self.base.interaction.hovered != before_hovered
             {
                 self.base.dirty = true;
                 ctx.request_redraw();
@@ -570,9 +578,13 @@ impl Widget for Link {
     }
 
     fn text_index_at(&self, point: (f32, f32)) -> usize {
-        let padding_left = self.base.computed_style.padding
+        let padding_left = self
+            .base
+            .computed_style
+            .padding
             .unwrap_or_default()
-            .left.to_physical(self.scale_factor.get());
+            .left
+            .to_physical(self.scale_factor.get());
         let local_x = point.0 - self.layout_box.x - padding_left;
         self.index_for_offset(local_x)
     }
@@ -582,7 +594,8 @@ impl Widget for Link {
             return;
         }
         self.selection_anchor.set(Some(0));
-        self.selection_cursor.set(Some(self.content.chars().count()));
+        self.selection_cursor
+            .set(Some(self.content.chars().count()));
         self.base.dirty = true;
     }
 
@@ -591,16 +604,11 @@ impl Widget for Link {
             return false;
         };
 
-        self.content == other.content &&
-            self.base.style == other.base.style &&
-            self.base.hover_style == other.base.hover_style &&
-            self.base.pressed_style == other.base.pressed_style &&
-            self.base.disabled_style == other.base.disabled_style &&
-            self.base.focus_style == other.base.focus_style &&
-            self.base.focused_hover_style == other.base.focused_hover_style &&
-            self.selectable == other.selectable &&
-            self.href == other.href &&
-            self.target_blank == other.target_blank
+        self.content == other.content
+            && self.base.authored_styles_eq(&other.base)
+            && self.selectable == other.selectable
+            && self.href == other.href
+            && self.target_blank == other.target_blank
     }
 
     fn cascade_style(&mut self, parent: &Style, anim: &mut AnimationManager) {
@@ -655,15 +663,20 @@ fn normalize_url(href: &str) -> String {
 fn open_native(url: &str) {
     #[cfg(target_os = "windows")]
     {
-        let _ = std::process::Command::new("cmd").args(["/C", "start", "", url]).spawn();
+        let _ = std::process::Command::new("cmd")
+            .args(["/C", "start", "", url])
+            .spawn();
     }
     #[cfg(target_os = "macos")]
     {
         let _ = std::process::Command::new("open").arg(url).spawn();
     }
-    #[cfg(
-        any(target_os = "linux", target_os = "freebsd", target_os = "openbsd", target_os = "netbsd")
-    )]
+    #[cfg(any(
+        target_os = "linux",
+        target_os = "freebsd",
+        target_os = "openbsd",
+        target_os = "netbsd"
+    ))]
     {
         let _ = std::process::Command::new("xdg-open").arg(url).spawn();
     }

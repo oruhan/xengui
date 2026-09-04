@@ -12,12 +12,12 @@
 //! are shareable and the back/forward buttons work. On native targets
 //! there is no real URL - navigation only changes in-memory state.
 
-mod state;
+mod link;
 mod route_match;
 mod router;
-mod link;
+mod state;
 
-pub use state::{ back, current_path, forward, push, replace, search_params };
-pub use route_match::{ match_route, RouteParams };
-pub use router::Router;
 pub use link::link;
+pub use route_match::{RouteParams, match_route};
+pub use router::Router;
+pub use state::{back, current_path, forward, push, replace, search_params};

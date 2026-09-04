@@ -13,3 +13,6 @@ categories = ["gui"]
 
 [dependencies]
 xen-svg = { workspace = true }
+
+[lints]
+workspace = true

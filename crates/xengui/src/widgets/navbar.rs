@@ -4,32 +4,9 @@
 //! and dispatches selection - positioning (fixed, bottom, centered) is
 //! left to the caller so it composes with any layout.
 use crate::{
-    Align,
-    Border,
-    BorderRadius,
-    BoxShadow,
-    Color,
-    Display,
-    Easing,
-    Edges,
-    Filter,
-    FlexDirection,
-    FontWeight,
-    Interaction,
-    JustifyContent,
-    Label,
-    LayoutBox,
-    Length,
-    Render,
-    Style,
-    StyleBuilder,
-    Transition,
-    VariableIcon,
-    View,
-    Widget,
-    WidgetBase,
-    WidgetId,
-    pct,
+    Align, Border, BorderRadius, BoxShadow, Color, Display, Easing, Edges, Filter, FlexDirection,
+    FontWeight, Interaction, JustifyContent, Label, LayoutBox, Length, Render, Style, StyleBuilder,
+    Transition, VariableIcon, View, Widget, WidgetBase, WidgetId, pct,
 };
 use smol_str::SmolStr;
 use std::rc::Rc;
@@ -37,16 +14,23 @@ use std::time::Duration;
 
 /// A single destination in a [`NavigationBar`].
 pub struct NavItem {
+    /// The `codepoint` value carried by this type.
     pub codepoint: char,
+    /// The `label` value carried by this type.
     pub label: SmolStr,
 }
 
 impl NavItem {
+    /// Creates a value with its default configuration.
     pub fn new(codepoint: char, label: impl Into<SmolStr>) -> Self {
-        Self { codepoint, label: label.into() }
+        Self {
+            codepoint,
+            label: label.into(),
+        }
     }
 }
 
+/// Data and behavior represented by `NavigationBar`.
 pub struct NavigationBar {
     base: WidgetBase,
     layout_box: LayoutBox,
@@ -59,6 +43,7 @@ pub struct NavigationBar {
 }
 
 impl NavigationBar {
+    /// Creates a value with its default configuration.
     pub fn new() -> Self {
         Self {
             base: WidgetBase::new(Interaction::new()),
@@ -71,16 +56,19 @@ impl NavigationBar {
         }
     }
 
+    /// Returns or updates the `item` value.
     pub fn item(mut self, item: NavItem) -> Self {
         self.items.push(item);
         self
     }
 
+    /// Returns or updates the `active_index` value.
     pub fn active_index(mut self, index: usize) -> Self {
         self.active_index = index;
         self
     }
 
+    /// Registers the `on_select` callback.
     pub fn on_select(mut self, f: impl Fn(usize) + 'static) -> Self {
         self.on_select = Some(Rc::new(f));
         self
@@ -116,9 +104,8 @@ impl Render for NavigationBar {
             .background(theme.surface_container_high.with_alpha_f32(0.65))
             .backdrop_filter(Filter::Blur(Length::px(24.0)))
             .border(
-                Border::all(1.0, theme.outline_variant.with_alpha_f32(0.4)).radius(
-                    BorderRadius::all(28.0)
-                )
+                Border::all(1.0, theme.outline_variant.with_alpha_f32(0.4))
+                    .radius(BorderRadius::all(28.0)),
             )
             .box_shadow(BoxShadow::new(0.0, 6.0, 20.0, Color::BLACK.with_alpha(70)));
 
@@ -150,7 +137,7 @@ impl Render for NavigationBar {
                     Label::new()
                         .label(item.label.clone())
                         .font_size(Length::px(13.0))
-                        .font_weight(FontWeight::Medium)
+                        .font_weight(FontWeight::Medium),
                 );
             }
 

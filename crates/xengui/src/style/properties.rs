@@ -1,39 +1,24 @@
 // SPDX-License-Identifier: Apache-2.0
-use smol_str::SmolStr;
-use crate::{
-    BoxShadow, BoxSizing, Cursor, FilterChain, Overscroll, ScrollbarGutter, TransformOrigin, TransitionProperty,
-};
 use super::{
-    Outline,
-    Align,
-    Background,
-    Border,
-    Color,
-    Display,
-    Edges,
-    FlexDirection,
-    FlexWrap,
-    FontStyle,
-    FontWeight,
-    GridPlacement,
-    GridTrack,
-    JustifyContent,
-    Length,
-    LetterSpacing,
-    LineHeight,
-    Position,
-    ScrollbarStyle,
-    Size,
-    TextAlign,
-    TextDecoration,
-    Overflow,
+    Align, Background, Border, Color, Display, Edges, FlexDirection, FlexWrap, FontStyle,
+    FontWeight, GridPlacement, GridTrack, JustifyContent, Length, LetterSpacing, LineHeight,
+    Outline, Overflow, Position, ScrollbarStyle, Size, TextAlign, TextDecoration,
 };
+use crate::{
+    BoxShadow, BoxSizing, Cursor, FilterChain, Overscroll, ScrollbarGutter, TransformOrigin,
+    TransitionProperty,
+};
+use smol_str::SmolStr;
 
 #[derive(Default, Clone, Debug, PartialEq)]
+/// Available `StyleValue` choices.
 pub enum StyleValue<T> {
     #[default]
+    /// The `Default` variant.
     Default,
+    /// The `Value` variant.
     Value(T),
+    /// The `None` variant.
     None,
 }
 
@@ -44,6 +29,7 @@ impl<T> From<T> for StyleValue<T> {
 }
 
 impl<T: Clone> StyleValue<T> {
+    /// Returns or updates the `overlay` value.
     pub fn overlay(&self, parent: &Self) -> Self {
         match self {
             Self::Default => parent.clone(),
@@ -54,8 +40,10 @@ impl<T: Clone> StyleValue<T> {
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]
+/// Data and behavior represented by `Style`.
 pub struct Style {
     // Typography
+    /// The `color` value carried by this type.
     pub color: Option<Color>,
     /// Highlight color for selected text; inherited like `color`.
     pub selection_color: Option<Color>,
@@ -70,22 +58,37 @@ pub struct Style {
     /// Border radius for the selection highlight rect; inherited like `color`.
     pub selection_border_radius: Option<Length>,
 
+    /// The `cursor` value carried by this type.
     pub cursor: Option<Cursor>,
+    /// The `background` value carried by this type.
     pub background: Option<Background>,
+    /// The `font` value carried by this type.
     pub font: Option<SmolStr>,
+    /// The `font_size` value carried by this type.
     pub font_size: Option<Length>,
+    /// The `font_weight` value carried by this type.
     pub font_weight: Option<FontWeight>,
+    /// The `font_style` value carried by this type.
     pub font_style: Option<FontStyle>,
+    /// The `text_align` value carried by this type.
     pub text_align: Option<TextAlign>,
+    /// The `text_decoration` value carried by this type.
     pub text_decoration: Option<TextDecoration>,
+    /// The `letter_spacing` value carried by this type.
     pub letter_spacing: Option<LetterSpacing>,
+    /// The `line_height` value carried by this type.
     pub line_height: Option<LineHeight>,
 
     // Box model
+    /// The `padding` value carried by this type.
     pub padding: Option<Edges>,
+    /// The `margin` value carried by this type.
     pub margin: Option<Edges>,
+    /// The `border` value carried by this type.
     pub border: Option<Border>,
+    /// The `outline` value carried by this type.
     pub outline: StyleValue<Outline>,
+    /// The `focus_outline` value carried by this type.
     pub focus_outline: StyleValue<Outline>,
 
     /// CSS-style box shadow(s), painted in list order (first on top).
@@ -103,48 +106,80 @@ pub struct Style {
     pub backdrop_filter: Option<FilterChain>,
 
     // Sizing
+    /// The `size` value carried by this type.
     pub size: Option<Size>,
+    /// The `min_size` value carried by this type.
     pub min_size: Option<Size>,
+    /// The `max_size` value carried by this type.
     pub max_size: Option<Size>,
+    /// The `box_sizing` value carried by this type.
     pub box_sizing: BoxSizing,
 
     // Layout
+    /// The `display` value carried by this type.
     pub display: Option<Display>,
+    /// The `position` value carried by this type.
     pub position: Option<Position>,
+    /// The `top` value carried by this type.
     pub top: Option<Length>,
+    /// The `right` value carried by this type.
     pub right: Option<Length>,
+    /// The `bottom` value carried by this type.
     pub bottom: Option<Length>,
+    /// The `left` value carried by this type.
     pub left: Option<Length>,
+    /// The `overflow_x` value carried by this type.
     pub overflow_x: Option<Overflow>,
+    /// The `overflow_y` value carried by this type.
     pub overflow_y: Option<Overflow>,
+    /// The `overscroll` value carried by this type.
     pub overscroll: Option<Overscroll>,
 
     /// Paint order relative to siblings; higher values paint later, on top. Mirrors CSS z-index.
     pub z_index: Option<i32>,
 
     // Flexbox
+    /// The `flex_direction` value carried by this type.
     pub flex_direction: Option<FlexDirection>,
+    /// The `flex_wrap` value carried by this type.
     pub flex_wrap: Option<FlexWrap>,
+    /// The `flex_grow` value carried by this type.
     pub flex_grow: Option<f32>,
+    /// The `flex_shrink` value carried by this type.
     pub flex_shrink: Option<f32>,
+    /// The `flex_basis` value carried by this type.
     pub flex_basis: Option<Length>,
+    /// The `align_items` value carried by this type.
     pub align_items: Option<Align>,
+    /// The `align_self` value carried by this type.
     pub align_self: Option<Align>,
+    /// The `justify_content` value carried by this type.
     pub justify_content: Option<JustifyContent>,
+    /// The `align_content` value carried by this type.
     pub align_content: Option<JustifyContent>,
+    /// The `gap` value carried by this type.
     pub gap: Option<(Length, Length)>,
 
     // Grid
+    /// The `grid_template_columns` value carried by this type.
     pub grid_template_columns: Option<Vec<GridTrack>>,
+    /// The `grid_template_rows` value carried by this type.
     pub grid_template_rows: Option<Vec<GridTrack>>,
+    /// The `grid_column` value carried by this type.
     pub grid_column: Option<GridPlacement>,
+    /// The `grid_row` value carried by this type.
     pub grid_row: Option<GridPlacement>,
 
     // Scrollbar
+    /// The `scrollbar` value carried by this type.
     pub scrollbar: Option<ScrollbarStyle>,
+    /// The `scrollbar_hover` value carried by this type.
     pub scrollbar_hover: Option<ScrollbarStyle>,
+    /// The `scrollbar_pressed` value carried by this type.
     pub scrollbar_pressed: Option<ScrollbarStyle>,
+    /// The `scrollbar_gutter` value carried by this type.
     pub scrollbar_gutter: Option<ScrollbarGutter>,
+    /// The `scrollbar_auto_hide` value carried by this type.
     pub scrollbar_auto_hide: Option<bool>,
 
     /// The point around which CSS transforms are applied.
@@ -153,13 +188,18 @@ pub struct Style {
     /// Overrides `scale` for the content layer only; `None` means the
     /// content follows the same scale as the rest of the widget.
     pub scale: Option<f32>,
+    /// The `content_scale` value carried by this type.
     pub content_scale: Option<f32>,
+    /// The `transition` value carried by this type.
     pub transition: Option<crate::Transition>,
+    /// The `transition_properties` value carried by this type.
     pub transition_properties: Option<TransitionProperty>,
+    /// The `transition_overrides` value carried by this type.
     pub transition_overrides: crate::TransitionOverrides,
 }
 
 impl Style {
+    /// Returns or updates the `overlay` value.
     pub fn overlay(&self, patch: &Style) -> Style {
         Style {
             color: patch.color.or(self.color),
@@ -168,7 +208,9 @@ impl Style {
             caret_color: patch.caret_color.or(self.caret_color),
             selection_border_width: patch.selection_border_width.or(self.selection_border_width),
             selection_border_color: patch.selection_border_color.or(self.selection_border_color),
-            selection_border_radius: patch.selection_border_radius.or(self.selection_border_radius),
+            selection_border_radius: patch
+                .selection_border_radius
+                .or(self.selection_border_radius),
             cursor: patch.cursor.or(self.cursor),
             background: patch.background.clone().or(self.background.clone()),
             font: patch.font.clone().or(self.font.clone()),
@@ -196,7 +238,10 @@ impl Style {
             box_shadow: patch.box_shadow.clone().or(self.box_shadow.clone()),
 
             filter: patch.filter.clone().or(self.filter.clone()),
-            backdrop_filter: patch.backdrop_filter.clone().or(self.backdrop_filter.clone()),
+            backdrop_filter: patch
+                .backdrop_filter
+                .clone()
+                .or(self.backdrop_filter.clone()),
 
             size: patch.size.or(self.size),
             min_size: patch.min_size.or(self.min_size),
@@ -226,10 +271,12 @@ impl Style {
             align_content: patch.align_content.or(self.align_content),
             gap: patch.gap.or(self.gap),
 
-            grid_template_columns: patch.grid_template_columns
+            grid_template_columns: patch
+                .grid_template_columns
                 .clone()
                 .or(self.grid_template_columns.clone()),
-            grid_template_rows: patch.grid_template_rows
+            grid_template_rows: patch
+                .grid_template_rows
                 .clone()
                 .or(self.grid_template_rows.clone()),
             grid_column: patch.grid_column.or(self.grid_column),
@@ -261,7 +308,9 @@ impl Style {
             content_scale: patch.content_scale.or(self.content_scale),
             transition: patch.transition.or(self.transition),
             transition_properties: patch.transition_properties.or(self.transition_properties),
-            transition_overrides: self.transition_overrides.overlay(&patch.transition_overrides),
+            transition_overrides: self
+                .transition_overrides
+                .overlay(&patch.transition_overrides),
         }
     }
 
@@ -276,9 +325,9 @@ impl Style {
         out.caret_color = patch.caret_color.or(self.caret_color);
         out.selection_border_width = patch.selection_border_width.or(self.selection_border_width);
         out.selection_border_color = patch.selection_border_color.or(self.selection_border_color);
-        out.selection_border_radius = patch.selection_border_radius.or(
-            self.selection_border_radius
-        );
+        out.selection_border_radius = patch
+            .selection_border_radius
+            .or(self.selection_border_radius);
         out.font = patch.font.clone().or(self.font.clone());
         out.font_size = patch.font_size.or(self.font_size);
         out.font_weight = patch.font_weight.or(self.font_weight);
@@ -318,41 +367,41 @@ impl Style {
     /// opposed to purely visual properties (colors, shadows, cursor,
     /// outline, ...).
     pub fn layout_affecting_diff(&self, other: &Style) -> bool {
-        self.display != other.display ||
-            self.position != other.position ||
-            self.top != other.top ||
-            self.right != other.right ||
-            self.bottom != other.bottom ||
-            self.left != other.left ||
-            self.size != other.size ||
-            self.min_size != other.min_size ||
-            self.max_size != other.max_size ||
-            self.box_sizing != other.box_sizing ||
-            self.padding != other.padding ||
-            self.margin != other.margin ||
-            border_width_diff(self.border, other.border) ||
-            self.overflow_x != other.overflow_x ||
-            self.overflow_y != other.overflow_y ||
-            self.flex_direction != other.flex_direction ||
-            self.flex_wrap != other.flex_wrap ||
-            self.flex_grow != other.flex_grow ||
-            self.flex_shrink != other.flex_shrink ||
-            self.flex_basis != other.flex_basis ||
-            self.align_items != other.align_items ||
-            self.align_self != other.align_self ||
-            self.justify_content != other.justify_content ||
-            self.align_content != other.align_content ||
-            self.gap != other.gap ||
-            self.grid_template_columns != other.grid_template_columns ||
-            self.grid_template_rows != other.grid_template_rows ||
-            self.grid_column != other.grid_column ||
-            self.grid_row != other.grid_row ||
-            self.font != other.font ||
-            self.font_size != other.font_size ||
-            self.font_weight != other.font_weight ||
-            self.font_style != other.font_style ||
-            self.letter_spacing != other.letter_spacing ||
-            self.line_height != other.line_height
+        self.display != other.display
+            || self.position != other.position
+            || self.top != other.top
+            || self.right != other.right
+            || self.bottom != other.bottom
+            || self.left != other.left
+            || self.size != other.size
+            || self.min_size != other.min_size
+            || self.max_size != other.max_size
+            || self.box_sizing != other.box_sizing
+            || self.padding != other.padding
+            || self.margin != other.margin
+            || border_width_diff(self.border, other.border)
+            || self.overflow_x != other.overflow_x
+            || self.overflow_y != other.overflow_y
+            || self.flex_direction != other.flex_direction
+            || self.flex_wrap != other.flex_wrap
+            || self.flex_grow != other.flex_grow
+            || self.flex_shrink != other.flex_shrink
+            || self.flex_basis != other.flex_basis
+            || self.align_items != other.align_items
+            || self.align_self != other.align_self
+            || self.justify_content != other.justify_content
+            || self.align_content != other.align_content
+            || self.gap != other.gap
+            || self.grid_template_columns != other.grid_template_columns
+            || self.grid_template_rows != other.grid_template_rows
+            || self.grid_column != other.grid_column
+            || self.grid_row != other.grid_row
+            || self.font != other.font
+            || self.font_size != other.font_size
+            || self.font_weight != other.font_weight
+            || self.font_style != other.font_style
+            || self.letter_spacing != other.letter_spacing
+            || self.line_height != other.line_height
     }
 }
 

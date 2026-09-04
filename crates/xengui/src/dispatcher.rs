@@ -1,20 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 use crate::{
-    ElementState,
-    EventCtx,
-    InputEvent,
-    InputState,
-    KeyboardEvent,
-    ModifiersState,
-    MouseButton,
-    Widget,
-    cancel_auto_scroll_recursive,
-    collect_focusable_paths,
-    dispatch_hover_transition,
-    dispatch_positional,
-    dispatch_to_path,
-    hit_test_path,
-    resolve_hover_cursor,
+    ElementState, EventCtx, InputEvent, InputState, KeyboardEvent, ModifiersState, MouseButton,
+    Widget, cancel_auto_scroll_recursive, collect_focusable_paths, dispatch_hover_transition,
+    dispatch_positional, dispatch_to_path, hit_test_path, resolve_hover_cursor,
 };
 
 /// High-level pointer/keyboard/focus dispatcher built on top of the
@@ -23,10 +11,12 @@ use crate::{
 /// pointer-capture and focus bookkeeping themselves.
 #[derive(Default)]
 pub struct Dispatcher {
+    /// The `state` value carried by this type.
     pub state: InputState,
 }
 
 impl Dispatcher {
+    /// Creates a value with its default configuration.
     pub fn new() -> Self {
         Self::default()
     }
@@ -43,7 +33,7 @@ impl Dispatcher {
                 tree,
                 self.state.hovered_path.as_deref(),
                 new_hover.as_deref(),
-                &mut ctx
+                &mut ctx,
             );
             self.state.hovered_path = new_hover.clone();
         }
@@ -54,15 +44,16 @@ impl Dispatcher {
                 tree,
                 path,
                 &(InputEvent::MouseMoved { position: point }),
-                &mut ctx
+                &mut ctx,
             );
         }
 
-        if
-            let Some(path) = self.state.pressed_path
-                .as_ref()
-                .or(self.state.hovered_path.as_ref()) &&
-            let Some(cursor) = resolve_hover_cursor(tree, path)
+        if let Some(path) = self
+            .state
+            .pressed_path
+            .as_ref()
+            .or(self.state.hovered_path.as_ref())
+            && let Some(cursor) = resolve_hover_cursor(tree, path)
         {
             ctx.set_cursor_icon(cursor);
         }
@@ -70,12 +61,13 @@ impl Dispatcher {
         ctx
     }
 
+    /// Returns or updates the `pointer_input` value.
     pub fn pointer_input(
         &mut self,
         tree: &mut [Box<dyn Widget>],
         point: (f32, f32),
         input_state: ElementState,
-        button: MouseButton
+        button: MouseButton,
     ) -> EventCtx {
         let mut ctx = EventCtx::new();
 
@@ -93,7 +85,10 @@ impl Dispatcher {
         let path = if input_state == ElementState::Released {
             self.state.pressed_path.clone()
         } else {
-            self.state.hovered_path.clone().or_else(|| hit_test_path(tree, point))
+            self.state
+                .hovered_path
+                .clone()
+                .or_else(|| hit_test_path(tree, point))
         };
         if input_state == ElementState::Pressed {
             self.state.pressed_path = path.clone();
@@ -103,8 +98,12 @@ impl Dispatcher {
             dispatch_positional(
                 tree,
                 path,
-                &(InputEvent::MouseInput { state: input_state, button, position: point }),
-                &mut ctx
+                &(InputEvent::MouseInput {
+                    state: input_state,
+                    button,
+                    position: point,
+                }),
+                &mut ctx,
             );
         }
 
@@ -120,7 +119,7 @@ impl Dispatcher {
         &mut self,
         tree: &mut [Box<dyn Widget>],
         event: KeyboardEvent,
-        modifiers: ModifiersState
+        modifiers: ModifiersState,
     ) -> EventCtx {
         let mut ctx = EventCtx::new();
         if let Some(path) = self.state.focused_path.clone() {
@@ -128,7 +127,7 @@ impl Dispatcher {
                 tree,
                 &path,
                 &(InputEvent::KeyInput { event, modifiers }),
-                &mut ctx
+                &mut ctx,
             );
         }
         ctx
@@ -143,7 +142,9 @@ impl Dispatcher {
             return ctx;
         }
 
-        let current_index = self.state.focused_path
+        let current_index = self
+            .state
+            .focused_path
             .as_ref()
             .and_then(|p| focusable.iter().position(|f| f == p));
 
@@ -163,7 +164,7 @@ impl Dispatcher {
             tree,
             &new_path,
             &(InputEvent::FocusGained { via_keyboard: true }),
-            &mut ctx
+            &mut ctx,
         );
         self.state.focused_path = Some(new_path);
 

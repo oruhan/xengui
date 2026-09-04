@@ -8,9 +8,9 @@
 use wasm_bindgen::JsCast;
 use wasm_bindgen::JsValue;
 use winit::event_loop::EventLoopProxy;
-use xengui::{ find_widget_mut, Widget };
+use xengui::{Widget, find_widget_mut};
 
-use crate::{ App, event::XenEvent };
+use crate::{App, event::XenEvent};
 
 /// Owns the hidden `<input>` element used to drive mobile keyboard input.
 pub struct TextAgent {
@@ -50,7 +50,7 @@ impl TextAgent {
         let _ = style.set_property("pointer-events", "none");
         let _ = style.set_property("background-color", "transparent");
         let _ = style.set_property("caret-color", "transparent");
-        
+
         let on_input = {
             let input = input.clone();
             move |event: web_sys::InputEvent| {
@@ -67,9 +67,8 @@ impl TextAgent {
                 let _ = proxy.send_event(XenEvent::NativeInputChanged(input.value()));
             }
         };
-        let closure = wasm_bindgen::closure::Closure::<dyn FnMut(web_sys::InputEvent)>::new(
-            on_input
-        );
+        let closure =
+            wasm_bindgen::closure::Closure::<dyn FnMut(web_sys::InputEvent)>::new(on_input);
         let _ = input.add_event_listener_with_callback("input", closure.as_ref().unchecked_ref());
         closure.forget();
 

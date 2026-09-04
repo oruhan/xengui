@@ -20,9 +20,6 @@ pub struct MeasureContext<'a> {
 impl<'a> MeasureContext<'a> {
     /// Creates a new measurement context.
     pub const fn new(text: &'a mut dyn TextMeasurer, scale_factor: f32) -> Self {
-        Self {
-            text,
-            scale_factor,
-        }
+        Self { text, scale_factor }
     }
 }

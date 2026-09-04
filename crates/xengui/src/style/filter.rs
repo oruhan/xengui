@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-use crate::{ Color, Length };
+use crate::{Color, Length};
 
 /// A single CSS-style drop shadow used by [`Filter::DropShadow`].
 ///
@@ -8,18 +8,23 @@ use crate::{ Color, Length };
 /// `filter: drop-shadow(...)` rather than `box-shadow`.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct DropShadow {
+    /// The `offset_x` value carried by this type.
     pub offset_x: Length,
+    /// The `offset_y` value carried by this type.
     pub offset_y: Length,
+    /// The `blur_radius` value carried by this type.
     pub blur_radius: Length,
+    /// The `color` value carried by this type.
     pub color: Color,
 }
 
 impl DropShadow {
+    /// Creates a value with its default configuration.
     pub fn new(
         offset_x: impl Into<Length>,
         offset_y: impl Into<Length>,
         blur_radius: impl Into<Length>,
-        color: Color
+        color: Color,
     ) -> Self {
         Self {
             offset_x: offset_x.into(),
@@ -103,19 +108,23 @@ impl Filter {
 pub struct FilterChain(Vec<Filter>);
 
 impl FilterChain {
+    /// Creates a value with its default configuration.
     pub const fn new() -> Self {
         Self(Vec::new())
     }
 
+    /// Returns or updates the `push` value.
     pub fn push(mut self, filter: Filter) -> Self {
         self.0.push(filter);
         self
     }
 
+    /// Returns whether the `is_empty` condition is satisfied.
     pub fn is_empty(&self) -> bool {
         self.0.is_empty()
     }
 
+    /// Returns or updates the `iter` value.
     pub fn iter(&self) -> std::slice::Iter<'_, Filter> {
         self.0.iter()
     }
@@ -127,15 +136,12 @@ impl FilterChain {
     pub fn max_blur_radius(&self) -> f32 {
         self.0
             .iter()
-            .map(|f| {
-                match f {
-                    Filter::Blur(r) => r.value(),
-                    Filter::DropShadow(d) => {
-                        d.blur_radius.value() +
-                            d.offset_x.value().abs().max(d.offset_y.value().abs())
-                    }
-                    _ => 0.0,
+            .map(|f| match f {
+                Filter::Blur(r) => r.value(),
+                Filter::DropShadow(d) => {
+                    d.blur_radius.value() + d.offset_x.value().abs().max(d.offset_y.value().abs())
                 }
+                _ => 0.0,
             })
             .fold(0.0, f32::max)
     }

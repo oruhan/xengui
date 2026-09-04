@@ -4,27 +4,9 @@
 //! `devtools_panel.rs` for the original single-purpose version this
 //! generalizes).
 use crate::{
-    Background,
-    Color,
-    Constraints,
-    Cursor,
-    ElementState,
-    EventCtx,
-    EventStatus,
-    Interaction,
-    InputEvent,
-    LayoutBox,
-    Length,
-    MeasureContext,
-    MeasureResult,
-    MouseButton,
-    PaintContext,
-    RectCommand,
-    Size,
-    Style,
-    StyleBuilder,
-    Widget,
-    WidgetBase,
+    Background, Color, Constraints, Cursor, ElementState, EventCtx, EventStatus, InputEvent,
+    Interaction, LayoutBox, Length, MeasureContext, MeasureResult, MouseButton, PaintContext,
+    RectCommand, Size, Style, StyleBuilder, Widget, WidgetBase,
 };
 use std::cell::Cell;
 use std::rc::Rc;
@@ -34,9 +16,13 @@ use std::rc::Rc;
 /// the panel.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum SplitSide {
+    /// The `Left` variant.
     Left,
+    /// The `Right` variant.
     Right,
+    /// The `Top` variant.
     Top,
+    /// The `Bottom` variant.
     Bottom,
 }
 
@@ -56,10 +42,15 @@ impl SplitSide {
     }
 
     fn cursor(self) -> Cursor {
-        if self.is_horizontal() { Cursor::EwResize } else { Cursor::NsResize }
+        if self.is_horizontal() {
+            Cursor::EwResize
+        } else {
+            Cursor::NsResize
+        }
     }
 }
 
+/// Data and behavior represented by `SplitHandle`.
 pub struct SplitHandle {
     base: WidgetBase,
     layout_box: LayoutBox,
@@ -76,6 +67,7 @@ pub struct SplitHandle {
 }
 
 impl SplitHandle {
+    /// Creates a value with its default configuration.
     pub fn new(size_handle: Rc<Cell<f32>>, side: SplitSide, min_size: f32, max_size: f32) -> Self {
         let mut interaction = Interaction::new();
         interaction.hover_cursor = Some(side.cursor());
@@ -112,7 +104,11 @@ impl SplitHandle {
     }
 
     fn mouse_axis(&self, position: (f32, f32)) -> f32 {
-        if self.side.is_horizontal() { position.0 } else { position.1 }
+        if self.side.is_horizontal() {
+            position.0
+        } else {
+            position.1
+        }
     }
 }
 
@@ -205,14 +201,11 @@ impl Widget for SplitHandle {
             }
             InputEvent::MouseMoved { position } if self.dragging.get() => {
                 let sf = self.scale_factor.get().max(0.0001);
-                let delta_logical =
-                    ((self.mouse_axis(*position) - self.drag_start_mouse.get()) *
-                        self.side.sign()) /
-                    sf;
-                let new_size = (self.drag_start_size.get() + delta_logical).clamp(
-                    self.min_size,
-                    self.max_size
-                );
+                let delta_logical = ((self.mouse_axis(*position) - self.drag_start_mouse.get())
+                    * self.side.sign())
+                    / sf;
+                let new_size = (self.drag_start_size.get() + delta_logical)
+                    .clamp(self.min_size, self.max_size);
                 self.size_handle.set(new_size);
                 ctx.set_cursor_icon(self.side.cursor());
                 self.base.dirty = true;

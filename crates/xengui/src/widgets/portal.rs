@@ -1,15 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 use crate::{
-    AnimationManager,
-    Constraints,
-    LayoutBox,
-    MeasureContext,
-    MeasureResult,
-    PaintContext,
-    Style,
-    StyleBuilder,
-    Widget,
-    WidgetBase,
+    AnimationManager, Constraints, LayoutBox, MeasureContext, MeasureResult, PaintContext, Style,
+    StyleBuilder, Widget, WidgetBase,
 };
 
 /// Wraps exactly one child and paints it unclipped in the top layer,
@@ -24,6 +16,7 @@ pub struct Portal {
 }
 
 impl Portal {
+    /// Creates a value with its default configuration.
     pub fn new() -> Self {
         Self {
             base: WidgetBase::new(crate::Interaction::new()),
@@ -32,6 +25,7 @@ impl Portal {
         }
     }
 
+    /// Returns or updates the `child` value.
     pub fn child(mut self, child: impl Widget + 'static) -> Self {
         self.children = vec![Box::new(child)];
         self

@@ -28,10 +28,7 @@ pub fn match_route(pattern: &str, path: &str) -> Option<RouteParams> {
 
     for (i, seg) in pattern_segments.iter().enumerate() {
         if let Some(name) = seg.strip_prefix('*') {
-            let rest = path_segments
-                .get(i..)
-                .unwrap_or(&[])
-                .join("/");
+            let rest = path_segments.get(i..).unwrap_or(&[]).join("/");
             params.insert(name.to_string(), rest);
             return Some(RouteParams(params));
         }

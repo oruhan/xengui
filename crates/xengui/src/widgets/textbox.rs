@@ -1,49 +1,22 @@
 // SPDX-License-Identifier: Apache-2.0
 use crate::{
-    AnimationManager,
-    Background,
-    Color,
-    Constraints,
-    Cursor,
-    Edges,
-    ElementState,
-    EventCtx,
-    EventStatus,
-    ImeEvent,
-    InputEvent,
-    Interaction,
-    Key,
-    KeyState,
-    KeyboardEvent,
-    LayoutBox,
-    Length,
-    MULTI_CLICK_DISTANCE_DP,
-    MULTI_CLICK_INTERVAL,
-    MeasureContext,
-    MeasureResult,
-    ModifiersState,
-    MouseButton,
-    PaintContext,
-    RectCommand,
-    Size,
-    Style,
-    StyleBuilder,
-    TextCommand,
-    Widget,
-    WidgetBase,
-    WidgetContent,
-    WidgetId,
-    constants::{ DEFAULT_FONT_SIZE, DEFAULT_LINE_HEIGHT_RATIO },
+    AnimationManager, Background, Color, Constraints, Cursor, Edges, ElementState, EventCtx,
+    EventStatus, ImeEvent, InputEvent, Interaction, Key, KeyState, KeyboardEvent, LayoutBox,
+    Length, MULTI_CLICK_DISTANCE_DP, MULTI_CLICK_INTERVAL, MeasureContext, MeasureResult,
+    ModifiersState, MouseButton, PaintContext, RectCommand, Size, Style, StyleBuilder, TextCommand,
+    Widget, WidgetBase, WidgetContent, WidgetId,
+    constants::{DEFAULT_FONT_SIZE, DEFAULT_LINE_HEIGHT_RATIO},
     widget::NativeTextInputSnapshot,
 };
 use smol_str::SmolStr;
-use std::cell::{ Cell, RefCell };
-use std::sync::{ Arc, Mutex };
+use std::cell::{Cell, RefCell};
+use std::sync::{Arc, Mutex};
 use web_time::Instant;
 use xen_clipboard::Clipboard;
 
 type TextCallback = Box<dyn FnMut(&str, &mut EventCtx)>;
 
+/// Data and behavior represented by `TextBox`.
 pub struct TextBox {
     base: WidgetBase,
 
@@ -106,6 +79,7 @@ pub struct TextBox {
 }
 
 impl TextBox {
+    /// Creates a value with its default configuration.
     pub fn new() -> Self {
         let mut interaction = Interaction::new();
         interaction.focusable = true;
@@ -114,7 +88,10 @@ impl TextBox {
         let mut base = WidgetBase::new(interaction);
         let style = Style {
             padding: Some(Edges::symmetric(8.0, 6.0)),
-            min_size: Some(Size { width: Some(Length::px(120.0)), height: None }),
+            min_size: Some(Size {
+                width: Some(Length::px(120.0)),
+                height: None,
+            }),
             ..Default::default()
         };
         base.style = style;
@@ -161,6 +138,7 @@ impl TextBox {
         }
     }
 
+    /// Returns or updates the `value` value.
     pub fn value(mut self, value: impl Into<String>) -> Self {
         self.content = value.into();
         self.cursor_index = self.content.chars().count();
@@ -169,31 +147,37 @@ impl TextBox {
         self
     }
 
+    /// Returns or updates the `text` value.
     pub fn text(&self) -> &str {
         &self.content
     }
 
+    /// Returns or updates the `placeholder` value.
     pub fn placeholder(mut self, placeholder: impl Into<SmolStr>) -> Self {
         self.placeholder = placeholder.into();
         self.mark_dirty();
         self
     }
 
+    /// Returns or updates the `max_length` value.
     pub fn max_length(mut self, max_length: usize) -> Self {
         self.max_length = Some(max_length);
         self
     }
 
+    /// Returns or updates the `read_only` value.
     pub fn read_only(mut self, value: bool) -> Self {
         self.read_only = value;
         self
     }
 
+    /// Registers the `on_change` callback.
     pub fn on_change(mut self, f: impl FnMut(&str, &mut EventCtx) + 'static) -> Self {
         self.on_change = Some(Box::new(f));
         self
     }
 
+    /// Registers the `on_submit` callback.
     pub fn on_submit(mut self, f: impl FnMut(&str, &mut EventCtx) + 'static) -> Self {
         self.on_submit = Some(Box::new(f));
         self
@@ -259,7 +243,11 @@ impl TextBox {
 
     // Pushes a snapshot before a mutating edit; any new edit invalidates redo history.
     fn push_undo_snapshot(&mut self) {
-        self.undo_stack.push((self.content.clone(), self.cursor_index, self.selection_anchor));
+        self.undo_stack.push((
+            self.content.clone(),
+            self.cursor_index,
+            self.selection_anchor,
+        ));
         self.redo_stack.clear();
     }
 
@@ -272,7 +260,11 @@ impl TextBox {
         let Some((content, cursor_index, selection_anchor)) = self.undo_stack.pop() else {
             return;
         };
-        self.redo_stack.push((self.content.clone(), self.cursor_index, self.selection_anchor));
+        self.redo_stack.push((
+            self.content.clone(),
+            self.cursor_index,
+            self.selection_anchor,
+        ));
         self.content = content;
         self.cursor_index = cursor_index;
         self.selection_anchor = selection_anchor;
@@ -288,7 +280,11 @@ impl TextBox {
         let Some((content, cursor_index, selection_anchor)) = self.redo_stack.pop() else {
             return;
         };
-        self.undo_stack.push((self.content.clone(), self.cursor_index, self.selection_anchor));
+        self.undo_stack.push((
+            self.content.clone(),
+            self.cursor_index,
+            self.selection_anchor,
+        ));
         self.content = content;
         self.cursor_index = cursor_index;
         self.selection_anchor = selection_anchor;
@@ -307,7 +303,13 @@ impl TextBox {
     }
 
     fn char_class(c: char) -> u8 {
-        if c.is_whitespace() { 0 } else if c.is_alphanumeric() || c == '_' { 1 } else { 2 }
+        if c.is_whitespace() {
+            0
+        } else if c.is_alphanumeric() || c == '_' {
+            1
+        } else {
+            2
+        }
     }
 
     // Word (or punctuation/whitespace run) boundaries around `idx`, used
@@ -400,7 +402,9 @@ impl TextBox {
 
         let had_selection = self.delete_selection();
 
-        if let Some(max) = self.max_length && self.content.chars().count() >= max {
+        if let Some(max) = self.max_length
+            && self.content.chars().count() >= max
+        {
             if had_selection {
                 self.notify_change(ctx);
             }
@@ -421,10 +425,7 @@ impl TextBox {
             return;
         }
 
-        let filtered: String = text
-            .chars()
-            .filter(|c| !c.is_control())
-            .collect();
+        let filtered: String = text.chars().filter(|c| !c.is_control()).collect();
         if filtered.is_empty() {
             return;
         }
@@ -586,10 +587,9 @@ impl TextBox {
     fn paste_from_clipboard(&mut self) {
         let pending = Arc::clone(&self.pending_paste);
         self.clipboard.get_text(move |result| {
-            if
-                let Ok(Some(text)) = result &&
-                !text.is_empty() &&
-                let Ok(mut guard) = pending.lock()
+            if let Ok(Some(text)) = result
+                && !text.is_empty()
+                && let Ok(mut guard) = pending.lock()
             {
                 *guard = Some(text);
             }
@@ -597,7 +597,8 @@ impl TextBox {
     }
 
     fn poll_clipboard_paste(&mut self, ctx: &mut EventCtx) {
-        let text = self.pending_paste
+        let text = self
+            .pending_paste
             .lock()
             .ok()
             .and_then(|mut guard| guard.take());
@@ -680,7 +681,9 @@ impl TextBox {
             Key::Backspace => self.delete_before_cursor(ctx),
             Key::Delete => self.delete_after_cursor(ctx),
             Key::ArrowLeft => {
-                if let Some((start, _)) = self.selection_range() && !modifiers.shift {
+                if let Some((start, _)) = self.selection_range()
+                    && !modifiers.shift
+                {
                     self.cursor_index = start;
                     self.selection_anchor = None;
                 } else {
@@ -690,7 +693,9 @@ impl TextBox {
             }
             Key::ArrowRight => {
                 let len = self.content.chars().count();
-                if let Some((_, end)) = self.selection_range() && !modifiers.shift {
+                if let Some((_, end)) = self.selection_range()
+                    && !modifiers.shift
+                {
                     self.cursor_index = end;
                     self.selection_anchor = None;
                 } else {
@@ -718,25 +723,32 @@ impl TextBox {
     }
 
     fn handle_mouse_press(&mut self, position: (f32, f32)) {
-        let padding_left = self.base.computed_style.padding
+        let padding_left = self
+            .base
+            .computed_style
+            .padding
             .unwrap_or_default()
-            .left.to_physical(self.scale_factor.get());
+            .left
+            .to_physical(self.scale_factor.get());
         let local_x = position.0 - self.layout_box.x - padding_left + self.scroll_offset.get();
         let click_index = self.index_for_offset(local_x);
 
         let now = Instant::now();
         let (last_x, last_y) = self.last_click_pos.get();
         let click_distance = MULTI_CLICK_DISTANCE_DP * self.scale_factor.get();
-        let same_spot =
-            (position.0 - last_x).abs() < click_distance &&
-            (position.1 - last_y).abs() < click_distance;
-        let is_repeat =
-            same_spot &&
-            self.last_click_time
+        let same_spot = (position.0 - last_x).abs() < click_distance
+            && (position.1 - last_y).abs() < click_distance;
+        let is_repeat = same_spot
+            && self
+                .last_click_time
                 .get()
                 .is_some_and(|t| now.duration_since(t) < MULTI_CLICK_INTERVAL);
 
-        let click_count = if is_repeat { (self.click_count.get() + 1).min(3) } else { 1 };
+        let click_count = if is_repeat {
+            (self.click_count.get() + 1).min(3)
+        } else {
+            1
+        };
         self.click_count.set(click_count);
         self.last_click_time.set(Some(now));
         self.last_click_pos.set(position);
@@ -786,15 +798,20 @@ impl TextBox {
         if !self.drag_word_selection && !self.drag_threshold_passed.get() {
             let (start_x, start_y) = self.drag_start_pos.get();
             let threshold = MULTI_CLICK_DISTANCE_DP * self.scale_factor.get();
-            if (position.0 - start_x).abs() < threshold && (position.1 - start_y).abs() < threshold {
+            if (position.0 - start_x).abs() < threshold && (position.1 - start_y).abs() < threshold
+            {
                 return;
             }
             self.drag_threshold_passed.set(true);
         }
 
-        let padding_left = self.base.computed_style.padding
+        let padding_left = self
+            .base
+            .computed_style
+            .padding
             .unwrap_or_default()
-            .left.to_physical(self.scale_factor.get());
+            .left
+            .to_physical(self.scale_factor.get());
         let local_x = position.0 - self.layout_box.x - padding_left + self.scroll_offset.get();
         let idx = self.index_for_offset(local_x);
 
@@ -862,8 +879,14 @@ impl Widget for TextBox {
 
         // Logical metrics; TextMeasurer converts to physical internally.
         let font_size = style.font_size.unwrap_or(DEFAULT_FONT_SIZE).value();
-        let letter_spacing = style.letter_spacing.map(|ls| ls.value().value()).unwrap_or(0.0);
-        let line_height = style.line_height.map(|lh| lh.value().value()).unwrap_or(0.0);
+        let letter_spacing = style
+            .letter_spacing
+            .map(|ls| ls.value().value())
+            .unwrap_or(0.0);
+        let line_height = style
+            .line_height
+            .map(|lh| lh.value().value())
+            .unwrap_or(0.0);
 
         let display_text: &str = if self.content.is_empty() {
             &self.placeholder
@@ -880,7 +903,7 @@ impl Widget for TextBox {
             letter_spacing,
             line_height,
             constraints.max_width,
-            scale_factor
+            scale_factor,
         );
 
         self.content_size.set((result.width, result.height));
@@ -890,17 +913,19 @@ impl Widget for TextBox {
         let placeholder_w = if self.placeholder.is_empty() {
             0.0
         } else {
-            ctx.text.measure(
-                &self.placeholder,
-                style.font.as_deref(),
-                font_size,
-                style.font_weight.unwrap_or_default(),
-                style.font_style.unwrap_or_default(),
-                letter_spacing,
-                line_height,
-                None,
-                scale_factor
-            ).width
+            ctx.text
+                .measure(
+                    &self.placeholder,
+                    style.font.as_deref(),
+                    font_size,
+                    style.font_weight.unwrap_or_default(),
+                    style.font_style.unwrap_or_default(),
+                    letter_spacing,
+                    line_height,
+                    None,
+                    scale_factor,
+                )
+                .width
         };
 
         let text_w = result.width.max(placeholder_w);
@@ -916,21 +941,23 @@ impl Widget for TextBox {
             style.font_style.unwrap_or_default(),
             letter_spacing,
             line_height,
-            scale_factor
+            scale_factor,
         );
 
-        self.cursor_offset.set(*offsets.get(self.cursor_index.min(char_count)).unwrap_or(&0.0));
+        self.cursor_offset.set(
+            *offsets
+                .get(self.cursor_index.min(char_count))
+                .unwrap_or(&0.0),
+        );
         *self.char_offsets.borrow_mut() = offsets;
 
         let padding = &style.padding.unwrap_or_default();
-        let width =
-            text_w +
-            padding.left.to_physical(scale_factor) +
-            padding.right.to_physical(scale_factor);
-        let height =
-            result.height +
-            padding.top.to_physical(scale_factor) +
-            padding.bottom.to_physical(scale_factor);
+        let width = text_w
+            + padding.left.to_physical(scale_factor)
+            + padding.right.to_physical(scale_factor);
+        let height = result.height
+            + padding.top.to_physical(scale_factor)
+            + padding.bottom.to_physical(scale_factor);
         let (width, height) = constraints.constrain_size(width, height);
 
         MeasureResult::new(width, height)
@@ -947,11 +974,9 @@ impl Widget for TextBox {
         let (_, content_h) = self.content_size.get();
 
         let content_left = self.layout_box.x + padding.left.to_physical(sf);
-        let content_width = (
-            self.layout_box.width -
-            padding.left.to_physical(sf) -
-            padding.right.to_physical(sf)
-        ).max(0.0);
+        let content_width =
+            (self.layout_box.width - padding.left.to_physical(sf) - padding.right.to_physical(sf))
+                .max(0.0);
 
         // Scrolls only as far as needed to keep the caret inside the visible
         // content area, and never scrolls past the point where empty space
@@ -970,22 +995,23 @@ impl Widget for TextBox {
         self.scroll_offset.set(scroll);
 
         let text_x = content_left - scroll;
-        let text_y =
-            self.layout_box.y +
-            padding.top.to_physical(sf) +
-            (
-                self.layout_box.height -
-                padding.top.to_physical(sf) -
-                padding.bottom.to_physical(sf) -
-                content_h
-            ).max(0.0) *
-                0.5;
+        let text_y = self.layout_box.y
+            + padding.top.to_physical(sf)
+            + (self.layout_box.height
+                - padding.top.to_physical(sf)
+                - padding.bottom.to_physical(sf)
+                - content_h)
+                .max(0.0)
+                * 0.5;
 
         let line_h = if content_h > 0.0 {
             content_h
         } else {
-            style.font_size.map(|s| s.value()).unwrap_or(DEFAULT_FONT_SIZE.value()) *
-                DEFAULT_LINE_HEIGHT_RATIO
+            style
+                .font_size
+                .map(|s| s.value())
+                .unwrap_or(DEFAULT_FONT_SIZE.value())
+                * DEFAULT_LINE_HEIGHT_RATIO
         };
         let line_y = (self.layout_box.y + (self.layout_box.height - line_h).max(0.0) * 0.5).round();
 
@@ -996,7 +1022,10 @@ impl Widget for TextBox {
             self.layout_box.height,
         ));
 
-        let active_selection = self.base.interaction.focused
+        let active_selection = self
+            .base
+            .interaction
+            .focused
             .then(|| self.selection_range())
             .flatten();
         let mut sel_bounds: Option<(f32, f32)> = None;
@@ -1009,9 +1038,9 @@ impl Widget for TextBox {
                 let sel_right = (text_x + end_x).min(content_right);
 
                 if sel_right > sel_left {
-                    let sel_bg = style.selection_background.unwrap_or(
-                        Color::rgba(90, 140, 230, 100)
-                    );
+                    let sel_bg = style
+                        .selection_background
+                        .unwrap_or(Color::rgba(90, 140, 230, 100));
                     ctx.draw_rect(RectCommand {
                         position: (sel_left, line_y),
                         size: (sel_right - sel_left, line_h),
@@ -1035,7 +1064,12 @@ impl Widget for TextBox {
 
         let mut text_style = style.clone();
         if is_empty {
-            text_style.color = Some(style.color.unwrap_or(Color::NEUTRAL_400).with_alpha_f32(0.6));
+            text_style.color = Some(
+                style
+                    .color
+                    .unwrap_or(Color::NEUTRAL_400)
+                    .with_alpha_f32(0.6),
+            );
         }
 
         // Normal-colored text is skipped under the selection rect instead of
@@ -1098,7 +1132,9 @@ impl Widget for TextBox {
 
         if self.base.interaction.focused && self.caret_visible.get() {
             let cursor_x = (text_x + self.cursor_offset.get()).round();
-            let caret_color = style.caret_color.unwrap_or(style.color.unwrap_or(Color::BLACK));
+            let caret_color = style
+                .caret_color
+                .unwrap_or(style.color.unwrap_or(Color::BLACK));
 
             ctx.draw_rect(RectCommand {
                 position: (cursor_x, line_y),
@@ -1125,8 +1161,9 @@ impl Widget for TextBox {
             if let Some(id) = &self.base.id {
                 for action in crate::dom::take_actions(id) {
                     match action {
-                        crate::dom::DomAction::Click | crate::dom::DomAction::Focus =>
-                            ctx.request_focus(),
+                        crate::dom::DomAction::Click | crate::dom::DomAction::Focus => {
+                            ctx.request_focus()
+                        }
                         crate::dom::DomAction::SetValue(value) => {
                             self.content = value;
                             self.cursor_index = self.content.chars().count();
@@ -1156,7 +1193,11 @@ impl Widget for TextBox {
         // Key input bypasses Interaction::handle entirely: the generic handler
         // treats Enter/Space as a click-activation key, which would prevent
         // typing spaces and would fire on_click on every Enter press.
-        if let InputEvent::KeyInput { event: key_event, modifiers } = event {
+        if let InputEvent::KeyInput {
+            event: key_event,
+            modifiers,
+        } = event
+        {
             if !self.base.interaction.focused || key_event.state != KeyState::Pressed {
                 return EventStatus::Ignored;
             }
@@ -1171,12 +1212,11 @@ impl Widget for TextBox {
             self.handle_key(key_event, *modifiers, ctx);
             self.recompute_style();
 
-            let changed =
-                self.content != before_content ||
-                self.cursor_index != before_cursor ||
-                self.selection_anchor != before_selection ||
-                self.caret_visible.get() != before_caret_visible ||
-                self.base.computed_style != before_style;
+            let changed = self.content != before_content
+                || self.cursor_index != before_cursor
+                || self.selection_anchor != before_selection
+                || self.caret_visible.get() != before_caret_visible
+                || self.base.computed_style != before_style;
 
             // handle_key marks the widget dirty unconditionally for
             // simplicity; undo that when the keystroke (e.g. a bare
@@ -1190,7 +1230,12 @@ impl Widget for TextBox {
             return EventStatus::Handled;
         }
 
-        if let InputEvent::MouseInput { state, button, position } = event {
+        if let InputEvent::MouseInput {
+            state,
+            button,
+            position,
+        } = event
+        {
             let status = self.base.interaction.handle(event, ctx);
 
             if *button == MouseButton::Left {
@@ -1289,15 +1334,11 @@ impl Widget for TextBox {
         let Some(other) = other.as_any().downcast_ref::<TextBox>() else {
             return false;
         };
-        self.content == other.content &&
-            self.placeholder == other.placeholder &&
-            self.cursor_index == other.cursor_index &&
-            self.selection_anchor == other.selection_anchor &&
-            self.base.style == other.base.style &&
-            self.base.hover_style == other.base.hover_style &&
-            self.base.focus_style == other.base.focus_style &&
-            self.base.disabled_style == other.base.disabled_style &&
-            self.base.focused_hover_style == other.base.focused_hover_style
+        self.content == other.content
+            && self.placeholder == other.placeholder
+            && self.cursor_index == other.cursor_index
+            && self.selection_anchor == other.selection_anchor
+            && self.base.authored_styles_eq(&other.base)
     }
 
     fn cascade_style(&mut self, parent: &Style, anim: &mut AnimationManager) {
@@ -1336,8 +1377,8 @@ impl Widget for TextBox {
     }
 
     fn wants_animation_frame(&self) -> bool {
-        self.base.interaction.enabled &&
-            self.base.id.as_deref().is_some_and(crate::dom::has_pending)
+        self.base.interaction.enabled
+            && self.base.id.as_deref().is_some_and(crate::dom::has_pending)
     }
 
     fn transfer_measured_state(&mut self, old: &dyn Widget) {
@@ -1358,7 +1399,10 @@ impl Widget for TextBox {
     }
 
     fn blink_interval(&self) -> Option<web_time::Duration> {
-        self.base.interaction.focused.then_some(web_time::Duration::from_millis(530))
+        self.base
+            .interaction
+            .focused
+            .then_some(web_time::Duration::from_millis(530))
     }
 
     fn anim_id(&self) -> WidgetId {

@@ -1,5 +1,5 @@
-use crate::ClipboardError;
 use super::ClipboardBackend;
+use crate::ClipboardError;
 
 pub struct LinuxClipboard;
 
@@ -15,7 +15,11 @@ impl ClipboardBackend for LinuxClipboard {
         callback(Err(ClipboardError::Unsupported));
     }
 
-    fn set_text(&self, _text: String, callback: Box<dyn FnOnce(Result<(), ClipboardError>) + Send>) {
+    fn set_text(
+        &self,
+        _text: String,
+        callback: Box<dyn FnOnce(Result<(), ClipboardError>) + Send>,
+    ) {
         callback(Err(ClipboardError::Unsupported));
     }
 

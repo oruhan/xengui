@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-use super::{ SvgColor, Transform2D };
+use super::{SvgColor, Transform2D};
 use crate::Color;
 use std::sync::Arc;
 
@@ -141,7 +141,7 @@ pub enum SvgElement {
 impl SvgElement {
     pub fn attrs(&self) -> &SvgAttributes {
         match self {
-            | Self::Path { attrs, .. }
+            Self::Path { attrs, .. }
             | Self::Rect { attrs, .. }
             | Self::Circle { attrs, .. }
             | Self::Line { attrs, .. }
@@ -152,7 +152,7 @@ impl SvgElement {
 
     pub fn attrs_mut(&mut self) -> &mut SvgAttributes {
         match self {
-            | Self::Path { attrs, .. }
+            Self::Path { attrs, .. }
             | Self::Rect { attrs, .. }
             | Self::Circle { attrs, .. }
             | Self::Line { attrs, .. }

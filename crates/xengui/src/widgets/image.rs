@@ -1,37 +1,27 @@
 // SPDX-License-Identifier: Apache-2.0
 use crate::{
-    AnimationManager,
-    Color,
-    Constraints,
-    EventCtx,
-    EventStatus,
-    ImageCommand,
-    ImageData,
-    InputEvent,
-    Interaction,
-    LayoutBox,
-    Length,
-    MeasureContext,
-    MeasureResult,
-    PaintContext,
-    Style,
-    StyleBuilder,
-    Widget,
-    WidgetBase,
-    WidgetId,
+    AnimationManager, Color, Constraints, EventCtx, EventStatus, ImageCommand, ImageData,
+    InputEvent, Interaction, LayoutBox, Length, MeasureContext, MeasureResult, PaintContext, Style,
+    StyleBuilder, Widget, WidgetBase, WidgetId,
 };
-use std::hash::{ Hash, Hasher };
+use std::hash::{Hash, Hasher};
 use std::sync::Arc;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+/// Available `ObjectFit` choices.
 pub enum ObjectFit {
     #[default]
+    /// The `Fill` variant.
     Fill,
+    /// The `Contain` variant.
     Contain,
+    /// The `Cover` variant.
     Cover,
+    /// The `None` variant.
     None,
 }
 
+/// Convenient alias for `ImageSource`.
 pub type ImageSource = Arc<ImageData>;
 
 fn hash_bytes(bytes: &[u8]) -> u64 {
@@ -40,6 +30,7 @@ fn hash_bytes(bytes: &[u8]) -> u64 {
     hasher.finish()
 }
 
+/// Returns or updates the `image_source_from_rgba8` value.
 pub fn image_source_from_rgba8(mut rgba: Vec<u8>, width: u32, height: u32) -> ImageSource {
     let expected_len = ((width as u64) * (height as u64) * 4) as usize;
     if rgba.len() != expected_len {
@@ -58,29 +49,29 @@ pub fn image_source_from_rgba8(mut rgba: Vec<u8>, width: u32, height: u32) -> Im
     })
 }
 
+/// Returns or updates the `image_source_from_bytes` value.
 pub fn image_source_from_bytes(bytes: &[u8]) -> Result<ImageSource, String> {
-    let decoded = image
-        ::load_from_memory(bytes)
+    let decoded = image::load_from_memory(bytes)
         .map_err(|e| e.to_string())?
         .to_rgba8();
     let (width, height) = decoded.dimensions();
     let id = hash_bytes(bytes);
-    Ok(
-        Arc::new(ImageData {
-            id,
-            width,
-            height,
-            rgba: decoded.into_raw(),
-        })
-    )
+    Ok(Arc::new(ImageData {
+        id,
+        width,
+        height,
+        rgba: decoded.into_raw(),
+    }))
 }
 
 #[cfg(not(target_arch = "wasm32"))]
+/// Returns or updates the `image_source_from_path` value.
 pub fn image_source_from_path(path: impl AsRef<std::path::Path>) -> Result<ImageSource, String> {
     let bytes = std::fs::read(path).map_err(|e| e.to_string())?;
     image_source_from_bytes(&bytes)
 }
 
+/// Data and behavior represented by `Image`.
 pub struct Image {
     base: WidgetBase,
     anim_id: WidgetId,
@@ -91,6 +82,7 @@ pub struct Image {
 }
 
 impl Image {
+    /// Creates a value with its default configuration.
     pub fn new() -> Self {
         let interaction = Interaction::new();
 
@@ -107,12 +99,14 @@ impl Image {
         image
     }
 
+    /// Returns or updates the `source` value.
     pub fn source(mut self, source: ImageSource) -> Self {
         self.source = Some(source);
         self.mark_dirty();
         self
     }
 
+    /// Returns or updates the `bytes` value.
     pub fn bytes(mut self, bytes: &[u8]) -> Self {
         match image_source_from_bytes(bytes) {
             Ok(source) => {
@@ -125,24 +119,29 @@ impl Image {
     }
 
     #[cfg(not(target_arch = "wasm32"))]
+    /// Returns or updates the `path` value.
     pub fn path(mut self, path: impl AsRef<std::path::Path>) -> Self {
         match image_source_from_path(path.as_ref()) {
             Ok(source) => {
                 self.source = Some(source);
             }
-            Err(err) =>
-                log::error!("Image::path('{}') decode error: {err}", path.as_ref().display()),
+            Err(err) => log::error!(
+                "Image::path('{}') decode error: {err}",
+                path.as_ref().display()
+            ),
         }
         self.mark_dirty();
         self
     }
 
+    /// Returns or updates the `object_fit` value.
     pub fn object_fit(mut self, fit: ObjectFit) -> Self {
         self.object_fit = fit;
         self.mark_dirty();
         self
     }
 
+    /// Returns or updates the `tint` value.
     pub fn tint(mut self, color: Color) -> Self {
         self.tint = Some(color);
         self.mark_dirty();
@@ -243,11 +242,10 @@ impl Widget for Image {
             position,
             size,
             image: source,
-            border_radius: border.map(|b|
-                Length::px(
-                    Length::px(b.radius.unwrap_or_default().max_value()).to_physical(sf)
-                ).into()
-            ),
+            border_radius: border.map(|b| {
+                Length::px(Length::px(b.radius.unwrap_or_default().max_value()).to_physical(sf))
+                    .into()
+            }),
             tint: self.tint,
             clip_rect: None,
         });
@@ -285,15 +283,10 @@ impl Widget for Image {
             _ => false,
         };
 
-        source_eq &&
-            self.object_fit == other.object_fit &&
-            self.tint == other.tint &&
-            self.base.style == other.base.style &&
-            self.base.hover_style == other.base.hover_style &&
-            self.base.pressed_style == other.base.pressed_style &&
-            self.base.disabled_style == other.base.disabled_style &&
-            self.base.focus_style == other.base.focus_style &&
-            self.base.focused_hover_style == other.base.focused_hover_style
+        source_eq
+            && self.object_fit == other.object_fit
+            && self.tint == other.tint
+            && self.base.authored_styles_eq(&other.base)
     }
 
     fn after_interaction_transfer(&mut self) {
