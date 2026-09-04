@@ -33,9 +33,29 @@ enum ScrollbarArrow {
 struct AutoScrollState {
     origin: (f32, f32),
     current: (f32, f32),
+    velocity: (f32, f32),
+    activated_at: Instant,
     // Reflects which axes are actually scrollable, chosen once at
     // activation so it matches the native OS pan cursor for that case.
     cursor: Cursor,
+}
+
+fn auto_scroll_axis_speed(delta: f32, dead_zone: f32, range: f32, max_speed: f32) -> f32 {
+    let magnitude = delta.abs();
+    if magnitude <= dead_zone {
+        return 0.0;
+    }
+
+    let t = ((magnitude - dead_zone) / range.max(f32::EPSILON)).clamp(0.0, 1.0);
+    // Smoothstep gives fine control near the origin and still ramps to full
+    // speed without the abrupt slope changes of a linear response.
+    let eased = t * t * (3.0 - 2.0 * t);
+    delta.signum() * max_speed * eased
+}
+
+fn approach_velocity(current: f32, target: f32, response: f32, dt: f32) -> f32 {
+    let alpha = 1.0 - (-response * dt).exp();
+    current + (target - current) * alpha
 }
 
 #[derive(Clone, Copy)]
@@ -394,9 +414,13 @@ impl View {
         self
     }
 
-    /// Enables or disables middle-click AutoScroll for this view. Enabled
-    /// by default; has no effect unless the view is scrollable on at
-    /// least one axis.
+    /// Enables or disables middle-click AutoScroll for this view.
+    ///
+    /// AutoScroll is enabled by default and activates only when at least
+    /// one axis has real scrollable overflow. Moving away from the origin
+    /// accelerates smoothly with distance; returning to the origin eases
+    /// to rest. A second middle click, another pointer press, the scroll
+    /// wheel, or Escape cancels the gesture.
     pub fn auto_scroll(mut self, enabled: bool) -> Self {
         self.auto_scroll_enabled = enabled;
         self
@@ -1662,6 +1686,8 @@ impl View {
                     self.auto_scroll.set(Some(AutoScrollState {
                         origin: *position,
                         current: *position,
+                        velocity: (0.0, 0.0),
+                        activated_at: Instant::now(),
                         cursor,
                     }));
                     ctx.set_cursor_icon(cursor);
@@ -1716,52 +1742,77 @@ impl View {
     }
 
     fn tick_auto_scroll(&mut self, dt: f32, ctx: &mut EventCtx) {
-        let Some(state) = self.auto_scroll.get() else {
+        let Some(mut state) = self.auto_scroll.get() else {
             return;
         };
+        // A stalled tab or debugger pause must not turn into a giant jump.
+        let dt = dt.clamp(0.0, 1.0 / 20.0);
         let sf = self.scale_factor.get();
         let dead_zone = AUTO_SCROLL_DEAD_ZONE_DP * sf;
         let range = AUTO_SCROLL_RANGE_DP * sf;
         let max_speed = AUTO_SCROLL_MAX_SPEED * sf;
 
-        // Linear ramp from the dead zone to max_speed, matching the
-        // middle-click autoscroll curve used by Chromium/WebView-based
-        // browsers (speed scales directly with distance past the
-        // activation radius, no easing).
-        let speed_along = |delta: f32| -> f32 {
-            let mag = delta.abs();
-            if mag <= dead_zone {
-                return 0.0;
-            }
-            let t = ((mag - dead_zone) / range).min(1.0);
-            delta.signum() * max_speed * t
-        };
-
         let dx = state.current.0 - state.origin.0;
         let dy = state.current.1 - state.origin.1;
 
-        let vx = if self.can_scroll_x() {
-            speed_along(dx)
+        let mut target_vx = if self.can_scroll_x() {
+            auto_scroll_axis_speed(dx, dead_zone, range, max_speed)
         } else {
             0.0
         };
-        let vy = if self.can_scroll_y() {
-            speed_along(dy)
+        let mut target_vy = if self.can_scroll_y() {
+            auto_scroll_axis_speed(dy, dead_zone, range, max_speed)
         } else {
             0.0
         };
 
-        if vx == 0.0 && vy == 0.0 {
-            return;
+        // Cap diagonal motion to the same total maximum as a single axis,
+        // avoiding an unintended sqrt(2) speed boost in two-axis views.
+        let target_length = target_vx.hypot(target_vy);
+        if target_length > max_speed {
+            let scale = max_speed / target_length;
+            target_vx *= scale;
+            target_vy *= scale;
         }
 
+        let response_x = if target_vx == 0.0 {
+            AUTO_SCROLL_DECELERATION
+        } else {
+            AUTO_SCROLL_ACCELERATION
+        };
+        let response_y = if target_vy == 0.0 {
+            AUTO_SCROLL_DECELERATION
+        } else {
+            AUTO_SCROLL_ACCELERATION
+        };
+        state.velocity.0 = approach_velocity(state.velocity.0, target_vx, response_x, dt);
+        state.velocity.1 = approach_velocity(state.velocity.1, target_vy, response_y, dt);
+
+        let stop_threshold = 0.5 * sf;
+        if target_vx == 0.0 && state.velocity.0.abs() < stop_threshold {
+            state.velocity.0 = 0.0;
+        }
+        if target_vy == 0.0 && state.velocity.1.abs() < stop_threshold {
+            state.velocity.1 = 0.0;
+        }
+
+        self.auto_scroll.set(Some(state));
+
         let current = self.scroll_offset.get();
-        let (next_x, hit_x) = self.react_to_bounds(current.0 + vx * dt, self.max_scroll_x(), false);
-        let (next_y, hit_y) = self.react_to_bounds(current.1 + vy * dt, self.max_scroll_y(), false);
+        let (next_x, hit_x) = self.react_to_bounds(
+            current.0 + state.velocity.0 * dt,
+            self.max_scroll_x(),
+            false,
+        );
+        let (next_y, hit_y) = self.react_to_bounds(
+            current.1 + state.velocity.1 * dt,
+            self.max_scroll_y(),
+            false,
+        );
 
         if hit_x {
             self.note_edge_hit(
-                if vx < 0.0 {
+                if state.velocity.0 < 0.0 {
                     EdgeSide::Left
                 } else {
                     EdgeSide::Right
@@ -1771,7 +1822,7 @@ impl View {
         }
         if hit_y {
             self.note_edge_hit(
-                if vy < 0.0 {
+                if state.velocity.1 < 0.0 {
                     EdgeSide::Top
                 } else {
                     EdgeSide::Bottom
@@ -1784,8 +1835,11 @@ impl View {
         if next != current {
             self.scroll_offset.set(next);
             self.scroll_target.set(next);
-            ctx.request_redraw();
+            self.note_scroll_activity();
         }
+        // Keeps velocity easing and the origin marker animation alive even
+        // while stationary in the dead zone or pressed against a bound.
+        ctx.request_redraw();
     }
 
     // Claims the dedicated TouchPan gesture (by returning Handled on
@@ -2134,6 +2188,88 @@ impl View {
         self.spring_back_if_needed(ctx);
     }
 
+    fn paint_auto_scroll_indicator(&self, ctx: &mut PaintContext) {
+        let Some(state) = self.auto_scroll.get() else {
+            return;
+        };
+
+        let sf = self.scale_factor.get();
+        let radius = AUTO_SCROLL_INDICATOR_RADIUS_DP * sf;
+        let pulse = (state.activated_at.elapsed().as_secs_f32() * 5.0).sin() * 0.5 + 0.5;
+        let pulse_radius = radius + (2.0 + pulse * 2.0) * sf;
+        let theme = crate::current_theme();
+        let origin = state.origin;
+
+        ctx.draw_rect(RectCommand {
+            position: (origin.0 - pulse_radius, origin.1 - pulse_radius),
+            size: (pulse_radius * 2.0, pulse_radius * 2.0),
+            background: Some(Background::Color(Color::TRANSPARENT)),
+            border_radius: Some(BorderRadius::all(Length::px(pulse_radius))),
+            border_width: Some(Length::px(sf)),
+            border_color: Some(theme.primary.with_alpha_f32(0.18 + pulse * 0.16)),
+            clip_rect: None,
+        });
+        ctx.draw_rect(RectCommand {
+            position: (origin.0 - radius, origin.1 - radius),
+            size: (radius * 2.0, radius * 2.0),
+            background: Some(Background::Color(theme.surface.with_alpha_f32(0.94))),
+            border_radius: Some(BorderRadius::all(Length::px(radius))),
+            border_width: Some(Length::px(1.5 * sf)),
+            border_color: Some(theme.primary.with_alpha_f32(0.9)),
+            clip_rect: None,
+        });
+
+        let mut direction = (
+            if self.can_scroll_x() {
+                state.current.0 - origin.0
+            } else {
+                0.0
+            },
+            if self.can_scroll_y() {
+                state.current.1 - origin.1
+            } else {
+                0.0
+            },
+        );
+        let length = direction.0.hypot(direction.1);
+        let dead_zone = AUTO_SCROLL_DEAD_ZONE_DP * sf;
+        if length > dead_zone {
+            direction.0 /= length;
+            direction.1 /= length;
+            let perpendicular = (-direction.1, direction.0);
+            let tip_distance = radius - 3.0 * sf;
+            let base_distance = tip_distance - 7.0 * sf;
+            let half_width = 3.5 * sf;
+            ctx.draw_triangle(TriangleCommand {
+                p0: (
+                    origin.0 + direction.0 * tip_distance,
+                    origin.1 + direction.1 * tip_distance,
+                ),
+                p1: (
+                    origin.0 + direction.0 * base_distance + perpendicular.0 * half_width,
+                    origin.1 + direction.1 * base_distance + perpendicular.1 * half_width,
+                ),
+                p2: (
+                    origin.0 + direction.0 * base_distance - perpendicular.0 * half_width,
+                    origin.1 + direction.1 * base_distance - perpendicular.1 * half_width,
+                ),
+                color: theme.primary,
+                clip_rect: None,
+            });
+        } else {
+            let dot_radius = 2.5 * sf;
+            ctx.draw_rect(RectCommand {
+                position: (origin.0 - dot_radius, origin.1 - dot_radius),
+                size: (dot_radius * 2.0, dot_radius * 2.0),
+                background: Some(Background::Color(theme.primary)),
+                border_radius: Some(BorderRadius::all(Length::px(dot_radius))),
+                border_width: None,
+                border_color: None,
+                clip_rect: None,
+            });
+        }
+    }
+
     // Renders a thin, full-span band along whichever edge(s) recently hit
     // their scroll bound under `Overscroll::Glow`, instead of a radial
     // highlight anchored to the drag/scroll point - matches the classic
@@ -2282,6 +2418,7 @@ impl Widget for View {
 
         if fade <= 0.001 {
             self.paint_overscroll_glow(ctx);
+            self.paint_auto_scroll_indicator(ctx);
             return;
         }
 
@@ -2469,6 +2606,7 @@ impl Widget for View {
         }
 
         self.paint_overscroll_glow(ctx);
+        self.paint_auto_scroll_indicator(ctx);
     }
 
     fn event(&mut self, event: &InputEvent, ctx: &mut EventCtx) -> EventStatus {
@@ -2887,5 +3025,76 @@ mod tests {
         );
         assert!(view.scrollbar_thumb_hovered.get());
         assert_eq!(view.target_scrollbar_thickness(), hover_thickness);
+    }
+
+    #[test]
+    fn auto_scroll_speed_curve_has_dead_zone_and_cap() {
+        assert_eq!(auto_scroll_axis_speed(8.0, 8.0, 180.0, 1900.0), 0.0);
+        let near = auto_scroll_axis_speed(32.0, 8.0, 180.0, 1900.0);
+        let far = auto_scroll_axis_speed(120.0, 8.0, 180.0, 1900.0);
+        assert!(near > 0.0);
+        assert!(far > near);
+        assert_eq!(auto_scroll_axis_speed(400.0, 8.0, 180.0, 1900.0), 1900.0);
+        assert_eq!(auto_scroll_axis_speed(-400.0, 8.0, 180.0, 1900.0), -1900.0);
+    }
+
+    #[test]
+    fn auto_scroll_accelerates_instead_of_jumping_to_target_speed() {
+        let mut view = sized_view(
+            View::new().overflow_y(Overflow::Auto),
+            (100.0, 100.0),
+            (100.0, 1000.0),
+        );
+        view.auto_scroll.set(Some(AutoScrollState {
+            origin: (50.0, 50.0),
+            current: (50.0, 180.0),
+            velocity: (0.0, 0.0),
+            activated_at: Instant::now(),
+            cursor: Cursor::NsResize,
+        }));
+        let mut ctx = EventCtx::new();
+
+        view.tick_auto_scroll(1.0 / 60.0, &mut ctx);
+        let first = view
+            .auto_scroll
+            .get()
+            .expect("active AutoScroll")
+            .velocity
+            .1;
+        assert!(first > 0.0);
+        assert!(first < AUTO_SCROLL_MAX_SPEED);
+        assert!(view.scroll_offset.get().1 > 0.0);
+        assert!(ctx.redraw_requested());
+
+        view.tick_auto_scroll(1.0 / 60.0, &mut ctx);
+        let second = view
+            .auto_scroll
+            .get()
+            .expect("active AutoScroll")
+            .velocity
+            .1;
+        assert!(second > first);
+    }
+
+    #[test]
+    fn auto_scroll_origin_indicator_is_always_visible_while_active() {
+        let view = sized_view(
+            View::new().overflow_y(Overflow::Auto),
+            (100.0, 100.0),
+            (100.0, 400.0),
+        );
+        view.auto_scroll.set(Some(AutoScrollState {
+            origin: (50.0, 50.0),
+            current: (50.0, 50.0),
+            velocity: (0.0, 0.0),
+            activated_at: Instant::now(),
+            cursor: Cursor::NsResize,
+        }));
+        let mut commands = Vec::new();
+        let mut paint = PaintContext::new(&mut commands, 1.0);
+
+        view.paint_auto_scroll_indicator(&mut paint);
+
+        assert_eq!(commands.len(), 3);
     }
 }

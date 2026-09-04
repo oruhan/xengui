@@ -22,6 +22,7 @@ All notable changes to the XenGui workspace are documented here. The project fol
 - Removed duplicate touch-pan dispatch and redundant scroll-state transfer work.
 - Made reconciliation compare every authored pseudo-state style, including focus-within and focused-pressed layers, before reusing cached widget output.
 - Limited scrollbar thumb-width hover animation to the thumb itself; hovering empty track no longer expands it.
+- Upgraded middle-click AutoScroll with smooth acceleration/deceleration, a precision dead zone, diagonal speed limiting, stalled-frame protection, and an animated directional origin marker.
 
 ### Documentation
 

@@ -107,6 +107,14 @@ pub const AUTO_SCROLL_DEAD_ZONE_DP: f32 = 8.0;
 pub const AUTO_SCROLL_RANGE_DP: f32 = 180.0;
 /// Maximum AutoScroll speed, in logical px/sec, reached at `AUTO_SCROLL_RANGE_DP`.
 pub const AUTO_SCROLL_MAX_SPEED: f32 = 1900.0;
+/// Exponential response rate used while AutoScroll accelerates or changes
+/// direction. Larger values follow the pointer more aggressively.
+pub const AUTO_SCROLL_ACCELERATION: f32 = 11.0;
+/// Faster response used when returning to the dead zone, so AutoScroll
+/// comes to rest promptly without snapping to zero.
+pub const AUTO_SCROLL_DECELERATION: f32 = 17.0;
+/// Radius of the animated AutoScroll origin marker, in logical/DP units.
+pub const AUTO_SCROLL_INDICATOR_RADIUS_DP: f32 = 14.0;
 
 /* ---- Overscroll ---- */
 /// Visual travel (px) a rubber-banded drag/fling asymptotically
