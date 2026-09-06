@@ -267,8 +267,8 @@ impl Widget for Checkbox {
             let icon_size = b.width * 0.76 + 2.5 * sf;
             // Snapped to the pixel grid so the icon's own rounding inside
             // the pipeline can't drift relative to the (also rounded) box.
-            let icon_x = (b.x + (b.width - icon_size) * 0.5).round();
-            let icon_y = (b.y + (b.height - icon_size) * 0.5).round();
+            let icon_x = b.x + (b.width - icon_size) * 0.5;
+            let icon_y = b.y + (b.height - icon_size) * 0.5;
 
             let codepoint = if self.display_indeterminate.get() {
                 self.indeterminate_codepoint

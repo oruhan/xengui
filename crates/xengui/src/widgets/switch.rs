@@ -284,7 +284,7 @@ impl Widget for Switch {
         // Position snapped to the pixel grid so the circular SDF's
         // antialiasing band doesn't straddle a texel asymmetrically at
         // edges - size stays unrounded so the thumb keeps scaling smoothly.
-        let thumb_position = ((cx - thumb_d * 0.5).round(), (cy - thumb_d * 0.5).round());
+        let thumb_position = (cx - thumb_d * 0.5, cy - thumb_d * 0.5);
 
         ctx.draw_rect(RectCommand {
             position: thumb_position,

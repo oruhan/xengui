@@ -4,14 +4,14 @@
 /// its scroll bounds.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub enum Overscroll {
-    /// Resolves to whichever behavior matches the current platform's own
-    /// scrolling conventions (see `View`'s overscroll resolution logic).
+    /// Resolves to the framework default, currently Apple-style `Bounce`
+    /// on every native and WebAssembly target.
     #[default]
     Auto,
     /// Scrolling stops exactly at the content bounds; no rubber-banding.
     Disabled,
     /// Dragging or flinging past the edge rubber-bands the content and
-    /// springs back, matching iOS-style bounce.
+    /// springs back, matching macOS/iOS-style bounce.
     Bounce,
     /// Similar to `Bounce`, but with tighter resistance and a snappier return.
     Stretch,

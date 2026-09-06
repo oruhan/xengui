@@ -75,6 +75,12 @@ struct MomentumState {
 }
 
 #[derive(Clone, Copy)]
+struct OverscrollSpringState {
+    target: (f32, f32),
+    velocity: (f32, f32),
+}
+
+#[derive(Clone, Copy)]
 enum EdgeSide {
     Top,
     Right,
@@ -83,15 +89,7 @@ enum EdgeSide {
 }
 
 fn platform_default_overscroll() -> Overscroll {
-    if cfg!(target_os = "ios") {
-        Overscroll::Bounce
-    } else if cfg!(target_os = "android") {
-        Overscroll::Stretch
-    } else if cfg!(target_arch = "wasm32") && crate::platform::is_touch_platform() {
-        Overscroll::Bounce
-    } else {
-        Overscroll::Stretch
-    }
+    Overscroll::Bounce
 }
 
 // Touch-primary platforms show their scrollbar only while actively
@@ -294,6 +292,11 @@ pub struct View {
 
     touch_pan: Cell<Option<TouchPanState>>,
     momentum: Cell<Option<MomentumState>>,
+    overscroll_spring: Cell<Option<OverscrollSpringState>>,
+    // Wheel input may be reported as PixelDelta or LineDelta depending on
+    // the native backend. Keep a rubber-band gesture active until events
+    // pause, then spring the offset back to its bound.
+    wheel_gesture_last_event: Cell<Option<Instant>>,
 
     // Edge-glow intensity for `Overscroll::Glow`, indexed [top, right, bottom, left].
     overscroll_glow: Cell<[f32; 4]>,
@@ -353,6 +356,8 @@ impl View {
 
             touch_pan: Cell::new(None),
             momentum: Cell::new(None),
+            overscroll_spring: Cell::new(None),
+            wheel_gesture_last_event: Cell::new(None),
 
             overscroll_glow: Cell::new([0.0; 4]),
             glow_pending_hit: Cell::new([false; 4]),
@@ -512,6 +517,41 @@ impl View {
         range * (1.0 - 1.0 / (overshoot / range + 1.0))
     }
 
+    // Inverse of `rubber_band`. Gesture deltas and momentum operate in raw
+    // scroll space; recovering that value before applying the next delta
+    // prevents the damping curve from being applied repeatedly to its own
+    // output (which made continued motion jump backward near an edge).
+    fn inverse_rubber_band(visual_overshoot: f32, range: f32) -> f32 {
+        let visual = visual_overshoot.clamp(0.0, range * (1.0 - f32::EPSILON));
+        visual * range / (range - visual)
+    }
+
+    fn rubber_band_range(&self) -> f32 {
+        let base = if self.effective_overscroll() == Overscroll::Stretch {
+            STRETCH_RUBBER_BAND_RANGE
+        } else {
+            OVERSCROLL_RUBBER_BAND_RANGE
+        };
+        base * self.scale_factor.get()
+    }
+
+    fn raw_offset_from_visual(&self, value: f32, max: f32) -> f32 {
+        if !matches!(
+            self.effective_overscroll(),
+            Overscroll::Bounce | Overscroll::Stretch
+        ) {
+            return value;
+        }
+        let range = self.rubber_band_range();
+        if value < 0.0 {
+            -Self::inverse_rubber_band(-value, range)
+        } else if value > max {
+            max + Self::inverse_rubber_band(value - max, range)
+        } else {
+            value
+        }
+    }
+
     // Applies the current Overscroll mode to a proposed (possibly
     // out-of-bounds) offset for one axis. `allow_rubber_band` distinguishes
     // direct manipulation (drag/momentum), which may rubber-band, from
@@ -530,12 +570,7 @@ impl View {
             // Stretch resists further than Bounce - a shorter travel range
             // matches Android's tighter, snappier stretch instead of iOS's
             // looser springy bounce.
-            let base_range = if mode == Overscroll::Stretch {
-                STRETCH_RUBBER_BAND_RANGE
-            } else {
-                OVERSCROLL_RUBBER_BAND_RANGE
-            };
-            let range = base_range * self.scale_factor.get();
+            let range = self.rubber_band_range();
             let value = if raw < 0.0 {
                 -Self::rubber_band(-raw, range)
             } else {
@@ -728,12 +763,21 @@ impl View {
         self.auto_scroll.set(None);
         self.touch_pan.set(None);
         self.momentum.set(None);
+        self.overscroll_spring.set(None);
+        self.wheel_gesture_last_event.set(None);
     }
 
     fn spring_back_if_needed(&mut self, ctx: &mut EventCtx) {
         let clamped = self.clamp_offset(self.scroll_offset.get());
-        if clamped != self.scroll_target.get() {
-            self.scroll_target.set(clamped);
+        if clamped != self.scroll_offset.get() {
+            self.overscroll_spring.set(Some(OverscrollSpringState {
+                target: clamped,
+                velocity: (0.0, 0.0),
+            }));
+            // While the physical spring owns the offset, keep the ordinary
+            // scroll animator settled at the live value so the two systems
+            // never retarget/fight each other on alternating frames.
+            self.scroll_target.set(self.scroll_offset.get());
             self.base.dirty = true;
             ctx.request_redraw();
         }
@@ -912,22 +956,12 @@ impl View {
         let direct_manipulation = self.scrollbar_drag.get().is_some()
             || self.touch_pan.get().is_some()
             || self.momentum.get().is_some()
+            || self.overscroll_spring.get().is_some()
+            || self.wheel_gesture_last_event.get().is_some()
             || self.auto_scroll.get().is_some();
-
-        let offset = self.scroll_offset.get();
-        let overscrolled = offset.0 < 0.0
-            || offset.0 > self.max_scroll_x()
-            || offset.1 < 0.0
-            || offset.1 > self.max_scroll_y();
 
         let transition = if direct_manipulation {
             None
-        } else if overscrolled {
-            Some(if self.effective_overscroll() == Overscroll::Stretch {
-                STRETCH_RETURN_TRANSITION
-            } else {
-                OVERSCROLL_RETURN_TRANSITION
-            })
         } else {
             Some(SCROLL_TRANSITION)
         };
@@ -1351,6 +1385,7 @@ impl View {
 
         let scroll_step = scroll_step * self.scale_factor.get();
 
+        let precision = matches!(delta, MouseScrollDelta::PixelDelta(..));
         let (raw_dx, raw_dy) = match delta {
             MouseScrollDelta::LineDelta(x, y) => (-x * scroll_step, -y * scroll_step),
             MouseScrollDelta::PixelDelta(x, y) => (-x as f32, -y as f32),
@@ -1372,13 +1407,37 @@ impl View {
             return false;
         }
 
+        let continuing_wheel_gesture = self.wheel_gesture_last_event.get().is_some();
         self.cancel_conflicting_gestures();
 
-        let current = self.scroll_target.get();
-        // Wheel input is a discrete nudge. Bounce/stretch is reserved for
-        // direct touch manipulation and momentum; wheel scrolling clamps.
-        let (next_x, hit_x) = self.react_to_bounds(current.0 + dx, self.max_scroll_x(), false);
-        let (next_y, hit_y) = self.react_to_bounds(current.1 + dy, self.max_scroll_y(), false);
+        // Linux backends do not consistently distinguish touchpads from
+        // stepped wheels: either can arrive as LineDelta. PixelDelta is
+        // always direct manipulation; a LineDelta sequence joins that path
+        // as soon as it crosses a bound in Bounce/Stretch mode.
+        let current = if precision || continuing_wheel_gesture {
+            self.scroll_offset.get()
+        } else {
+            self.scroll_target.get()
+        };
+        let max_x = self.max_scroll_x();
+        let max_y = self.max_scroll_y();
+        let raw_x = self.raw_offset_from_visual(current.0, max_x);
+        let raw_y = self.raw_offset_from_visual(current.1, max_y);
+        let proposed_x = raw_x + dx;
+        let proposed_y = raw_y + dy;
+        let rubber_mode = matches!(
+            self.effective_overscroll(),
+            Overscroll::Bounce | Overscroll::Stretch
+        );
+        let rubber_x = rubber_mode
+            && self.can_scroll_x()
+            && (precision || continuing_wheel_gesture || proposed_x < 0.0 || proposed_x > max_x);
+        let rubber_y = rubber_mode
+            && self.can_scroll_y()
+            && (precision || continuing_wheel_gesture || proposed_y < 0.0 || proposed_y > max_y);
+        let direct_wheel = precision || rubber_x || rubber_y;
+        let (next_x, hit_x) = self.react_to_bounds(proposed_x, max_x, rubber_x);
+        let (next_y, hit_y) = self.react_to_bounds(proposed_y, max_y, rubber_y);
 
         if hit_x {
             self.note_edge_hit(
@@ -1407,7 +1466,16 @@ impl View {
             return false;
         }
 
-        self.start_scroll_animation(next, ctx);
+        if direct_wheel {
+            self.scroll_offset.set(next);
+            self.scroll_target.set(next);
+            self.wheel_gesture_last_event.set(Some(Instant::now()));
+            self.base.dirty = true;
+            self.note_scroll_activity();
+            ctx.request_redraw();
+        } else {
+            self.start_scroll_animation(next, ctx);
+        }
         true
     }
 
@@ -1909,12 +1977,14 @@ impl View {
                 // horizontally on a page that only scrolls on Y (or the
                 // reverse).
                 let (next_x, hit_x) = if self.can_scroll_x() {
-                    self.react_to_bounds(current.0 - dx, self.max_scroll_x(), true)
+                    let raw = self.raw_offset_from_visual(current.0, self.max_scroll_x());
+                    self.react_to_bounds(raw - dx, self.max_scroll_x(), true)
                 } else {
                     (current.0, false)
                 };
                 let (next_y, hit_y) = if self.can_scroll_y() {
-                    self.react_to_bounds(current.1 - dy, self.max_scroll_y(), true)
+                    let raw = self.raw_offset_from_visual(current.1, self.max_scroll_y());
+                    self.react_to_bounds(raw - dy, self.max_scroll_y(), true)
                 } else {
                     (current.1, false)
                 };
@@ -2062,12 +2132,12 @@ impl View {
             state.velocity.1 = 0.0;
         }
         let raw_x = if can_scroll_x {
-            current.0 - state.velocity.0 * dt
+            self.raw_offset_from_visual(current.0, self.max_scroll_x()) - state.velocity.0 * dt
         } else {
             0.0
         };
         let raw_y = if can_scroll_y {
-            current.1 - state.velocity.1 * dt
+            self.raw_offset_from_visual(current.1, self.max_scroll_y()) - state.velocity.1 * dt
         } else {
             0.0
         };
@@ -2154,6 +2224,45 @@ impl View {
         } else {
             self.momentum.set(Some(state));
         }
+    }
+
+    fn tick_overscroll_spring(&mut self, dt: f32, ctx: &mut EventCtx) {
+        let Some(mut state) = self.overscroll_spring.get() else {
+            return;
+        };
+
+        let mut position = self.scroll_offset.get();
+        let mut remaining = dt.min(0.05);
+        while remaining > 0.0 {
+            let step = remaining.min(OVERSCROLL_SPRING_MAX_STEP);
+            remaining -= step;
+
+            let ax = -OVERSCROLL_SPRING_STIFFNESS * (position.0 - state.target.0)
+                - OVERSCROLL_SPRING_DAMPING * state.velocity.0;
+            let ay = -OVERSCROLL_SPRING_STIFFNESS * (position.1 - state.target.1)
+                - OVERSCROLL_SPRING_DAMPING * state.velocity.1;
+            state.velocity.0 += ax * step;
+            state.velocity.1 += ay * step;
+            position.0 += state.velocity.0 * step;
+            position.1 += state.velocity.1 * step;
+        }
+
+        let settled_x = (position.0 - state.target.0).abs() < OVERSCROLL_SPRING_POSITION_EPSILON
+            && state.velocity.0.abs() < OVERSCROLL_SPRING_VELOCITY_EPSILON;
+        let settled_y = (position.1 - state.target.1).abs() < OVERSCROLL_SPRING_POSITION_EPSILON
+            && state.velocity.1.abs() < OVERSCROLL_SPRING_VELOCITY_EPSILON;
+
+        if settled_x && settled_y {
+            position = state.target;
+            self.overscroll_spring.set(None);
+        } else {
+            self.overscroll_spring.set(Some(state));
+        }
+
+        self.scroll_offset.set(position);
+        self.scroll_target.set(position);
+        self.note_scroll_activity();
+        ctx.request_redraw();
     }
 
     // A brief rubber-band-and-return played once a fling comes to rest
@@ -2626,6 +2735,17 @@ impl Widget for View {
         }
 
         if let InputEvent::AnimationTick { dt } = event {
+            if self
+                .wheel_gesture_last_event
+                .get()
+                .is_some_and(|last| last.elapsed() >= WHEEL_GESTURE_END_DELAY)
+            {
+                self.wheel_gesture_last_event.set(None);
+                self.spring_back_if_needed(ctx);
+            }
+            if self.overscroll_spring.get().is_some() {
+                self.tick_overscroll_spring(*dt, ctx);
+            }
             if self.momentum.get().is_some() {
                 self.tick_momentum(*dt, ctx);
             }
@@ -2773,6 +2893,8 @@ impl Widget for View {
 
     fn wants_animation_frame(&self) -> bool {
         self.momentum.get().is_some()
+            || self.overscroll_spring.get().is_some()
+            || self.wheel_gesture_last_event.get().is_some()
             || self.auto_scroll.get().is_some()
             || self.scrollbar_opacity_animating.get()
             || (self.effective_auto_hide()
@@ -2860,6 +2982,9 @@ impl Widget for View {
             self.auto_scroll.set(old.auto_scroll.get());
             self.touch_pan.set(old.touch_pan.get());
             self.momentum.set(old.momentum.get());
+            self.overscroll_spring.set(old.overscroll_spring.get());
+            self.wheel_gesture_last_event
+                .set(old.wheel_gesture_last_event.get());
             self.overscroll_glow.set(old.overscroll_glow.get());
             self.glow_pending_hit.set(old.glow_pending_hit.get());
             self.scrollbar_opacity_anim
@@ -2968,7 +3093,7 @@ mod tests {
     }
 
     #[test]
-    fn wheel_clamps_at_edge_without_bounce() {
+    fn line_wheel_bounces_at_edge_on_linux_style_backends() {
         let mut view = sized_view(
             View::new()
                 .overflow_y(Overflow::Auto)
@@ -2988,9 +3113,111 @@ mod tests {
             96.0,
         );
 
-        assert!(!handled);
+        assert!(handled);
+        assert!(view.scroll_offset.get().1 > 200.0);
+        assert_eq!(view.scroll_target.get(), view.scroll_offset.get());
+        assert!(view.wheel_gesture_last_event.get().is_some());
+    }
+
+    #[test]
+    fn disabled_overscroll_still_clamps_line_wheel_at_edge() {
+        let mut view = sized_view(
+            View::new()
+                .overflow_y(Overflow::Auto)
+                .overscroll(Overscroll::Disabled),
+            (100.0, 100.0),
+            (100.0, 300.0),
+        );
+        view.scroll_offset.set((0.0, 200.0));
+        view.scroll_target.set((0.0, 200.0));
+        let mut ctx = EventCtx::new();
+
+        assert!(!view.handle_wheel(
+            MouseScrollDelta::LineDelta(0.0, -1.0),
+            (50.0, 50.0),
+            ModifiersState::default(),
+            &mut ctx,
+            96.0,
+        ));
         assert_eq!(view.scroll_offset.get(), (0.0, 200.0));
-        assert_eq!(view.scroll_target.get(), (0.0, 200.0));
+        assert!(view.wheel_gesture_last_event.get().is_none());
+    }
+
+    #[test]
+    fn auto_overscroll_defaults_to_bounce_on_every_platform() {
+        let view = View::new();
+        assert_eq!(view.effective_overscroll(), Overscroll::Bounce);
+    }
+
+    #[test]
+    fn precision_wheel_rubber_bands_smoothly_past_edge() {
+        let mut view = sized_view(
+            View::new().overflow_y(Overflow::Auto),
+            (100.0, 100.0),
+            (100.0, 300.0),
+        );
+        view.scroll_offset.set((0.0, 200.0));
+        view.scroll_target.set((0.0, 200.0));
+        let mut ctx = EventCtx::new();
+
+        assert!(view.handle_wheel(
+            MouseScrollDelta::PixelDelta(0.0, -30.0),
+            (50.0, 50.0),
+            ModifiersState::default(),
+            &mut ctx,
+            96.0,
+        ));
+        let first = view.scroll_offset.get().1;
+        assert!(first > 200.0);
+
+        assert!(view.handle_wheel(
+            MouseScrollDelta::PixelDelta(0.0, -30.0),
+            (50.0, 50.0),
+            ModifiersState::default(),
+            &mut ctx,
+            96.0,
+        ));
+        assert!(view.scroll_offset.get().1 > first);
+        assert!(view.wheel_gesture_last_event.get().is_some());
+    }
+
+    #[test]
+    fn rubber_band_inverse_preserves_raw_gesture_distance() {
+        let range = OVERSCROLL_RUBBER_BAND_RANGE;
+        for raw in [1.0, 15.0, 45.0, 180.0] {
+            let visual = View::rubber_band(raw, range);
+            let recovered = View::inverse_rubber_band(visual, range);
+            assert!((recovered - raw).abs() < 0.001);
+        }
+    }
+
+    #[test]
+    fn overscroll_return_uses_a_real_damped_spring() {
+        let mut view = sized_view(
+            View::new().overflow_y(Overflow::Auto),
+            (100.0, 100.0),
+            (100.0, 300.0),
+        );
+        view.scroll_offset.set((0.0, 240.0));
+        view.scroll_target.set((0.0, 240.0));
+        let mut ctx = EventCtx::new();
+        view.spring_back_if_needed(&mut ctx);
+
+        let mut crossed_bound = false;
+        for _ in 0..240 {
+            view.tick_overscroll_spring(1.0 / 120.0, &mut ctx);
+            crossed_bound |= view.scroll_offset.get().1 < 200.0;
+            if view.overscroll_spring.get().is_none() {
+                break;
+            }
+        }
+
+        assert!(
+            crossed_bound,
+            "the return must visibly spring past its bound"
+        );
+        assert!(view.overscroll_spring.get().is_none());
+        assert_eq!(view.scroll_offset.get(), (0.0, 200.0));
     }
 
     #[test]

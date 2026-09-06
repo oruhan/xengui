@@ -394,18 +394,14 @@ impl Widget for Button {
                 let icon_center_y = icon_y + icon_h * 0.5;
                 let scaled_icon_w = icon_w * content_scale;
                 let scaled_icon_h = icon_h * content_scale;
-                let scaled_icon_x = (pivot_x + (icon_center_x - pivot_x) * content_scale
-                    - scaled_icon_w * 0.5)
-                    .round();
-                let scaled_icon_y = (pivot_y + (icon_center_y - pivot_y) * content_scale
-                    - scaled_icon_h * 0.5)
-                    .round();
+                let scaled_icon_x =
+                    pivot_x + (icon_center_x - pivot_x) * content_scale - scaled_icon_w * 0.5;
+                let scaled_icon_y =
+                    pivot_y + (icon_center_y - pivot_y) * content_scale - scaled_icon_h * 0.5;
 
                 let icon_scale = (scaled_icon_w / vb_w).min(scaled_icon_h / vb_h);
-                let icon_offset_x =
-                    (scaled_icon_x + (scaled_icon_w - vb_w * icon_scale) * 0.5).round();
-                let icon_offset_y =
-                    (scaled_icon_y + (scaled_icon_h - vb_h * icon_scale) * 0.5).round();
+                let icon_offset_x = scaled_icon_x + (scaled_icon_w - vb_w * icon_scale) * 0.5;
+                let icon_offset_y = scaled_icon_y + (scaled_icon_h - vb_h * icon_scale) * 0.5;
 
                 let inherited_color = self
                     .icon_tint
@@ -447,8 +443,8 @@ impl Widget for Button {
         let scaled_text_w = text_w * content_scale;
         let scaled_text_h = text_h * content_scale;
         let content_box = LayoutBox {
-            x: (pivot_x + (text_center_x - pivot_x) * content_scale - scaled_text_w * 0.5).round(),
-            y: (pivot_y + (text_center_y - pivot_y) * content_scale - scaled_text_h * 0.5).round(),
+            x: pivot_x + (text_center_x - pivot_x) * content_scale - scaled_text_w * 0.5,
+            y: pivot_y + (text_center_y - pivot_y) * content_scale - scaled_text_h * 0.5,
             width: scaled_text_w,
             height: scaled_text_h,
         };

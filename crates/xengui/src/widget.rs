@@ -619,8 +619,8 @@ pub fn scaled_layout_box(rect: LayoutBox, scale: f32) -> LayoutBox {
     let w = rect.width * scale;
     let h = rect.height * scale;
     LayoutBox {
-        x: (cx - w * 0.5).round(),
-        y: (cy - h * 0.5).round(),
+        x: cx - w * 0.5,
+        y: cy - h * 0.5,
         width: w,
         height: h,
     }
@@ -639,8 +639,8 @@ pub fn scaled_layout_box_with_origin(
 ) -> LayoutBox {
     let (ox, oy) = origin.resolve(rect.width, rect.height, scale_factor);
     LayoutBox {
-        x: (rect.x + ox * (1.0 - scale)).round(),
-        y: (rect.y + oy * (1.0 - scale)).round(),
+        x: rect.x + ox * (1.0 - scale),
+        y: rect.y + oy * (1.0 - scale),
         width: rect.width * scale,
         height: rect.height * scale,
     }

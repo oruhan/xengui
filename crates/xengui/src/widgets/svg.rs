@@ -663,8 +663,8 @@ impl Widget for Svg {
             ctx.scale_factor,
         );
         let scale = (b.width / vb_w).min(b.height / vb_h);
-        let offset_x = (b.x + (b.width - vb_w * scale) * 0.5).round();
-        let offset_y = (b.y + (b.height - vb_h * scale) * 0.5).round();
+        let offset_x = b.x + (b.width - vb_w * scale) * 0.5;
+        let offset_y = b.y + (b.height - vb_h * scale) * 0.5;
 
         let map = |p: (f32, f32)| -> (f32, f32) {
             (

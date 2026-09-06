@@ -425,16 +425,14 @@ fn translate_subtree(
     }
 
     let b = *widget.layout_box();
-    // Snap to the same pixel grid apply_layout uses for a full layout pass.
-    // Without this, overscroll's rubber-band curve (a continuous, fractional
-    // function) accumulates sub-pixel positions frame over frame, so the
-    // scissor/AA rounding done downstream (scissor_for_clip, the rect SDF
-    // shaders) lands on a different pixel boundary every frame even when the
-    // visual position barely changed - read as edge flicker/ghosting during
-    // the bounce.
+    // Preserve fractional deltas here. Rounding every incremental movement
+    // discards sub-pixel travel permanently (e.g. a series of 0.3 px bounce
+    // frames never moves at all), producing stalls followed by visible jumps.
+    // Paint paths may still snap their final geometry, but they then snap the
+    // accumulated absolute position instead of each individual delta.
     let mut moved = LayoutBox {
-        x: (b.x + dx).round(),
-        y: (b.y + dy).round(),
+        x: b.x + dx,
+        y: b.y + dy,
         width: b.width,
         height: b.height,
     };
@@ -498,5 +496,29 @@ fn sync_scroll_recursive(widget: &mut dyn Widget) {
         for child in children.iter_mut() {
             sync_scroll_recursive(child.as_mut());
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::translate_subtree;
+    use crate::{LayoutBox, View, Widget};
+
+    #[test]
+    fn repeated_fractional_scroll_deltas_accumulate() {
+        let mut view = View::new();
+        view.layout(LayoutBox {
+            x: 10.0,
+            y: 20.0,
+            width: 100.0,
+            height: 100.0,
+        });
+
+        for _ in 0..4 {
+            translate_subtree(&mut view, 0.25, 0.25, None, 1.0);
+        }
+
+        assert_eq!(view.layout_box().x, 11.0);
+        assert_eq!(view.layout_box().y, 21.0);
     }
 }

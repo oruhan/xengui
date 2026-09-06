@@ -7,6 +7,32 @@ use crate::{
 };
 use web_time::Instant;
 
+#[derive(Clone, Copy, Debug)]
+struct ScaleTransform {
+    pivot: (f32, f32),
+    scale: f32,
+}
+
+impl ScaleTransform {
+    fn point(self, point: (f32, f32)) -> (f32, f32) {
+        (
+            self.pivot.0 + (point.0 - self.pivot.0) * self.scale,
+            self.pivot.1 + (point.1 - self.pivot.1) * self.scale,
+        )
+    }
+
+    fn rect(self, rect: (f32, f32, f32, f32)) -> (f32, f32, f32, f32) {
+        let p0 = self.point((rect.0, rect.1));
+        let p1 = self.point((rect.0 + rect.2, rect.1 + rect.3));
+        (
+            p0.0.min(p1.0),
+            p0.1.min(p1.1),
+            (p1.0 - p0.0).abs(),
+            (p1.1 - p0.1).abs(),
+        )
+    }
+}
+
 /// Backend-agnostic frame orchestration: layout, paint-tree walk, command
 /// batching and z-ordering. Every actual draw call is delegated to a
 /// [`RenderBackend`] implementation.
@@ -598,6 +624,7 @@ fn paint_recursive(
         Some(rect) => Some(clip_intersect(clip_rect, rect)),
         None => clip_rect,
     };
+    let child_transform = view_child_transform(widget, scale_factor);
 
     for (i, child) in widget.children().iter().enumerate() {
         let checkpoint = path.checkpoint();
@@ -617,6 +644,9 @@ fn paint_recursive(
             continue;
         }
 
+        let command_start = commands.len();
+        let top_start = top_commands.len();
+        let focus_start = focus_commands.len();
         paint_recursive(
             child.as_ref(),
             path,
@@ -629,6 +659,17 @@ fn paint_recursive(
             scale_factor,
             z_index,
         );
+        if let Some(transform) = child_transform {
+            for (_, command) in &mut commands[command_start..] {
+                transform_draw_command(command, transform);
+            }
+            for command in &mut top_commands[top_start..] {
+                transform_draw_command(command, transform);
+            }
+            for command in &mut focus_commands[focus_start..] {
+                transform_rect_command(command, transform);
+            }
+        }
         path.restore(checkpoint);
     }
 
@@ -677,6 +718,7 @@ fn paint_subtree_for_filter(
         out.push((z_index, command));
     }
 
+    let child_transform = view_child_transform(widget, scale_factor);
     for (i, child) in widget.children().iter().enumerate() {
         if child.is_portal() {
             continue;
@@ -684,6 +726,7 @@ fn paint_subtree_for_filter(
         let checkpoint = path.checkpoint();
         path.push(child.as_ref(), i);
         let child_z = effective_z_index(child.as_ref(), z_index);
+        let command_start = out.len();
         paint_subtree_for_filter(
             child.as_ref(),
             path,
@@ -693,6 +736,11 @@ fn paint_subtree_for_filter(
             scale_factor,
             child_z,
         );
+        if let Some(transform) = child_transform {
+            for (_, command) in &mut out[command_start..] {
+                transform_draw_command(command, transform);
+            }
+        }
         path.restore(checkpoint);
     }
 }
@@ -739,6 +787,183 @@ fn paint_chrome_layers_inline(
         apply_clip(&mut command, clip_rect);
         if let DrawCommand::Rect(rect_cmd) = command {
             focus_commands.push(rect_cmd);
+        }
+    }
+}
+
+// `View::scale` is a visual group transform: its box is scaled by
+// `Widget::paint_box`, while its descendants use the content channel.
+// Commands are recorded in absolute layout coordinates, so transform each
+// completed child subtree around the View's transform origin before it is
+// merged into the frame. Applying this once per ancestor naturally composes
+// nested View transforms without changing layout.
+fn view_child_transform(widget: &dyn Widget, scale_factor: f32) -> Option<ScaleTransform> {
+    if !widget.as_any().is::<crate::View>() {
+        return None;
+    }
+
+    let style = widget.computed_style();
+    let scale = style.content_scale.unwrap_or(style.scale.unwrap_or(1.0));
+    if (scale - 1.0).abs() < f32::EPSILON {
+        return None;
+    }
+
+    let layout = widget.layout_box();
+    let (ox, oy) = style.transform_origin.unwrap_or_default().resolve(
+        layout.width,
+        layout.height,
+        scale_factor,
+    );
+    Some(ScaleTransform {
+        pivot: (layout.x + ox, layout.y + oy),
+        scale,
+    })
+}
+
+fn transform_length(length: crate::Length, scale: f32) -> crate::Length {
+    match length {
+        crate::Length::Px(value) => crate::Length::Px(value * scale),
+        crate::Length::Percent(value) => crate::Length::Percent(value * scale),
+        crate::Length::ViewportWidth(value) => crate::Length::ViewportWidth(value * scale),
+        crate::Length::ViewportHeight(value) => crate::Length::ViewportHeight(value * scale),
+    }
+}
+
+fn transform_radius(radius: &mut crate::BorderRadius, scale: f32) {
+    radius.top_left = transform_length(radius.top_left, scale);
+    radius.top_right = transform_length(radius.top_right, scale);
+    radius.bottom_right = transform_length(radius.bottom_right, scale);
+    radius.bottom_left = transform_length(radius.bottom_left, scale);
+}
+
+fn transform_clip(clip: &mut Option<(f32, f32, f32, f32)>, transform: ScaleTransform) {
+    if let Some(rect) = clip.as_mut() {
+        *rect = transform.rect(*rect);
+    }
+}
+
+fn transform_rect_command(command: &mut RectCommand, transform: ScaleTransform) {
+    let rect = transform.rect((
+        command.position.0,
+        command.position.1,
+        command.size.0,
+        command.size.1,
+    ));
+    command.position = (rect.0, rect.1);
+    command.size = (rect.2, rect.3);
+    let scale = transform.scale.abs();
+    if let Some(radius) = &mut command.border_radius {
+        transform_radius(radius, scale);
+    }
+    if let Some(width) = command.border_width.as_mut() {
+        *width = transform_length(*width, scale);
+    }
+    transform_clip(&mut command.clip_rect, transform);
+}
+
+fn transform_draw_command(command: &mut DrawCommand, transform: ScaleTransform) {
+    let scale = transform.scale.abs();
+    match command {
+        DrawCommand::Rect(command) => transform_rect_command(command, transform),
+        DrawCommand::Triangle(command) => {
+            command.p0 = transform.point(command.p0);
+            command.p1 = transform.point(command.p1);
+            command.p2 = transform.point(command.p2);
+            transform_clip(&mut command.clip_rect, transform);
+        }
+        DrawCommand::Text(command) => {
+            command.position = transform.point(command.position);
+            command.max_width = command.max_width.map(|width| width * scale);
+            command.style.font_size = command
+                .style
+                .font_size
+                .map(|length| transform_length(length, scale));
+            command.style.letter_spacing = command
+                .style
+                .letter_spacing
+                .map(|spacing| crate::LetterSpacing::new(transform_length(spacing.value(), scale)));
+            command.style.line_height = command
+                .style
+                .line_height
+                .map(|height| crate::LineHeight::new(transform_length(height.value(), scale)));
+            command.style.selection_border_width = command
+                .style
+                .selection_border_width
+                .map(|length| transform_length(length, scale));
+            command.style.selection_border_radius = command
+                .style
+                .selection_border_radius
+                .map(|length| transform_length(length, scale));
+            transform_clip(&mut command.clip_rect, transform);
+        }
+        DrawCommand::Image(command) => {
+            let rect = transform.rect((
+                command.position.0,
+                command.position.1,
+                command.size.0,
+                command.size.1,
+            ));
+            command.position = (rect.0, rect.1);
+            command.size = (rect.2, rect.3);
+            if let Some(radius) = &mut command.border_radius {
+                transform_radius(radius, scale);
+            }
+            transform_clip(&mut command.clip_rect, transform);
+        }
+        DrawCommand::BoxShadow(command) => {
+            let shadow = transform.rect((
+                command.shadow_position.0,
+                command.shadow_position.1,
+                command.shadow_size.0,
+                command.shadow_size.1,
+            ));
+            command.shadow_position = (shadow.0, shadow.1);
+            command.shadow_size = (shadow.2, shadow.3);
+            let bounds = transform.rect((
+                command.box_position.0,
+                command.box_position.1,
+                command.box_size.0,
+                command.box_size.1,
+            ));
+            command.box_position = (bounds.0, bounds.1);
+            command.box_size = (bounds.2, bounds.3);
+            for radius in &mut command.shadow_radius {
+                *radius *= scale;
+            }
+            command.blur *= scale;
+            command.box_radius *= scale;
+            transform_clip(&mut command.clip_rect, transform);
+        }
+        DrawCommand::Stroke(command) => {
+            command.p0 = transform.point(command.p0);
+            command.p1 = transform.point(command.p1);
+            command.thickness *= scale;
+            transform_clip(&mut command.clip_rect, transform);
+        }
+        DrawCommand::Filtered(command) => {
+            for nested in &mut command.commands {
+                transform_draw_command(nested, transform);
+            }
+            command.bounds = transform.rect(command.bounds);
+            transform_clip(&mut command.clip_rect, transform);
+        }
+        DrawCommand::BackdropFilter(command) => {
+            command.bounds = transform.rect(command.bounds);
+            for radius in &mut command.radius {
+                *radius *= scale;
+            }
+            transform_clip(&mut command.clip_rect, transform);
+        }
+        DrawCommand::VariableIcon(command) => {
+            let rect = transform.rect((
+                command.position.0,
+                command.position.1,
+                command.size.0,
+                command.size.1,
+            ));
+            command.position = (rect.0, rect.1);
+            command.size = (rect.2, rect.3);
+            transform_clip(&mut command.clip_rect, transform);
         }
     }
 }
@@ -876,7 +1101,11 @@ fn reset_layout_dirty_recursive(tree: &mut [Box<dyn Widget>]) {
 
 #[cfg(test)]
 mod tests {
-    use super::FrameArena;
+    use super::{FrameArena, paint_recursive};
+    use crate::{
+        AnimationManager, Color, DrawCommand, LayoutBox, RenderCache, Style, StyleBuilder, View,
+        Widget, WidgetPath,
+    };
 
     #[test]
     fn frame_arena_reset_retains_high_water_capacities() {
@@ -896,5 +1125,87 @@ mod tests {
         assert_eq!(arena.rects.capacity(), capacities.1);
         assert_eq!(arena.paint_scratch.capacity(), capacities.2);
         assert!(arena.path.as_str().is_empty());
+    }
+
+    #[test]
+    fn view_scale_transforms_descendant_draw_commands() {
+        let child = View::new().background(Color::WHITE);
+        let mut root = View::new().scale(0.5).child(child);
+        root.layout(LayoutBox {
+            x: 0.0,
+            y: 0.0,
+            width: 100.0,
+            height: 100.0,
+        });
+        root.children_mut().unwrap()[0].layout(LayoutBox {
+            x: 20.0,
+            y: 20.0,
+            width: 20.0,
+            height: 20.0,
+        });
+        root.cascade_style(&Style::default(), &mut AnimationManager::new());
+
+        let mut cache = RenderCache::new();
+        cache.begin_frame();
+        let mut commands = Vec::new();
+        paint_recursive(
+            &root,
+            &mut WidgetPath::default(),
+            &mut cache,
+            &mut commands,
+            &mut Vec::new(),
+            &mut Vec::new(),
+            &mut Vec::new(),
+            None,
+            1.0,
+            0,
+        );
+
+        let DrawCommand::Rect(command) = &commands[0].1 else {
+            panic!("expected the child View's background command");
+        };
+        assert_eq!(command.position, (35.0, 35.0));
+        assert_eq!(command.size, (10.0, 10.0));
+    }
+
+    #[test]
+    fn view_content_scale_can_keep_descendants_unscaled() {
+        let child = View::new().background(Color::WHITE);
+        let mut root = View::new().scale(0.5).content_scale(1.0).child(child);
+        root.layout(LayoutBox {
+            x: 0.0,
+            y: 0.0,
+            width: 100.0,
+            height: 100.0,
+        });
+        root.children_mut().unwrap()[0].layout(LayoutBox {
+            x: 20.0,
+            y: 20.0,
+            width: 20.0,
+            height: 20.0,
+        });
+        root.cascade_style(&Style::default(), &mut AnimationManager::new());
+
+        let mut cache = RenderCache::new();
+        cache.begin_frame();
+        let mut commands = Vec::new();
+        paint_recursive(
+            &root,
+            &mut WidgetPath::default(),
+            &mut cache,
+            &mut commands,
+            &mut Vec::new(),
+            &mut Vec::new(),
+            &mut Vec::new(),
+            None,
+            1.0,
+            0,
+        );
+
+        let DrawCommand::Rect(command) = &commands[0].1 else {
+            panic!("expected the child View's background command");
+        };
+        assert_eq!(command.position, (20.0, 20.0));
+        assert_eq!(command.size, (20.0, 20.0));
     }
 }

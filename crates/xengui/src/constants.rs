@@ -97,6 +97,10 @@ pub const MOMENTUM_MIN_SPEED: f32 = 4.0;
 /// the rubber-band zone, so it settles in far fewer frames instead of
 /// decaying at the same rate it does within bounds.
 pub const MOMENTUM_OVERSCROLL_FRICTION_MULTIPLIER: f32 = 3.0;
+/// How long without a wheel event marks the end of a rubber-band gesture.
+/// The content springs back only after this gap,
+/// instead of fighting the user's fingers between consecutive events.
+pub const WHEEL_GESTURE_END_DELAY: web_time::Duration = web_time::Duration::from_millis(100);
 
 /* ---- AutoScroll (middle-click pan) ---- */
 /// Radius (logical/DP units) around the activation point within which
@@ -120,9 +124,19 @@ pub const AUTO_SCROLL_INDICATOR_RADIUS_DP: f32 = 14.0;
 /// Visual travel (px) a rubber-banded drag/fling asymptotically
 /// approaches no matter how far past the bounds it's pulled.
 pub const OVERSCROLL_RUBBER_BAND_RANGE: f32 = 90.0;
-/// Eased transition used to spring an overscrolled offset back to bounds.
-pub const OVERSCROLL_RETURN_TRANSITION: Transition =
-    Transition::new(web_time::Duration::from_millis(320)).easing(Easing::EaseOut);
+/// Stiffness of the damped spring that returns Apple-style overscroll to
+/// its bound. Paired with `OVERSCROLL_SPRING_DAMPING` this gives a quick,
+/// slightly under-damped return instead of a generic easing curve.
+pub const OVERSCROLL_SPRING_STIFFNESS: f32 = 260.0;
+/// Velocity damping for the overscroll return spring.
+pub const OVERSCROLL_SPRING_DAMPING: f32 = 21.0;
+/// Integration step cap. Sub-stepping makes the same spring stable at
+/// 30 Hz, 60 Hz, 120 Hz and after a temporarily delayed frame.
+pub const OVERSCROLL_SPRING_MAX_STEP: f32 = 1.0 / 120.0;
+/// Position threshold used to put the spring exactly to rest.
+pub const OVERSCROLL_SPRING_POSITION_EPSILON: f32 = 0.05;
+/// Velocity threshold used to put the spring exactly to rest.
+pub const OVERSCROLL_SPRING_VELOCITY_EPSILON: f32 = 2.0;
 /// Transition used to fade out an edge-glow flash for `Overscroll::Glow`,
 /// driven through `xen_animation::AnimationManager` instead of a manual
 /// per-frame decay.
@@ -138,10 +152,6 @@ pub const STRETCH_RUBBER_BAND_RANGE: f32 = 48.0;
 /// `MOMENTUM_OVERSCROLL_FRICTION_MULTIPLIER` so the stretch settles
 /// quickly instead of lingering like a bounce.
 pub const STRETCH_OVERSCROLL_FRICTION_MULTIPLIER: f32 = 4.5;
-/// Eased transition used to spring a `Stretch`-mode overscrolled offset
-/// back to bounds - snappier than `OVERSCROLL_RETURN_TRANSITION`.
-pub const STRETCH_RETURN_TRANSITION: Transition =
-    Transition::new(web_time::Duration::from_millis(180)).easing(Easing::EaseOut);
 /// Thickness (px) of the full-span edge-glow band for `Overscroll::Glow`,
 /// drawn across the whole hit edge instead of anchored to the gesture point.
 pub const OVERSCROLL_GLOW_BAND_THICKNESS: f32 = 3.0;

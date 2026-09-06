@@ -1013,7 +1013,7 @@ impl Widget for TextBox {
                 .unwrap_or(DEFAULT_FONT_SIZE.value())
                 * DEFAULT_LINE_HEIGHT_RATIO
         };
-        let line_y = (self.layout_box.y + (self.layout_box.height - line_h).max(0.0) * 0.5).round();
+        let line_y = self.layout_box.y + (self.layout_box.height - line_h).max(0.0) * 0.5;
 
         let text_clip = Some((
             content_left,
@@ -1131,7 +1131,7 @@ impl Widget for TextBox {
         }
 
         if self.base.interaction.focused && self.caret_visible.get() {
-            let cursor_x = (text_x + self.cursor_offset.get()).round();
+            let cursor_x = text_x + self.cursor_offset.get();
             let caret_color = style
                 .caret_color
                 .unwrap_or(style.color.unwrap_or(Color::BLACK));
