@@ -224,15 +224,14 @@ fn capability(icon: char, value: &str, label: &str, tone: u8) -> View {
             _ => theme.surface_container_lowest,
         })
         .border(Border::all(0.0, Color::TRANSPARENT).radius(20.0))
-        .child(
-            VariableIcon::new(icon)
-                .size(21.0)
-                .color(move |theme: &Theme| match tone {
-                    1 => theme.on_secondary_container,
-                    2 => theme.on_tertiary_container,
-                    _ => theme.primary,
-                }),
-        )
+        .child(StyleBuilder::color(
+            VariableIcon::new(icon).size(21.0),
+            move |theme: &Theme| match tone {
+                1 => theme.on_secondary_container,
+                2 => theme.on_tertiary_container,
+                _ => theme.primary,
+            },
+        ))
         .child(
             Label::new()
                 .label(value)
@@ -249,15 +248,19 @@ fn docs_hero(set_active: SetState<DocsSection>) -> View {
         .gap(0.0, 20.0)
         .padding(Responsive::new(Edges::all(24.0)).md(Edges::all(40.0)))
         .background(|theme: &Theme| theme.primary_container)
-        .border(Border::all(0.0, Color::TRANSPARENT).radius(Responsive::new(24.0).md(32.0)))
+        .border(
+            Responsive::new(Border::all(0.0, Color::TRANSPARENT).radius(24.0))
+                .md(Border::all(0.0, Color::TRANSPARENT).radius(32.0)),
+        )
         .child(
             Row::new()
                 .align_items(Align::Center)
                 .gap(8.0, 0.0)
                 .child(
-                    VariableIcon::new(xengui_icons::codepoints::AUTO_STORIES)
-                        .size(18.0)
-                        .color(|theme: &Theme| theme.on_primary_container),
+                    StyleBuilder::color(
+                        VariableIcon::new(xengui_icons::codepoints::AUTO_STORIES).size(18.0),
+                        |theme: &Theme| theme.on_primary_container,
+                    ),
                 )
                 .child(
                     Label::new()
@@ -273,7 +276,7 @@ fn docs_hero(set_active: SetState<DocsSection>) -> View {
                 .label("Rust UI, baştan sona anlaşılır.")
                 .max_width(px!(820.0))
                 .font_size(Responsive::new(px!(38.0)).md(px!(58.0)))
-                .line_height(Responsive::new(px!(44.0)).md(px!(64.0)))
+                .line_height(Responsive::new(px!(44.0)).md(px!(64.0)).resolve())
                 .font_weight(FontWeight::SemiBold)
                 .letter_spacing(px!(-2.0))
                 .color(|theme: &Theme| theme.on_primary_container),
