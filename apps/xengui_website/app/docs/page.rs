@@ -91,44 +91,16 @@ fn section_title(title: &str, description: &str) -> View {
         .child(paragraph(description, 14.0, 22.0))
 }
 
-fn code_block(label: &str, code: &str) -> View {
-    Column::new()
-        .width(pct!(100.0))
-        .background(Color::NEUTRAL_950)
-        .border(Border::all(1.0, Color::NEUTRAL_800).radius(20.0))
-        .child(
-            Row::new()
-                .align_items(Align::Center)
-                .gap(9.0, 0.0)
-                .padding(Edges::only(18.0, 13.0, 18.0, 13.0))
-                .border(Border::bottom(1.0, Color::NEUTRAL_800))
-                .child(
-                    VariableIcon::new(xengui_icons::codepoints::CODE_BLOCKS)
-                        .size(17.0)
-                        .color(Color::NEUTRAL_400),
-                )
-                .child(
-                    Label::new()
-                        .label(label)
-                        .font_size(12.0)
-                        .font_weight(FontWeight::SemiBold)
-                        .letter_spacing(px!(0.35))
-                        .color(Color::NEUTRAL_300),
-                ),
-        )
-        .child(
-            View::new()
-                .padding(Edges::all(20.0))
-                .overflow_x(Overflow::Auto)
-                .child(
-                    Label::new()
-                        .label(code)
-                        .selectable(true)
-                        .font_size(13.0)
-                        .line_height(px!(21.0))
-                        .color(Color::NEUTRAL_100),
-                ),
-        )
+fn code_block(label: &str, code: &str) -> CodeBlock {
+    let language = match label {
+        "Cargo.toml" => CodeLanguage::Toml,
+        "Terminal" => CodeLanguage::Shell,
+        _ => CodeLanguage::Rust,
+    };
+    CodeBlock::new(code)
+        .label(label)
+        .language(language)
+        .copy_label("Kopyala")
 }
 
 fn note(title: &str, text: &str) -> View {

@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
+use glyphon::cosmic_text::Hinting;
 use glyphon::{
-    Attrs, Buffer as GlyphonBuffer, Cache, Color as GlyphonColor, Family, FontSystem, Metrics,
-    Resolution, Shaping, Style as GlyphonStyle, SwashCache, TextArea, TextAtlas, TextBounds,
-    TextRenderer, Viewport, Weight as GlyphonWeight,
+    Attrs, Buffer as GlyphonBuffer, Cache, Color as GlyphonColor, ColorMode, Family, FontSystem,
+    Metrics, Resolution, Shaping, Style as GlyphonStyle, SwashCache, TextArea, TextAtlas,
+    TextBounds, TextRenderer, Viewport, Weight as GlyphonWeight,
 };
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -11,6 +12,8 @@ use xengui::{
     RectCommand, SystemTheme, TextAlign, TextCommand, TextDecoration, TextMeasurer,
     constants::DEFAULT_FONT_SIZE,
 };
+
+const METRICS_HINTING_MAX_FONT_SIZE_PX: f32 = 24.0;
 
 #[derive(Clone, PartialEq, Eq, Hash)]
 struct ShapeKey {
@@ -90,7 +93,18 @@ impl TextPipeline {
 
         let swash_cache = SwashCache::new();
         let cache = Cache::new(device);
-        let mut atlas = TextAtlas::new(device, queue, &cache, surface_format);
+        // xengui intentionally renders its scene into an Unorm target whose
+        // values are authored as sRGB UI colors. Glyphon's Web mode matches
+        // browser/UI-toolkit coverage blending for exactly that setup;
+        // Accurate mode expects an sRGB target and makes thin stems look too
+        // light when paired with our linear Unorm scene texture.
+        let mut atlas = TextAtlas::with_color_mode(
+            device,
+            queue,
+            &cache,
+            surface_format,
+            text_color_mode(surface_format),
+        );
         let renderer = TextRenderer::new(
             &mut atlas,
             device,
@@ -124,15 +138,26 @@ impl TextPipeline {
         weight: FontWeight,
         style: FontStyle,
     ) -> Attrs<'a> {
-        let family = font
-            .and_then(|n| user_font_map.get(n))
-            .map(|s| Family::Name(s.as_str()))
-            .unwrap_or_else(|| {
-                default_family_name
-                    .as_deref()
-                    .map(Family::Name)
-                    .unwrap_or(Family::SansSerif)
-            });
+        let family = match font {
+            Some(name) if name.eq_ignore_ascii_case("monospace") => Family::Monospace,
+            Some(name) if name.eq_ignore_ascii_case("serif") => Family::Serif,
+            Some(name) if name.eq_ignore_ascii_case("sans-serif") => Family::SansSerif,
+            Some(name) if name.eq_ignore_ascii_case("cursive") => Family::Cursive,
+            Some(name) if name.eq_ignore_ascii_case("fantasy") => Family::Fantasy,
+            Some(name) => user_font_map
+                .get(name)
+                .map(|resolved| Family::Name(resolved.as_str()))
+                .unwrap_or_else(|| {
+                    default_family_name
+                        .as_deref()
+                        .map(Family::Name)
+                        .unwrap_or(Family::SansSerif)
+                }),
+            None => default_family_name
+                .as_deref()
+                .map(Family::Name)
+                .unwrap_or(Family::SansSerif),
+        };
 
         Attrs::new()
             .family(family)
@@ -192,7 +217,7 @@ impl TextPipeline {
             );
 
             let metrics = Metrics::new(scale, final_line_height);
-            let mut buffer = GlyphonBuffer::new(&mut self.font_system, metrics);
+            let mut buffer = new_text_buffer(&mut self.font_system, metrics);
             buffer.set_size(Some(max_width.unwrap_or(f32::MAX)), Some(f32::MAX));
             buffer.set_text(text, &attrs, Shaping::Advanced, None);
 
@@ -343,7 +368,7 @@ impl TextPipeline {
         );
         let final_line_height = resolve_line_height(scale, line_height);
         let metrics = Metrics::new(scale, final_line_height);
-        let mut buffer = GlyphonBuffer::new(&mut self.font_system, metrics);
+        let mut buffer = new_text_buffer(&mut self.font_system, metrics);
         // A bounded width here is what makes glyphon break the text into
         // multiple lines instead of one long run.
         buffer.set_size(Some(max_width.unwrap_or(f32::MAX)), Some(f32::MAX));
@@ -565,14 +590,17 @@ impl TextPipeline {
         let text_areas: Vec<TextArea> = self
             .pending
             .iter()
-            .map(|p| TextArea {
-                buffer: p.buffer.as_ref(),
-                left: p.position.0,
-                top: p.position.1,
-                scale: 1.0,
-                bounds: p.bounds,
-                default_color: p.color,
-                custom_glyphs: &[],
+            .map(|p| {
+                let (left, top) = raster_origin(p.position, p.buffer.hinting());
+                TextArea {
+                    buffer: p.buffer.as_ref(),
+                    left,
+                    top,
+                    scale: 1.0,
+                    bounds: p.bounds,
+                    default_color: p.color,
+                    custom_glyphs: &[],
+                }
             })
             .collect();
 
@@ -622,6 +650,41 @@ impl TextPipeline {
     // every prepare/render call for the frame has already been recorded.
     pub fn trim_atlas(&mut self) {
         self.atlas.trim();
+    }
+}
+
+fn new_text_buffer(font_system: &mut FontSystem, metrics: Metrics) -> GlyphonBuffer {
+    let hinting = if metrics.font_size <= METRICS_HINTING_MAX_FONT_SIZE_PX {
+        Hinting::Enabled
+    } else {
+        Hinting::Disabled
+    };
+    let mut buffer = GlyphonBuffer::new(font_system, metrics);
+    // Every xengui buffer is shaped directly in physical pixels and is
+    // rendered at TextArea::scale = 1.0, satisfying cosmic-text's contract
+    // for metrics hinting. Integral advances improve small/low-DPI text;
+    // larger or HiDPI glyphs retain fractional typography and kerning.
+    buffer.set_hinting(hinting);
+    buffer
+}
+
+fn text_color_mode(format: wgpu::TextureFormat) -> ColorMode {
+    if format.is_srgb() {
+        ColorMode::Accurate
+    } else {
+        ColorMode::Web
+    }
+}
+
+fn raster_origin(position: (f32, f32), hinting: Hinting) -> (f32, f32) {
+    if hinting == Hinting::Enabled {
+        // cosmic-text already snaps glyph Y coordinates. Snapping only the
+        // run's X origin removes phase-dependent softness between otherwise
+        // identical small labels, while fractional vertical scrolling stays
+        // untouched and therefore does not turn into one-pixel stepping.
+        (position.0.round(), position.1)
+    } else {
+        position
     }
 }
 
@@ -804,5 +867,48 @@ fn map_text_align(align: TextAlign) -> glyphon::cosmic_text::Align {
         TextAlign::Center => glyphon::cosmic_text::Align::Center,
         TextAlign::End => glyphon::cosmic_text::Align::Right,
         TextAlign::Justify => glyphon::cosmic_text::Align::Justified,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn text_buffers_hint_small_text_but_keep_large_metrics_fractional() {
+        let mut font_system = FontSystem::new();
+        let small = new_text_buffer(&mut font_system, Metrics::new(14.0, 20.0));
+        assert_eq!(small.hinting(), Hinting::Enabled);
+
+        let large = new_text_buffer(&mut font_system, Metrics::new(48.0, 58.0));
+        assert_eq!(large.hinting(), Hinting::Disabled);
+    }
+
+    #[test]
+    fn text_atlas_matches_browser_color_blending() {
+        assert_eq!(
+            text_color_mode(wgpu::TextureFormat::Bgra8Unorm),
+            ColorMode::Web
+        );
+        assert_eq!(
+            text_color_mode(wgpu::TextureFormat::Bgra8UnormSrgb),
+            ColorMode::Accurate
+        );
+    }
+
+    #[test]
+    fn hinted_text_has_a_stable_horizontal_raster_phase() {
+        assert_eq!(
+            raster_origin((10.49, 20.375), Hinting::Enabled),
+            (10.0, 20.375)
+        );
+        assert_eq!(
+            raster_origin((10.51, 20.375), Hinting::Enabled),
+            (11.0, 20.375)
+        );
+        assert_eq!(
+            raster_origin((10.49, 20.375), Hinting::Disabled),
+            (10.49, 20.375)
+        );
     }
 }

@@ -4,6 +4,8 @@ pub mod badge;
 pub mod button;
 /// Types and operations for `checkbox`.
 pub mod checkbox;
+/// Syntax-highlighted, selectable source-code display.
+pub mod code_block;
 /// Types and operations for `context_menu`.
 pub mod context_menu;
 /// Types and operations for `image`.
@@ -49,6 +51,7 @@ pub mod variable_icon;
 pub use badge::Badge;
 pub use button::{Button, IconPosition};
 pub use checkbox::Checkbox;
+pub use code_block::{CodeBlock, CodeBlockTheme, CodeLanguage, SyntaxHighlighter, highlight_code};
 pub use context_menu::{ContextMenu, ContextMenuHandle, ContextMenuItem};
 pub use image::{Image, ImageSource, ObjectFit, image_source_from_bytes, image_source_from_rgba8};
 pub use kbd::Kbd;
