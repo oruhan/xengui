@@ -105,6 +105,11 @@ fn code_block(label: &str, code: &str) -> CodeBlock {
 
 fn note(title: &str, text: &str) -> View {
     Row::new()
+        // HTML'deki block-level `display:flex; width:auto` gibi mevcut
+        // satırı doldur. Yüzde genişlikli RichText'in intrinsic ölçüme
+        // katılamadığı shrink-to-fit döngüsünü bu sınır kırar.
+        .width(pct!(100.0))
+        .min_width(px!(0.0))
         .gap(12.0, 0.0)
         .padding(Edges::all(18.0))
         .background(|theme: &Theme| theme.primary_container.with_alpha_f32(0.62))
@@ -300,6 +305,8 @@ fn docs_hero(set_active: SetState<DocsSection>) -> View {
 
 fn start_page() -> View {
     Column::new()
+        .width(pct!(100.0))
+        .min_width(px!(0.0))
         .gap(0.0, 28.0)
         .child(heading(
             "XenGui Docs",
