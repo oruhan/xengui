@@ -33,6 +33,22 @@ impl ScaleTransform {
     }
 }
 
+#[derive(Clone, Copy, Debug)]
+struct Translation {
+    x: f32,
+    y: f32,
+}
+
+impl Translation {
+    fn point(self, point: (f32, f32)) -> (f32, f32) {
+        (point.0 + self.x, point.1 + self.y)
+    }
+
+    fn rect(self, rect: (f32, f32, f32, f32)) -> (f32, f32, f32, f32) {
+        (rect.0 + self.x, rect.1 + self.y, rect.2, rect.3)
+    }
+}
+
 /// Backend-agnostic frame orchestration: layout, paint-tree walk, command
 /// batching and z-ordering. Every actual draw call is delegated to a
 /// [`RenderBackend`] implementation.
@@ -472,6 +488,28 @@ fn effective_z_index(widget: &dyn Widget, parent_z_index: i32) -> i32 {
     }
 }
 
+fn reuse_cached_paint(
+    cache: &RenderCache,
+    path: &str,
+    layout_box: LayoutBox,
+    dirty: bool,
+    out: &mut Vec<DrawCommand>,
+) -> bool {
+    let Some((cached, (dx, dy))) = cache.try_reuse_moved(path, layout_box, dirty) else {
+        return false;
+    };
+
+    let start = out.len();
+    out.extend_from_slice(cached);
+    if dx != 0.0 || dy != 0.0 {
+        let translation = Translation { x: dx, y: dy };
+        for command in &mut out[start..] {
+            translate_draw_command(command, translation);
+        }
+    }
+    true
+}
+
 #[allow(clippy::too_many_arguments)]
 fn paint_recursive(
     widget: &dyn Widget,
@@ -560,15 +598,18 @@ fn paint_recursive(
     }
 
     paint_scratch.clear();
-    match cache.try_reuse(path.as_str(), layout_box, widget.is_dirty()) {
-        Some(cached) => paint_scratch.extend_from_slice(cached),
-        None => {
-            {
-                let mut paint_ctx = PaintContext::new(paint_scratch, scale_factor);
-                widget.paint(&mut paint_ctx);
-            }
-            cache.store(path.as_str(), layout_box, paint_scratch.clone());
+    if !reuse_cached_paint(
+        cache,
+        path.as_str(),
+        layout_box,
+        widget.is_dirty(),
+        paint_scratch,
+    ) {
+        {
+            let mut paint_ctx = PaintContext::new(paint_scratch, scale_factor);
+            widget.paint(&mut paint_ctx);
         }
+        cache.store(path.as_str(), layout_box, paint_scratch.clone());
     }
 
     if let Some(backdrop_chain) = widget.backdrop_filter().filter(|c| !c.is_empty()) {
@@ -704,15 +745,18 @@ fn paint_subtree_for_filter(
     cache.mark_live(path.as_str());
 
     paint_scratch.clear();
-    match cache.try_reuse(path.as_str(), *widget.layout_box(), widget.is_dirty()) {
-        Some(cached) => paint_scratch.extend_from_slice(cached),
-        None => {
-            {
-                let mut paint_ctx = PaintContext::new(paint_scratch, scale_factor);
-                widget.paint(&mut paint_ctx);
-            }
-            cache.store(path.as_str(), *widget.layout_box(), paint_scratch.clone());
+    if !reuse_cached_paint(
+        cache,
+        path.as_str(),
+        *widget.layout_box(),
+        widget.is_dirty(),
+        paint_scratch,
+    ) {
+        {
+            let mut paint_ctx = PaintContext::new(paint_scratch, scale_factor);
+            widget.paint(&mut paint_ctx);
         }
+        cache.store(path.as_str(), *widget.layout_box(), paint_scratch.clone());
     }
     for command in paint_scratch.drain(..) {
         out.push((z_index, command));
@@ -968,6 +1012,62 @@ fn transform_draw_command(command: &mut DrawCommand, transform: ScaleTransform) 
     }
 }
 
+fn translate_clip(clip: &mut Option<(f32, f32, f32, f32)>, translation: Translation) {
+    if let Some(rect) = clip.as_mut() {
+        *rect = translation.rect(*rect);
+    }
+}
+
+fn translate_rect_command(command: &mut RectCommand, translation: Translation) {
+    command.position = translation.point(command.position);
+    translate_clip(&mut command.clip_rect, translation);
+}
+
+fn translate_draw_command(command: &mut DrawCommand, translation: Translation) {
+    match command {
+        DrawCommand::Rect(command) => translate_rect_command(command, translation),
+        DrawCommand::Triangle(command) => {
+            command.p0 = translation.point(command.p0);
+            command.p1 = translation.point(command.p1);
+            command.p2 = translation.point(command.p2);
+            translate_clip(&mut command.clip_rect, translation);
+        }
+        DrawCommand::Text(command) => {
+            command.position = translation.point(command.position);
+            translate_clip(&mut command.clip_rect, translation);
+        }
+        DrawCommand::Image(command) => {
+            command.position = translation.point(command.position);
+            translate_clip(&mut command.clip_rect, translation);
+        }
+        DrawCommand::BoxShadow(command) => {
+            command.shadow_position = translation.point(command.shadow_position);
+            command.box_position = translation.point(command.box_position);
+            translate_clip(&mut command.clip_rect, translation);
+        }
+        DrawCommand::Stroke(command) => {
+            command.p0 = translation.point(command.p0);
+            command.p1 = translation.point(command.p1);
+            translate_clip(&mut command.clip_rect, translation);
+        }
+        DrawCommand::Filtered(command) => {
+            for nested in &mut command.commands {
+                translate_draw_command(nested, translation);
+            }
+            command.bounds = translation.rect(command.bounds);
+            translate_clip(&mut command.clip_rect, translation);
+        }
+        DrawCommand::BackdropFilter(command) => {
+            command.bounds = translation.rect(command.bounds);
+            translate_clip(&mut command.clip_rect, translation);
+        }
+        DrawCommand::VariableIcon(command) => {
+            command.position = translation.point(command.position);
+            translate_clip(&mut command.clip_rect, translation);
+        }
+    }
+}
+
 fn clip_intersect(
     existing: Option<(f32, f32, f32, f32)>,
     ancestor: (f32, f32, f32, f32),
@@ -1015,15 +1115,18 @@ fn paint_portal_subtree(
     cache.mark_live(path.as_str());
 
     paint_scratch.clear();
-    match cache.try_reuse(path.as_str(), layout_box, widget.is_dirty()) {
-        Some(cached) => paint_scratch.extend_from_slice(cached),
-        None => {
-            {
-                let mut paint_ctx = PaintContext::new(paint_scratch, scale_factor);
-                widget.paint(&mut paint_ctx);
-            }
-            cache.store(path.as_str(), layout_box, paint_scratch.clone());
+    if !reuse_cached_paint(
+        cache,
+        path.as_str(),
+        layout_box,
+        widget.is_dirty(),
+        paint_scratch,
+    ) {
+        {
+            let mut paint_ctx = PaintContext::new(paint_scratch, scale_factor);
+            widget.paint(&mut paint_ctx);
         }
+        cache.store(path.as_str(), layout_box, paint_scratch.clone());
     }
     top_commands.append(paint_scratch);
 

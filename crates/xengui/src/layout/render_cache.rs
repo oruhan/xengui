@@ -44,6 +44,32 @@ impl RenderCache {
             .and_then(|entry| (entry.layout_box == layout_box).then_some(entry.commands.as_slice()))
     }
 
+    /// Reuses paint commands when a widget only moved without changing
+    /// size. The returned offset translates commands from their cached
+    /// position to the widget's current position.
+    pub(crate) fn try_reuse_moved(
+        &self,
+        key: &str,
+        layout_box: LayoutBox,
+        dirty: bool,
+    ) -> Option<(&[DrawCommand], (f32, f32))> {
+        if dirty {
+            return None;
+        }
+
+        self.entries.get(key).and_then(|entry| {
+            (entry.layout_box.width == layout_box.width
+                && entry.layout_box.height == layout_box.height)
+                .then_some((
+                    entry.commands.as_slice(),
+                    (
+                        layout_box.x - entry.layout_box.x,
+                        layout_box.y - entry.layout_box.y,
+                    ),
+                ))
+        })
+    }
+
     /// Returns or updates the `store` value.
     pub fn store(&mut self, key: &str, layout_box: LayoutBox, commands: Vec<DrawCommand>) {
         self.entries.insert(
