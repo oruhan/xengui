@@ -1020,22 +1020,10 @@ impl<'a> RenderBackend for WgpuFrame<'a> {
         // Live snapshot of the padded capture area (not just the widget's
         // own box), so blur has real surrounding scene content to sample
         // instead of fading into synthetic transparency at the edges.
-        let snapshot = self.device.create_texture(
-            &(wgpu::TextureDescriptor {
-                label: Some("xengui backdrop snapshot"),
-                size: wgpu::Extent3d {
-                    width: cap_w,
-                    height: cap_h,
-                    depth_or_array_layers: 1,
-                },
-                mip_level_count: 1,
-                sample_count: 1,
-                dimension: wgpu::TextureDimension::D2,
-                format: self.pipelines.surface_format(),
-                usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
-                view_formats: &[],
-            }),
-        );
+        let (snapshot, snapshot_view) =
+            self.pipelines
+                .postprocess
+                .acquire_capture_texture(self.device, cap_w, cap_h);
 
         self.encoder.copy_texture_to_texture(
             wgpu::TexelCopyTextureInfo {
@@ -1049,7 +1037,7 @@ impl<'a> RenderBackend for WgpuFrame<'a> {
                 aspect: wgpu::TextureAspect::All,
             },
             wgpu::TexelCopyTextureInfo {
-                texture: &snapshot,
+                texture: snapshot.as_ref(),
                 mip_level: 0,
                 origin: wgpu::Origin3d::ZERO,
                 aspect: wgpu::TextureAspect::All,
@@ -1060,8 +1048,6 @@ impl<'a> RenderBackend for WgpuFrame<'a> {
                 depth_or_array_layers: 1,
             },
         );
-
-        let snapshot_view = snapshot.create_view(&Default::default());
 
         let filtered = self.pipelines.postprocess.apply_prepadded(
             self.device,

@@ -90,6 +90,18 @@ impl PostProcessEngine {
         self.pool.reset_frame();
     }
 
+    /// Borrows a reusable texture suitable for capturing already-rendered
+    /// scene content before a backdrop-filter pass.
+    pub fn acquire_capture_texture(
+        &mut self,
+        device: &wgpu::Device,
+        width: u32,
+        height: u32,
+    ) -> (std::sync::Arc<wgpu::Texture>, wgpu::TextureView) {
+        let texture = self.pool.acquire(device, width, height);
+        (texture.texture, texture.view)
+    }
+
     /// Runs `chain` over `source`, returning the filtered result. `source`
     /// must already contain the widget's straight-alpha rendered content
     /// at `(src_w, src_h)`; the returned texture is premultiplied alpha,

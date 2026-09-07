@@ -125,6 +125,7 @@ impl RenderCache {
 #[cfg(test)]
 mod tests {
     use super::RenderCache;
+    use crate::{DrawCommand, LayoutBox, RectCommand};
 
     #[test]
     fn liveness_generations_reuse_path_storage_and_expire_old_paths() {
@@ -144,5 +145,53 @@ mod tests {
         cache.finish_frame();
         assert!(cache.live_generation.is_empty());
         assert_eq!(cache.live_generation.capacity(), capacity);
+    }
+
+    #[test]
+    fn moved_reuse_requires_an_unchanged_size_and_clean_widget() {
+        let mut cache = RenderCache::new();
+        let original = LayoutBox {
+            x: 10.0,
+            y: 20.0,
+            width: 100.0,
+            height: 40.0,
+        };
+        cache.store(
+            "text",
+            original,
+            vec![DrawCommand::Rect(RectCommand {
+                position: (10.0, 20.0),
+                size: (100.0, 40.0),
+                background: None,
+                border_radius: None,
+                border_width: None,
+                border_color: None,
+                clip_rect: None,
+            })],
+        );
+
+        let moved = LayoutBox {
+            x: 10.25,
+            y: 19.5,
+            ..original
+        };
+        let (_, offset) = cache
+            .try_reuse_moved("text", moved, false)
+            .expect("pure translation should reuse cached commands");
+        assert_eq!(offset, (0.25, -0.5));
+
+        assert!(
+            cache
+                .try_reuse_moved(
+                    "text",
+                    LayoutBox {
+                        width: 101.0,
+                        ..moved
+                    },
+                    false,
+                )
+                .is_none()
+        );
+        assert!(cache.try_reuse_moved("text", moved, true).is_none());
     }
 }

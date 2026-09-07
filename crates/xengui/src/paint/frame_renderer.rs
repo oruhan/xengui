@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 use crate::{
     AnimationManager, BackdropFilterCommand, BoxShadowCommand, DrawCommand, FilteredCommand,
-    ImageCommand, LayoutContext, LayoutEngine, PaintContext, Position, RectCommand, RenderBackend,
-    RenderCache, StrokeCommand, SystemTheme, TriangleCommand, VariableIconCommand, Widget,
-    WidgetPath,
+    ImageCommand, LayoutBox, LayoutContext, LayoutEngine, PaintContext, Position, RectCommand,
+    RenderBackend, RenderCache, StrokeCommand, SystemTheme, TriangleCommand, VariableIconCommand,
+    Widget, WidgetPath,
 };
 use web_time::Instant;
 
@@ -1204,10 +1204,10 @@ fn reset_layout_dirty_recursive(tree: &mut [Box<dyn Widget>]) {
 
 #[cfg(test)]
 mod tests {
-    use super::{FrameArena, paint_recursive};
+    use super::{FrameArena, paint_recursive, reuse_cached_paint};
     use crate::{
-        AnimationManager, Color, DrawCommand, LayoutBox, RenderCache, Style, StyleBuilder, View,
-        Widget, WidgetPath,
+        AnimationManager, Color, DrawCommand, LayoutBox, RenderCache, Style, StyleBuilder,
+        TextCommand, View, Widget, WidgetPath,
     };
 
     #[test]
@@ -1228,6 +1228,48 @@ mod tests {
         assert_eq!(arena.rects.capacity(), capacities.1);
         assert_eq!(arena.paint_scratch.capacity(), capacities.2);
         assert!(arena.path.as_str().is_empty());
+    }
+
+    #[test]
+    fn moved_cached_text_keeps_its_metrics_and_tracks_fractional_scroll() {
+        let mut cache = RenderCache::new();
+        cache.store(
+            "label",
+            LayoutBox {
+                x: 10.0,
+                y: 20.0,
+                width: 120.0,
+                height: 24.0,
+            },
+            vec![DrawCommand::Text(Box::new(TextCommand {
+                text: "cached text".into(),
+                position: (14.0, 23.0),
+                style: Style::default(),
+                max_width: Some(112.0),
+                clip_rect: Some((10.0, 20.0, 120.0, 24.0)),
+            }))],
+        );
+
+        let mut commands = Vec::new();
+        assert!(reuse_cached_paint(
+            &cache,
+            "label",
+            LayoutBox {
+                x: 10.25,
+                y: 19.5,
+                width: 120.0,
+                height: 24.0,
+            },
+            false,
+            &mut commands,
+        ));
+
+        let DrawCommand::Text(command) = &commands[0] else {
+            panic!("expected cached text command");
+        };
+        assert_eq!(command.position, (14.25, 22.5));
+        assert_eq!(command.max_width, Some(112.0));
+        assert_eq!(command.clip_rect, Some((10.25, 19.5, 120.0, 24.0)));
     }
 
     #[test]

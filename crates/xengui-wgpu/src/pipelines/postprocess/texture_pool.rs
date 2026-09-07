@@ -86,7 +86,8 @@ impl TexturePool {
                 dimension: wgpu::TextureDimension::D2,
                 format: self.format,
                 usage: wgpu::TextureUsages::RENDER_ATTACHMENT
-                    | wgpu::TextureUsages::TEXTURE_BINDING,
+                    | wgpu::TextureUsages::TEXTURE_BINDING
+                    | wgpu::TextureUsages::COPY_DST,
                 view_formats: &[],
             }),
         );

@@ -60,6 +60,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let config = AppConfig {
         title: "XenGui | Cross-platform UI in Rust".into(),
         reload_shortcut: true,
+        // Prefer the newest ready frame instead of queueing stale scroll
+        // frames. Mailbox remains tear-free where available and the renderer
+        // falls back to FIFO on platforms (including browsers) that require it.
+        renderer: xengui_wgpu::RendererOptions {
+            present_mode: xengui_wgpu::PresentModePreference::LowLatency,
+            desired_maximum_frame_latency: 1,
+            ..Default::default()
+        },
 
         #[cfg(not(target_arch = "wasm32"))]
         width: 640,
