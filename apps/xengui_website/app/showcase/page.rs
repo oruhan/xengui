@@ -37,7 +37,7 @@ fn sidebar_conversation(title: &str, collapsed: bool) -> View {
             Label::new()
                 .label(title)
                 .font_size(13)
-                .color(|theme: &Theme| theme.on_surface)
+                .color(|theme: &Theme| theme.on_surface),
         );
     }
 
@@ -58,7 +58,7 @@ fn message_bubble(message: &ChatMessage) -> View {
                 .label(message.text.clone())
                 .font_size(14)
                 .line_height(px!(21.0))
-                .color(|theme: &Theme| theme.on_surface)
+                .color(|theme: &Theme| theme.on_surface),
         );
 
     let bubble = if is_user {
@@ -72,7 +72,11 @@ fn message_bubble(message: &ChatMessage) -> View {
     View::new()
         .display(Display::Flex)
         .width(pct!(100.0))
-        .justify_content(if is_user { JustifyContent::End } else { JustifyContent::Start })
+        .justify_content(if is_user {
+            JustifyContent::End
+        } else {
+            JustifyContent::Start
+        })
         .child(bubble)
 }
 
@@ -102,20 +106,23 @@ impl Default for ShowcasePage {
 
 impl Render for ShowcasePage {
     fn render(&self) -> Box<dyn Widget> {
-        let (messages, set_messages) = use_state(
-            vec![ChatMessage {
-                role: Role::Assistant,
-                text: "How can I help you today?".to_string(),
-            }]
-        );
+        let (messages, set_messages) = use_state(vec![ChatMessage {
+            role: Role::Assistant,
+            text: "How can I help you today?".to_string(),
+        }]);
         let (draft, set_draft) = use_state(String::new());
         let (collapsed, set_collapsed) = use_state(false);
 
         // Small screens default to a collapsed sidebar unless the user
         // explicitly opened it, matching a typical mobile chat layout.
-        let effective_collapsed = collapsed || !responsive_bool(Breakpoint::Md, true);
+        let mobile = !responsive_bool(Breakpoint::Md, true);
+        let effective_collapsed = collapsed || mobile;
 
-        let sidebar_width = if effective_collapsed { px!(64.0) } else { px!(272.0) };
+        let sidebar_width = if effective_collapsed {
+            px!(64.0)
+        } else {
+            px!(272.0)
+        };
 
         let mut conversation_list = View::new()
             .display(Display::Flex)
@@ -126,9 +133,8 @@ impl Render for ShowcasePage {
             .flex_grow(1.0);
 
         for title in CONVERSATIONS {
-            conversation_list = conversation_list.child(
-                sidebar_conversation(title, effective_collapsed)
-            );
+            conversation_list =
+                conversation_list.child(sidebar_conversation(title, effective_collapsed));
         }
 
         let toggle_icon = if effective_collapsed { ">" } else { "<" };
@@ -147,41 +153,35 @@ impl Render for ShowcasePage {
                     .background(Color::TRANSPARENT)
                     .color(|theme: &Theme| theme.on_surface)
                     .padding(Edges::symmetric(8, 6))
-                    .border(|theme: &Theme|
+                    .border(|theme: &Theme| {
                         Border::all(1, theme.outline_variant).radius(theme.radius_sm)
-                    )
-                    .on_click(move |_ctx| set_collapsed_toggle.set(!collapsed_for_toggle))
+                    })
+                    .on_click(move |_ctx| set_collapsed_toggle.set(!collapsed_for_toggle)),
             );
 
         let set_messages_new = set_messages.clone();
         let new_chat_button = if effective_collapsed {
             View::new()
         } else {
-            View::new()
-                .padding(Edges::only(12, 0, 12, 8))
-                .child(
-                    Button::new()
-                        .label("+ Yeni Sohbet")
-                        .background(|theme: &Theme| theme.primary)
-                        .color(|theme: &Theme| theme.on_primary)
-                        .padding(Edges::symmetric(0, 10))
-                        .width(pct!(100.0))
-                        .border(|theme: &Theme|
-                            Border::all(1, theme.primary).radius(theme.radius_md)
-                        )
-                        .on_click(move |_ctx| {
-                            set_messages_new.set(
-                                vec![ChatMessage {
-                                    role: Role::Assistant,
-                                    text: "Yeni bir sohbete başladın.".to_string(),
-                                }]
-                            );
-                        })
-                )
+            View::new().padding(Edges::only(12, 0, 12, 8)).child(
+                Button::new()
+                    .label("+ Yeni Sohbet")
+                    .background(|theme: &Theme| theme.primary)
+                    .color(|theme: &Theme| theme.on_primary)
+                    .padding(Edges::symmetric(0, 10))
+                    .width(pct!(100.0))
+                    .border(|theme: &Theme| Border::all(1, theme.primary).radius(theme.radius_md))
+                    .on_click(move |_ctx| {
+                        set_messages_new.set(vec![ChatMessage {
+                            role: Role::Assistant,
+                            text: "Yeni bir sohbete başladın.".to_string(),
+                        }]);
+                    }),
+            )
         };
 
         let sidebar = View::new()
-            .display(Display::Flex)
+            .display(if mobile { Display::None } else { Display::Flex })
             .flex_direction(FlexDirection::Column)
             .width(sidebar_width)
             .height(pct!(100.0))
@@ -192,6 +192,47 @@ impl Render for ShowcasePage {
             .child(sidebar_header)
             .child(new_chat_button)
             .child(conversation_list);
+
+        let set_messages_mobile = set_messages.clone();
+        let mobile_header = View::new()
+            .display(if mobile { Display::Flex } else { Display::None })
+            .flex_direction(FlexDirection::Row)
+            .align_items(Align::Center)
+            .justify_content(JustifyContent::SpaceBetween)
+            .padding(Edges::symmetric(16.0, 12.0))
+            .background(|theme: &Theme| theme.surface_container_lowest)
+            .border(|theme: &Theme| Border::bottom(1.0, theme.outline_variant))
+            .child(
+                Column::new()
+                    .gap(0.0, 2.0)
+                    .child(
+                        Label::new()
+                            .label("XenGui Assistant")
+                            .font_size(14.0)
+                            .font_weight(FontWeight::SemiBold),
+                    )
+                    .child(
+                        Label::new()
+                            .label("Canlı uygulama örneği")
+                            .font_size(11.0)
+                            .color(|theme: &Theme| theme.on_surface_variant),
+                    ),
+            )
+            .child(
+                Button::new()
+                    .label("Yeni sohbet")
+                    .font_size(12.0)
+                    .background(Color::TRANSPARENT)
+                    .color(|theme: &Theme| theme.on_surface)
+                    .padding(Edges::symmetric(11.0, 8.0))
+                    .border(|theme: &Theme| Border::all(1.0, theme.outline_variant).radius(8.0))
+                    .on_click(move |_ctx| {
+                        set_messages_mobile.set(vec![ChatMessage {
+                            role: Role::Assistant,
+                            text: "Yeni bir sohbete başladın.".to_string(),
+                        }]);
+                    }),
+            );
 
         let mut message_list = View::new()
             .key("showcase_message_list")
@@ -225,7 +266,10 @@ impl Render for ShowcasePage {
                 return;
             }
             let mut next = messages_for_send.clone();
-            next.push(ChatMessage { role: Role::User, text });
+            next.push(ChatMessage {
+                role: Role::User,
+                text,
+            });
             next.push(ChatMessage {
                 role: Role::Assistant,
                 text: "api.reply_message".to_string(),
@@ -251,32 +295,33 @@ impl Render for ShowcasePage {
                     .placeholder("How can I help you today?")
                     .padding(Edges::symmetric(14, 10))
                     .flex_grow(1.0)
-                    .border(|theme: &Theme|
+                    .border(|theme: &Theme| {
                         Border::all(1, theme.outline_variant).radius(theme.radius_xl)
-                    )
+                    })
                     .on_change(move |value, _ctx| set_draft.set(value.to_string()))
-                    .on_submit(move |_value, _ctx| send_message_submit())
+                    .on_submit(move |_value, _ctx| send_message_submit()),
             )
             .child(
                 Button::new()
-                    .label("Gönder")
+                    .label(if mobile { "↑" } else { "Gönder" })
                     .background(|theme: &Theme| theme.primary)
                     .color(|theme: &Theme| theme.on_primary)
                     .padding(Edges::symmetric(18, 10))
                     .border(|theme: &Theme| Border::all(1, theme.primary).radius(theme.radius_xl))
                     .transition_all(
-                        Transition::new(Duration::from_millis(150)).easing(Easing::EaseInOut)
+                        Transition::new(Duration::from_millis(150)).easing(Easing::EaseInOut),
                     )
                     .pressed_style(|ctx: StylePatch, _theme: &Theme| ctx.scale(0.96))
-                    .on_click(move |_ctx| send_message_click())
+                    .on_click(move |_ctx| send_message_click()),
             );
 
         let main = View::new()
             .display(Display::Flex)
             .flex_direction(FlexDirection::Column)
             .flex_grow(1.0)
-            //.height(pct!(100.0))
+            .min_width(px!(0.0))
             .background(|theme: &Theme| theme.background)
+            .child(mobile_header)
             .child(message_scroll)
             .child(composer);
 
@@ -285,9 +330,9 @@ impl Render for ShowcasePage {
                 .display(Display::Flex)
                 .flex_direction(FlexDirection::Row)
                 .width(pct!(100.0))
-                .height(pct!(100.0))
+                .height(Responsive::new(px!(680.0)).md(px!(760.0)))
                 .child(sidebar)
-                .child(main.height(pct!(100.0)))
+                .child(main.height(pct!(100.0))),
         )
     }
 }
@@ -299,7 +344,12 @@ pub fn page(_params: &RouteParams) -> Box<dyn Widget> {
         View::new()
             .display(Display::Flex)
             .flex_direction(FlexDirection::Column)
-            .height(pct!(100.0))
-            .child(ShowcasePage::new())
+            .width(pct!(100.0))
+            .padding(
+                Responsive::new(Edges::only(0.0, 0.0, 0.0, 48.0))
+                    .md(Edges::only(24.0, 32.0, 24.0, 64.0))
+                    .lg(Edges::only(80.0, 40.0, 80.0, 80.0)),
+            )
+            .child(ShowcasePage::new()),
     )
 }

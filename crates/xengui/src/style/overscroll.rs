@@ -4,8 +4,8 @@
 /// its scroll bounds.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub enum Overscroll {
-    /// Resolves to the framework default, currently Apple-style `Bounce`
-    /// on every native and WebAssembly target.
+    /// Resolves to the framework default, currently [`Disabled`] on every
+    /// native and WebAssembly target.
     #[default]
     Auto,
     /// Scrolling stops exactly at the content bounds; no rubber-banding.

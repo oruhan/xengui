@@ -89,7 +89,7 @@ enum EdgeSide {
 }
 
 fn platform_default_overscroll() -> Overscroll {
-    Overscroll::Bounce
+    Overscroll::Disabled
 }
 
 // Touch-primary platforms show their scrollbar only while actively
@@ -1410,11 +1410,15 @@ impl View {
         let continuing_wheel_gesture = self.wheel_gesture_last_event.get().is_some();
         self.cancel_conflicting_gestures();
 
-        // Linux backends do not consistently distinguish touchpads from
-        // stepped wheels: either can arrive as LineDelta. PixelDelta is
-        // always direct manipulation; a LineDelta sequence joins that path
-        // as soon as it crosses a bound in Bounce/Stretch mode.
-        let current = if precision || continuing_wheel_gesture {
+        // PixelDelta is emitted by both touchpads and browser mouse wheels.
+        // It is direct manipulation only when an explicitly enabled
+        // Bounce/Stretch mode needs to track rubber-banding at the edge;
+        // ordinary clamped scrolling keeps the eased target animation.
+        let rubber_mode = matches!(
+            self.effective_overscroll(),
+            Overscroll::Bounce | Overscroll::Stretch
+        );
+        let current = if rubber_mode && (precision || continuing_wheel_gesture) {
             self.scroll_offset.get()
         } else {
             self.scroll_target.get()
@@ -1425,17 +1429,13 @@ impl View {
         let raw_y = self.raw_offset_from_visual(current.1, max_y);
         let proposed_x = raw_x + dx;
         let proposed_y = raw_y + dy;
-        let rubber_mode = matches!(
-            self.effective_overscroll(),
-            Overscroll::Bounce | Overscroll::Stretch
-        );
         let rubber_x = rubber_mode
             && self.can_scroll_x()
             && (precision || continuing_wheel_gesture || proposed_x < 0.0 || proposed_x > max_x);
         let rubber_y = rubber_mode
             && self.can_scroll_y()
             && (precision || continuing_wheel_gesture || proposed_y < 0.0 || proposed_y > max_y);
-        let direct_wheel = precision || rubber_x || rubber_y;
+        let direct_wheel = rubber_x || rubber_y;
         let (next_x, hit_x) = self.react_to_bounds(proposed_x, max_x, rubber_x);
         let (next_y, hit_y) = self.react_to_bounds(proposed_y, max_y, rubber_y);
 
@@ -3144,15 +3144,38 @@ mod tests {
     }
 
     #[test]
-    fn auto_overscroll_defaults_to_bounce_on_every_platform() {
+    fn auto_overscroll_defaults_to_disabled_on_every_platform() {
         let view = View::new();
-        assert_eq!(view.effective_overscroll(), Overscroll::Bounce);
+        assert_eq!(view.effective_overscroll(), Overscroll::Disabled);
+    }
+
+    #[test]
+    fn default_pixel_wheel_uses_smooth_scroll_target() {
+        let mut view = sized_view(
+            View::new().overflow_y(Overflow::Auto),
+            (100.0, 100.0),
+            (100.0, 300.0),
+        );
+        let mut ctx = EventCtx::new();
+
+        assert!(view.handle_wheel(
+            MouseScrollDelta::PixelDelta(0.0, -30.0),
+            (50.0, 50.0),
+            ModifiersState::default(),
+            &mut ctx,
+            96.0,
+        ));
+        assert_eq!(view.scroll_offset.get(), (0.0, 0.0));
+        assert_eq!(view.scroll_target.get(), (0.0, 30.0));
+        assert!(view.wheel_gesture_last_event.get().is_none());
     }
 
     #[test]
     fn precision_wheel_rubber_bands_smoothly_past_edge() {
         let mut view = sized_view(
-            View::new().overflow_y(Overflow::Auto),
+            View::new()
+                .overflow_y(Overflow::Auto)
+                .overscroll(Overscroll::Bounce),
             (100.0, 100.0),
             (100.0, 300.0),
         );

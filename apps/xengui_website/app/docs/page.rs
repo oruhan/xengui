@@ -18,10 +18,22 @@ enum DocsSection {
 
 const NAV_ITEMS: &[(DocsSection, &str, &str)] = &[
     (DocsSection::Start, "Başlarken", "Kurulum ve ilk uygulama"),
-    (DocsSection::Concepts, "Temel kavramlar", "Tree, state ve yaşam döngüsü"),
+    (
+        DocsSection::Concepts,
+        "Temel kavramlar",
+        "Tree, state ve yaşam döngüsü",
+    ),
     (DocsSection::Widgets, "Widget'lar", "Temel bileşen kataloğu"),
-    (DocsSection::Styling, "Stil ve layout", "Tema, flex, grid, responsive"),
-    (DocsSection::Rendering, "Renderer", "wgpu, WebGPU ve hata yönetimi"),
+    (
+        DocsSection::Styling,
+        "Stil ve layout",
+        "Tema, flex, grid, responsive",
+    ),
+    (
+        DocsSection::Rendering,
+        "Renderer",
+        "wgpu, WebGPU ve hata yönetimi",
+    ),
     (DocsSection::Api, "API referansı", "Rustdoc paketleri"),
 ];
 
@@ -51,9 +63,10 @@ fn heading(kicker: &str, title: &str, description: &str) -> View {
                 .color(|theme: &Theme| theme.primary),
         )
         .child(
-            Label::new()
-                .label(title)
+            RichText::new()
+                .with_content(title)
                 .width(pct!(100.0))
+                .max_width(px!((viewport_size().0 - 40.0).clamp(220.0, 760.0)))
                 .font_size(Responsive::new(px!(30.0)).md(px!(44.0)))
                 .font_weight(FontWeight::SemiBold)
                 .letter_spacing(px!(-1.5))
@@ -68,8 +81,10 @@ fn section_title(title: &str, description: &str) -> View {
         .min_width(px!(0.0))
         .gap(0.0, 6.0)
         .child(
-            Label::new()
-                .label(title)
+            RichText::new()
+                .with_content(title)
+                .width(pct!(100.0))
+                .max_width(px!((viewport_size().0 - 40.0).clamp(220.0, 760.0)))
                 .font_size(22.0)
                 .font_weight(FontWeight::SemiBold),
         )
@@ -121,9 +136,7 @@ fn note(title: &str, text: &str) -> View {
         .gap(12.0, 0.0)
         .padding(Edges::all(18.0))
         .background(|theme: &Theme| theme.primary_container.with_alpha_f32(0.62))
-        .border(|theme: &Theme| {
-            Border::all(1.0, theme.primary.with_alpha_f32(0.28)).radius(20.0)
-        })
+        .border(|theme: &Theme| Border::all(1.0, theme.primary.with_alpha_f32(0.28)).radius(20.0))
         .child(VariableIcon::new(xengui_icons::codepoints::INFO).size(20.0))
         .child(
             Column::new()
@@ -213,45 +226,28 @@ fn cards(items: &[(&str, &str)]) -> View {
     grid
 }
 
-fn capability(icon: char, value: &str, label: &str, tone: u8) -> View {
-    Column::new()
-        .flex_basis(Responsive::new(pct!(48.0)).lg(pct!(23.0)))
-        .gap(0.0, 10.0)
-        .padding(Edges::all(16.0))
-        .background(move |theme: &Theme| match tone {
-            1 => theme.secondary_container,
-            2 => theme.tertiary_container,
-            _ => theme.surface_container_lowest,
-        })
-        .border(Border::all(0.0, Color::TRANSPARENT).radius(20.0))
-        .child(StyleBuilder::color(
-            VariableIcon::new(icon).size(21.0),
-            move |theme: &Theme| match tone {
-                1 => theme.on_secondary_container,
-                2 => theme.on_tertiary_container,
-                _ => theme.primary,
-            },
-        ))
+fn meta_chip(label: &str) -> View {
+    View::new()
+        .padding(Edges::symmetric(11.0, 7.0))
+        .background(|theme: &Theme| theme.surface_container_lowest)
+        .border(|theme: &Theme| Border::all(1.0, theme.outline_variant).radius(8.0))
         .child(
             Label::new()
-                .label(value)
-                .font_size(17.0)
-                .font_weight(FontWeight::SemiBold),
+                .label(label)
+                .font_size(11.0)
+                .font_weight(FontWeight::Medium)
+                .color(|theme: &Theme| theme.on_surface_variant),
         )
-        .child(paragraph(label, 12.0, 18.0))
 }
 
 fn docs_hero(set_active: SetState<DocsSection>) -> View {
     let set_api = set_active.clone();
     Column::new()
         .width(pct!(100.0))
-        .gap(0.0, 20.0)
+        .gap(0.0, 18.0)
         .padding(Responsive::new(Edges::all(24.0)).md(Edges::all(40.0)))
-        .background(|theme: &Theme| theme.primary_container)
-        .border(
-            Responsive::new(Border::all(0.0, Color::TRANSPARENT).radius(24.0))
-                .md(Border::all(0.0, Color::TRANSPARENT).radius(32.0)),
-        )
+        .background(|theme: &Theme| theme.surface_container_low)
+        .border(|theme: &Theme| Border::all(1.0, theme.outline_variant).radius(14.0))
         .child(
             Row::new()
                 .align_items(Align::Center)
@@ -259,7 +255,7 @@ fn docs_hero(set_active: SetState<DocsSection>) -> View {
                 .child(
                     StyleBuilder::color(
                         VariableIcon::new(xengui_icons::codepoints::AUTO_STORIES).size(18.0),
-                        |theme: &Theme| theme.on_primary_container,
+                        |theme: &Theme| theme.primary,
                     ),
                 )
                 .child(
@@ -268,18 +264,19 @@ fn docs_hero(set_active: SetState<DocsSection>) -> View {
                         .font_size(12.0)
                         .font_weight(FontWeight::SemiBold)
                         .letter_spacing(px!(1.1))
-                        .color(|theme: &Theme| theme.on_primary_container),
+                        .color(|theme: &Theme| theme.on_surface_variant),
                 ),
         )
         .child(
-            Label::new()
-                .label("Rust UI, baştan sona anlaşılır.")
-                .max_width(px!(820.0))
+            RichText::new()
+                .with_content("Rust UI, baştan sona anlaşılır.")
+                .width(pct!(100.0))
+                .max_width(px!((viewport_size().0 - 88.0).clamp(220.0, 820.0)))
                 .font_size(Responsive::new(px!(38.0)).md(px!(58.0)))
                 .line_height(Responsive::new(px!(44.0)).md(px!(64.0)).resolve())
                 .font_weight(FontWeight::SemiBold)
                 .letter_spacing(px!(-2.0))
-                .color(|theme: &Theme| theme.on_primary_container),
+                .color(|theme: &Theme| theme.on_background),
         )
         .child(
             paragraph(
@@ -287,7 +284,7 @@ fn docs_hero(set_active: SetState<DocsSection>) -> View {
                 16.0,
                 25.0,
             )
-            .color(|theme: &Theme| theme.on_primary_container),
+            .max_width(px!((viewport_size().0 - 88.0).clamp(220.0, 680.0))),
         )
         .child(
             View::new()
@@ -298,20 +295,22 @@ fn docs_hero(set_active: SetState<DocsSection>) -> View {
                     Button::new()
                         .label("Başlangıç rehberi  →")
                         .font_weight(FontWeight::SemiBold)
-                        .background(|theme: &Theme| theme.primary)
-                        .color(|theme: &Theme| theme.on_primary)
-                        .border(Border::all(0.0, Color::TRANSPARENT).radius(18.0))
-                        .padding(Edges::symmetric(18.0, 12.0))
+                        .background(|theme: &Theme| theme.on_background)
+                        .color(|theme: &Theme| theme.background)
+                        .border(Border::all(0.0, Color::TRANSPARENT).radius(10.0))
+                        .padding(Edges::symmetric(16.0, 10.0))
                         .on_click(move |_ctx| set_active.set(DocsSection::Start)),
                 )
                 .child(
                     Button::new()
                         .label("API referansı")
                         .font_weight(FontWeight::SemiBold)
-                        .background(|theme: &Theme| theme.surface_container_lowest)
+                        .background(Color::TRANSPARENT)
                         .color(|theme: &Theme| theme.on_surface)
-                        .border(Border::all(0.0, Color::TRANSPARENT).radius(18.0))
-                        .padding(Edges::symmetric(18.0, 12.0))
+                        .border(|theme: &Theme| {
+                            Border::all(1.0, theme.outline_variant).radius(10.0)
+                        })
+                        .padding(Edges::symmetric(16.0, 10.0))
                         .on_click(move |_ctx| set_api.set(DocsSection::Api)),
                 ),
         )
@@ -319,31 +318,11 @@ fn docs_hero(set_active: SetState<DocsSection>) -> View {
             View::new()
                 .display(Display::Flex)
                 .flex_wrap(FlexWrap::Wrap)
-                .gap(10.0, 10.0)
-                .child(capability(
-                    xengui_icons::codepoints::PACKAGE_2,
-                    "0.2.8",
-                    "Güncel xengui sürümü",
-                    0,
-                ))
-                .child(capability(
-                    xengui_icons::codepoints::DESKTOP_WINDOWS,
-                    "Native + Web",
-                    "Tek widget modeli",
-                    1,
-                ))
-                .child(capability(
-                    xengui_icons::codepoints::SPEED,
-                    "wgpu",
-                    "GPU hızlandırmalı",
-                    2,
-                ))
-                .child(capability(
-                    xengui_icons::codepoints::DATA_OBJECT,
-                    "Rust 1.92",
-                    "MSRV sözleşmesi",
-                    0,
-                )),
+                .gap(8.0, 8.0)
+                .child(meta_chip("xengui 0.2.8"))
+                .child(meta_chip("Native + Web"))
+                .child(meta_chip("wgpu"))
+                .child(meta_chip("Rust 1.92+")),
         )
 }
 
@@ -601,10 +580,21 @@ pub fn page(_params: &RouteParams) -> Box<dyn Widget> {
 
     let mut navigation = View::new()
         .display(Display::Flex)
-        .flex_direction(if compact { FlexDirection::Row } else { FlexDirection::Column })
+        .flex_direction(if compact {
+            FlexDirection::Row
+        } else {
+            FlexDirection::Column
+        })
         .width(if compact { pct!(100.0) } else { px!(220.0) })
-        .gap(if compact { 8.0 } else { 0.0 }, if compact { 0.0 } else { 6.0 })
-        .overflow_x(if compact { Overflow::Auto } else { Overflow::Visible });
+        .gap(
+            if compact { 8.0 } else { 0.0 },
+            if compact { 0.0 } else { 6.0 },
+        )
+        .overflow_x(if compact {
+            Overflow::Auto
+        } else {
+            Overflow::Visible
+        });
 
     for (section, title, subtitle) in NAV_ITEMS {
         navigation = navigation.child(nav_button(
@@ -633,24 +623,40 @@ pub fn page(_params: &RouteParams) -> Box<dyn Widget> {
         DocsSection::Api => api_page(),
     };
 
+    let body = View::new()
+        .display(Display::Flex)
+        .flex_direction(if compact {
+            FlexDirection::Column
+        } else {
+            FlexDirection::Row
+        })
+        .gap(
+            if compact { 0.0 } else { 42.0 },
+            if compact { 24.0 } else { 0.0 },
+        )
+        .width(pct!(100.0))
+        .min_width(px!(0.0))
+        .child(navigation)
+        .child(
+            View::new()
+                .width(pct!(100.0))
+                .flex_grow(1.0)
+                .min_width(px!(0.0))
+                .child(content),
+        );
+
     Box::new(
-        View::new()
-            .display(Display::Flex)
-            .flex_direction(if compact { FlexDirection::Column } else { FlexDirection::Row })
-            .gap(if compact { 0.0 } else { 42.0 }, if compact { 24.0 } else { 0.0 })
+        Column::new()
             .width(pct!(100.0))
+            .min_width(px!(0.0))
+            .gap(0.0, Responsive::new(px!(32.0)).md(px!(52.0)))
             .overflow_x(Overflow::Hidden)
             .padding(
-                Responsive::new(Edges::only(20.0, 88.0, 20.0, 48.0))
-                    .md(Edges::only(80.0, 110.0, 80.0, 70.0)),
+                Responsive::new(Edges::only(20.0, 32.0, 20.0, 72.0))
+                    .md(Edges::only(64.0, 48.0, 64.0, 88.0))
+                    .lg(Edges::only(80.0, 56.0, 80.0, 104.0)),
             )
-            .child(navigation)
-            .child(
-                View::new()
-                    .width(pct!(100.0))
-                    .flex_grow(1.0)
-                    .min_width(px!(0.0))
-                    .child(content),
-            ),
+            .child(docs_hero(set_active))
+            .child(body),
     )
 }
