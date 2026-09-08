@@ -23,11 +23,14 @@ impl TransitionProperty {
     /// Excluded from the default `transition` group, only included via
     /// `transition_all` - matches Tailwind's own default property list.
     pub const BOX: Self = Self(1 << 4);
+    /// Typography properties that can be interpolated, such as variable-font weight.
+    pub const TYPOGRAPHY: Self = Self(1 << 5);
 
     /// Every group except `BOX` - matches CSS's default `transition-property: all`
     /// behavior for the common groups most UIs animate.
-    pub const DEFAULT: Self =
-        Self(Self::COLORS.0 | Self::OPACITY.0 | Self::SHADOW.0 | Self::TRANSFORM.0);
+    pub const DEFAULT: Self = Self(
+        Self::COLORS.0 | Self::OPACITY.0 | Self::SHADOW.0 | Self::TRANSFORM.0 | Self::TYPOGRAPHY.0,
+    );
     /// Every group, including `BOX`.
     pub const ALL: Self = Self(Self::DEFAULT.0 | Self::BOX.0);
 

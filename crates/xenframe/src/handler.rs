@@ -7,8 +7,61 @@ use crate::{
 };
 use std::sync::Arc;
 use web_time::Instant;
-#[cfg(target_arch = "wasm32")]
+#[cfg(any(target_arch = "wasm32", target_os = "android"))]
 use winit::window::Window;
+
+#[cfg(target_os = "android")]
+fn sync_android_safe_area(window: &Window) -> bool {
+    use winit::platform::android::WindowExtAndroid;
+
+    let rect = window.content_rect();
+    let size = window.inner_size();
+    if rect.right <= rect.left || rect.bottom <= rect.top || size.width == 0 || size.height == 0 {
+        return false;
+    }
+
+    let scale = window.scale_factor() as f32;
+    xengui::set_safe_area_insets(xengui::SafeAreaInsets {
+        top: rect.top.max(0) as f32 / scale,
+        right: (size.width as i32 - rect.right).max(0) as f32 / scale,
+        bottom: (size.height as i32 - rect.bottom).max(0) as f32 / scale,
+        left: rect.left.max(0) as f32 / scale,
+    })
+}
+
+#[cfg(target_os = "android")]
+#[allow(unsafe_code)]
+fn move_android_task_to_back(event_loop: &ActiveEventLoop) {
+    use jni::{
+        JavaVM, jni_sig, jni_str,
+        objects::{JObject, JValue},
+        refs::Global,
+    };
+    use winit::platform::android::ActiveEventLoopExtAndroid;
+
+    let app = event_loop.android_app().clone();
+    let app_for_main_thread = app.clone();
+    app.run_on_java_main_thread(Box::new(move || {
+        let vm = unsafe { JavaVM::from_raw(app_for_main_thread.vm_as_ptr() as _) };
+        let result = vm.attach_current_thread(|env| -> jni::errors::Result<()> {
+            let raw_activity = app_for_main_thread.activity_as_ptr() as jni::sys::jobject;
+            // AndroidApp lends an unowned global reference. Cast it as such
+            // so JNI never tries to delete the Activity reference on drop.
+            let activity = unsafe { env.as_cast_raw::<Global<JObject>>(&raw_activity)? };
+            env.call_method(
+                activity,
+                jni_str!("moveTaskToBack"),
+                jni_sig!((value: bool) -> bool),
+                &[JValue::Bool(true)],
+            )?;
+            Ok(())
+        });
+
+        if let Err(error) = result {
+            log::error!("failed to move Android task to background: {error}");
+        }
+    }));
+}
 use winit::{
     event::WindowEvent,
     event_loop::{ActiveEventLoop, ControlFlow},
@@ -129,6 +182,20 @@ fn sync_canvas_position(window: &Arc<Window>) {
 }
 
 impl winit::application::ApplicationHandler<XenEvent> for App {
+    fn suspended(&mut self, _event_loop: &ActiveEventLoop) {
+        #[cfg(target_os = "android")]
+        {
+            // Android destroys the native SurfaceView while an app is in the
+            // background. Any wgpu surface must be dropped before this callback
+            // returns and recreated by the next `resumed` event.
+            self.renderer = None;
+            self.window = None;
+            self.is_visible = false;
+            crate::window_controls::clear_active_window();
+            hooks::clear_redraw_handle();
+        }
+    }
+
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         // State Loss Prevention: Avoid recreation if the window already exists
         if self.window.is_some() {
@@ -510,7 +577,12 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
 
         // Applies dark_theme/light_theme selection now that the real OS
         // appearance is known, before the window is ever shown.
-        if self.sync_active_theme_with_system() || breakpoint_changed {
+        #[cfg(target_os = "android")]
+        let safe_area_changed = sync_android_safe_area(&window);
+        #[cfg(not(target_os = "android"))]
+        let safe_area_changed = false;
+
+        if self.sync_active_theme_with_system() || breakpoint_changed || safe_area_changed {
             self.schedule_render();
             while self.pump_reconciliation() {}
         }
@@ -538,6 +610,15 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
                 Ok(renderer) => {
                     self.renderer = Some(renderer);
                     log::info!("application resumed, gpu context ready");
+
+                    // The window starts hidden and is revealed only after its
+                    // first successfully rendered frame. Desktop window
+                    // systems commonly enqueue an initial redraw as a side
+                    // effect of window creation, but Android does not
+                    // guarantee one when a NativeActivity is relaunched after
+                    // its task was removed. Request it explicitly so the
+                    // platform splash can never wait indefinitely.
+                    window.request_redraw();
                 }
                 Err(e) => {
                     log::info!("cannot start gpu pipeline: {}", e);
@@ -845,38 +926,70 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
                 }
                 #[cfg(not(target_os = "windows"))]
                 {
-                    let theme = crate::window::system_theme(self.config.theme);
-                    let scale_factor = self
-                        .window
-                        .as_ref()
-                        .map_or(1.0, |w| w.scale_factor() as f32);
+                    #[cfg(target_os = "android")]
+                    {
+                        if self.window.as_deref().is_some_and(sync_android_safe_area) {
+                            self.schedule_render();
+                            while self.pump_reconciliation() {}
+                        }
 
-                    let resize_error = if let Some(renderer) = &mut self.renderer {
-                        renderer
-                            .try_resize(
-                                &mut self.root,
-                                theme,
-                                scale_factor,
-                                new_size.width,
-                                new_size.height,
-                            )
-                            .err()
-                    } else {
-                        None
-                    };
-                    if let Some(error) = resize_error {
-                        self.recover_renderer(error);
+                        let theme = crate::window::system_theme(self.config.theme);
+                        let scale_factor = self
+                            .window
+                            .as_ref()
+                            .map_or(1.0, |w| w.scale_factor() as f32);
+                        let resize_error = if let Some(renderer) = &mut self.renderer {
+                            renderer
+                                .try_resize(
+                                    &mut self.root,
+                                    theme,
+                                    scale_factor,
+                                    new_size.width,
+                                    new_size.height,
+                                )
+                                .err()
+                        } else {
+                            None
+                        };
+                        if let Some(error) = resize_error {
+                            self.recover_renderer(error);
+                        }
+                        self.recalc_hover_at_cursor();
+                        self.recheck_breakpoint();
+
+                        if !self.is_visible {
+                            self.reveal_window();
+                        }
                     }
 
-                    self.recalc_hover_at_cursor();
-                    self.recheck_breakpoint();
-
-                    if !self.is_visible {
-                        self.reveal_window();
+                    #[cfg(not(target_os = "android"))]
+                    {
+                        // Desktop resize events arrive in bursts. Keep the
+                        // swapchain current immediately, but coalesce layout,
+                        // paint and present into the next RedrawRequested.
+                        if let Some(renderer) = &mut self.renderer {
+                            renderer.reconfigure_surface(new_size.width, new_size.height);
+                        }
+                        let scale_factor = self
+                            .window
+                            .as_ref()
+                            .map_or(1.0, |window| window.scale_factor() as f32);
+                        xengui::set_current_breakpoint_from_width(
+                            new_size.width as f32 / scale_factor,
+                        );
+                        self.recheck_breakpoint();
+                        if let Some(window) = &self.window {
+                            window.request_redraw();
+                        }
                     }
                 }
             }
             WindowEvent::ScaleFactorChanged { .. } => {
+                #[cfg(target_os = "android")]
+                if self.window.as_deref().is_some_and(sync_android_safe_area) {
+                    self.schedule_render();
+                    while self.pump_reconciliation() {}
+                }
                 for node in &mut self.root {
                     node.set_dirty(true);
                 }
@@ -1159,6 +1272,21 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
                     && !keyboard_event.repeat
                 {
                     self.advance_focus(self.input.modifiers.shift);
+                    return;
+                }
+
+                if keyboard_event.key == Key::BrowserBack
+                    && keyboard_event.state == KeyState::Pressed
+                    && !keyboard_event.repeat
+                {
+                    let handled = self
+                        .system_back_handler
+                        .as_mut()
+                        .is_some_and(|handler| handler());
+                    if !handled {
+                        #[cfg(target_os = "android")]
+                        move_android_task_to_back(_event_loop);
+                    }
                     return;
                 }
 

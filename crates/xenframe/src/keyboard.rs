@@ -3,7 +3,7 @@ use xengui::{ImeEvent, Key, KeyState, KeyboardEvent};
 
 /// Converts a winit key event into xengui's platform-agnostic representation.
 pub fn convert_keyboard_event(event: winit::event::KeyEvent) -> KeyboardEvent {
-    use winit::keyboard::{Key as WinitKey, KeyCode, PhysicalKey};
+    use winit::keyboard::{Key as WinitKey, KeyCode, NamedKey, PhysicalKey};
 
     let key = match event.physical_key {
         PhysicalKey::Code(KeyCode::Escape) => Key::Escape,
@@ -83,6 +83,7 @@ pub fn convert_keyboard_event(event: winit::event::KeyEvent) -> KeyboardEvent {
         // layout-aware fallback: uses os generated text
         // logical_key stays correct even when ctrl is held, unlike `text`
         _ => match &event.logical_key {
+            WinitKey::Named(NamedKey::BrowserBack | NamedKey::GoBack) => Key::BrowserBack,
             WinitKey::Character(s) => s.chars().next().map(Key::Character).unwrap_or(Key::Unknown),
             _ => event
                 .text

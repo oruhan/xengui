@@ -654,14 +654,7 @@ impl Widget for Svg {
             return;
         }
 
-        let style = &self.base.computed_style;
-        let content_scale = style.content_scale.unwrap_or(style.scale.unwrap_or(1.0));
-        let b = crate::scaled_layout_box_with_origin(
-            self.layout_box,
-            content_scale,
-            style.transform_origin.unwrap_or_default(),
-            ctx.scale_factor,
-        );
+        let b = self.layout_box;
         let scale = (b.width / vb_w).min(b.height / vb_h);
         let offset_x = b.x + (b.width - vb_w * scale) * 0.5;
         let offset_y = b.y + (b.height - vb_h * scale) * 0.5;
@@ -698,7 +691,7 @@ impl Widget for Svg {
                     let color = from_svg_color(color);
                     let color = color.with_alpha_f32(color.a() * triangle.opacity);
 
-                    ctx.draw_triangle(TriangleCommand {
+                    ctx.draw_content_triangle(TriangleCommand {
                         p0: map(triangle.p0),
                         p1: map(triangle.p1),
                         p2: map(triangle.p2),
@@ -731,7 +724,7 @@ impl Widget for Svg {
                         (min_x, min_y, max_x - min_x, max_y - min_y)
                     });
 
-                    ctx.draw_image(ImageCommand {
+                    ctx.draw_content_image(ImageCommand {
                         position: (px, py),
                         size: (image.size.0 * img_scale, image.size.1 * img_scale),
                         image: image.source.clone(),

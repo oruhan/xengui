@@ -31,6 +31,11 @@ pub trait RenderBackend {
     /// Returns or updates the `draw_text` value.
     fn draw_text(&mut self, theme: SystemTheme, scale_factor: f32, cmd: &TextCommand);
 
+    /// Rasterizes `cmd.commands` at their natural metrics and applies the
+    /// visual scale only while compositing the resulting texture. Backends
+    /// should keep text/SVG rasterization independent from `cmd.scale`.
+    fn draw_composited(&mut self, cmd: &crate::CompositedCommand);
+
     /// Renders `cmds` in isolation, runs `chain` over the result, and
     /// composites the filtered output at `bounds`. Backends without
     /// filter support may implement this as a no-op fallback that paints

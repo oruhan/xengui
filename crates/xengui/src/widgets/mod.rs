@@ -72,7 +72,7 @@ pub use switch::Switch;
 pub use table::{Table, TableColumn, TableRow};
 pub use textbox::TextBox;
 pub use tooltip::{Tooltip, TooltipPlacement};
-pub use view::View;
+pub use view::{ScrollState, View};
 /* DevTools */
 pub use devtools_panel::*;
 pub use split_handle::*;

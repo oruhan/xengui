@@ -23,6 +23,9 @@ pub enum FontWeight {
     ExtraBold,
     /// The `Black` variant.
     Black,
+
+    /// A numeric OpenType weight used while interpolating variable fonts.
+    Variable(u16),
 }
 
 impl FontWeight {
@@ -38,6 +41,18 @@ impl FontWeight {
             Self::Bold => 700,
             Self::ExtraBold => 800,
             Self::Black => 900,
+            Self::Variable(value) => value,
         }
+    }
+
+    /// Creates a numeric OpenType weight clamped to the supported range.
+    pub const fn from_numeric(value: u16) -> Self {
+        Self::Variable(if value < 1 {
+            1
+        } else if value > 1000 {
+            1000
+        } else {
+            value
+        })
     }
 }

@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 use crate::{
-    AnimationManager, BackdropFilterCommand, BoxShadowCommand, DrawCommand, FilteredCommand,
-    ImageCommand, LayoutBox, LayoutContext, LayoutEngine, PaintContext, Position, RectCommand,
-    RenderBackend, RenderCache, StrokeCommand, SystemTheme, TriangleCommand, VariableIconCommand,
-    Widget, WidgetPath,
+    AnimationManager, BackdropFilterCommand, BoxShadowCommand, CompositedCommand, DrawCommand,
+    FilteredCommand, ImageCommand, LayoutBox, LayoutContext, LayoutEngine, PaintContext, Position,
+    RectCommand, RenderBackend, RenderCache, StrokeCommand, SystemTheme, TriangleCommand,
+    VariableIconCommand, Widget, WidgetPath,
 };
 use web_time::Instant;
 
@@ -234,6 +234,7 @@ impl FrameRenderer {
             Filtered,
             BackdropFilter,
             VariableIcon,
+            Composited,
         }
 
         let mut current_kind: Option<RunKind> = None;
@@ -256,6 +257,7 @@ impl FrameRenderer {
                     Some(RunKind::Filtered) => {}
                     Some(RunKind::BackdropFilter) => {}
                     Some(RunKind::VariableIcon) => backend.draw_variable_icons(&icon_buf),
+                    Some(RunKind::Composited) => {}
                     None => {}
                 }
                 rect_buf.clear();
@@ -350,6 +352,17 @@ impl FrameRenderer {
                         cmd.radius,
                     );
                 }
+                DrawCommand::Composited(cmd) => {
+                    if current_kind != Some(RunKind::Composited) {
+                        flush_run!();
+                        current_kind = Some(RunKind::Composited);
+                    }
+                    backend.flush_text();
+                    backend.draw_composited(&cmd);
+                }
+                DrawCommand::Content(_) => {
+                    unreachable!("content marker escaped frame composition")
+                }
             }
         }
         flush_run!();
@@ -380,6 +393,7 @@ impl FrameRenderer {
                         Some(RunKind::Filtered) => {}
                         Some(RunKind::BackdropFilter) => {}
                         Some(RunKind::VariableIcon) => backend.draw_variable_icons(icon_buf),
+                        Some(RunKind::Composited) => {}
                         None => {}
                     }
                     rect_buf.clear();
@@ -447,6 +461,17 @@ impl FrameRenderer {
                     // filter today - paint_recursive only emits it for the
                     // main tree walk.
                     DrawCommand::BackdropFilter(_) => {}
+                    DrawCommand::Composited(cmd) => {
+                        if top_kind != Some(RunKind::Composited) {
+                            flush_top_run!();
+                            top_kind = Some(RunKind::Composited);
+                        }
+                        backend.flush_text();
+                        backend.draw_composited(&cmd);
+                    }
+                    DrawCommand::Content(_) => {
+                        unreachable!("content marker escaped top-layer composition")
+                    }
                 }
             }
             flush_top_run!();
@@ -508,6 +533,206 @@ fn reuse_cached_paint(
         }
     }
     true
+}
+
+fn union_rect(a: (f32, f32, f32, f32), b: (f32, f32, f32, f32)) -> (f32, f32, f32, f32) {
+    let x0 = a.0.min(b.0);
+    let y0 = a.1.min(b.1);
+    let x1 = (a.0 + a.2).max(b.0 + b.2);
+    let y1 = (a.1 + a.3).max(b.1 + b.3);
+    (x0, y0, (x1 - x0).max(0.0), (y1 - y0).max(0.0))
+}
+
+fn draw_command_bounds(command: &DrawCommand) -> Option<(f32, f32, f32, f32)> {
+    match command {
+        DrawCommand::Rect(c) => Some((c.position.0, c.position.1, c.size.0, c.size.1)),
+        DrawCommand::Triangle(c) => {
+            let x0 = c.p0.0.min(c.p1.0).min(c.p2.0);
+            let y0 = c.p0.1.min(c.p1.1).min(c.p2.1);
+            let x1 = c.p0.0.max(c.p1.0).max(c.p2.0);
+            let y1 = c.p0.1.max(c.p1.1).max(c.p2.1);
+            Some((x0, y0, x1 - x0, y1 - y0))
+        }
+        DrawCommand::Text(c) => {
+            let height = c
+                .style
+                .line_height
+                .map(|v| v.value().value())
+                .or_else(|| c.style.font_size.map(|v| v.value() * 1.5))
+                .unwrap_or(24.0);
+            Some((
+                c.position.0,
+                c.position.1,
+                c.max_width.unwrap_or(1.0).max(1.0),
+                height.max(1.0),
+            ))
+        }
+        DrawCommand::Image(c) => Some((c.position.0, c.position.1, c.size.0, c.size.1)),
+        DrawCommand::BoxShadow(c) => Some((
+            c.shadow_position.0 - c.blur * 3.0,
+            c.shadow_position.1 - c.blur * 3.0,
+            c.shadow_size.0 + c.blur * 6.0,
+            c.shadow_size.1 + c.blur * 6.0,
+        )),
+        DrawCommand::Stroke(c) => {
+            let pad = c.thickness * 0.5;
+            let x0 = c.p0.0.min(c.p1.0) - pad;
+            let y0 = c.p0.1.min(c.p1.1) - pad;
+            let x1 = c.p0.0.max(c.p1.0) + pad;
+            let y1 = c.p0.1.max(c.p1.1) + pad;
+            Some((x0, y0, x1 - x0, y1 - y0))
+        }
+        DrawCommand::Filtered(c) => Some(c.bounds),
+        DrawCommand::BackdropFilter(c) => Some(c.bounds),
+        DrawCommand::VariableIcon(c) => Some((c.position.0, c.position.1, c.size.0, c.size.1)),
+        DrawCommand::Composited(c) => Some(
+            ScaleTransform {
+                pivot: c.pivot,
+                scale: c.scale,
+            }
+            .rect(c.bounds),
+        ),
+        DrawCommand::Content(c) => draw_command_bounds(c),
+    }
+}
+
+fn commands_bounds(
+    commands: &[DrawCommand],
+    fallback: (f32, f32, f32, f32),
+) -> (f32, f32, f32, f32) {
+    commands
+        .iter()
+        .filter_map(draw_command_bounds)
+        .fold(fallback, union_rect)
+}
+
+fn widget_transform(widget: &dyn Widget, scale_factor: f32, content: bool) -> ScaleTransform {
+    let style = widget.computed_style();
+    let scale = if content {
+        style.content_scale.unwrap_or(style.scale.unwrap_or(1.0))
+    } else {
+        style.scale.unwrap_or(1.0)
+    };
+    let layout = widget.layout_box();
+    let (ox, oy) = style.transform_origin.unwrap_or_default().resolve(
+        layout.width,
+        layout.height,
+        scale_factor,
+    );
+    ScaleTransform {
+        pivot: (layout.x + ox, layout.y + oy),
+        scale,
+    }
+}
+
+fn composite_commands(
+    mut commands: Vec<DrawCommand>,
+    transform: ScaleTransform,
+    fallback_bounds: (f32, f32, f32, f32),
+    clip_rect: Option<(f32, f32, f32, f32)>,
+) -> Vec<DrawCommand> {
+    if commands.is_empty() {
+        return commands;
+    }
+    if (transform.scale - 1.0).abs() < f32::EPSILON {
+        for command in &mut commands {
+            apply_clip(command, clip_rect);
+        }
+        return commands;
+    }
+
+    let bounds = commands_bounds(&commands, fallback_bounds);
+    vec![DrawCommand::Composited(Box::new(CompositedCommand {
+        commands,
+        bounds,
+        pivot: transform.pivot,
+        scale: transform.scale,
+        clip_rect,
+    }))]
+}
+
+// Splits a widget's own paint stream into container and content channels.
+// When both scales match, a single texture preserves exact paint ordering and
+// costs one composite. A distinct `content_scale` intentionally creates two
+// layers so labels/icons can remain stable while the container transforms.
+fn composite_widget_paint(
+    widget: &dyn Widget,
+    commands: Vec<DrawCommand>,
+    clip_rect: Option<(f32, f32, f32, f32)>,
+    scale_factor: f32,
+) -> Vec<DrawCommand> {
+    let root_transform = widget_transform(widget, scale_factor, false);
+    let content_transform = widget_transform(widget, scale_factor, true);
+    let b = widget.layout_box();
+    let fallback = (b.x, b.y, b.width, b.height);
+
+    if (root_transform.scale - content_transform.scale).abs() < f32::EPSILON {
+        let commands = commands
+            .into_iter()
+            .map(|command| match command {
+                DrawCommand::Content(command) => *command,
+                command => command,
+            })
+            .collect();
+        return composite_commands(commands, root_transform, fallback, clip_rect);
+    }
+
+    let mut root = Vec::new();
+    let mut content = Vec::new();
+    for command in commands {
+        match command {
+            DrawCommand::Content(command) => content.push(*command),
+            command => root.push(command),
+        }
+    }
+
+    let mut result = composite_commands(root, root_transform, fallback, clip_rect);
+    result.extend(composite_commands(
+        content,
+        content_transform,
+        fallback,
+        clip_rect,
+    ));
+    result
+}
+
+fn composite_z_range(
+    commands: &mut Vec<(i32, DrawCommand)>,
+    start: usize,
+    transform: ScaleTransform,
+    fallback_bounds: (f32, f32, f32, f32),
+    z_index: i32,
+) {
+    if (transform.scale - 1.0).abs() < f32::EPSILON || start == commands.len() {
+        return;
+    }
+    let mut nested: Vec<(i32, DrawCommand)> = commands.drain(start..).collect();
+    nested.sort_by_key(|(z, _)| *z);
+    let nested: Vec<DrawCommand> = nested.into_iter().map(|(_, command)| command).collect();
+    let bounds = commands_bounds(&nested, fallback_bounds);
+    commands.push((
+        z_index,
+        DrawCommand::Composited(Box::new(CompositedCommand {
+            commands: nested,
+            bounds,
+            pivot: transform.pivot,
+            scale: transform.scale,
+            clip_rect: None,
+        })),
+    ));
+}
+
+fn composite_plain_range(
+    commands: &mut Vec<DrawCommand>,
+    start: usize,
+    transform: ScaleTransform,
+    fallback_bounds: (f32, f32, f32, f32),
+) {
+    if (transform.scale - 1.0).abs() < f32::EPSILON || start == commands.len() {
+        return;
+    }
+    let nested: Vec<DrawCommand> = commands.drain(start..).collect();
+    commands.extend(composite_commands(nested, transform, fallback_bounds, None));
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -579,10 +804,13 @@ fn paint_recursive(
         }
 
         let b = layout_box;
+        let filtered_commands: Vec<DrawCommand> =
+            subtree.into_iter().map(|(_, command)| command).collect();
+        let bounds = commands_bounds(&filtered_commands, (b.x, b.y, b.width, b.height));
         let filtered_cmd = FilteredCommand {
-            commands: subtree.into_iter().map(|(_, c)| c).collect(),
+            commands: filtered_commands,
             chain: chain.clone(),
-            bounds: (b.x, b.y, b.width, b.height),
+            bounds,
             clip_rect,
         };
         commands.push((z_index, DrawCommand::Filtered(Box::new(filtered_cmd))));
@@ -611,6 +839,9 @@ fn paint_recursive(
         }
         cache.store(path.as_str(), layout_box, paint_scratch.clone());
     }
+
+    let raw_paint = std::mem::take(paint_scratch);
+    *paint_scratch = composite_widget_paint(widget, raw_paint, clip_rect, scale_factor);
 
     if let Some(backdrop_chain) = widget.backdrop_filter().filter(|c| !c.is_empty()) {
         let b = layout_box;
@@ -665,7 +896,13 @@ fn paint_recursive(
         Some(rect) => Some(clip_intersect(clip_rect, rect)),
         None => clip_rect,
     };
-    let child_transform = view_child_transform(widget, scale_factor);
+    let child_transform = widget_transform(widget, scale_factor, true);
+    let fallback_bounds = (
+        layout_box.x,
+        layout_box.y,
+        layout_box.width,
+        layout_box.height,
+    );
 
     for (i, child) in widget.children().iter().enumerate() {
         let checkpoint = path.checkpoint();
@@ -700,15 +937,17 @@ fn paint_recursive(
             scale_factor,
             z_index,
         );
-        if let Some(transform) = child_transform {
-            for (_, command) in &mut commands[command_start..] {
-                transform_draw_command(command, transform);
-            }
-            for command in &mut top_commands[top_start..] {
-                transform_draw_command(command, transform);
-            }
+        composite_z_range(
+            commands,
+            command_start,
+            child_transform,
+            fallback_bounds,
+            z_index,
+        );
+        composite_plain_range(top_commands, top_start, child_transform, fallback_bounds);
+        if (child_transform.scale - 1.0).abs() >= f32::EPSILON {
             for command in &mut focus_commands[focus_start..] {
-                transform_rect_command(command, transform);
+                transform_rect_command(command, child_transform);
             }
         }
         path.restore(checkpoint);
@@ -758,11 +997,15 @@ fn paint_subtree_for_filter(
         }
         cache.store(path.as_str(), *widget.layout_box(), paint_scratch.clone());
     }
+    let raw_paint = std::mem::take(paint_scratch);
+    *paint_scratch = composite_widget_paint(widget, raw_paint, None, scale_factor);
     for command in paint_scratch.drain(..) {
         out.push((z_index, command));
     }
 
-    let child_transform = view_child_transform(widget, scale_factor);
+    let child_transform = widget_transform(widget, scale_factor, true);
+    let b = widget.layout_box();
+    let fallback_bounds = (b.x, b.y, b.width, b.height);
     for (i, child) in widget.children().iter().enumerate() {
         if child.is_portal() {
             continue;
@@ -780,11 +1023,13 @@ fn paint_subtree_for_filter(
             scale_factor,
             child_z,
         );
-        if let Some(transform) = child_transform {
-            for (_, command) in &mut out[command_start..] {
-                transform_draw_command(command, transform);
-            }
-        }
+        composite_z_range(
+            out,
+            command_start,
+            child_transform,
+            fallback_bounds,
+            z_index,
+        );
         path.restore(checkpoint);
     }
 }
@@ -835,35 +1080,6 @@ fn paint_chrome_layers_inline(
     }
 }
 
-// `View::scale` is a visual group transform: its box is scaled by
-// `Widget::paint_box`, while its descendants use the content channel.
-// Commands are recorded in absolute layout coordinates, so transform each
-// completed child subtree around the View's transform origin before it is
-// merged into the frame. Applying this once per ancestor naturally composes
-// nested View transforms without changing layout.
-fn view_child_transform(widget: &dyn Widget, scale_factor: f32) -> Option<ScaleTransform> {
-    if !widget.as_any().is::<crate::View>() {
-        return None;
-    }
-
-    let style = widget.computed_style();
-    let scale = style.content_scale.unwrap_or(style.scale.unwrap_or(1.0));
-    if (scale - 1.0).abs() < f32::EPSILON {
-        return None;
-    }
-
-    let layout = widget.layout_box();
-    let (ox, oy) = style.transform_origin.unwrap_or_default().resolve(
-        layout.width,
-        layout.height,
-        scale_factor,
-    );
-    Some(ScaleTransform {
-        pivot: (layout.x + ox, layout.y + oy),
-        scale,
-    })
-}
-
 fn transform_length(length: crate::Length, scale: f32) -> crate::Length {
     match length {
         crate::Length::Px(value) => crate::Length::Px(value * scale),
@@ -903,113 +1119,6 @@ fn transform_rect_command(command: &mut RectCommand, transform: ScaleTransform) 
         *width = transform_length(*width, scale);
     }
     transform_clip(&mut command.clip_rect, transform);
-}
-
-fn transform_draw_command(command: &mut DrawCommand, transform: ScaleTransform) {
-    let scale = transform.scale.abs();
-    match command {
-        DrawCommand::Rect(command) => transform_rect_command(command, transform),
-        DrawCommand::Triangle(command) => {
-            command.p0 = transform.point(command.p0);
-            command.p1 = transform.point(command.p1);
-            command.p2 = transform.point(command.p2);
-            transform_clip(&mut command.clip_rect, transform);
-        }
-        DrawCommand::Text(command) => {
-            command.position = transform.point(command.position);
-            command.max_width = command.max_width.map(|width| width * scale);
-            command.style.font_size = command
-                .style
-                .font_size
-                .map(|length| transform_length(length, scale));
-            command.style.letter_spacing = command
-                .style
-                .letter_spacing
-                .map(|spacing| crate::LetterSpacing::new(transform_length(spacing.value(), scale)));
-            command.style.line_height = command
-                .style
-                .line_height
-                .map(|height| crate::LineHeight::new(transform_length(height.value(), scale)));
-            command.style.selection_border_width = command
-                .style
-                .selection_border_width
-                .map(|length| transform_length(length, scale));
-            command.style.selection_border_radius = command
-                .style
-                .selection_border_radius
-                .map(|length| transform_length(length, scale));
-            transform_clip(&mut command.clip_rect, transform);
-        }
-        DrawCommand::Image(command) => {
-            let rect = transform.rect((
-                command.position.0,
-                command.position.1,
-                command.size.0,
-                command.size.1,
-            ));
-            command.position = (rect.0, rect.1);
-            command.size = (rect.2, rect.3);
-            if let Some(radius) = &mut command.border_radius {
-                transform_radius(radius, scale);
-            }
-            transform_clip(&mut command.clip_rect, transform);
-        }
-        DrawCommand::BoxShadow(command) => {
-            let shadow = transform.rect((
-                command.shadow_position.0,
-                command.shadow_position.1,
-                command.shadow_size.0,
-                command.shadow_size.1,
-            ));
-            command.shadow_position = (shadow.0, shadow.1);
-            command.shadow_size = (shadow.2, shadow.3);
-            let bounds = transform.rect((
-                command.box_position.0,
-                command.box_position.1,
-                command.box_size.0,
-                command.box_size.1,
-            ));
-            command.box_position = (bounds.0, bounds.1);
-            command.box_size = (bounds.2, bounds.3);
-            for radius in &mut command.shadow_radius {
-                *radius *= scale;
-            }
-            command.blur *= scale;
-            command.box_radius *= scale;
-            transform_clip(&mut command.clip_rect, transform);
-        }
-        DrawCommand::Stroke(command) => {
-            command.p0 = transform.point(command.p0);
-            command.p1 = transform.point(command.p1);
-            command.thickness *= scale;
-            transform_clip(&mut command.clip_rect, transform);
-        }
-        DrawCommand::Filtered(command) => {
-            for nested in &mut command.commands {
-                transform_draw_command(nested, transform);
-            }
-            command.bounds = transform.rect(command.bounds);
-            transform_clip(&mut command.clip_rect, transform);
-        }
-        DrawCommand::BackdropFilter(command) => {
-            command.bounds = transform.rect(command.bounds);
-            for radius in &mut command.radius {
-                *radius *= scale;
-            }
-            transform_clip(&mut command.clip_rect, transform);
-        }
-        DrawCommand::VariableIcon(command) => {
-            let rect = transform.rect((
-                command.position.0,
-                command.position.1,
-                command.size.0,
-                command.size.1,
-            ));
-            command.position = (rect.0, rect.1);
-            command.size = (rect.2, rect.3);
-            transform_clip(&mut command.clip_rect, transform);
-        }
-    }
 }
 
 fn translate_clip(clip: &mut Option<(f32, f32, f32, f32)>, translation: Translation) {
@@ -1065,6 +1174,15 @@ fn translate_draw_command(command: &mut DrawCommand, translation: Translation) {
             command.position = translation.point(command.position);
             translate_clip(&mut command.clip_rect, translation);
         }
+        DrawCommand::Composited(command) => {
+            for nested in &mut command.commands {
+                translate_draw_command(nested, translation);
+            }
+            command.bounds = translation.rect(command.bounds);
+            command.pivot = translation.point(command.pivot);
+            translate_clip(&mut command.clip_rect, translation);
+        }
+        DrawCommand::Content(command) => translate_draw_command(command, translation),
     }
 }
 
@@ -1097,6 +1215,11 @@ fn apply_clip(command: &mut DrawCommand, clip_rect: Option<(f32, f32, f32, f32)>
         DrawCommand::Filtered(cmd) => &mut cmd.clip_rect,
         DrawCommand::VariableIcon(cmd) => &mut cmd.clip_rect,
         DrawCommand::BackdropFilter(cmd) => &mut cmd.clip_rect,
+        DrawCommand::Composited(cmd) => &mut cmd.clip_rect,
+        DrawCommand::Content(cmd) => {
+            apply_clip(cmd, clip_rect);
+            return;
+        }
     };
     *target = Some(clip_intersect(*target, ancestor_clip));
 }
@@ -1128,8 +1251,15 @@ fn paint_portal_subtree(
         }
         cache.store(path.as_str(), layout_box, paint_scratch.clone());
     }
-    top_commands.append(paint_scratch);
+    let raw_paint = std::mem::take(paint_scratch);
+    top_commands.extend(composite_widget_paint(
+        widget,
+        raw_paint,
+        None,
+        scale_factor,
+    ));
 
+    let child_start = top_commands.len();
     for (i, child) in widget.children().iter().enumerate() {
         let checkpoint = path.checkpoint();
         path.push(child.as_ref(), i);
@@ -1144,6 +1274,18 @@ fn paint_portal_subtree(
         );
         path.restore(checkpoint);
     }
+    let transform = widget_transform(widget, scale_factor, true);
+    composite_plain_range(
+        top_commands,
+        child_start,
+        transform,
+        (
+            layout_box.x,
+            layout_box.y,
+            layout_box.width,
+            layout_box.height,
+        ),
+    );
 
     paint_scratch.clear();
     {
@@ -1204,9 +1346,9 @@ fn reset_layout_dirty_recursive(tree: &mut [Box<dyn Widget>]) {
 
 #[cfg(test)]
 mod tests {
-    use super::{FrameArena, paint_recursive, reuse_cached_paint};
+    use super::{FrameArena, composite_widget_paint, paint_recursive, reuse_cached_paint};
     use crate::{
-        AnimationManager, Color, DrawCommand, LayoutBox, RenderCache, Style, StyleBuilder,
+        AnimationManager, Color, DrawCommand, LayoutBox, Length, RenderCache, Style, StyleBuilder,
         TextCommand, View, Widget, WidgetPath,
     };
 
@@ -1273,7 +1415,7 @@ mod tests {
     }
 
     #[test]
-    fn view_scale_transforms_descendant_draw_commands() {
+    fn view_scale_composites_descendants_without_mutating_geometry() {
         let child = View::new().background(Color::WHITE);
         let mut root = View::new().scale(0.5).child(child);
         root.layout(LayoutBox {
@@ -1306,11 +1448,16 @@ mod tests {
             0,
         );
 
-        let DrawCommand::Rect(command) = &commands[0].1 else {
-            panic!("expected the child View's background command");
+        let DrawCommand::Composited(layer) = &commands[0].1 else {
+            panic!("expected a stable-raster compositor layer");
         };
-        assert_eq!(command.position, (35.0, 35.0));
-        assert_eq!(command.size, (10.0, 10.0));
+        assert_eq!(layer.scale, 0.5);
+        assert_eq!(layer.pivot, (50.0, 50.0));
+        let DrawCommand::Rect(command) = &layer.commands[0] else {
+            panic!("expected the unscaled child View background");
+        };
+        assert_eq!(command.position, (20.0, 20.0));
+        assert_eq!(command.size, (20.0, 20.0));
     }
 
     #[test]
@@ -1352,5 +1499,54 @@ mod tests {
         };
         assert_eq!(command.position, (20.0, 20.0));
         assert_eq!(command.size, (20.0, 20.0));
+    }
+
+    #[test]
+    fn scale_layer_preserves_text_raster_metrics() {
+        let mut widget = View::new().scale(0.95);
+        widget.layout(LayoutBox {
+            x: 10.0,
+            y: 20.0,
+            width: 100.0,
+            height: 40.0,
+        });
+        widget.cascade_style(&Style::default(), &mut AnimationManager::new());
+        let text_style = Style {
+            font_size: Some(Length::px(14.0)),
+            letter_spacing: Some(crate::LetterSpacing::new(Length::px(1.25))),
+            line_height: Some(crate::LineHeight::new(Length::px(20.0))),
+            ..Default::default()
+        };
+
+        let result = composite_widget_paint(
+            &widget,
+            vec![DrawCommand::Text(Box::new(TextCommand {
+                text: "Stable".into(),
+                position: (20.0, 30.0),
+                style: text_style,
+                max_width: Some(80.0),
+                clip_rect: None,
+            }))],
+            None,
+            1.0,
+        );
+
+        let DrawCommand::Composited(layer) = &result[0] else {
+            panic!("expected compositor scale layer");
+        };
+        let DrawCommand::Text(text) = &layer.commands[0] else {
+            panic!("expected natural-size text inside the layer");
+        };
+        assert_eq!(layer.scale, 0.95);
+        assert_eq!(text.position, (20.0, 30.0));
+        assert_eq!(text.style.font_size, Some(Length::px(14.0)));
+        assert_eq!(
+            text.style.letter_spacing.map(|value| value.value()),
+            Some(Length::px(1.25))
+        );
+        assert_eq!(
+            text.style.line_height.map(|value| value.value()),
+            Some(Length::px(20.0))
+        );
     }
 }

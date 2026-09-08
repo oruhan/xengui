@@ -108,6 +108,8 @@ pub enum Key {
 
     /// The `Backspace` variant.
     Backspace,
+    /// System/browser backward navigation.
+    BrowserBack,
     /// The `NumLock` variant.
     NumLock,
     /// The `ScrollLock` variant.
@@ -271,6 +273,9 @@ pub enum InputEvent {
         /// The `item` value carried by this type.
         position: (f32, f32),
     },
+    /// Cancels an in-progress pointer activation without firing a click.
+    /// Touch scrolling emits this once the pan threshold is crossed.
+    PointerCancel,
     /// The `MouseWheel` variant.
     MouseWheel {
         /// The `item` value carried by this type.

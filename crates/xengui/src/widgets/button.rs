@@ -294,13 +294,7 @@ impl Widget for Button {
         let style = &self.base.computed_style;
         let sf = ctx.scale_factor;
 
-        let scale = style.scale.unwrap_or(1.0);
-        let background_box = crate::scaled_layout_box_with_origin(
-            self.layout_box,
-            scale,
-            style.transform_origin.unwrap_or_default(),
-            sf,
-        );
+        let background_box = self.layout_box;
         let radius = style
             .border
             .as_ref()
@@ -380,28 +374,12 @@ impl Widget for Button {
         let icon_y = content_y + (combined_h - icon_h).max(0.0) * 0.5;
         let text_y = content_y + (combined_h - text_h).max(0.0) * 0.5;
 
-        // Shared pivot the icon and label both scale around, so a
-        // press-scale animation shrinks the whole content block toward
-        // one center instead of each part drifting toward its own.
-        let content_scale = style.content_scale.unwrap_or(scale);
-        let pivot_x = content_x + combined_w * 0.5;
-        let pivot_y = content_y + combined_h * 0.5;
-
         if has_icon && let Some(doc) = &self.icon_document {
             let (vb_x, vb_y, vb_w, vb_h) = doc.view_box;
             if !self.icon_triangles.is_empty() && vb_w > 0.0 && vb_h > 0.0 {
-                let icon_center_x = icon_x + icon_w * 0.5;
-                let icon_center_y = icon_y + icon_h * 0.5;
-                let scaled_icon_w = icon_w * content_scale;
-                let scaled_icon_h = icon_h * content_scale;
-                let scaled_icon_x =
-                    pivot_x + (icon_center_x - pivot_x) * content_scale - scaled_icon_w * 0.5;
-                let scaled_icon_y =
-                    pivot_y + (icon_center_y - pivot_y) * content_scale - scaled_icon_h * 0.5;
-
-                let icon_scale = (scaled_icon_w / vb_w).min(scaled_icon_h / vb_h);
-                let icon_offset_x = scaled_icon_x + (scaled_icon_w - vb_w * icon_scale) * 0.5;
-                let icon_offset_y = scaled_icon_y + (scaled_icon_h - vb_h * icon_scale) * 0.5;
+                let icon_scale = (icon_w / vb_w).min(icon_h / vb_h);
+                let icon_offset_x = icon_x + (icon_w - vb_w * icon_scale) * 0.5;
+                let icon_offset_y = icon_y + (icon_h - vb_h * icon_scale) * 0.5;
 
                 let inherited_color = self
                     .icon_tint
@@ -427,7 +405,7 @@ impl Widget for Button {
                         )
                     };
 
-                    ctx.draw_triangle(TriangleCommand {
+                    ctx.draw_content_triangle(TriangleCommand {
                         p0: map(triangle.p0),
                         p1: map(triangle.p1),
                         p2: map(triangle.p2),
@@ -438,29 +416,21 @@ impl Widget for Button {
             }
         }
 
-        let text_center_x = text_x + text_w * 0.5;
-        let text_center_y = text_y + text_h * 0.5;
-        let scaled_text_w = text_w * content_scale;
-        let scaled_text_h = text_h * content_scale;
         let content_box = LayoutBox {
-            x: pivot_x + (text_center_x - pivot_x) * content_scale - scaled_text_w * 0.5,
-            y: pivot_y + (text_center_y - pivot_y) * content_scale - scaled_text_h * 0.5,
-            width: scaled_text_w,
-            height: scaled_text_h,
+            x: text_x,
+            y: text_y,
+            width: text_w,
+            height: text_h,
         };
 
         let mut text_style = style.clone();
-        let base_font_size = text_style
-            .font_size
-            .map(|f| f.value())
-            .unwrap_or(DEFAULT_FONT_SIZE.value());
-        text_style.font_size = Some(Length::px(base_font_size * content_scale));
+        text_style.font_size.get_or_insert(DEFAULT_FONT_SIZE);
 
-        ctx.draw_text(TextCommand {
+        ctx.draw_content_text(TextCommand {
             text: self.content.clone(),
             position: (content_box.x, content_box.y),
             style: text_style,
-            max_width: Some(draw_max_width * content_scale + 0.5),
+            max_width: Some(draw_max_width + 0.5),
             clip_rect: None,
         });
     }

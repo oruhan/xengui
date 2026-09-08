@@ -9,11 +9,11 @@ use winit::event_loop::{ControlFlow, EventLoop};
 use winit::window::Window;
 use xengui::{
     Cursor, ElementState, EventCtx, EventStatus, InputEvent, InputState, MouseButton, StyleBuilder,
-    TOUCH_LONG_PRESS_DURATION, TOUCH_LONG_PRESS_MOVE_TOLERANCE_DP, TouchPanPhase, Widget,
-    clear_text_selection_recursive, collect_focusable_paths, collect_selected_text_recursive,
-    dispatch_focus_within_transition, dispatch_hover_transition, dispatch_positional,
-    dispatch_positional_capturing, dispatch_to_path, hit_test_path, hooks, path_is_within,
-    reconciler, style, update_global_text_selection,
+    TOUCH_LONG_PRESS_DURATION, TOUCH_LONG_PRESS_MOVE_TOLERANCE_DP, TOUCH_PAN_THRESHOLD_DP,
+    TouchPanPhase, Widget, clear_text_selection_recursive, collect_focusable_paths,
+    collect_selected_text_recursive, dispatch_focus_within_transition, dispatch_hover_transition,
+    dispatch_positional, dispatch_positional_capturing, dispatch_to_path, find_widget_mut,
+    hit_test_path, hooks, path_is_within, reconciler, style, update_global_text_selection,
 };
 use xengui_wgpu::WgpuWindowRenderer;
 
@@ -55,6 +55,9 @@ pub struct App {
     pub(crate) clipboard: xen_clipboard::Clipboard,
     pub(crate) pending_long_press: Option<(Instant, (f32, f32), String)>,
     pub(crate) touch_pan_owner: Option<String>,
+    pub(crate) touch_start_point: Option<(f32, f32)>,
+    pub(crate) touch_activation_cancelled: bool,
+    pub(crate) system_back_handler: Option<Box<dyn FnMut() -> bool>>,
     pub(crate) last_titlebar_click: Option<(Instant, (f32, f32))>,
     // DevTools: toggled with F12, panel width persists across rebuilds
     // via a shared handle since the App reconstructs the whole tree
@@ -108,6 +111,9 @@ impl App {
             clipboard: xen_clipboard::Clipboard::new(),
             pending_long_press: None,
             touch_pan_owner: None,
+            touch_start_point: None,
+            touch_activation_cancelled: false,
+            system_back_handler: None,
             last_titlebar_click: None,
 
             devtools_open: false,
@@ -138,6 +144,13 @@ impl App {
 
     pub fn with_font(&mut self, name: &str, font_data: Vec<u8>) -> &mut Self {
         self.config.fonts.push((name.to_string(), font_data));
+        self
+    }
+
+    /// Registers the application-level action for Android/system back
+    /// navigation. The handler runs once on the non-repeating key press.
+    pub fn on_system_back(&mut self, handler: impl FnMut() -> bool + 'static) -> &mut Self {
+        self.system_back_handler = Some(Box::new(handler));
         self
     }
 
@@ -330,6 +343,7 @@ impl App {
 }
 
 impl App {
+    #[cfg(not(target_os = "android"))]
     pub fn run(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         let event_loop: EventLoop<XenEvent> = EventLoop::<XenEvent>::with_user_event().build()?;
         event_loop.set_control_flow(ControlFlow::Wait);
@@ -341,6 +355,32 @@ impl App {
 
         event_loop.run_app(self)?;
         Ok(())
+    }
+
+    /// Runs the application from an Android `android_main` entry point.
+    #[cfg(target_os = "android")]
+    pub fn run_android(
+        &mut self,
+        android_app: winit::platform::android::activity::AndroidApp,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        use winit::platform::android::EventLoopBuilderExtAndroid;
+
+        let mut builder = EventLoop::<XenEvent>::with_user_event();
+        builder.with_android_app(android_app);
+        let event_loop = builder.build()?;
+        event_loop.set_control_flow(ControlFlow::Wait);
+
+        self.event_proxy = Some(event_loop.create_proxy());
+        event_loop.run_app(self)?;
+
+        // Winit intentionally permits only one Android EventLoop per process.
+        // Removing a NativeActivity task can return from `run_app` while the
+        // Android runtime keeps the hosting process alive. If that process is
+        // reused for the next launcher tap, creating a second EventLoop fails
+        // and Android leaves the splash window visible forever. Once the sole
+        // event loop has ended there is no valid in-process restart path, so
+        // finish the hosting process and let Android start a clean one.
+        std::process::exit(0)
     }
 
     /// Rebuilds the widget tree from scratch and forces a full layout and
@@ -541,6 +581,8 @@ impl App {
                 self.input.cursor_pos = Some(point);
                 let path = hit_test_path(&self.root, point);
                 self.touch_pan_owner = None;
+                self.touch_start_point = Some(point);
+                self.touch_activation_cancelled = false;
 
                 if let Some(focused) = self.input.focused_path.clone() {
                     let stays_focused =
@@ -621,12 +663,53 @@ impl App {
 
                 self.input.text_drag_anchor = if suppress_drag { None } else { Some(point) };
 
-                self.pending_long_press =
-                    path.map(|p| (Instant::now() + TOUCH_LONG_PRESS_DURATION, point, p));
+                self.pending_long_press = path.and_then(|path| {
+                    let selectable = find_widget_mut(&mut self.root, &path)
+                        .and_then(|widget| widget.selectable_text())
+                        .is_some();
+                    selectable.then(|| (Instant::now() + TOUCH_LONG_PRESS_DURATION, point, path))
+                });
             }
 
             TouchPhase::Moved => {
                 self.input.cursor_pos = Some(point);
+
+                if !self.touch_activation_cancelled
+                    && let Some(start) = self.touch_start_point
+                {
+                    let scale_factor = self
+                        .window
+                        .as_ref()
+                        .map_or(1.0, |window| window.scale_factor() as f32);
+                    let moved = (point.0 - start.0).abs() + (point.1 - start.1).abs();
+                    if moved >= TOUCH_PAN_THRESHOLD_DP * scale_factor {
+                        if let Some(path) = self.input.pressed_path.clone() {
+                            let mut cancel_ctx = EventCtx::new();
+                            dispatch_positional(
+                                &mut self.root,
+                                &path,
+                                &InputEvent::PointerCancel,
+                                &mut cancel_ctx,
+                            );
+                            self.apply_event_ctx(cancel_ctx);
+                        }
+                        self.touch_activation_cancelled = true;
+                        self.pending_long_press = None;
+                        self.input.text_drag_anchor = None;
+
+                        if let Some(old_hover) = self.input.hovered_path.take() {
+                            let mut hover_ctx = EventCtx::new();
+                            dispatch_hover_transition(
+                                &mut self.root,
+                                Some(&old_hover),
+                                None,
+                                &mut hover_ctx,
+                            );
+                            self.apply_event_ctx(hover_ctx);
+                        }
+                    }
+                }
+
                 if let Some(path) = self.input.hovered_path.clone() {
                     let mut ctx = EventCtx::new();
                     dispatch_positional(
@@ -716,6 +799,8 @@ impl App {
                 self.input.cursor_pos = None;
                 self.input.text_drag_anchor = None;
                 self.pending_long_press = None;
+                self.touch_start_point = None;
+                self.touch_activation_cancelled = false;
             }
 
             TouchPhase::Cancelled => {
@@ -746,6 +831,8 @@ impl App {
                 self.input.cursor_pos = None;
                 self.input.text_drag_anchor = None;
                 self.pending_long_press = None;
+                self.touch_start_point = None;
+                self.touch_activation_cancelled = false;
             }
         }
     }

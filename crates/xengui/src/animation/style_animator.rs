@@ -2,7 +2,7 @@
 use super::{
     AnimKey, AnimLayer, AnimProperty, AnimValue, AnimationManager, Transition, TransitionProperty,
 };
-use crate::{Background, BorderRadius, Color, Edges, Length, Style, WidgetId};
+use crate::{Background, BorderRadius, Color, Edges, FontWeight, Length, Style, WidgetId};
 
 fn animate_length(
     anim: &mut AnimationManager,
@@ -312,6 +312,18 @@ pub fn animate_computed_style(
                     &mut animating,
                 ),
             ));
+        }
+    }
+
+    if properties.contains(TransitionProperty::TYPOGRAPHY) {
+        if let Some(weight) = style.font_weight {
+            let target = weight.to_numeric() as f32;
+            let k = key(AnimProperty::FontWeight);
+            anim.set_target(k, AnimValue([target, 0.0, 0.0, 0.0]), default_transition);
+            if let Some(value) = anim.value(k) {
+                animating = true;
+                style.font_weight = Some(FontWeight::from_numeric(value.0[0].round() as u16));
+            }
         }
     }
 

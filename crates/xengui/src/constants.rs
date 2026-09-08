@@ -90,9 +90,17 @@ pub const SCROLLBAR_ARROW_PRESS_SCALE: f32 = 0.85;
 pub const TOUCH_PAN_THRESHOLD_DP: f32 = 6.0;
 /// Exponential velocity decay rate (per second) applied to momentum
 /// scrolling after a touch pan ends; higher values stop sooner.
-pub const MOMENTUM_FRICTION: f32 = 4.2;
-/// Momentum stops ticking once its speed drops below this (px/sec).
-pub const MOMENTUM_MIN_SPEED: f32 = 4.0;
+pub const MOMENTUM_FRICTION: f32 = 1.6;
+/// Momentum stops ticking once its speed drops below this (dp/sec).
+pub const MOMENTUM_MIN_SPEED: f32 = 40.0;
+/// Recent touch history used to estimate release velocity.
+pub const TOUCH_VELOCITY_SAMPLE_WINDOW: Duration = Duration::from_millis(60);
+/// Maximum fling velocity in density-independent pixels per second.
+pub const TOUCH_MAX_FLING_SPEED_DP: f32 = 10000.0;
+/// Gain applied after touch velocity tracking. This is XenGui's platform
+/// tuning (not an M3 token); it compensates for the sparse touch batches some
+/// Android devices deliver immediately before lift-off.
+pub const TOUCH_FLING_VELOCITY_GAIN: f32 = 1.15;
 /// Extra friction multiplier applied while a fling is coasting inside
 /// the rubber-band zone, so it settles in far fewer frames instead of
 /// decaying at the same rate it does within bounds.

@@ -5,8 +5,9 @@ use crate::pipelines::{
     VariableIconPipeline,
 };
 use xengui::{
-    BoxShadowCommand, Color, DrawCommand, FilterChain, ImageCommand, RectCommand, RenderBackend,
-    StrokeCommand, SystemTheme, TextCommand, TextMeasurer, TriangleCommand, VariableIconCommand,
+    BoxShadowCommand, Color, CompositedCommand, DrawCommand, FilterChain, ImageCommand,
+    RectCommand, RenderBackend, StrokeCommand, SystemTheme, TextCommand, TextMeasurer,
+    TriangleCommand, VariableIconCommand,
 };
 
 /// Owns the four wgpu render pipelines xengui needs, built once against a
@@ -259,6 +260,170 @@ pub struct WgpuFrame<'a> {
 }
 
 impl<'a> WgpuFrame<'a> {
+    fn draw_filtered_to_target(
+        &mut self,
+        cmds: &[DrawCommand],
+        chain: &FilterChain,
+        bounds: (f32, f32, f32, f32),
+        clip_rect: Option<(f32, f32, f32, f32)>,
+        target_view: &wgpu::TextureView,
+        target_width: u32,
+        target_height: u32,
+    ) {
+        let (bx, by, bw, bh) = bounds;
+        let (pad_left, pad_top, pad_right, pad_bottom) = box_shadow_overflow(cmds, bounds);
+        let cap_x = bx - pad_left;
+        let cap_y = by - pad_top;
+        let cap_w = bw + pad_left + pad_right;
+        let cap_h = bh + pad_top + pad_bottom;
+        let width = cap_w.ceil().max(1.0) as u32;
+        let height = cap_h.ceil().max(1.0) as u32;
+
+        let translated: Vec<DrawCommand> = cmds
+            .iter()
+            .map(|command| translate_draw_command(command, cap_x, cap_y))
+            .collect();
+        let source_texture = self.device.create_texture(
+            &(wgpu::TextureDescriptor {
+                label: Some("xengui filtered subtree source"),
+                size: wgpu::Extent3d {
+                    width,
+                    height,
+                    depth_or_array_layers: 1,
+                },
+                mip_level_count: 1,
+                sample_count: 1,
+                dimension: wgpu::TextureDimension::D2,
+                format: self.pipelines.surface_format(),
+                usage: wgpu::TextureUsages::RENDER_ATTACHMENT
+                    | wgpu::TextureUsages::TEXTURE_BINDING,
+                view_formats: &[],
+            }),
+        );
+        let source_view = source_texture.create_view(&Default::default());
+        self.paint_subtree_to_offscreen(&translated, &source_view, width, height);
+
+        let filtered = self.pipelines.postprocess.apply(
+            self.device,
+            self.queue,
+            self.encoder,
+            &source_view,
+            width,
+            height,
+            chain,
+            self.scale_factor,
+        );
+        let raw_destination = (
+            cap_x - filtered.padding,
+            cap_y - filtered.padding,
+            filtered.width as f32,
+            filtered.height as f32,
+        );
+        let Some((destination, source_uv)) =
+            clipped_composite_rect(raw_destination, target_width as f32, target_height as f32)
+        else {
+            return;
+        };
+        self.pipelines.postprocess.composite(
+            self.device,
+            self.queue,
+            self.encoder,
+            &filtered.view,
+            target_view,
+            destination,
+            clip_rect,
+            target_width,
+            target_height,
+            source_uv,
+            [0.0; 4],
+        );
+    }
+
+    fn draw_composited_to_target(
+        &mut self,
+        command: &CompositedCommand,
+        target_view: &wgpu::TextureView,
+        target_width: u32,
+        target_height: u32,
+    ) {
+        if command.commands.is_empty() || command.scale.abs() < f32::EPSILON {
+            return;
+        }
+
+        // Align the capture to whole texels and keep a transparent texel on
+        // every edge. The gutter prevents linear filtering from clamping an
+        // opaque edge pixel outward while a layer grows.
+        let left = command.bounds.0.floor() - 1.0;
+        let top = command.bounds.1.floor() - 1.0;
+        let right = (command.bounds.0 + command.bounds.2).ceil() + 1.0;
+        let bottom = (command.bounds.1 + command.bounds.3).ceil() + 1.0;
+        let source_width = (right - left).max(1.0) as u32;
+        let source_height = (bottom - top).max(1.0) as u32;
+
+        let translated: Vec<DrawCommand> = command
+            .commands
+            .iter()
+            .map(|nested| translate_draw_command(nested, left, top))
+            .collect();
+
+        let source_texture = self.device.create_texture(
+            &(wgpu::TextureDescriptor {
+                label: Some("xengui stable transform layer"),
+                size: wgpu::Extent3d {
+                    width: source_width,
+                    height: source_height,
+                    depth_or_array_layers: 1,
+                },
+                mip_level_count: 1,
+                sample_count: 1,
+                dimension: wgpu::TextureDimension::D2,
+                format: self.pipelines.surface_format(),
+                usage: wgpu::TextureUsages::RENDER_ATTACHMENT
+                    | wgpu::TextureUsages::TEXTURE_BINDING,
+                view_formats: &[],
+            }),
+        );
+        let source_view = source_texture.create_view(&Default::default());
+        self.paint_subtree_to_offscreen(&translated, &source_view, source_width, source_height);
+
+        let scale_rect = |rect: (f32, f32, f32, f32)| {
+            let map = |x: f32, y: f32| {
+                (
+                    command.pivot.0 + (x - command.pivot.0) * command.scale,
+                    command.pivot.1 + (y - command.pivot.1) * command.scale,
+                )
+            };
+            let p0 = map(rect.0, rect.1);
+            let p1 = map(rect.0 + rect.2, rect.1 + rect.3);
+            (
+                p0.0.min(p1.0),
+                p0.1.min(p1.1),
+                (p1.0 - p0.0).abs(),
+                (p1.1 - p0.1).abs(),
+            )
+        };
+        let destination = scale_rect((left, top, source_width as f32, source_height as f32));
+        let Some((destination, source_uv)) =
+            clipped_composite_rect(destination, target_width as f32, target_height as f32)
+        else {
+            return;
+        };
+
+        self.pipelines.postprocess.composite(
+            self.device,
+            self.queue,
+            self.encoder,
+            &source_view,
+            target_view,
+            destination,
+            command.clip_rect,
+            target_width,
+            target_height,
+            source_uv,
+            [0.0; 4],
+        );
+    }
+
     // Every frame always starts from the background color, regardless of
     // what gets painted - otherwise a frame with zero rect/triangle/image
     // commands leaves the swapchain's previous (differently-sized) content
@@ -334,6 +499,7 @@ impl<'a> WgpuFrame<'a> {
             BoxShadow,
             Stroke,
             VariableIcon,
+            Composited,
         }
 
         let mut current_kind: Option<RunKind> = None;
@@ -346,6 +512,25 @@ impl<'a> WgpuFrame<'a> {
         // Whether the offscreen texture has already been cleared, so
         // every following pass loads instead of wiping earlier layers.
         let mut cleared = false;
+        let triangle_msaa_texture = (self.pipelines.triangle_sample_count > 1).then(|| {
+            self.device.create_texture(&wgpu::TextureDescriptor {
+                label: Some("xengui transformed layer triangle MSAA"),
+                size: wgpu::Extent3d {
+                    width: target_width,
+                    height: target_height,
+                    depth_or_array_layers: 1,
+                },
+                mip_level_count: 1,
+                sample_count: self.pipelines.triangle_sample_count,
+                dimension: wgpu::TextureDimension::D2,
+                format: self.pipelines.surface_format(),
+                usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+                view_formats: &[],
+            })
+        });
+        let triangle_msaa_view = triangle_msaa_texture
+            .as_ref()
+            .map(|texture| texture.create_view(&Default::default()));
 
         macro_rules! shape_pass {
             () => {{
@@ -391,15 +576,58 @@ impl<'a> WgpuFrame<'a> {
                         );
                     }
                     Some(RunKind::Triangle) => {
-                        let mut pass = shape_pass!();
-                        self.pipelines.triangle_offscreen.draw_batch(
-                            self.device,
-                            self.queue,
-                            &mut pass,
-                            target_width,
-                            target_height,
-                            &tri_buf,
-                        );
+                        if let Some(msaa_view) = triangle_msaa_view.as_ref() {
+                            if !cleared {
+                                let _ = shape_pass!();
+                            }
+                            self.pipelines.triangle_msaa_seed.run(
+                                self.device,
+                                self.queue,
+                                self.encoder,
+                                target_view,
+                                msaa_view,
+                                target_width,
+                                target_height,
+                                (0.0, 0.0),
+                                (1.0, 1.0),
+                                None,
+                            );
+                            let mut pass =
+                                self.encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                                    label: Some("xengui transformed layer triangle MSAA pass"),
+                                    color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                                        view: msaa_view,
+                                        resolve_target: Some(target_view),
+                                        ops: wgpu::Operations {
+                                            load: wgpu::LoadOp::Load,
+                                            store: wgpu::StoreOp::Store,
+                                        },
+                                        depth_slice: None,
+                                    })],
+                                    depth_stencil_attachment: None,
+                                    timestamp_writes: None,
+                                    occlusion_query_set: None,
+                                    multiview_mask: None,
+                                });
+                            self.pipelines.triangle.draw_batch(
+                                self.device,
+                                self.queue,
+                                &mut pass,
+                                target_width,
+                                target_height,
+                                &tri_buf,
+                            );
+                        } else {
+                            let mut pass = shape_pass!();
+                            self.pipelines.triangle_offscreen.draw_batch(
+                                self.device,
+                                self.queue,
+                                &mut pass,
+                                target_width,
+                                target_height,
+                                &tri_buf,
+                            );
+                        }
                     }
                     Some(RunKind::Image) => {
                         let mut pass = shape_pass!();
@@ -475,6 +703,7 @@ impl<'a> WgpuFrame<'a> {
                             );
                         }
                     }
+                    Some(RunKind::Composited) => {}
                     None => {}
                 }
                 rect_buf.clear();
@@ -538,6 +767,32 @@ impl<'a> WgpuFrame<'a> {
                     }
                     variable_icon_buf.push((**cmd).clone());
                 }
+                DrawCommand::Composited(nested) => {
+                    flush_run!();
+                    current_kind = Some(RunKind::Composited);
+                    if !cleared {
+                        let _ = shape_pass!();
+                    }
+                    self.draw_composited_to_target(
+                        nested,
+                        target_view,
+                        target_width,
+                        target_height,
+                    );
+                }
+                DrawCommand::Content(nested) => {
+                    flush_run!();
+                    current_kind = None;
+                    if !cleared {
+                        let _ = shape_pass!();
+                    }
+                    self.paint_subtree_to_offscreen(
+                        std::slice::from_ref(nested.as_ref()),
+                        target_view,
+                        target_width,
+                        target_height,
+                    );
+                }
                 // paint_subtree_for_filter (xengui core) never records a
                 // nested Filtered command - it inlines every descendant's
                 // own paint() call directly. This arm only guards against
@@ -545,9 +800,15 @@ impl<'a> WgpuFrame<'a> {
                 // unfiltered rather than silently dropping its content.
                 DrawCommand::Filtered(nested) => {
                     flush_run!();
-                    current_kind = None;
-                    self.paint_subtree_to_offscreen(
+                    current_kind = Some(RunKind::Composited);
+                    if !cleared {
+                        let _ = shape_pass!();
+                    }
+                    self.draw_filtered_to_target(
                         &nested.commands,
+                        &nested.chain,
+                        nested.bounds,
+                        nested.clip_rect,
                         target_view,
                         target_width,
                         target_height,
@@ -828,6 +1089,11 @@ impl<'a> RenderBackend for WgpuFrame<'a> {
         self.text_cmds.push((theme, cmd.clone()));
     }
 
+    fn draw_composited(&mut self, cmd: &CompositedCommand) {
+        let view = self.view.clone();
+        self.draw_composited_to_target(cmd, &view, self.width, self.height);
+    }
+
     fn take_text_decorations(&mut self) -> Vec<RectCommand> {
         self.pipelines.text.take_decorations()
     }
@@ -897,83 +1163,15 @@ impl<'a> RenderBackend for WgpuFrame<'a> {
         bounds: (f32, f32, f32, f32),
         clip_rect: Option<(f32, f32, f32, f32)>,
     ) {
-        let (bx, by, bw, bh) = bounds;
-        let (pad_left, pad_top, pad_right, pad_bottom) = box_shadow_overflow(cmds, bounds);
-        let cap_x = bx - pad_left;
-        let cap_y = by - pad_top;
-        let cap_w = bw + pad_left + pad_right;
-        let cap_h = bh + pad_top + pad_bottom;
-
-        let width = cap_w.round().max(1.0) as u32;
-        let height = cap_h.round().max(1.0) as u32;
-
-        log::trace!(
-            "draw_filtered bounds={bounds:?} shadow_overflow=({pad_left},{pad_top},{pad_right},{pad_bottom}) scale_factor={} size={width}x{height}",
-            self.scale_factor
-        );
-
-        let translated: Vec<DrawCommand> = cmds
-            .iter()
-            .map(|c| translate_draw_command(c, cap_x, cap_y))
-            .collect();
-
-        let format = self.pipelines.surface_format();
-        let source_texture = self.device.create_texture(
-            &(wgpu::TextureDescriptor {
-                label: Some("xengui filtered subtree source"),
-                size: wgpu::Extent3d {
-                    width,
-                    height,
-                    depth_or_array_layers: 1,
-                },
-                mip_level_count: 1,
-                sample_count: 1,
-                dimension: wgpu::TextureDimension::D2,
-                format,
-                usage: wgpu::TextureUsages::RENDER_ATTACHMENT
-                    | wgpu::TextureUsages::TEXTURE_BINDING,
-                view_formats: &[],
-            }),
-        );
-        let source_view = source_texture.create_view(&Default::default());
-
-        self.paint_subtree_to_offscreen(&translated, &source_view, width, height);
-
-        let filtered = self.pipelines.postprocess.apply(
-            self.device,
-            self.queue,
-            self.encoder,
-            &source_view,
-            width,
-            height,
+        let view = self.view.clone();
+        self.draw_filtered_to_target(
+            cmds,
             chain,
-            self.scale_factor,
-        );
-
-        let dest_rect = (
-            (cap_x - filtered.padding).max(0.0),
-            (cap_y - filtered.padding).max(0.0),
-            filtered.width as f32,
-            filtered.height as f32,
-        );
-
-        log::trace!(
-            "draw_filtered dest_rect={dest_rect:?} filtered_padding={}",
-            filtered.padding
-        );
-
-        self.pipelines.postprocess.composite(
-            self.device,
-            self.queue,
-            self.encoder,
-            &filtered.view,
-            &self.view,
-            dest_rect,
+            bounds,
             clip_rect,
+            &view,
             self.width,
             self.height,
-            (0.0, 0.0, 1.0, 1.0),
-            [0.0; 4],
         );
     }
 
@@ -1115,6 +1313,19 @@ fn box_shadow_overflow(cmds: &[DrawCommand], bounds: (f32, f32, f32, f32)) -> (f
                 DrawCommand::Filtered(nested) => {
                     visit(&nested.commands, bx, by, bw, bh, overflow);
                 }
+                DrawCommand::Composited(nested) => {
+                    visit(&nested.commands, bx, by, bw, bh, overflow);
+                }
+                DrawCommand::Content(nested) => {
+                    visit(
+                        std::slice::from_ref(nested.as_ref()),
+                        bx,
+                        by,
+                        bw,
+                        bh,
+                        overflow,
+                    );
+                }
                 _ => {}
             }
         }
@@ -1213,7 +1424,56 @@ fn translate_draw_command(command: &DrawCommand, ox: f32, oy: f32) -> DrawComman
             cmd.clip_rect = shift_clip(cmd.clip_rect);
             DrawCommand::VariableIcon(cmd)
         }
+        DrawCommand::Composited(cmd) => {
+            let mut cmd = cmd.clone();
+            cmd.bounds.0 -= ox;
+            cmd.bounds.1 -= oy;
+            cmd.pivot.0 -= ox;
+            cmd.pivot.1 -= oy;
+            cmd.clip_rect = shift_clip(cmd.clip_rect);
+            cmd.commands = cmd
+                .commands
+                .iter()
+                .map(|nested| translate_draw_command(nested, ox, oy))
+                .collect();
+            DrawCommand::Composited(cmd)
+        }
+        DrawCommand::Content(cmd) => {
+            DrawCommand::Content(Box::new(translate_draw_command(cmd.as_ref(), ox, oy)))
+        }
     }
+}
+
+// WGPU viewports cannot begin outside their render target. Crop a transformed
+// destination against the target and return the matching source UV window so
+// edge clipping never stretches the remaining pixels.
+fn clipped_composite_rect(
+    destination: (f32, f32, f32, f32),
+    target_width: f32,
+    target_height: f32,
+) -> Option<((f32, f32, f32, f32), (f32, f32, f32, f32))> {
+    let (x, y, width, height) = destination;
+    if width <= 0.0 || height <= 0.0 {
+        return None;
+    }
+    let x0 = x.max(0.0);
+    let y0 = y.max(0.0);
+    let x1 = (x + width).min(target_width);
+    let y1 = (y + height).min(target_height);
+    if x1 <= x0 || y1 <= y0 {
+        return None;
+    }
+    let cropped_width = x1 - x0;
+    let cropped_height = y1 - y0;
+    Some((
+        (x0, y0, cropped_width, cropped_height),
+        (
+            (x0 - x) / width,
+            (y0 - y) / height,
+            cropped_width / width,
+            cropped_height / height,
+        ),
+    ))
 }
 
 // Computes the physical-pixel rect to snapshot for a backdrop-filter
@@ -1307,6 +1567,15 @@ fn backdrop_crop_uv_rect(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn transformed_layer_edge_crop_preserves_source_scale() {
+        let (destination, source_uv) =
+            clipped_composite_rect((-10.0, 20.0, 100.0, 50.0), 80.0, 100.0)
+                .expect("layer is partially visible");
+        assert_eq!(destination, (0.0, 20.0, 80.0, 50.0));
+        assert_eq!(source_uv, (0.1, 0.0, 0.8, 1.0));
+    }
 
     #[test]
     fn capture_rect_pads_evenly_when_far_from_every_edge() {

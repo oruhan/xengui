@@ -20,4 +20,7 @@ mod state;
 pub use link::link;
 pub use route_match::{RouteParams, match_route};
 pub use router::Router;
-pub use state::{back, current_path, forward, push, replace, search_params};
+pub use state::{
+    NavigationDirection, back, current_path, forward, navigation_direction, push, replace,
+    search_params,
+};

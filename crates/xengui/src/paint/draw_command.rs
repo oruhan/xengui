@@ -150,6 +150,24 @@ pub struct VariableIconCommand {
     pub clip_rect: Option<(f32, f32, f32, f32)>,
 }
 
+/// A group of draw commands rasterized at their natural size and then
+/// transformed as one texture. Keeping glyph and vector rasterization stable
+/// while only the final texture moves/scales prevents per-frame hinting and
+/// pixel-coverage changes during interaction animations.
+#[derive(Clone, Debug)]
+pub struct CompositedCommand {
+    /// Commands recorded in untransformed, absolute paint coordinates.
+    pub commands: Vec<DrawCommand>,
+    /// Untransformed capture bounds for `commands`.
+    pub bounds: (f32, f32, f32, f32),
+    /// Absolute point around which the final texture is scaled.
+    pub pivot: (f32, f32),
+    /// Uniform visual scale applied by the compositor.
+    pub scale: f32,
+    /// Ancestor clip applied after compositing, in screen coordinates.
+    pub clip_rect: Option<(f32, f32, f32, f32)>,
+}
+
 /// A subtree's own draw commands, rendered in isolation to an offscreen
 /// texture and processed through `chain` before being composited back
 /// into the frame. Produced by `FrameRenderer` for any widget whose
@@ -207,6 +225,11 @@ pub enum DrawCommand {
     BackdropFilter(Box<BackdropFilterCommand>),
     /// The `VariableIcon` variant.
     VariableIcon(Box<VariableIconCommand>),
+    /// A stable-rasterized group transformed by the compositor.
+    Composited(Box<CompositedCommand>),
+    /// Marks a widget-owned command as content so `content_scale` can be
+    /// composited independently from the widget's container `scale`.
+    Content(Box<DrawCommand>),
 }
 
 // Converts a logical clip rect (top-left origin) into a physical scissor

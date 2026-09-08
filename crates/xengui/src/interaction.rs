@@ -133,6 +133,17 @@ impl Interaction {
         }
 
         match event {
+            InputEvent::PointerCancel => {
+                let was_pressed = self.pressed;
+                self.pressed = false;
+                if was_pressed {
+                    ctx.request_redraw();
+                }
+                // Cancellation must keep bubbling so every interactive
+                // ancestor that saw the original press can clear its state.
+                EventStatus::Ignored
+            }
+
             InputEvent::MouseEntered => {
                 self.hovered = true;
                 if let Some(icon) = self.hover_cursor {
@@ -273,6 +284,45 @@ impl Interaction {
 impl Default for Interaction {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::{cell::Cell, rc::Rc};
+
+    #[test]
+    fn pointer_cancel_prevents_release_from_clicking() {
+        let clicked = Rc::new(Cell::new(false));
+        let clicked_for_callback = clicked.clone();
+        let mut interaction = Interaction::new();
+        interaction.hovered = true;
+        interaction.on_click = Some(Box::new(move |_| clicked_for_callback.set(true)));
+        let mut ctx = EventCtx::new();
+
+        interaction.handle(
+            &InputEvent::MouseInput {
+                state: ElementState::Pressed,
+                button: MouseButton::Left,
+                position: (0.0, 0.0),
+            },
+            &mut ctx,
+        );
+        assert!(interaction.pressed);
+
+        interaction.handle(&InputEvent::PointerCancel, &mut ctx);
+        assert!(!interaction.pressed);
+
+        interaction.handle(
+            &InputEvent::MouseInput {
+                state: ElementState::Released,
+                button: MouseButton::Left,
+                position: (20.0, 20.0),
+            },
+            &mut ctx,
+        );
+        assert!(!clicked.get());
     }
 }
 

@@ -144,6 +144,13 @@ pub fn set_redraw_handle(handle: Rc<dyn RedrawRequester>) {
     });
 }
 
+/// Removes the current host redraw handle when its rendering surface is gone.
+pub fn clear_redraw_handle() {
+    REDRAW_HANDLE.with(|h| {
+        *h.borrow_mut() = None;
+    });
+}
+
 fn request_redraw() {
     REDRAW_HANDLE.with(|h| {
         if let Some(handle) = h.borrow().as_ref() {

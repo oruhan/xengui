@@ -98,7 +98,10 @@ pub use dispatcher::Dispatcher;
 pub use input::{
     InputEvent, Key, KeyState, any_wants_animation, dispatch_animation_tick, find_widget_mut,
 };
-pub use platform::{is_touch_platform, set_is_touch_platform};
+pub use platform::{
+    SafeAreaInsets, is_touch_platform, safe_area_insets, set_is_touch_platform,
+    set_safe_area_insets,
+};
 pub use redraw::RedrawRequester;
 pub use style::{
     Border, BoxShadow, BoxSizing, Color, Cursor, Edges, FlexDirection, FlexWrap, FontStyle,

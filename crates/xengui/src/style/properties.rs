@@ -185,10 +185,11 @@ pub struct Style {
     /// The point around which CSS transforms are applied.
     /// Defaults to the widget center (`50% 50%`) when `None`.
     pub transform_origin: Option<TransformOrigin>,
-    /// Overrides `scale` for the content layer only; `None` means the
-    /// content follows the same scale as the rest of the widget.
+    /// Uniform visual transform applied by the compositor after the widget
+    /// has been rasterized at natural text/vector metrics.
     pub scale: Option<f32>,
-    /// The `content_scale` value carried by this type.
+    /// Overrides `scale` for the content layer only; `None` means the
+    /// content follows the same compositor scale as the widget container.
     pub content_scale: Option<f32>,
     /// The `transition` value carried by this type.
     pub transition: Option<crate::Transition>,

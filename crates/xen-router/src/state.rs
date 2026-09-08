@@ -6,10 +6,24 @@ use xengui::hooks;
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::JsCast;
 
+/// Direction of the navigation operation that selected the current route.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum NavigationDirection {
+    #[default]
+    Forward,
+    Backward,
+    Replace,
+}
+
 thread_local! {
     static CURRENT_PATH: RefCell<String> = RefCell::new(initial_path());
     static CURRENT_SEARCH: RefCell<HashMap<String, String>> = RefCell::new(initial_search());
     static POPSTATE_INSTALLED: Cell<bool> = const { Cell::new(false) };
+    static NAVIGATION_DIRECTION: Cell<NavigationDirection> = const { Cell::new(NavigationDirection::Forward) };
+    #[cfg(not(target_arch = "wasm32"))]
+    static NATIVE_HISTORY: RefCell<Vec<String>> = RefCell::new(vec![initial_path()]);
+    #[cfg(not(target_arch = "wasm32"))]
+    static NATIVE_HISTORY_INDEX: Cell<usize> = const { Cell::new(0) };
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -92,8 +106,13 @@ pub fn current_path() -> String {
     CURRENT_PATH.with(|p| p.borrow().clone())
 }
 
+pub fn navigation_direction() -> NavigationDirection {
+    NAVIGATION_DIRECTION.with(Cell::get)
+}
+
 /// Navigates to `path`, pushing a new browser history entry on wasm32.
 pub fn push(path: impl Into<String>) {
+    NAVIGATION_DIRECTION.with(|direction| direction.set(NavigationDirection::Forward));
     set_path(path.into(), true);
 }
 
@@ -101,25 +120,34 @@ pub fn push(path: impl Into<String>) {
 /// pushing a new one - useful for redirects that shouldn't be reachable
 /// via the back button.
 pub fn replace(path: impl Into<String>) {
+    NAVIGATION_DIRECTION.with(|direction| direction.set(NavigationDirection::Replace));
     set_path(path.into(), false);
 }
 
 /// Navigates one entry back in browser history, mirroring the browser's
 /// own back button. No-op on native targets, where there is no real
 /// history stack.
-pub fn back() {
+pub fn back() -> bool {
+    NAVIGATION_DIRECTION.with(|direction| direction.set(NavigationDirection::Backward));
     #[cfg(target_arch = "wasm32")]
     {
         if let Some(window) = web_sys::window()
             && let Ok(history) = window.history()
         {
             let _ = history.back();
+            return true;
         }
+        false
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        navigate_native_history(-1)
     }
 }
 
 /// Navigates one entry forward in browser history. No-op on native targets.
 pub fn forward() {
+    NAVIGATION_DIRECTION.with(|direction| direction.set(NavigationDirection::Forward));
     #[cfg(target_arch = "wasm32")]
     {
         if let Some(window) = web_sys::window()
@@ -128,11 +156,16 @@ pub fn forward() {
             let _ = history.forward();
         }
     }
+    #[cfg(not(target_arch = "wasm32"))]
+    navigate_native_history(1);
 }
 
-fn set_path(path: String, _push: bool) {
+fn set_path(path: String, push: bool) {
     #[cfg(target_arch = "wasm32")]
-    sync_browser_url(&path, _push);
+    sync_browser_url(&path, push);
+
+    #[cfg(not(target_arch = "wasm32"))]
+    update_native_history(&path, push);
 
     CURRENT_PATH.with(|p| {
         *p.borrow_mut() = path;
@@ -144,6 +177,48 @@ fn set_path(path: String, _push: bool) {
     });
 
     hooks::mark_dirty_and_redraw();
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn update_native_history(path: &str, push: bool) {
+    NATIVE_HISTORY.with(|history| {
+        NATIVE_HISTORY_INDEX.with(|index| {
+            let mut history = history.borrow_mut();
+            let current = index.get().min(history.len().saturating_sub(1));
+            if push {
+                history.truncate(current + 1);
+                history.push(path.to_owned());
+                index.set(history.len() - 1);
+            } else {
+                history[current] = path.to_owned();
+                index.set(current);
+            }
+        });
+    });
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn navigate_native_history(offset: isize) -> bool {
+    let next_path = NATIVE_HISTORY.with(|history| {
+        NATIVE_HISTORY_INDEX.with(|index| {
+            let history = history.borrow();
+            let current = index.get() as isize;
+            let next = (current + offset).clamp(0, history.len().saturating_sub(1) as isize);
+            if next == current {
+                return None;
+            }
+            index.set(next as usize);
+            history.get(next as usize).cloned()
+        })
+    });
+
+    if let Some(path) = next_path {
+        CURRENT_PATH.with(|current| *current.borrow_mut() = path);
+        hooks::mark_dirty_and_redraw();
+        true
+    } else {
+        false
+    }
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -199,5 +274,42 @@ fn ensure_popstate_listener() {
     #[cfg(not(target_arch = "wasm32"))]
     {
         POPSTATE_INSTALLED.with(|f| f.set(true));
+    }
+}
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod tests {
+    use super::*;
+
+    fn reset_history() {
+        CURRENT_PATH.with(|path| *path.borrow_mut() = "/".to_owned());
+        NATIVE_HISTORY.with(|history| *history.borrow_mut() = vec!["/".to_owned()]);
+        NATIVE_HISTORY_INDEX.with(|index| index.set(0));
+    }
+
+    #[test]
+    fn native_history_supports_push_back_forward_and_replace() {
+        reset_history();
+        push("/network");
+        push("/network/vpn");
+        back();
+        assert_eq!(current_path(), "/network");
+        forward();
+        assert_eq!(current_path(), "/network/vpn");
+        replace("/network/private-dns");
+        assert_eq!(current_path(), "/network/private-dns");
+        back();
+        assert_eq!(current_path(), "/network");
+    }
+
+    #[test]
+    fn push_after_back_discards_forward_entries() {
+        reset_history();
+        push("/apps");
+        push("/notifications");
+        back();
+        push("/display");
+        forward();
+        assert_eq!(current_path(), "/display");
     }
 }

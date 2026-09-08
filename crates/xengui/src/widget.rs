@@ -143,16 +143,10 @@ pub trait Widget: Any {
     fn paint_box(&self, ctx: &mut PaintContext) {
         let style = self.computed_style();
         let sf = ctx.scale_factor;
-        // Always routed through scaled_layout_box_with_origin (even at
-        // scale 1.0) so every widget's box position is rounded through
-        // the same single site, instead of drifting in/out of subpixel
-        // alignment depending on whether a scale happens to be set.
-        let layout = scaled_layout_box_with_origin(
-            *self.layout_box(),
-            style.scale.unwrap_or(1.0),
-            style.transform_origin.unwrap_or_default(),
-            sf,
-        );
+        // Paint at natural layout metrics. `FrameRenderer` applies scale to
+        // the resulting stable raster layer; changing an animation scale
+        // must never feed back into glyph hinting or vector tessellation.
+        let layout = *self.layout_box();
         let radius = style
             .border
             .as_ref()

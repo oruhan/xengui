@@ -325,6 +325,12 @@ fn apply_layout(
         let mut content_w: f32 = layout.size.width;
         let mut content_h: f32 = layout.size.height;
         let children_ref = widget.children();
+        // A scroll container's scrollable overflow includes its end padding,
+        // matching CSS scrollWidth/scrollHeight. Taffy positions children after
+        // start padding but child bounds alone do not include the trailing edge.
+        let padding = widget.computed_style().padding.unwrap_or_default();
+        let padding_right = padding.right.to_physical(scale_factor);
+        let padding_bottom = padding.bottom.to_physical(scale_factor);
 
         for (i, &child_id) in ids.iter().enumerate() {
             let out_of_flow = children_ref.get(i).is_some_and(|c| {
@@ -337,8 +343,10 @@ fn apply_layout(
                 continue;
             }
             if let Ok(child_layout) = taffy.layout(child_id) {
-                content_w = content_w.max(child_layout.location.x + child_layout.size.width);
-                content_h = content_h.max(child_layout.location.y + child_layout.size.height);
+                content_w = content_w
+                    .max(child_layout.location.x + child_layout.size.width + padding_right);
+                content_h = content_h
+                    .max(child_layout.location.y + child_layout.size.height + padding_bottom);
             }
         }
         widget.set_content_size((content_w, content_h));

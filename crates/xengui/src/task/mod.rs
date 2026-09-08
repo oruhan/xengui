@@ -16,6 +16,22 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::task::{Context, Poll, Wake, Waker};
 
+/// Yields a GUI task until the next executor poll. This is useful for work
+/// that must happen only after the current committed tree has painted once.
+pub async fn yield_now() {
+    let mut yielded = false;
+    std::future::poll_fn(move |cx| {
+        if yielded {
+            Poll::Ready(())
+        } else {
+            yielded = true;
+            cx.waker().wake_by_ref();
+            Poll::Pending
+        }
+    })
+    .await
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 struct TaskId(u64);
 

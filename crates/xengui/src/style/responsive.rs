@@ -13,9 +13,9 @@
 use super::theme::IntoThemed;
 use std::cell::Cell;
 
-/// Tailwind-parity breakpoints, activated min-width-first like CSS media
-/// queries (`@media (min-width: ...)`) - a value set at `Md` also applies
-/// at `Lg`/`Xl`/`Xl2` unless overridden there.
+/// Min-width-first adaptive breakpoints aligned to Material 3 window
+/// classes. `Base` is compact, `Sm` medium, `Md` expanded, `Lg` large,
+/// and `Xl`/`Xl2` extra-large compatibility tiers.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Breakpoint {
     /// The `Base` variant.
@@ -33,15 +33,15 @@ pub enum Breakpoint {
 }
 
 impl Breakpoint {
-    /// Logical-px activation threshold, matching Tailwind's own defaults.
+    /// Logical-pixel activation threshold matching Material 3 breakpoints.
     pub const fn min_width(self) -> f32 {
         match self {
             Self::Base => 0.0,
-            Self::Sm => 640.0,
-            Self::Md => 768.0,
-            Self::Lg => 1024.0,
-            Self::Xl => 1280.0,
-            Self::Xl2 => 1536.0,
+            Self::Sm => 600.0,
+            Self::Md => 840.0,
+            Self::Lg => 1200.0,
+            Self::Xl => 1600.0,
+            Self::Xl2 => 1600.0,
         }
     }
 

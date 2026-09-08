@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 use super::{
-    BoxShadowCommand, DrawCommand, ImageCommand, RectCommand, StrokeCommand, TextCommand,
-    TriangleCommand, VariableIconCommand,
+    BoxShadowCommand, CompositedCommand, DrawCommand, ImageCommand, RectCommand, StrokeCommand,
+    TextCommand, TriangleCommand, VariableIconCommand,
 };
 
 /// Data and behavior represented by `PaintContext`.
@@ -53,5 +53,37 @@ impl<'a> PaintContext<'a> {
     pub fn draw_variable_icon(&mut self, command: VariableIconCommand) {
         self.commands
             .push(DrawCommand::VariableIcon(Box::new(command)));
+    }
+
+    /// Draws text on the widget's content channel. The frame compositor uses
+    /// this marker to apply `content_scale` without reshaping or rerasterizing
+    /// the text at every animation frame.
+    pub fn draw_content_text(&mut self, command: TextCommand) {
+        self.commands
+            .push(DrawCommand::Content(Box::new(DrawCommand::Text(Box::new(
+                command,
+            )))));
+    }
+
+    /// Draws a triangle on the widget's independently-scalable content layer.
+    pub fn draw_content_triangle(&mut self, command: TriangleCommand) {
+        self.commands
+            .push(DrawCommand::Content(Box::new(DrawCommand::Triangle(
+                command,
+            ))));
+    }
+
+    /// Draws an image on the widget's independently-scalable content layer.
+    pub fn draw_content_image(&mut self, command: ImageCommand) {
+        self.commands
+            .push(DrawCommand::Content(Box::new(DrawCommand::Image(
+                Box::new(command),
+            ))));
+    }
+
+    /// Appends a pre-recorded compositor layer.
+    pub fn draw_composited(&mut self, command: CompositedCommand) {
+        self.commands
+            .push(DrawCommand::Composited(Box::new(command)));
     }
 }

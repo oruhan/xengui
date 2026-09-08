@@ -1,0 +1,20 @@
+[package]
+name = "android_demo_native"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+publish = false
+
+[[bin]]
+name = "android_demo"
+path = "src/main.rs"
+
+[dependencies]
+xengui.workspace = true
+xengui-icons.workspace = true
+xenframe.workspace = true
+xen-router.workspace = true
+web-time.workspace = true
+
+[lints]
+workspace = true

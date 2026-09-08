@@ -1,8 +1,37 @@
 // SPDX-License-Identifier: Apache-2.0
 use crate::*;
 use std::cell::Cell;
-use web_time::Instant;
+use std::rc::Rc;
+use web_time::{Duration, Instant};
 use xen_animation::AnimValue;
+
+/// Shareable scroll position that can outlive a mounted [`View`].
+///
+/// Bind the same state to a newly mounted view to restore its previous
+/// position after navigation removes and later recreates that view.
+#[derive(Clone, Default)]
+pub struct ScrollState(Rc<Cell<(f32, f32)>>);
+
+impl ScrollState {
+    /// Creates a scroll state at the origin.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Returns the last persisted horizontal and vertical offsets.
+    pub fn offset(&self) -> (f32, f32) {
+        self.0.get()
+    }
+
+    /// Updates the persisted horizontal and vertical offsets.
+    pub fn set_offset(&self, offset: (f32, f32)) {
+        self.0.set(offset);
+    }
+
+    fn shares_storage_with(&self, other: &Self) -> bool {
+        Rc::ptr_eq(&self.0, &other.0)
+    }
+}
 
 #[derive(Clone, Copy)]
 struct ScrollDrag {
@@ -64,9 +93,69 @@ struct TouchPanState {
     last_position: (f32, f32),
     last_time: Instant,
     velocity: (f32, f32),
+    velocity_samples: [Option<TouchVelocitySample>; 6],
+    next_velocity_sample: usize,
     // Becomes true once total movement since `origin` clears the
     // jitter-filtering threshold, after which the gesture actually scrolls.
     dragging: bool,
+}
+
+#[derive(Clone, Copy)]
+struct TouchVelocitySample {
+    position: (f32, f32),
+    time: Instant,
+}
+
+fn tracked_touch_velocity(
+    samples: &[Option<TouchVelocitySample>],
+    current: TouchVelocitySample,
+    max_speed: f32,
+) -> (f32, f32) {
+    // Weighted least-squares velocity, with the newest samples carrying the
+    // most weight. This tracks the speed at lift-off instead of averaging in
+    // the deliberately slow first half of a swipe.
+    let window = TOUCH_VELOCITY_SAMPLE_WINDOW.as_secs_f32();
+    let mut has_history = false;
+    let mut sum_w = 1.0;
+    let mut sum_t = 0.0;
+    let mut sum_tt = 0.0;
+    let mut sum_x = current.position.0;
+    let mut sum_y = current.position.1;
+    let mut sum_tx = 0.0;
+    let mut sum_ty = 0.0;
+    for sample in samples.iter().flatten() {
+        let age = current.time.duration_since(sample.time);
+        if age == Duration::ZERO || age > TOUCH_VELOCITY_SAMPLE_WINDOW {
+            continue;
+        }
+        has_history = true;
+        let age = age.as_secs_f32();
+        let t = -age;
+        let weight = (1.0 - age / window).clamp(0.1, 1.0);
+        sum_w += weight;
+        sum_t += weight * t;
+        sum_tt += weight * t * t;
+        sum_x += weight * sample.position.0;
+        sum_y += weight * sample.position.1;
+        sum_tx += weight * t * sample.position.0;
+        sum_ty += weight * t * sample.position.1;
+    }
+
+    if !has_history {
+        return (0.0, 0.0);
+    }
+
+    let denominator = sum_w * sum_tt - sum_t * sum_t;
+    if denominator.abs() < f32::EPSILON {
+        return (0.0, 0.0);
+    }
+    let gain = TOUCH_FLING_VELOCITY_GAIN;
+    let vx = gain * (sum_w * sum_tx - sum_t * sum_x) / denominator;
+    let vy = gain * (sum_w * sum_ty - sum_t * sum_y) / denominator;
+    (
+        vx.clamp(-max_speed, max_speed),
+        vy.clamp(-max_speed, max_speed),
+    )
 }
 
 #[derive(Clone, Copy)]
@@ -253,6 +342,12 @@ pub struct View {
     children: Vec<Box<dyn Widget>>,
     scroll_offset: Cell<(f32, f32)>,
     scroll_target: Cell<(f32, f32)>,
+    scroll_state: Option<ScrollState>,
+    scroll_state_restored: Cell<bool>,
+    // A newly bound state must seed the animation manager directly. If a
+    // recycled widget id still has a resting value from another route,
+    // treating restoration as an ordinary nudge visibly animates 0 -> saved.
+    scroll_state_needs_animation_seed: Cell<bool>,
     // Offset last reported to the layout engine's scroll-delta reflow
     // pass; diffed against `scroll_offset` each frame so only the moved
     // distance needs to be applied, without a full re-layout.
@@ -267,8 +362,6 @@ pub struct View {
     scrollbar_thickness_anim: Cell<f32>,
     thumb_color_anim: Cell<Color>,
     arrow_color_anim: Cell<[Color; 4]>,
-    scrollbar_right_inset: Cell<f32>,
-    scrollbar_bottom_inset: Cell<f32>,
     // Opacity applied to the whole scrollbar (track/thumb/arrows) while
     // `scrollbar_auto_hide` is active - 1.0 during/just after scrolling,
     // eased back to 0.0 once idle.
@@ -320,6 +413,9 @@ impl View {
             children: Vec::new(),
             scroll_offset: Cell::new((0.0, 0.0)),
             scroll_target: Cell::new((0.0, 0.0)),
+            scroll_state: None,
+            scroll_state_restored: Cell::new(false),
+            scroll_state_needs_animation_seed: Cell::new(false),
             last_layout_scroll: Cell::new((0.0, 0.0)),
 
             content_size: Cell::new((0.0, 0.0)),
@@ -331,8 +427,6 @@ impl View {
             scrollbar_thickness_anim: Cell::new(0.0),
             thumb_color_anim: Cell::new(Color::TRANSPARENT),
             arrow_color_anim: Cell::new([Color::TRANSPARENT; 4]),
-            scrollbar_right_inset: Cell::new(0.0),
-            scrollbar_bottom_inset: Cell::new(0.0),
             scrollbar_opacity_anim: Cell::new(1.0),
             scrollbar_opacity_animating: Cell::new(false),
             last_scroll_activity: Cell::new(None),
@@ -409,6 +503,17 @@ impl View {
     /// Returns or updates the `scroll_step` value.
     pub fn scroll_step(mut self, step: f32) -> Self {
         self.scroll_step = step;
+        self
+    }
+
+    /// Binds a shareable scroll position to this view.
+    pub fn scroll_state(mut self, state: ScrollState) -> Self {
+        let offset = state.offset();
+        self.scroll_offset.set(offset);
+        self.scroll_target.set(offset);
+        self.last_layout_scroll.set(offset);
+        self.scroll_state = Some(state);
+        self.scroll_state_needs_animation_seed.set(true);
         self
     }
 
@@ -902,13 +1007,18 @@ impl View {
     // the content and happens to get retriggered by something like hover.
     // Auto instead mirrors the scrollbar's actual current visibility.
     fn apply_scrollbar_gutter(&mut self) {
+        // Touch scrollbars are overlays: they occupy the authored edge
+        // padding instead of reserving a second strip of layout space.
+        if crate::platform::is_touch_platform() {
+            return;
+        }
+
         let gutter = self
             .base
             .computed_style
             .scrollbar_gutter
             .unwrap_or_default();
 
-        let sf = self.scale_factor.get();
         let thickness = self.track_thickness_logical();
         let mut padding = self.base.computed_style.padding.unwrap_or_default();
 
@@ -917,17 +1027,6 @@ impl View {
         } else {
             (self.is_scrollable_x(), self.is_scrollable_y())
         };
-
-        self.scrollbar_right_inset.set(if shows_y {
-            padding.right.to_physical(sf)
-        } else {
-            0.0
-        });
-        self.scrollbar_bottom_inset.set(if shows_x {
-            padding.bottom.to_physical(sf)
-        } else {
-            0.0
-        });
 
         if shows_y {
             padding.right = padding.right.add_px(thickness);
@@ -952,6 +1051,12 @@ impl View {
             layer: AnimLayer::Root,
             property: AnimProperty::ScrollOffset,
         };
+
+        if self.scroll_state_needs_animation_seed.replace(false) {
+            anim.set_target(key, AnimValue([target.0, target.1, 0.0, 0.0]), None);
+            self.scroll_offset.set(target);
+            return;
+        }
 
         let direct_manipulation = self.scrollbar_drag.get().is_some()
             || self.touch_pan.get().is_some()
@@ -987,13 +1092,10 @@ impl View {
 
         let b = self.layout_box;
         let t = self.track_thickness();
-        let right_inset = self.scrollbar_right_inset.get();
-        let bottom_inset = self.scrollbar_bottom_inset.get();
-
-        if active_y && point_in_rect(point, (b.x + b.width - right_inset - t, b.y, t, b.height)) {
+        if active_y && point_in_rect(point, (b.x + b.width - t, b.y, t, b.height)) {
             return true;
         }
-        if active_x && point_in_rect(point, (b.x, b.y + b.height - bottom_inset - t, b.width, t)) {
+        if active_x && point_in_rect(point, (b.x, b.y + b.height - t, b.width, t)) {
             return true;
         }
         false
@@ -1147,8 +1249,7 @@ impl View {
 
         let thumb_w =
             (self.current_scrollbar_thickness() * self.scale_factor.get()).min(sb.thickness);
-        let right_inset = self.scrollbar_right_inset.get();
-        let thumb_x = b.x + b.width - right_inset - sb.thickness + (sb.thickness - thumb_w) * 0.5;
+        let thumb_x = b.x + b.width - sb.thickness + (sb.thickness - thumb_w) * 0.5;
         Some((thumb_x, thumb_y, thumb_w, thumb_h))
     }
 
@@ -1173,8 +1274,7 @@ impl View {
         };
         let thumb_y = track_y + progress * (track_h - thumb_h);
 
-        let right_inset = self.scrollbar_right_inset.get();
-        let thumb_x = b.x + b.width - right_inset - sb.thickness;
+        let thumb_x = b.x + b.width - sb.thickness;
         Some((thumb_x, thumb_y, sb.thickness, thumb_h))
     }
 
@@ -1201,8 +1301,7 @@ impl View {
 
         let thumb_h =
             (self.current_scrollbar_thickness() * self.scale_factor.get()).min(sb.thickness);
-        let bottom_inset = self.scrollbar_bottom_inset.get();
-        let thumb_y = b.y + b.height - bottom_inset - sb.thickness + (sb.thickness - thumb_h) * 0.5;
+        let thumb_y = b.y + b.height - sb.thickness + (sb.thickness - thumb_h) * 0.5;
         Some((thumb_x, thumb_y, thumb_w, thumb_h))
     }
 
@@ -1227,8 +1326,7 @@ impl View {
         };
         let thumb_x = track_x + progress * (track_w - thumb_w);
 
-        let bottom_inset = self.scrollbar_bottom_inset.get();
-        let thumb_y = b.y + b.height - bottom_inset - sb.thickness;
+        let thumb_y = b.y + b.height - sb.thickness;
         Some((thumb_x, thumb_y, thumb_w, sb.thickness))
     }
 
@@ -1242,7 +1340,6 @@ impl View {
         }
         let b = self.layout_box;
         let t = self.active_scrollbar().thickness;
-        let right_inset = self.scrollbar_right_inset.get();
         let (has_x, _) = self.scrollbar_visibility();
         let bottom = if has_x {
             b.y + b.height - t
@@ -1250,8 +1347,8 @@ impl View {
             b.y + b.height
         };
         Some((
-            (b.x + b.width - right_inset - t, b.y, t, t),
-            (b.x + b.width - right_inset - t, bottom - t, t, t),
+            (b.x + b.width - t, b.y, t, t),
+            (b.x + b.width - t, bottom - t, t, t),
         ))
     }
 
@@ -1265,7 +1362,6 @@ impl View {
         }
         let b = self.layout_box;
         let t = self.active_scrollbar().thickness;
-        let bottom_inset = self.scrollbar_bottom_inset.get();
         let (_, has_y) = self.scrollbar_visibility();
         let right = if has_y {
             b.x + b.width - t
@@ -1273,8 +1369,8 @@ impl View {
             b.x + b.width
         };
         Some((
-            (b.x, b.y + b.height - bottom_inset - t, t, t),
-            (right - t, b.y + b.height - bottom_inset - t, t, t),
+            (b.x, b.y + b.height - t, t, t),
+            (right - t, b.y + b.height - t, t, t),
         ))
     }
 
@@ -1574,11 +1670,7 @@ impl View {
                     if active_y && let Some((track_y, track_h)) = self.vertical_track_bounds() {
                         let t = self.active_scrollbar().thickness;
                         let b = self.layout_box;
-                        let right_inset = self.scrollbar_right_inset.get();
-                        if point_in_rect(
-                            position,
-                            (b.x + b.width - right_inset - t, track_y, t, track_h),
-                        ) {
+                        if point_in_rect(position, (b.x + b.width - t, track_y, t, track_h)) {
                             self.pending_track_drag.set(Some(true));
                             if let Some(target_y) = self.vertical_track_offset_for(position.1) {
                                 let next = self.clamp_offset((target.0, target_y));
@@ -1592,11 +1684,7 @@ impl View {
                     if active_x && let Some((track_x, track_w)) = self.horizontal_track_bounds() {
                         let t = self.active_scrollbar().thickness;
                         let b = self.layout_box;
-                        let bottom_inset = self.scrollbar_bottom_inset.get();
-                        if point_in_rect(
-                            position,
-                            (track_x, b.y + b.height - bottom_inset - t, track_w, t),
-                        ) {
+                        if point_in_rect(position, (track_x, b.y + b.height - t, track_w, t)) {
                             self.pending_track_drag.set(Some(false));
                             if let Some(target_x) = self.horizontal_track_offset_for(position.0) {
                                 let next = self.clamp_offset((target_x, target.1));
@@ -1930,8 +2018,17 @@ impl View {
                     last_position: *position,
                     last_time: Instant::now(),
                     velocity: (0.0, 0.0),
+                    velocity_samples: [None; 6],
+                    next_velocity_sample: 1,
                     dragging: false,
                 }));
+                if let Some(mut state) = self.touch_pan.get() {
+                    state.velocity_samples[0] = Some(TouchVelocitySample {
+                        position: *position,
+                        time: state.last_time,
+                    });
+                    self.touch_pan.set(Some(state));
+                }
                 Some(EventStatus::Handled)
             }
 
@@ -1939,11 +2036,6 @@ impl View {
                 let mut state = self.touch_pan.get()?;
 
                 let now = Instant::now();
-                let dt = now
-                    .duration_since(state.last_time)
-                    .as_secs_f32()
-                    .max(1.0 / 240.0);
-
                 if !state.dragging {
                     let threshold = TOUCH_PAN_THRESHOLD_DP * self.scale_factor.get();
                     let moved =
@@ -1960,12 +2052,15 @@ impl View {
                 let dx = position.0 - state.last_position.0;
                 let dy = position.1 - state.last_position.1;
 
-                let inst_vx = dx / dt;
-                let inst_vy = dy / dt;
-                state.velocity = (
-                    state.velocity.0 * 0.8 + inst_vx * 0.2,
-                    state.velocity.1 * 0.8 + inst_vy * 0.2,
-                );
+                let sample = TouchVelocitySample {
+                    position: *position,
+                    time: now,
+                };
+                let max_speed = TOUCH_MAX_FLING_SPEED_DP * self.scale_factor.get();
+                state.velocity = tracked_touch_velocity(&state.velocity_samples, sample, max_speed);
+                state.velocity_samples[state.next_velocity_sample] = Some(sample);
+                state.next_velocity_sample =
+                    (state.next_velocity_sample + 1) % state.velocity_samples.len();
                 state.last_position = *position;
                 state.last_time = now;
                 self.touch_pan.set(Some(state));
@@ -2473,7 +2568,11 @@ impl Widget for View {
     }
 
     fn scroll_offset(&self) -> (f32, f32) {
-        self.scroll_offset.get()
+        let offset = self.scroll_offset.get();
+        if let Some(state) = &self.scroll_state {
+            state.set_offset(offset);
+        }
+        offset
     }
 
     fn take_scroll_delta(&self) -> (f32, f32) {
@@ -2484,6 +2583,15 @@ impl Widget for View {
 
     fn set_content_size(&mut self, size: (f32, f32)) {
         self.content_size.set(size);
+
+        if !self.scroll_state_restored.replace(true)
+            && let Some(state) = &self.scroll_state
+        {
+            let restored = self.clamp_offset(state.offset());
+            self.scroll_offset.set(restored);
+            self.scroll_target.set(restored);
+            self.last_layout_scroll.set(restored);
+        }
 
         if self.pin_scroll_bottom {
             let bottom = self.clamp_offset((self.scroll_offset.get().0, self.max_scroll_y()));
@@ -2498,6 +2606,16 @@ impl Widget for View {
             .set(self.clamp_offset(self.scroll_offset.get()));
         self.scroll_target
             .set(self.clamp_offset(self.scroll_target.get()));
+
+        if let Some(state) = &self.scroll_state {
+            state.set_offset(self.scroll_offset.get());
+        }
+    }
+
+    fn on_unmount(&mut self) {
+        if let Some(state) = &self.scroll_state {
+            state.set_offset(self.scroll_offset.get());
+        }
     }
 
     fn clip_children(&self) -> Option<(f32, f32, f32, f32)> {
@@ -2549,9 +2667,11 @@ impl Widget for View {
                 SCROLLBAR_DISABLED_OPACITY
             }) * fade;
 
-            if sb.track_color.a() > 0.0 || track_border_width.is_some() {
+            if !crate::platform::is_touch_platform()
+                && (sb.track_color.a() > 0.0 || track_border_width.is_some())
+            {
                 ctx.draw_rect(RectCommand {
-                    position: (b.x + b.width - self.scrollbar_right_inset.get() - t, b.y),
+                    position: (b.x + b.width - t, b.y),
                     size: (t, b.height),
                     background: Some(Background::Color(
                         sb.track_color.with_alpha_f32(sb.track_color.a() * dim),
@@ -2592,9 +2712,11 @@ impl Widget for View {
                 SCROLLBAR_DISABLED_OPACITY
             }) * fade;
 
-            if sb.track_color.a() > 0.0 || track_border_width.is_some() {
+            if !crate::platform::is_touch_platform()
+                && (sb.track_color.a() > 0.0 || track_border_width.is_some())
+            {
                 ctx.draw_rect(RectCommand {
-                    position: (b.x, b.y + b.height - self.scrollbar_bottom_inset.get() - t),
+                    position: (b.x, b.y + b.height - t),
                     size: (b.width, t),
                     background: Some(Background::Color(
                         sb.track_color.with_alpha_f32(sb.track_color.a() * dim),
@@ -2917,7 +3039,13 @@ impl Widget for View {
             return false;
         };
 
-        self.base.authored_styles_eq(&other.base)
+        let same_scroll_scope = match (&self.scroll_state, &other.scroll_state) {
+            (Some(new), Some(old)) => new.shares_storage_with(old),
+            (None, None) => true,
+            _ => false,
+        };
+
+        same_scroll_scope && self.base.authored_styles_eq(&other.base)
     }
 
     fn cascade_style(&mut self, parent: &Style, anim: &mut AnimationManager) {
@@ -2958,9 +3086,21 @@ impl Widget for View {
 
     fn transfer_measured_state(&mut self, old: &dyn Widget) {
         if let Some(old) = old.as_any().downcast_ref::<View>() {
-            self.scroll_offset.set(old.scroll_offset.get());
-            self.scroll_target.set(old.scroll_target.get());
-            self.last_layout_scroll.set(old.last_layout_scroll.get());
+            let same_scroll_scope = match (&self.scroll_state, &old.scroll_state) {
+                (Some(new), Some(old)) => new.shares_storage_with(old),
+                (None, None) => true,
+                _ => false,
+            };
+
+            if same_scroll_scope {
+                self.scroll_offset.set(old.scroll_offset.get());
+                self.scroll_target.set(old.scroll_target.get());
+                self.scroll_state_restored
+                    .set(old.scroll_state_restored.get());
+                self.scroll_state_needs_animation_seed
+                    .set(old.scroll_state_needs_animation_seed.get());
+                self.last_layout_scroll.set(old.last_layout_scroll.get());
+            }
             self.content_size.set(old.content_size.get());
             self.scrollbar_hovered.set(old.scrollbar_hovered.get());
             self.scrollbar_thumb_hovered
@@ -2969,22 +3109,20 @@ impl Widget for View {
                 .set(old.scrollbar_thickness_anim.get());
             self.thumb_color_anim.set(old.thumb_color_anim.get());
             self.arrow_color_anim.set(old.arrow_color_anim.get());
-            self.scrollbar_right_inset
-                .set(old.scrollbar_right_inset.get());
-            self.scrollbar_bottom_inset
-                .set(old.scrollbar_bottom_inset.get());
             self.scale_factor.set(old.scale_factor.get());
             self.pressed_arrow.set(old.pressed_arrow.get());
             self.arrow_scale.set(old.arrow_scale.get());
             self.arrow_hold_time.set(old.arrow_hold_time.get());
             self.arrow_repeat_timer.set(old.arrow_repeat_timer.get());
             self.hovered_arrow.set(old.hovered_arrow.get());
-            self.auto_scroll.set(old.auto_scroll.get());
-            self.touch_pan.set(old.touch_pan.get());
-            self.momentum.set(old.momentum.get());
-            self.overscroll_spring.set(old.overscroll_spring.get());
-            self.wheel_gesture_last_event
-                .set(old.wheel_gesture_last_event.get());
+            if same_scroll_scope {
+                self.auto_scroll.set(old.auto_scroll.get());
+                self.touch_pan.set(old.touch_pan.get());
+                self.momentum.set(old.momentum.get());
+                self.overscroll_spring.set(old.overscroll_spring.get());
+                self.wheel_gesture_last_event
+                    .set(old.wheel_gesture_last_event.get());
+            }
             self.overscroll_glow.set(old.overscroll_glow.get());
             self.glow_pending_hit.set(old.glow_pending_hit.get());
             self.scrollbar_opacity_anim
@@ -3035,6 +3173,110 @@ mod tests {
         assert_eq!(view.scroll_target.get(), (0.0, 0.0));
         assert_eq!(view.scrollbar_active(), (false, false));
         assert_eq!(view.glow_pending_hit.get(), [false; 4]);
+    }
+
+    #[test]
+    fn shared_scroll_state_restores_after_view_is_recreated() {
+        let state = ScrollState::new();
+        state.set_offset((0.0, 140.0));
+        let mut view = sized_view(
+            View::new()
+                .overflow_y(Overflow::Auto)
+                .scroll_state(state.clone()),
+            (100.0, 100.0),
+            (100.0, 400.0),
+        );
+
+        view.set_content_size((100.0, 400.0));
+        assert_eq!(view.scroll_offset.get(), (0.0, 140.0));
+
+        view.scroll_offset.set((0.0, 210.0));
+        Widget::scroll_offset(&view);
+        assert_eq!(state.offset(), (0.0, 210.0));
+    }
+
+    #[test]
+    fn restored_scroll_state_seeds_animator_without_visible_transition() {
+        let state = ScrollState::new();
+        state.set_offset((0.0, 140.0));
+        let mut view = sized_view(
+            View::new().overflow_y(Overflow::Auto).scroll_state(state),
+            (100.0, 100.0),
+            (100.0, 400.0),
+        );
+        let key = AnimKey {
+            widget: view.anim_id,
+            layer: AnimLayer::Root,
+            property: AnimProperty::ScrollOffset,
+        };
+        let mut animator = AnimationManager::new();
+        animator.set_target(key, AnimValue([0.0; 4]), None);
+
+        view.animate_scroll(&mut animator);
+
+        assert_eq!(view.scroll_offset.get(), (0.0, 140.0));
+        assert!(animator.value(key).is_none());
+    }
+
+    #[test]
+    fn touch_velocity_tracker_favors_release_speed() {
+        let now = Instant::now();
+        let samples = [
+            Some(TouchVelocitySample {
+                position: (0.0, 0.0),
+                time: now - Duration::from_millis(55),
+            }),
+            Some(TouchVelocitySample {
+                position: (0.0, 8.0),
+                time: now - Duration::from_millis(30),
+            }),
+            Some(TouchVelocitySample {
+                position: (0.0, 28.0),
+                time: now - Duration::from_millis(10),
+            }),
+            None,
+            None,
+            None,
+        ];
+        let velocity = tracked_touch_velocity(
+            &samples,
+            TouchVelocitySample {
+                position: (0.0, 44.0),
+                time: now,
+            },
+            10_000.0,
+        );
+
+        assert!(velocity.1 > 800.0);
+        assert!(velocity.1 <= 10_000.0);
+    }
+
+    #[test]
+    fn changing_scroll_state_does_not_transfer_another_routes_offset() {
+        let old_state = ScrollState::new();
+        let old = sized_view(
+            View::new()
+                .overflow_y(Overflow::Auto)
+                .scroll_state(old_state),
+            (100.0, 100.0),
+            (100.0, 400.0),
+        );
+        old.scroll_offset.set((0.0, 190.0));
+        old.scroll_state_restored.set(true);
+
+        let new_state = ScrollState::new();
+        new_state.set_offset((0.0, 35.0));
+        let mut new = sized_view(
+            View::new()
+                .overflow_y(Overflow::Auto)
+                .scroll_state(new_state),
+            (100.0, 100.0),
+            (100.0, 400.0),
+        );
+        new.transfer_measured_state(&old);
+        new.set_content_size((100.0, 400.0));
+
+        assert_eq!(new.scroll_offset.get(), (0.0, 35.0));
     }
 
     #[test]
@@ -3275,6 +3517,22 @@ mod tests {
         );
         assert!(view.scrollbar_thumb_hovered.get());
         assert_eq!(view.target_scrollbar_thickness(), hover_thickness);
+    }
+
+    #[test]
+    fn authored_padding_does_not_inset_scrollbar_from_border_edge() {
+        let mut view = sized_view(
+            View::new()
+                .overflow_y(Overflow::Auto)
+                .padding(Edges::only(12.0, 8.0, 24.0, 16.0)),
+            (100.0, 100.0),
+            (100.0, 400.0),
+        );
+        view.layout_box.x = 10.0;
+        view.apply_scrollbar_gutter();
+
+        let thumb = view.vertical_thumb_hit_rect().expect("vertical thumb");
+        assert_eq!(thumb.0 + thumb.2, 110.0);
     }
 
     #[test]

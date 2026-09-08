@@ -842,6 +842,7 @@ fn convert_weight(weight: FontWeight) -> GlyphonWeight {
         FontWeight::Bold => GlyphonWeight::BOLD,
         FontWeight::ExtraBold => GlyphonWeight::EXTRA_BOLD,
         FontWeight::Black => GlyphonWeight::BLACK,
+        FontWeight::Variable(value) => GlyphonWeight(value),
     }
 }
 

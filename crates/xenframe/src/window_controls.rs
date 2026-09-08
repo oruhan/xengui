@@ -14,6 +14,13 @@ pub(crate) fn set_active_window(window: Arc<Window>) {
     });
 }
 
+#[cfg(target_os = "android")]
+pub(crate) fn clear_active_window() {
+    ACTIVE_WINDOW.with(|cell| {
+        *cell.borrow_mut() = None;
+    });
+}
+
 fn with_window(f: impl FnOnce(&Window)) {
     ACTIVE_WINDOW.with(|cell| {
         if let Some(window) = cell.borrow().as_ref() {
