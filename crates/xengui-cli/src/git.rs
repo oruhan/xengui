@@ -79,23 +79,23 @@ pub fn analyze(workspace: &Workspace) -> Result<ChangeAnalysis> {
         .any(|path| path.starts_with("crates/") && path.ends_with("/Cargo.toml"));
 
     let (level, reason) = if explicit_breaking || removed_public > 0 || removed_feature {
-        let detail = if explicit_breaking {
-            "the changes explicitly declare a breaking change".to_owned()
-        } else if removed_public > 0 {
-            format!(
-                "{removed_public} removed or changed public API declaration(s) may break callers"
-            )
-        } else {
-            "a Cargo feature appears to have been removed".to_owned()
+        let detail = match (explicit_breaking, removed_public) {
+            (true, _) => "the changes explicitly declare a breaking change".to_owned(),
+            (false, count) if count > 0 => {
+                format!("{count} removed or changed public API declaration(s) may break callers")
+            }
+            (false, _) => "a Cargo feature appears to have been removed".to_owned(),
         };
         (ChangeLevel::Major, detail)
     } else if added_public > 0 || added_feature || added_workspace_crate {
-        let detail = if added_public > 0 {
-            format!("{added_public} backwards-compatible public API declaration(s) were added")
-        } else if added_workspace_crate {
-            "a backwards-compatible workspace crate was added".to_owned()
-        } else {
-            "a backwards-compatible Cargo feature appears to have been added".to_owned()
+        let detail = match (added_public, added_workspace_crate) {
+            (count, _) if count > 0 => {
+                format!("{count} backwards-compatible public API declaration(s) were added")
+            }
+            (0, true) => "a backwards-compatible workspace crate was added".to_owned(),
+            (0, false) => {
+                "a backwards-compatible Cargo feature appears to have been added".to_owned()
+            }
         };
         (ChangeLevel::Minor, detail)
     } else {
@@ -289,6 +289,7 @@ fn infer_scope(files: &[String]) -> String {
     }
 }
 
+#[allow(unused_parens)]
 fn infer_commit_type(analysis: &ChangeAnalysis) -> &'static str {
     if analysis.level == ChangeLevel::Major || analysis.level == ChangeLevel::Minor {
         "feat"
