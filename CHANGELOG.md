@@ -5,6 +5,11 @@ All notable changes to the XenGui workspace are documented here. The project fol
 
 ## Unreleased
 
+### Tooling
+
+- Added the `xengui` workspace CLI for Cargo workflows, coordinated SemVer management, change and commit suggestions, diagnostics, and release-readiness checks.
+- Replaced the Python version-bump helper with manifest-aware, comment-preserving updates that are dry-run by default.
+
 ### Rendering performance
 
 - Reused frame-lifetime paint, batching, decoration, and widget-path storage after its high-water mark.

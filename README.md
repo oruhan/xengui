@@ -38,6 +38,7 @@ XenGui is a retained-mode GUI toolkit written in Rust. It combines a hooks-based
 | [`xen-audio`](crates/xen-audio) | Framework-independent local audio playback abstraction. |
 | [`xen-svg`](crates/xen-svg) | SVG parsing and triangle tessellation. |
 | [`xengui-icons`](crates/xengui-icons) | Embedded Material Symbols variable icon font and codepoints. |
+| [`xengui-cli`](crates/xengui-cli) | Workspace development, versioning, Git, diagnostics, and release tooling. |
 
 Runnable applications live in [`apps`](apps); focused demonstrations live in [`examples`](examples).
 
@@ -121,6 +122,30 @@ trunk serve --open
 Trunk serves a local development build and rebuilds it when source files change.
 
 ## Development
+
+Install the workspace CLI once, then use it from anywhere inside this checkout:
+
+```bash
+cargo install --path crates/xengui-cli
+xengui --help
+```
+
+`xengui run` starts `widgets-catalog` by default; pass `--package <NAME>` for another application. The `build`, `check`, and `test` commands wrap their Cargo equivalents for the full workspace. Extra Cargo arguments go after `--`.
+
+Version operations discover every workspace package and keep path-dependency requirements synchronized. Mutating operations are previews unless explicitly confirmed:
+
+```bash
+xengui version show
+xengui version check
+xengui version bump minor          # dry run
+xengui version bump minor --write
+xengui version suggest             # explains the recommendation
+xengui version suggest --apply     # explains, then applies
+xengui commit suggest
+xengui release check
+```
+
+The CLI supersedes the former Python version-bump helper. Setup, platform-specific watch, and source-inventory scripts remain in `scripts/` because they serve separate workflows.
 
 Run the standard quality checks from the repository root:
 

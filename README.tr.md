@@ -38,6 +38,7 @@ XenGui, Rust ile yazılmış retained-mode bir GUI araç takımıdır. Hook taba
 | [`xen-audio`](crates/xen-audio) | Framework'ten bağımsız yerel ses oynatma soyutlaması. |
 | [`xen-svg`](crates/xen-svg) | SVG parsing ve triangle tessellation. |
 | [`xengui-icons`](crates/xengui-icons) | Gömülü Material Symbols variable icon fontu ve codepoint'leri. |
+| [`xengui-cli`](crates/xengui-cli) | Workspace geliştirme, sürümleme, Git, tanılama ve yayın araçları. |
 
 Çalıştırılabilir uygulamalar [`apps`](apps), belirli özelliklere odaklanan örnekler ise [`examples`](examples) dizininde bulunur.
 

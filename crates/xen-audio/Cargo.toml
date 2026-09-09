@@ -6,6 +6,7 @@ rust-version = { workspace = true }
 authors = ["randseas <waultbank@gmail.com>"]
 description = "platform-agnostic local audio playback for xengui apps"
 license = "Apache-2.0"
+repository = "https://github.com/randseas/xengui/tree/main/crates/xen-audio"
 
 [dependencies]
 web-time = { workspace = true }
