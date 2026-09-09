@@ -2,9 +2,9 @@
 //! Selectable, syntax-highlighted source code with one-click copying.
 
 use crate::{
-    Align, Border, Button, Color, Column, Edges, FontWeight, Interaction, Label, LayoutBox, Length,
-    Overflow, Render, RichText, Row, Style, StyleBuilder, TextSpan, VariableIcon, View, Widget,
-    WidgetBase, WidgetId, pct,
+    Align, Border, BorderRadius, Button, Color, Column, Edges, FontWeight, Interaction, Label,
+    LayoutBox, Length, Overflow, Render, RichText, Row, Style, StyleBuilder, TextSpan,
+    VariableIcon, View, Widget, WidgetBase, WidgetId, pct,
 };
 use smol_str::SmolStr;
 use xen_clipboard::Clipboard;
@@ -285,10 +285,15 @@ impl StyleBuilder for CodeBlock {
 
 impl Render for CodeBlock {
     fn render(&self) -> Box<dyn Widget> {
+        const BORDER_WIDTH: f32 = 1.0;
+        const CONTAINER_RADIUS: f32 = 20.0;
+        const INNER_RADIUS: f32 = CONTAINER_RADIUS - BORDER_WIDTH;
+
         let mut root = Column::new()
             .width(pct!(100.0))
             .background(self.theme.background)
-            .border(Border::all(1.0, self.theme.border).radius(20.0));
+            .border(Border::all(BORDER_WIDTH, self.theme.border).radius(CONTAINER_RADIUS))
+            .overflow(Overflow::Hidden, Overflow::Hidden);
 
         if self.show_header {
             let title = self
@@ -301,7 +306,10 @@ impl Render for CodeBlock {
                 .gap(9.0, 0.0)
                 .padding(Edges::only(18.0, 10.0, 12.0, 10.0))
                 .background(self.theme.header_background)
-                .border(Border::bottom(1.0, self.theme.border))
+                .border(
+                    Border::bottom(BORDER_WIDTH, self.theme.border)
+                        .radius(BorderRadius::top(INNER_RADIUS)),
+                )
                 .child(
                     VariableIcon::new(xengui_icons::codepoints::CODE_BLOCKS)
                         .size(17.0)

@@ -332,12 +332,11 @@ impl FrameRenderer {
                     // each is its own isolated offscreen pass, so it's
                     // dispatched immediately rather than buffered.
                     backend.flush_text();
-                    backend.draw_filtered_rounded(
+                    backend.draw_filtered(
                         &filtered.commands,
                         &filtered.chain,
                         filtered.bounds,
                         filtered.clip_rect,
-                        filtered.radius,
                     );
                 }
                 DrawCommand::BackdropFilter(cmd) => {
@@ -736,60 +735,6 @@ fn composite_plain_range(
     commands.extend(composite_commands(nested, transform, fallback_bounds, None));
 }
 
-fn rounded_child_clip(
-    widget: &dyn Widget,
-    scale_factor: f32,
-) -> Option<((f32, f32, f32, f32), [f32; 4])> {
-    widget.clip_children()?;
-    let layout = widget.layout_box();
-    let border = widget.computed_style().border.as_ref()?;
-    let radius = border.radius?;
-    let outer = radius.to_physical_array(scale_factor, layout.width, layout.height);
-    if outer.iter().all(|value| *value <= 0.0) {
-        return None;
-    }
-
-    let top = border.top.to_physical(scale_factor).max(0.0);
-    let right = border.right.to_physical(scale_factor).max(0.0);
-    let bottom = border.bottom.to_physical(scale_factor).max(0.0);
-    let left = border.left.to_physical(scale_factor).max(0.0);
-    let width = (layout.width - left - right).max(0.0);
-    let height = (layout.height - top - bottom).max(0.0);
-    let inner = [
-        (outer[0] - left.max(top)).max(0.0),
-        (outer[1] - right.max(top)).max(0.0),
-        (outer[2] - right.max(bottom)).max(0.0),
-        (outer[3] - left.max(bottom)).max(0.0),
-    ];
-
-    Some(((layout.x + left, layout.y + top, width, height), inner))
-}
-
-fn rounded_clip_z_range(
-    commands: &mut Vec<(i32, DrawCommand)>,
-    start: usize,
-    bounds: (f32, f32, f32, f32),
-    radius: [f32; 4],
-    clip_rect: Option<(f32, f32, f32, f32)>,
-    z_index: i32,
-) {
-    if start == commands.len() || bounds.2 <= 0.0 || bounds.3 <= 0.0 {
-        return;
-    }
-    let mut nested: Vec<(i32, DrawCommand)> = commands.drain(start..).collect();
-    nested.sort_by_key(|(z, _)| *z);
-    commands.push((
-        z_index,
-        DrawCommand::Filtered(Box::new(FilteredCommand {
-            commands: nested.into_iter().map(|(_, command)| command).collect(),
-            chain: crate::FilterChain::new(),
-            bounds,
-            clip_rect,
-            radius,
-        })),
-    ));
-}
-
 #[allow(clippy::too_many_arguments)]
 fn paint_recursive(
     widget: &dyn Widget,
@@ -867,7 +812,6 @@ fn paint_recursive(
             chain: chain.clone(),
             bounds,
             clip_rect,
-            radius: [0.0; 4],
         };
         commands.push((z_index, DrawCommand::Filtered(Box::new(filtered_cmd))));
         paint_chrome_layers_inline(
@@ -953,7 +897,6 @@ fn paint_recursive(
         None => clip_rect,
     };
     let child_transform = widget_transform(widget, scale_factor, true);
-    let rounded_clip = rounded_child_clip(widget, scale_factor);
     let fallback_bounds = (
         layout_box.x,
         layout_box.y,
@@ -1001,9 +944,6 @@ fn paint_recursive(
             fallback_bounds,
             z_index,
         );
-        if let Some((bounds, radius)) = rounded_clip {
-            rounded_clip_z_range(commands, command_start, bounds, radius, clip_rect, z_index);
-        }
         composite_plain_range(top_commands, top_start, child_transform, fallback_bounds);
         if (child_transform.scale - 1.0).abs() >= f32::EPSILON {
             for command in &mut focus_commands[focus_start..] {
@@ -1064,7 +1004,6 @@ fn paint_subtree_for_filter(
     }
 
     let child_transform = widget_transform(widget, scale_factor, true);
-    let rounded_clip = rounded_child_clip(widget, scale_factor);
     let b = widget.layout_box();
     let fallback_bounds = (b.x, b.y, b.width, b.height);
     for (i, child) in widget.children().iter().enumerate() {
@@ -1091,9 +1030,6 @@ fn paint_subtree_for_filter(
             fallback_bounds,
             z_index,
         );
-        if let Some((bounds, radius)) = rounded_clip {
-            rounded_clip_z_range(out, command_start, bounds, radius, None, z_index);
-        }
         path.restore(checkpoint);
     }
 }
@@ -1412,8 +1348,8 @@ fn reset_layout_dirty_recursive(tree: &mut [Box<dyn Widget>]) {
 mod tests {
     use super::{FrameArena, composite_widget_paint, paint_recursive, reuse_cached_paint};
     use crate::{
-        AnimationManager, Border, Color, DrawCommand, LayoutBox, Length, Overflow, RenderCache,
-        Style, StyleBuilder, TextCommand, View, Widget, WidgetPath,
+        AnimationManager, Color, DrawCommand, LayoutBox, Length, RenderCache, Style, StyleBuilder,
+        TextCommand, View, Widget, WidgetPath,
     };
 
     #[test]
@@ -1563,55 +1499,6 @@ mod tests {
         };
         assert_eq!(command.position, (20.0, 20.0));
         assert_eq!(command.size, (20.0, 20.0));
-    }
-
-    #[test]
-    fn rounded_overflow_clips_children_to_inner_border_shape() {
-        let child = View::new().background(Color::WHITE);
-        let mut root = View::new()
-            .border(Border::all(2.0, Color::BLACK).radius(12.0))
-            .overflow_x(Overflow::Hidden)
-            .child(child);
-        root.layout(LayoutBox {
-            x: 10.0,
-            y: 20.0,
-            width: 100.0,
-            height: 60.0,
-        });
-        root.children_mut().unwrap()[0].layout(LayoutBox {
-            x: 10.0,
-            y: 20.0,
-            width: 100.0,
-            height: 20.0,
-        });
-        root.cascade_style(&Style::default(), &mut AnimationManager::new());
-
-        let mut cache = RenderCache::new();
-        cache.begin_frame();
-        let mut commands = Vec::new();
-        paint_recursive(
-            &root,
-            &mut WidgetPath::default(),
-            &mut cache,
-            &mut commands,
-            &mut Vec::new(),
-            &mut Vec::new(),
-            &mut Vec::new(),
-            None,
-            1.0,
-            0,
-        );
-
-        let filtered = commands
-            .iter()
-            .find_map(|(_, command)| match command {
-                DrawCommand::Filtered(command) => Some(command),
-                _ => None,
-            })
-            .expect("rounded overflow should isolate the child subtree");
-        assert!(filtered.chain.is_empty());
-        assert_eq!(filtered.bounds, (12.0, 22.0, 96.0, 56.0));
-        assert_eq!(filtered.radius, [10.0; 4]);
     }
 
     #[test]

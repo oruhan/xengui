@@ -48,19 +48,6 @@ pub trait RenderBackend {
         clip_rect: Option<(f32, f32, f32, f32)>,
     );
 
-    /// Rounded variant of [`Self::draw_filtered`]. The default preserves
-    /// compatibility for backends that only support rectangular clipping.
-    fn draw_filtered_rounded(
-        &mut self,
-        cmds: &[crate::DrawCommand],
-        chain: &crate::FilterChain,
-        bounds: (f32, f32, f32, f32),
-        clip_rect: Option<(f32, f32, f32, f32)>,
-        _radius: [f32; 4],
-    ) {
-        self.draw_filtered(cmds, chain, bounds, clip_rect);
-    }
-
     /// Captures whatever has already been painted within `bounds` at this
     /// point in the frame, runs `chain` over that live snapshot, and
     /// composites the blurred result back in place - matches CSS
