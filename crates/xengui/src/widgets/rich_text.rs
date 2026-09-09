@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 use crate::{
-    AnimationManager, Background, Color, Constraints, Cursor, ElementState, EventCtx, EventStatus,
-    FontStyle, FontWeight, InputEvent, Interaction, LayoutBox, MULTI_CLICK_DISTANCE_DP,
-    MULTI_CLICK_INTERVAL, MeasureContext, MeasureResult, MouseButton, PaintContext, RectCommand,
-    Style, StyleBuilder, TextCommand, TextDecoration, Widget, WidgetBase, WidgetContent, WidgetId,
-    constants::DEFAULT_FONT_SIZE,
+    AnimationManager, Background, BorderRadius, Color, Constraints, Cursor, ElementState, EventCtx,
+    EventStatus, FontStyle, FontWeight, InputEvent, Interaction, LayoutBox,
+    MULTI_CLICK_DISTANCE_DP, MULTI_CLICK_INTERVAL, MeasureContext, MeasureResult, MouseButton,
+    PaintContext, RectCommand, Style, StyleBuilder, TextCommand, TextDecoration, Widget,
+    WidgetBase, WidgetContent, WidgetId, constants::DEFAULT_FONT_SIZE,
 };
 use smol_str::SmolStr;
 use std::cell::{Cell, RefCell};
@@ -313,6 +313,15 @@ impl RichText {
             })
     }
 
+    fn selection_radius(radius: crate::Length, fragment: usize, count: usize) -> BorderRadius {
+        match (fragment, count) {
+            (_, 1) => BorderRadius::all(radius),
+            (0, _) => BorderRadius::top(radius),
+            (index, total) if index + 1 == total => BorderRadius::bottom(radius),
+            _ => BorderRadius::default(),
+        }
+    }
+
     fn index_for_point(&self, point: (f32, f32)) -> usize {
         let style = &self.base.computed_style;
         let sf = self.scale_factor.get();
@@ -389,6 +398,13 @@ impl Widget for RichText {
             .unwrap_or(0.0);
         let base_weight = style.font_weight.unwrap_or_default();
         let base_style = style.font_style.unwrap_or_default();
+        let padding = style.padding.unwrap_or_default();
+        let horizontal_padding =
+            padding.left.to_physical(scale_factor) + padding.right.to_physical(scale_factor);
+        let content_max_width = constraints
+            .known_width
+            .or(constraints.max_width)
+            .map(|width| (width - horizontal_padding).max(0.0));
 
         // Kept logical (0.0 lets measure() auto-resolve the default ratio
         // internally); resolved to a concrete physical value separately
@@ -410,7 +426,7 @@ impl Widget for RichText {
             )
         };
 
-        self.measured_max_width.set(constraints.max_width);
+        self.measured_max_width.set(content_max_width);
 
         let mut tokens = Vec::new();
         let mut global_char_start = 0;
@@ -470,7 +486,7 @@ impl Widget for RichText {
             let width = offsets.last().copied().unwrap_or(0.0);
 
             if self.wrap
-                && let Some(max_w) = constraints.max_width
+                && let Some(max_w) = content_max_width
                 && token.kind != TokenKind::Space
                 && cursor_x > 0.0
                 && cursor_x + width > max_w
@@ -501,32 +517,95 @@ impl Widget for RichText {
                 continue;
             }
 
-            let line = (lines.len() - 1) as u32;
-            placed.push(PlacedToken {
-                span_index: token.span_index,
-                start_byte: token.start_byte,
-                end_byte: token.end_byte,
-                x: cursor_x,
-                line,
-                char_start: token.char_start,
-                char_end: token.char_end,
-            });
+            // Word wrapping falls back to character boundaries for a token
+            // that cannot fit on a line by itself. This is equivalent to
+            // CSS overflow-wrap and keeps URLs/IDs/unbroken user input inside
+            // the available text width.
+            let char_count = token.char_end - token.char_start;
+            let byte_boundaries: Vec<usize> = text
+                .char_indices()
+                .map(|(byte, _)| token.start_byte + byte)
+                .chain(std::iter::once(token.end_byte))
+                .collect();
+            let max_width = self.wrap.then_some(content_max_width).flatten();
+            let mut segment_start = 0usize;
 
-            let current = lines.last_mut().expect("a text layout always has one line");
-            for (offset_index, &offset) in offsets.iter().enumerate() {
-                let index = token.char_start + offset_index;
-                if current.boundaries.last().map(|item| item.0) == Some(index) {
-                    if let Some(last) = current.boundaries.last_mut() {
-                        last.1 = cursor_x + offset;
+            while segment_start < char_count {
+                let mut segment_end = char_count;
+                if let Some(max_w) = max_width
+                    && max_w > 0.0
+                {
+                    let available = (max_w - cursor_x).max(0.0);
+                    segment_end = (segment_start + 1..=char_count)
+                        .take_while(|&end| offsets[end] - offsets[segment_start] <= available)
+                        .last()
+                        .unwrap_or(segment_start);
+
+                    if segment_end == segment_start && cursor_x > 0.0 {
+                        let current = lines.last_mut().expect("a text layout always has one line");
+                        current.end_char = token.char_start + segment_start;
+                        current.width = cursor_x;
+                        max_line_width = max_line_width.max(cursor_x);
+                        lines.push(PlacedLine {
+                            start_char: token.char_start + segment_start,
+                            end_char: token.char_start + segment_start,
+                            width: 0.0,
+                            boundaries: vec![(token.char_start + segment_start, 0.0)],
+                        });
+                        cursor_x = 0.0;
+                        continue;
                     }
-                } else {
-                    current.boundaries.push((index, cursor_x + offset));
+
+                    // A single glyph may itself be wider than the container;
+                    // consume it so layout always makes progress. Paint clips
+                    // wrapped content to the widget below.
+                    if segment_end == segment_start {
+                        segment_end += 1;
+                    }
+                }
+
+                let line = (lines.len() - 1) as u32;
+                let segment_origin = offsets[segment_start];
+                placed.push(PlacedToken {
+                    span_index: token.span_index,
+                    start_byte: byte_boundaries[segment_start],
+                    end_byte: byte_boundaries[segment_end],
+                    x: cursor_x,
+                    line,
+                    char_start: token.char_start + segment_start,
+                    char_end: token.char_start + segment_end,
+                });
+
+                let current = lines.last_mut().expect("a text layout always has one line");
+                for (offset_index, &offset) in
+                    offsets[segment_start..=segment_end].iter().enumerate()
+                {
+                    let index = token.char_start + segment_start + offset_index;
+                    let x = cursor_x + offset - segment_origin;
+                    if current.boundaries.last().map(|item| item.0) == Some(index) {
+                        if let Some(last) = current.boundaries.last_mut() {
+                            last.1 = x;
+                        }
+                    } else {
+                        current.boundaries.push((index, x));
+                    }
+                }
+                cursor_x += offsets[segment_end] - segment_origin;
+                current.end_char = token.char_start + segment_end;
+                current.width = cursor_x;
+                max_line_width = max_line_width.max(cursor_x);
+                segment_start = segment_end;
+
+                if segment_start < char_count {
+                    lines.push(PlacedLine {
+                        start_char: token.char_start + segment_start,
+                        end_char: token.char_start + segment_start,
+                        width: 0.0,
+                        boundaries: vec![(token.char_start + segment_start, 0.0)],
+                    });
+                    cursor_x = 0.0;
                 }
             }
-            cursor_x += width;
-            current.end_char = token.char_end;
-            current.width = cursor_x;
-            max_line_width = max_line_width.max(cursor_x);
         }
 
         if let Some(current) = lines.last_mut() {
@@ -544,7 +623,6 @@ impl Widget for RichText {
         self.content_size
             .set((max_line_width, line_count * line_height));
 
-        let padding = style.padding.unwrap_or_default();
         let width = max_line_width
             + padding.left.to_physical(scale_factor)
             + padding.right.to_physical(scale_factor);
@@ -577,12 +655,19 @@ impl Widget for RichText {
 
         let selection = self.selectable.then(|| self.text_selection()).flatten();
         if let Some((selection_start, selection_end)) = selection {
-            for (line_index, line) in self.lines.borrow().iter().enumerate() {
+            let lines = self.lines.borrow();
+            let selected_lines: Vec<usize> = lines
+                .iter()
+                .enumerate()
+                .filter_map(|(index, line)| {
+                    (selection_start.max(line.start_char) < selection_end.min(line.end_char))
+                        .then_some(index)
+                })
+                .collect();
+            for (fragment, &line_index) in selected_lines.iter().enumerate() {
+                let line = &lines[line_index];
                 let start = selection_start.max(line.start_char);
                 let end = selection_end.min(line.end_char);
-                if start >= end {
-                    continue;
-                }
                 let start_x = Self::line_x_at(line, start);
                 let end_x = Self::line_x_at(line, end);
                 ctx.draw_rect(RectCommand {
@@ -596,7 +681,9 @@ impl Widget for RichText {
                             .selection_background
                             .unwrap_or(Color::rgba(90, 140, 230, 100)),
                     )),
-                    border_radius: style.selection_border_radius.map(Into::into),
+                    border_radius: style.selection_border_radius.map(|radius| {
+                        Self::selection_radius(radius, fragment, selected_lines.len())
+                    }),
                     border_width: style.selection_border_width,
                     border_color: style.selection_border_color,
                     clip_rect: None,
@@ -628,7 +715,18 @@ impl Widget for RichText {
                 ),
                 style: span_style.clone(),
                 max_width: None,
-                clip_rect: None,
+                clip_rect: self.wrap.then_some((
+                    origin_x,
+                    origin_y,
+                    (self.layout_box.width
+                        - padding.left.to_physical(sf)
+                        - padding.right.to_physical(sf))
+                    .max(0.0),
+                    (self.layout_box.height
+                        - padding.top.to_physical(sf)
+                        - padding.bottom.to_physical(sf))
+                    .max(0.0),
+                )),
             });
 
             if let (Some((selection_start, selection_end)), Some(selection_color)) =
@@ -931,5 +1029,56 @@ mod tests {
         rich_text.set_text_selection(Some((1, 6)));
         assert_eq!(rich_text.text_selection(), Some((1, 6)));
         assert_eq!(rich_text.selectable_text(), Some("ab\n  cd"));
+    }
+
+    #[test]
+    fn unbroken_text_wraps_at_character_boundaries() {
+        let rich_text = RichText::new().span("abcdefgh");
+        let mut measurer = FixedTextMeasurer;
+        let mut context = MeasureContext::new(&mut measurer, 1.0);
+        let result = rich_text.measure(&mut context, Constraints::new().with_max_width(30.0));
+
+        assert_eq!(result.width, 30.0);
+        assert_eq!(result.height, 60.0);
+        let lines = rich_text.lines.borrow();
+        assert_eq!(lines.len(), 3);
+        assert_eq!((lines[0].start_char, lines[0].end_char), (0, 3));
+        assert_eq!((lines[1].start_char, lines[1].end_char), (3, 6));
+        assert_eq!((lines[2].start_char, lines[2].end_char), (6, 8));
+    }
+
+    #[test]
+    fn wrapping_uses_fixed_content_width_inside_padding() {
+        let rich_text = RichText::new()
+            .span("abcdefgh")
+            .padding(crate::Edges::all(5.0));
+        let mut measurer = FixedTextMeasurer;
+        let mut context = MeasureContext::new(&mut measurer, 1.0);
+        let result = rich_text.measure(&mut context, Constraints::new().with_known_width(30.0));
+
+        assert_eq!(result.width, 30.0);
+        assert_eq!(result.height, 90.0);
+        assert_eq!(rich_text.lines.borrow().len(), 4);
+    }
+
+    #[test]
+    fn multiline_selection_rounds_only_the_outer_corners() {
+        let radius = crate::Length::px(4.0);
+        assert_eq!(
+            RichText::selection_radius(radius, 0, 2),
+            BorderRadius::top(radius)
+        );
+        assert_eq!(
+            RichText::selection_radius(radius, 1, 2),
+            BorderRadius::bottom(radius)
+        );
+        assert_eq!(
+            RichText::selection_radius(radius, 1, 3),
+            BorderRadius::default()
+        );
+        assert_eq!(
+            RichText::selection_radius(radius, 0, 1),
+            BorderRadius::all(radius)
+        );
     }
 }

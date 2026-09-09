@@ -71,6 +71,13 @@ pub struct TextBox {
     // cached during measure() and reused for caret placement, mouse
     // hit-testing, and selection-highlight geometry.
     char_offsets: RefCell<Vec<f32>>,
+    // Identifies the edit state for which the cached offsets above were
+    // shaped. A controlled TextBox can be rebuilt synchronously from its
+    // on_change callback before the edited widget gets another measure pass;
+    // in that case content_eq must not let reconciliation reuse stale caret
+    // geometry from the preceding frame.
+    measured_content: RefCell<String>,
+    measured_cursor_index: Cell<usize>,
     caret_visible: Cell<bool>,
     // Horizontal pixel offset applied when the intrinsic text width exceeds
     // the visible content area, so the caret always stays on-screen.
@@ -132,6 +139,8 @@ impl TextBox {
             content_size: Cell::new((0.0, 0.0)),
             cursor_offset: Cell::new(0.0),
             char_offsets: RefCell::new(Vec::new()),
+            measured_content: RefCell::new(String::new()),
+            measured_cursor_index: Cell::new(0),
             caret_visible: Cell::new(true),
             scroll_offset: Cell::new(0.0),
             scale_factor: Cell::new(1.0),
@@ -902,7 +911,12 @@ impl Widget for TextBox {
             style.font_style.unwrap_or_default(),
             letter_spacing,
             line_height,
-            constraints.max_width,
+            // TextBox is a single-line editor. Its box is constrained below,
+            // while the text remains intrinsically measured so horizontal
+            // scrolling and the caret use the same full-width coordinate
+            // space. Passing max_width here makes the shaping backend wrap,
+            // leaving scroll_offset unable to follow newly typed characters.
+            None,
             scale_factor,
         );
 
@@ -950,6 +964,8 @@ impl Widget for TextBox {
                 .unwrap_or(&0.0),
         );
         *self.char_offsets.borrow_mut() = offsets;
+        self.measured_content.replace(self.content.clone());
+        self.measured_cursor_index.set(self.cursor_index);
 
         let padding = &style.padding.unwrap_or_default();
         let width = text_w
@@ -1339,6 +1355,8 @@ impl Widget for TextBox {
             && self.cursor_index == other.cursor_index
             && self.selection_anchor == other.selection_anchor
             && self.base.authored_styles_eq(&other.base)
+            && *other.measured_content.borrow() == other.content
+            && other.measured_cursor_index.get() == other.cursor_index
     }
 
     fn cascade_style(&mut self, parent: &Style, anim: &mut AnimationManager) {
@@ -1386,6 +1404,10 @@ impl Widget for TextBox {
             self.content_size.set(old.content_size.get());
             self.cursor_offset.set(old.cursor_offset.get());
             self.char_offsets.replace(old.char_offsets.borrow().clone());
+            self.measured_content
+                .replace(old.measured_content.borrow().clone());
+            self.measured_cursor_index
+                .set(old.measured_cursor_index.get());
             self.scroll_offset.set(old.scroll_offset.get());
             self.scale_factor.set(old.scale_factor.get());
         }
@@ -1435,5 +1457,110 @@ impl Widget for TextBox {
         input.set_value(&self.content);
         let _ = input.set_attribute("placeholder", &self.placeholder);
         input.set_read_only(self.read_only);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::TextMeasurer;
+
+    struct FixedTextMeasurer;
+
+    impl TextMeasurer for FixedTextMeasurer {
+        fn measure(
+            &mut self,
+            text: &str,
+            _font: Option<&str>,
+            _font_size: f32,
+            _font_weight: crate::FontWeight,
+            _font_style: crate::FontStyle,
+            _letter_spacing: f32,
+            _line_height: f32,
+            max_width: Option<f32>,
+            _scale_factor: f32,
+        ) -> MeasureResult {
+            let width = text.chars().count() as f32 * 10.0;
+            MeasureResult::new(max_width.map_or(width, |max| width.min(max)), 20.0)
+        }
+
+        fn character_offsets(
+            &mut self,
+            text: &str,
+            _font: Option<&str>,
+            _font_size: f32,
+            _font_weight: crate::FontWeight,
+            _font_style: crate::FontStyle,
+            _letter_spacing: f32,
+            _line_height: f32,
+            _scale_factor: f32,
+        ) -> Vec<f32> {
+            (0..=text.chars().count())
+                .map(|index| index as f32 * 10.0)
+                .collect()
+        }
+
+        fn ascent(
+            &mut self,
+            _font: Option<&str>,
+            _font_size: f32,
+            _font_weight: crate::FontWeight,
+            _font_style: crate::FontStyle,
+            _scale_factor: f32,
+        ) -> f32 {
+            15.0
+        }
+
+        fn descent(
+            &mut self,
+            _font: Option<&str>,
+            _font_size: f32,
+            _font_weight: crate::FontWeight,
+            _font_style: crate::FontStyle,
+            _scale_factor: f32,
+        ) -> f32 {
+            5.0
+        }
+
+        fn line_height(
+            &mut self,
+            _font: Option<&str>,
+            _font_size: f32,
+            _font_weight: crate::FontWeight,
+            _font_style: crate::FontStyle,
+            _scale_factor: f32,
+        ) -> f32 {
+            20.0
+        }
+    }
+
+    #[test]
+    fn edited_text_rejects_stale_caret_measurement_during_reconciliation() {
+        let mut old = TextBox::new().value("a");
+        let mut measurer = FixedTextMeasurer;
+        let mut context = MeasureContext::new(&mut measurer, 1.0);
+        old.measure(&mut context, Constraints::new());
+
+        old.content.push('b');
+        old.cursor_index = 2;
+        let new = TextBox::new().value("ab");
+
+        assert!(!new.content_eq(&old));
+
+        old.measure(&mut context, Constraints::new());
+        assert!(new.content_eq(&old));
+        assert_eq!(old.cursor_offset.get(), 20.0);
+    }
+
+    #[test]
+    fn constrained_textbox_keeps_intrinsic_width_for_caret_scrolling() {
+        let textbox = TextBox::new().value("abcdefgh");
+        let mut measurer = FixedTextMeasurer;
+        let mut context = MeasureContext::new(&mut measurer, 1.0);
+        let result = textbox.measure(&mut context, Constraints::new().with_max_width(30.0));
+
+        assert_eq!(result.width, 30.0);
+        assert_eq!(textbox.content_size.get().0, 80.0);
+        assert_eq!(textbox.cursor_offset.get(), 80.0);
     }
 }
