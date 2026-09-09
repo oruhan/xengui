@@ -147,19 +147,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "animation-example"
-version = "0.1.0"
-dependencies = [
- "console_error_panic_hook",
- "console_log",
- "env_logger",
- "log",
- "web-time",
- "xenframe",
- "xengui",
-]
-
-[[package]]
 name = "anstream"
 version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1017,25 +1004,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "filters-example"
-version = "0.1.0"
-dependencies = [
- "console_error_panic_hook",
- "console_log",
- "env_logger",
- "log",
- "web-sys",
- "web-time",
- "xen-clipboard",
- "xen-router",
- "xen-router-build",
- "xenframe",
- "xengui",
- "xengui-icons",
- "xengui-wgpu",
-]
-
-[[package]]
 name = "find-msvc-tools"
 version = "0.1.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1619,22 +1587,6 @@ checksum = "07293a4e297ac234359b510362495713f75ea345d5307140414f20c69ffeb087"
 dependencies = [
  "bitflags 2.13.0",
  "libc",
-]
-
-[[package]]
-name = "layout-example"
-version = "0.1.0"
-dependencies = [
- "console_error_panic_hook",
- "console_log",
- "env_logger",
- "log",
- "smol_str 0.3.6",
- "web-time",
- "xen-clipboard",
- "xenframe",
- "xengui",
- "xengui-icons",
 ]
 
 [[package]]
@@ -2838,25 +2790,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "router-example"
-version = "0.1.0"
-dependencies = [
- "console_error_panic_hook",
- "console_log",
- "env_logger",
- "log",
- "web-sys",
- "web-time",
- "xen-clipboard",
- "xen-router",
- "xen-router-build",
- "xenframe",
- "xengui",
- "xengui-icons",
- "xengui-wgpu",
-]
-
-[[package]]
 name = "roxmltree"
 version = "0.20.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2946,19 +2879,6 @@ name = "scopeguard"
 version = "1.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "94143f37725109f92c262ed2cf5e59bce7498c01bcc1502d7b9afe439a4e9f49"
-
-[[package]]
-name = "scroll-example"
-version = "0.1.0"
-dependencies = [
- "console_error_panic_hook",
- "console_log",
- "env_logger",
- "log",
- "xen-clipboard",
- "xenframe",
- "xengui",
-]
 
 [[package]]
 name = "sctk-adwaita"
@@ -4077,22 +3997,6 @@ dependencies = [
  "raw-window-handle",
  "static_assertions",
  "web-sys",
-]
-
-[[package]]
-name = "widgets-catalog"
-version = "0.1.0"
-dependencies = [
- "console_error_panic_hook",
- "console_log",
- "env_logger",
- "log",
- "smol_str 0.3.6",
- "web-time",
- "xen-clipboard",
- "xenframe",
- "xengui",
- "xengui-icons",
 ]
 
 [[package]]

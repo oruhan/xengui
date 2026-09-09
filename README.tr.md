@@ -105,17 +105,17 @@ Uygulamayı `cargo run` ile çalıştırın.
 Repository root dizininden:
 
 ```bash
-cargo run -p widgets-catalog
+cargo run -p xengui_website
 ```
 
-Diğer kullanışlı hedefler arasında `animation-example`, `filters-example`, `layout-example`, `router-example`, `scroll-example`, `settings-app`, `pearl` ve `xengui_website` bulunur.
+Diğer kullanışlı hedefler arasında `settings-app` ve `pearl` bulunur.
 
 Tarayıcı build'i için:
 
 ```bash
 rustup target add wasm32-unknown-unknown
 cargo install trunk
-cd examples/widgets_catalog
+cd apps/xengui_website
 trunk serve --open
 ```
 

@@ -105,17 +105,17 @@ Run the application with `cargo run`.
 From the repository root:
 
 ```bash
-cargo run -p widgets-catalog
+cargo run -p xengui_website
 ```
 
-Other useful targets include `animation-example`, `filters-example`, `layout-example`, `router-example`, `scroll-example`, `settings-app`, `pearl`, and `xengui_website`.
+Other useful targets include `settings-app` and `pearl`.
 
 For a browser build:
 
 ```bash
 rustup target add wasm32-unknown-unknown
 cargo install trunk
-cd examples/widgets_catalog
+cd apps/xengui_website
 trunk serve --open
 ```
 
@@ -130,7 +130,7 @@ cargo install --path crates/xengui-cli
 xengui --help
 ```
 
-`xengui run` starts `widgets-catalog` by default; pass `--package <NAME>` for another application. The `build`, `check`, and `test` commands wrap their Cargo equivalents for the full workspace. Extra Cargo arguments go after `--`.
+`xengui run` starts `xengui_website` by default; pass `--package <NAME>` for another application. The `build`, `check`, and `test` commands wrap their Cargo equivalents for the full workspace. Extra Cargo arguments go after `--`.
 
 Version operations discover every workspace package and keep path-dependency requirements synchronized. Mutating operations are previews unless explicitly confirmed:
 
