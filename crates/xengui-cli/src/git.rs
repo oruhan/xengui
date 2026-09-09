@@ -79,21 +79,23 @@ pub fn analyze(workspace: &Workspace) -> Result<ChangeAnalysis> {
         .any(|path| path.starts_with("crates/") && path.ends_with("/Cargo.toml"));
 
     let (level, reason) = if explicit_breaking || removed_public > 0 || removed_feature {
-        let detail = match (explicit_breaking, removed_public) {
+        let detail = match (explicit_breaking, removed_public > 0) {
             (true, _) => "the changes explicitly declare a breaking change".to_owned(),
-            (false, count) if count > 0 => {
-                format!("{count} removed or changed public API declaration(s) may break callers")
+            (false, true) => {
+                format!(
+                    "{removed_public} removed or changed public API declaration(s) may break callers"
+                )
             }
-            (false, _) => "a Cargo feature appears to have been removed".to_owned(),
+            (false, false) => "a Cargo feature appears to have been removed".to_owned(),
         };
         (ChangeLevel::Major, detail)
     } else if added_public > 0 || added_feature || added_workspace_crate {
-        let detail = match (added_public, added_workspace_crate) {
-            (count, _) if count > 0 => {
-                format!("{count} backwards-compatible public API declaration(s) were added")
+        let detail = match (added_public > 0, added_workspace_crate) {
+            (true, _) => {
+                format!("{added_public} backwards-compatible public API declaration(s) were added")
             }
-            (0, true) => "a backwards-compatible workspace crate was added".to_owned(),
-            (0, false) => {
+            (false, true) => "a backwards-compatible workspace crate was added".to_owned(),
+            (false, false) => {
                 "a backwards-compatible Cargo feature appears to have been added".to_owned()
             }
         };
