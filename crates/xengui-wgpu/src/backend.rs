@@ -266,12 +266,18 @@ impl<'a> WgpuFrame<'a> {
         chain: &FilterChain,
         bounds: (f32, f32, f32, f32),
         clip_rect: Option<(f32, f32, f32, f32)>,
+        radius: [f32; 4],
         target_view: &wgpu::TextureView,
         target_width: u32,
         target_height: u32,
     ) {
         let (bx, by, bw, bh) = bounds;
-        let (pad_left, pad_top, pad_right, pad_bottom) = box_shadow_overflow(cmds, bounds);
+        let rounded_clip = radius.iter().any(|value| *value > 0.0);
+        let (pad_left, pad_top, pad_right, pad_bottom) = if rounded_clip {
+            (0.0, 0.0, 0.0, 0.0)
+        } else {
+            box_shadow_overflow(cmds, bounds)
+        };
         let cap_x = bx - pad_left;
         let cap_y = by - pad_top;
         let cap_w = bw + pad_left + pad_right;
@@ -313,12 +319,16 @@ impl<'a> WgpuFrame<'a> {
             chain,
             self.scale_factor,
         );
-        let raw_destination = (
-            cap_x - filtered.padding,
-            cap_y - filtered.padding,
-            filtered.width as f32,
-            filtered.height as f32,
-        );
+        let raw_destination = if rounded_clip {
+            bounds
+        } else {
+            (
+                cap_x - filtered.padding,
+                cap_y - filtered.padding,
+                filtered.width as f32,
+                filtered.height as f32,
+            )
+        };
         let Some((destination, source_uv)) =
             clipped_composite_rect(raw_destination, target_width as f32, target_height as f32)
         else {
@@ -335,7 +345,7 @@ impl<'a> WgpuFrame<'a> {
             target_width,
             target_height,
             source_uv,
-            [0.0; 4],
+            radius,
         );
     }
 
@@ -809,6 +819,7 @@ impl<'a> WgpuFrame<'a> {
                         &nested.chain,
                         nested.bounds,
                         nested.clip_rect,
+                        nested.radius,
                         target_view,
                         target_width,
                         target_height,
@@ -1169,6 +1180,28 @@ impl<'a> RenderBackend for WgpuFrame<'a> {
             chain,
             bounds,
             clip_rect,
+            [0.0; 4],
+            &view,
+            self.width,
+            self.height,
+        );
+    }
+
+    fn draw_filtered_rounded(
+        &mut self,
+        cmds: &[DrawCommand],
+        chain: &FilterChain,
+        bounds: (f32, f32, f32, f32),
+        clip_rect: Option<(f32, f32, f32, f32)>,
+        radius: [f32; 4],
+    ) {
+        let view = self.view.clone();
+        self.draw_filtered_to_target(
+            cmds,
+            chain,
+            bounds,
+            clip_rect,
+            radius,
             &view,
             self.width,
             self.height,

@@ -202,6 +202,7 @@ pub fn page(_params: &RouteParams) -> Box<dyn Widget> {
                         .color(|theme: &Theme| theme.background)
                         .padding(Edges::symmetric(18.0, 12.0))
                         .border(Border::all(0.0, Color::TRANSPARENT).radius(10.0))
+                        .content_scale(1.0)
                         .transition_all(
                             Transition::new(Duration::from_millis(140)).easing(Easing::EaseOut),
                         )

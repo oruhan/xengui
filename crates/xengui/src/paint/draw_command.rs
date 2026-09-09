@@ -183,6 +183,9 @@ pub struct FilteredCommand {
     pub bounds: (f32, f32, f32, f32),
     /// The `clip_rect` value carried by this type.
     pub clip_rect: Option<(f32, f32, f32, f32)>,
+    /// Corner radii used when compositing the isolated subtree. Zeroes keep
+    /// the existing rectangular behavior.
+    pub radius: [f32; 4],
 }
 
 /// A live snapshot-and-filter pass: captures whatever has already been

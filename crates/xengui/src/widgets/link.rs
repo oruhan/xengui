@@ -336,7 +336,7 @@ impl Widget for Link {
         if let Some((sel_left, sel_right)) = sel_bounds {
             let text_right = text_x + content_w;
             if sel_left > text_x {
-                ctx.draw_text(TextCommand {
+                ctx.draw_content_text(TextCommand {
                     text: self.content.clone(),
                     position: (text_x, text_y),
                     style: text_style.clone(),
@@ -345,7 +345,7 @@ impl Widget for Link {
                 });
             }
             if sel_right < text_right {
-                ctx.draw_text(TextCommand {
+                ctx.draw_content_text(TextCommand {
                     text: self.content.clone(),
                     position: (text_x, text_y),
                     style: text_style.clone(),
@@ -359,7 +359,7 @@ impl Widget for Link {
                 });
             }
         } else {
-            ctx.draw_text(TextCommand {
+            ctx.draw_content_text(TextCommand {
                 text: self.content.clone(),
                 position: (text_x, text_y),
                 style: text_style.clone(),
@@ -371,7 +371,7 @@ impl Widget for Link {
         if let (Some((sel_left, sel_right)), Some(sel_fg)) = (sel_bounds, style.selection_color) {
             let mut sel_style = text_style;
             sel_style.color = Some(sel_fg);
-            ctx.draw_text(TextCommand {
+            ctx.draw_content_text(TextCommand {
                 text: self.content.clone(),
                 position: (text_x, text_y),
                 style: sel_style,
