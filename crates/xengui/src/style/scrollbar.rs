@@ -1,12 +1,5 @@
 use crate::{Color, DEFAULT_SCROLLBAR_THUMB_THICKNESS, current_theme};
 
-// Touch-primary platforms default their scrollbar step-arrows to hidden,
-// matching the native scrollbar convention there; `StyleBuilder::scrollbar_show_arrows`
-// still overrides this per-widget on any platform.
-fn is_touch_platform() -> bool {
-    crate::platform::is_touch_platform()
-}
-
 #[derive(Clone, Copy, Debug, PartialEq, Default)]
 /// Data and behavior represented by `ScrollbarStyle`.
 pub struct ScrollbarStyle {
@@ -64,7 +57,7 @@ impl ScrollbarStyle {
             thickness,
             thumb_color,
             track_color: self.track_color.unwrap_or(theme.scrollbar_track),
-            button_color: self.button_color.unwrap_or(thumb_color),
+            button_color: self.button_color.unwrap_or(theme.scrollbar_button),
             arrow_color: self.arrow_color.unwrap_or(theme.scrollbar_arrow),
             min_thumb_length: self.min_thumb_length.unwrap_or(thickness * 1.5),
             thumb_radius: self.thumb_radius.unwrap_or(thickness * 2.0),
@@ -76,7 +69,9 @@ impl ScrollbarStyle {
             track_border_color: self
                 .track_border_color
                 .unwrap_or(theme.scrollbar_track_border),
-            show_arrows: self.show_arrows.unwrap_or(!is_touch_platform()),
+            // Modern overlay scrollbars omit step buttons on every platform.
+            // `scrollbar_show_arrows(true)` remains an explicit opt-in.
+            show_arrows: self.show_arrows.unwrap_or(false),
         }
     }
 }
@@ -133,5 +128,27 @@ impl ResolvedScrollbar {
 impl Default for ResolvedScrollbar {
     fn default() -> Self {
         ScrollbarStyle::default().resolve()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn modern_defaults_hide_arrows_and_use_a_transparent_track() {
+        let resolved = ScrollbarStyle::default().resolve();
+        assert!(!resolved.show_arrows);
+        assert_eq!(resolved.track_color, Color::TRANSPARENT);
+    }
+
+    #[test]
+    fn arrows_remain_explicitly_customizable() {
+        let resolved = ScrollbarStyle {
+            show_arrows: Some(true),
+            ..Default::default()
+        }
+        .resolve();
+        assert!(resolved.show_arrows);
     }
 }

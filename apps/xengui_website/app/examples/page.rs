@@ -4,9 +4,9 @@ use xengui::*;
 
 fn example_card(kind: &str, title: &str, desc: &str, preview: impl Widget + 'static) -> View {
     let viewport_width = viewport_size().0;
-    let text_width = if responsive_bool(Breakpoint::Lg, true) {
+    let text_width = if responsive_bool(Breakpoint::Large, true) {
         ((viewport_width - 272.0) * 0.31 - 36.0).clamp(200.0, 420.0)
-    } else if responsive_bool(Breakpoint::Md, true) {
+    } else if responsive_bool(Breakpoint::Expanded, true) {
         ((viewport_width - 144.0) * 0.48 - 36.0).clamp(200.0, 420.0)
     } else {
         (viewport_width - 76.0).clamp(200.0, 420.0)

@@ -22,15 +22,16 @@ fn panel_header(title: &str, meta: &str, dark: bool) -> View {
                     Color::NEUTRAL_800
                 }),
         )
-        .child(Label::new().label(meta).font_size(10.0).color(if dark {
-            Color::NEUTRAL_500
-        } else {
-            Color::NEUTRAL_500
-        }))
+        .child(
+            Label::new()
+                .label(meta)
+                .font_size(10.0)
+                .color(Color::NEUTRAL_500),
+        )
 }
 
 pub fn page(_params: &RouteParams) -> Box<dyn Widget> {
-    let stacked = !responsive_bool(Breakpoint::Lg, true);
+    let stacked = !responsive_bool(Breakpoint::Large, true);
     let content_width = (viewport_size().0 - 40.0).clamp(280.0, 620.0);
 
     let intro = Column::new()

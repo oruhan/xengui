@@ -56,7 +56,26 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 Native targets use `winit` windows. Browser targets attach to the canvas declared by the application's `index.html`; use Trunk to build and serve the application. Mobile-browser IME support uses a hidden HTML input managed by the runtime.
 
-GPU policy is available through `AppConfig::renderer`. Its defaults select broadly compatible backends, vsync presentation, conservative device limits, and adapter-clamped 4× MSAA for tessellated geometry.
+GPU policy is available through `AppConfig::renderer`. Desktop defaults use vsync and 4× MSAA. Android defaults favor the high-performance adapter, one queued frame, and 1× MSAA to reduce mobile bandwidth; applications can override every renderer option. Android activity suspend/resume retains the GPU core and frame cache, reattaches only the native surface, and presents the retained scene before revealing the window.
+
+Material ripple feedback defaults to Android and Linux, while WebAssembly is opt-in. Configure it application-wide through `AppConfig::ripple`:
+
+```rust
+use xenframe::AppConfig;
+use xengui::{RippleConfig, RipplePlatforms};
+
+let config = AppConfig {
+    ripple: RippleConfig {
+        enabled: true,
+        platforms: RipplePlatforms::ALL,
+        strength: 0.8,
+        duration_scale: 1.0,
+    },
+    ..Default::default()
+};
+```
+
+The default is Google's GPU-procedural patterned ripple: a soft wave plus an animated sparkle field, with 450 ms enter and 375 ms exit phases. Clickable widgets also expose `.ripple(false)`, `.ripple_strength(...)`, `.ripple_duration_scale(...)`, and `.ripple_color(...)` overrides. A global `enabled: false` remains a master off switch.
 
 ## Documentation and support
 

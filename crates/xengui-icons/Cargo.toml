@@ -11,8 +11,5 @@ readme = "README.md"
 keywords = ["gui", "icons", "svg", "lucide", "material"]
 categories = ["gui"]
 
-[dependencies]
-xen-svg = { workspace = true }
-
 [lints]
 workspace = true

@@ -115,7 +115,7 @@ impl Render for ShowcasePage {
 
         // Small screens default to a collapsed sidebar unless the user
         // explicitly opened it, matching a typical mobile chat layout.
-        let mobile = !responsive_bool(Breakpoint::Md, true);
+        let mobile = !responsive_bool(Breakpoint::Expanded, true);
         let effective_collapsed = collapsed || mobile;
 
         let sidebar_width = if effective_collapsed {

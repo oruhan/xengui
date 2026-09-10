@@ -2,39 +2,14 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use web_time::Duration;
 use xen_router::Router;
-use xenframe::{ App, AppConfig, AppThemeMode, WindowPosition };
+use xenframe::{App, AppConfig, AppThemeMode, WindowPosition};
 use xengui::{
-    Align,
-    Border,
-    BorderRadius,
-    Breakpoint,
-    Color,
-    Display,
-    Easing,
-    Edges,
-    FlexDirection,
-    FontWeight,
-    JustifyContent,
-    Label,
-    Length,
-    Overflow,
-    ScrollState,
-    SetState,
-    StyleBuilder,
-    Switch,
-    TextBox,
-    Theme,
-    Transition,
-    VariableIcon,
-    View,
-    Widget,
-    pct,
-    px,
-    responsive_bool,
-    use_effect,
-    use_state,
+    Align, Border, BorderRadius, Breakpoint, Color, Display, Easing, Edges, FlexDirection,
+    FontWeight, JustifyContent, Label, Length, Overflow, ScrollState, SetState, StyleBuilder,
+    Switch, TextBox, Theme, Transition, VariableIcon, View, Widget, pct, px, responsive_bool,
+    use_effect, use_state,
 };
-use xengui_icons::{ IconAxes, codepoints };
+use xengui_icons::{IconAxes, codepoints};
 
 const BACKGROUND: Color = Color::rgb(15, 23, 24);
 const CARD: Color = Color::rgb(32, 43, 46);
@@ -51,7 +26,11 @@ thread_local! {
 fn route_scroll_state(route: impl Into<String>) -> ScrollState {
     let route = route.into();
     ROUTE_SCROLL_STATES.with(|states| {
-        states.borrow_mut().entry(route).or_insert_with(ScrollState::new).clone()
+        states
+            .borrow_mut()
+            .entry(route)
+            .or_insert_with(ScrollState::new)
+            .clone()
     })
 }
 
@@ -361,14 +340,12 @@ fn page_motion() -> Transition {
 }
 
 fn icon(codepoint: char, size: f32, filled: bool) -> VariableIcon {
-    VariableIcon::new(codepoint)
-        .size(size)
-        .axes(
-            IconAxes::default()
-                .fill(if filled { 1.0 } else { 0.0 })
-                .weight(500.0)
-                .optical_size(size)
-        )
+    VariableIcon::new(codepoint).size(size).axes(
+        IconAxes::default()
+            .fill(if filled { 1.0 } else { 0.0 })
+            .weight(500.0)
+            .optical_size(size),
+    )
 }
 
 fn platform_top_inset() -> f32 {
@@ -377,16 +354,19 @@ fn platform_top_inset() -> f32 {
 
 fn page_shell(child: impl Widget + 'static) -> Box<dyn Widget> {
     let (entered, set_entered) = use_state(false);
-    use_effect(move || {
-        xengui::task::spawn(async move {
-            // Keep the entering offset on screen for one committed frame
-            // so the transition manager has a real starting value.
-            xengui::task::yield_now().await;
-            set_entered.set(true);
-        });
-    }, ());
+    use_effect(
+        move || {
+            xengui::task::spawn(async move {
+                // Keep the entering offset on screen for one committed frame
+                // so the transition manager has a real starting value.
+                xengui::task::yield_now().await;
+                set_entered.set(true);
+            });
+        },
+        (),
+    );
 
-    let (enter_x, enter_y) = if xengui::current_breakpoint() >= Breakpoint::Sm {
+    let (enter_x, enter_y) = if xengui::current_breakpoint() >= Breakpoint::Medium {
         (0.0, -48.0)
     } else {
         match xen_router::navigation_direction() {
@@ -413,26 +393,16 @@ fn page_shell(child: impl Widget + 'static) -> Box<dyn Widget> {
                     .width(pct!(100.0))
                     .max_width(px!(720.0))
                     .height(pct!(100.0))
-                    .margin(
-                        Edges::only(
-                            if entered {
-                                0.0
-                            } else {
-                                enter_x
-                            },
-                            if entered {
-                                0.0
-                            } else {
-                                enter_y
-                            },
-                            0.0,
-                            0.0
-                        )
-                    )
+                    .margin(Edges::only(
+                        if entered { 0.0 } else { enter_x },
+                        if entered { 0.0 } else { enter_y },
+                        0.0,
+                        0.0,
+                    ))
                     .transition_all(page_motion())
                     .background(BACKGROUND)
-                    .child(child)
-            )
+                    .child(child),
+            ),
     )
 }
 
@@ -465,7 +435,7 @@ fn search_entry() -> View {
                 .label("Search Settings")
                 .font_size(px!(22.0))
                 .line_height(px!(28.0))
-                .color(MUTED)
+                .color(MUTED),
         )
         .on_click(|_| xen_router::push("/search"))
 }
@@ -486,7 +456,9 @@ fn profile_card() -> View {
         .transition_colors(effect_motion())
         .hover_style(|style, _| style.background(Color::rgb(43, 55, 58)).scale(1.01))
         .pressed_style(|style, _| {
-            style.background(Color::rgb(43, 55, 58)).border(Border::all(0.0, CARD).radius(16.0))
+            style
+                .background(Color::rgb(43, 55, 58))
+                .border(Border::all(0.0, CARD).radius(16.0))
         })
         .child(
             View::new()
@@ -498,7 +470,7 @@ fn profile_card() -> View {
                 .background(Color::rgb(111, 181, 255))
                 .color(Color::rgb(0, 56, 101))
                 .border(Border::all(0.0, Color::TRANSPARENT).radius(24.0))
-                .child(icon(codepoints::PERSON, 28.0, true))
+                .child(icon(codepoints::PERSON, 28.0, true)),
         )
         .child(
             View::new()
@@ -511,15 +483,15 @@ fn profile_card() -> View {
                         .font_size(px!(20.0))
                         .line_height(px!(28.0))
                         .font_weight(FontWeight::Bold)
-                        .color(TEXT)
+                        .color(TEXT),
                 )
                 .child(
                     Label::new()
                         .label("Google services and preferences")
                         .font_size(px!(16.0))
                         .line_height(px!(24.0))
-                        .color(MUTED)
-                )
+                        .color(MUTED),
+                ),
         )
         .on_click(|_| xen_router::push("/profile"))
 }
@@ -555,7 +527,9 @@ fn category_row(category: Category, first: bool, last: bool) -> View {
                 .scale(1.01)
         })
         .pressed_style(|style, _| {
-            style.background(Color::rgb(43, 55, 58)).border(Border::all(0.0, CARD).radius(16.0))
+            style
+                .background(Color::rgb(43, 55, 58))
+                .border(Border::all(0.0, CARD).radius(16.0))
         })
         .child(
             View::new()
@@ -567,7 +541,7 @@ fn category_row(category: Category, first: bool, last: bool) -> View {
                 .background(category.accent)
                 .color(category.icon_color)
                 .border(Border::all(0.0, category.accent).radius(24.0))
-                .child(icon(category.icon, 26.0, true))
+                .child(icon(category.icon, 26.0, true)),
         )
         .child(
             View::new()
@@ -580,15 +554,15 @@ fn category_row(category: Category, first: bool, last: bool) -> View {
                         .font_size(px!(20.0))
                         .line_height(px!(28.0))
                         .font_weight(FontWeight::Medium)
-                        .color(TEXT)
+                        .color(TEXT),
                 )
                 .child(
                     Label::new()
                         .label(category.subtitle)
                         .font_size(px!(16.0))
                         .line_height(px!(24.0))
-                        .color(MUTED)
-                )
+                        .color(MUTED),
+                ),
         )
         .on_click(move |_| xen_router::push(category.route))
 }
@@ -616,7 +590,11 @@ fn home_page() -> Box<dyn Widget> {
         .flex_direction(FlexDirection::Column)
         .width(pct!(100.0))
         .height(pct!(100.0))
-        .child(View::new().height(px!(platform_top_inset())).min_height(px!(platform_top_inset())))
+        .child(
+            View::new()
+                .height(px!(platform_top_inset()))
+                .min_height(px!(platform_top_inset())),
+        )
         .child(
             View::new()
                 .display(Display::Flex)
@@ -633,7 +611,7 @@ fn home_page() -> Box<dyn Widget> {
                 .child(category_group(&CATEGORIES[2..8]))
                 .child(category_group(&CATEGORIES[8..10]))
                 .child(category_group(&CATEGORIES[10..14]))
-                .child(category_group(&CATEGORIES[14..17]))
+                .child(category_group(&CATEGORIES[14..17])),
         );
     page_shell(content)
 }
@@ -668,16 +646,14 @@ fn detail_app_bar(title: &'static str, show_back: bool) -> View {
     if show_back {
         children.push(Box::new(back_button()));
     }
-    children.push(
-        Box::new(
-            Label::new()
-                .label(title)
-                .font_size(px!(22.0))
-                .line_height(px!(28.0))
-                .font_weight(FontWeight::Medium)
-                .color(TEXT)
-        )
-    );
+    children.push(Box::new(
+        Label::new()
+            .label(title)
+            .font_size(px!(22.0))
+            .line_height(px!(28.0))
+            .font_weight(FontWeight::Medium)
+            .color(TEXT),
+    ));
 
     View::new()
         .display(Display::Flex)
@@ -695,12 +671,16 @@ fn switch_row(
     checked: bool,
     set_checked: SetState<bool>,
     first: bool,
-    last: bool
+    last: bool,
 ) -> View {
     let radius = segmented_radius(first, last);
     let switch_setter = set_checked.clone();
     let target_setter = set_checked.clone();
-    let target_height = if xengui::is_touch_platform() { 48.0 } else { 32.0 };
+    let target_height = if xengui::is_touch_platform() {
+        48.0
+    } else {
+        32.0
+    };
     View::new()
         .display(Display::Flex)
         .flex_direction(FlexDirection::Row)
@@ -721,7 +701,7 @@ fn switch_row(
                 .font_size(px!(17.0))
                 .line_height(px!(24.0))
                 .color(TEXT)
-                .flex_grow(1.0)
+                .flex_grow(1.0),
         )
         .child(
             View::new()
@@ -734,8 +714,8 @@ fn switch_row(
                 .child(
                     Switch::new()
                         .checked(checked)
-                        .on_change(move |value, _| switch_setter.set(value))
-                )
+                        .on_change(move |value, _| switch_setter.set(value)),
+                ),
         )
 }
 
@@ -758,14 +738,20 @@ fn value_row(label: &'static str, value: &'static str, first: bool, last: bool) 
                 .font_size(px!(17.0))
                 .line_height(px!(24.0))
                 .color(TEXT)
-                .flex_grow(1.0)
+                .flex_grow(1.0),
         )
-        .child(Label::new().label(value).font_size(px!(15.0)).line_height(px!(20.0)).color(MUTED))
+        .child(
+            Label::new()
+                .label(value)
+                .font_size(px!(15.0))
+                .line_height(px!(20.0))
+                .color(MUTED),
+        )
 }
 
 fn detail_kind(category: Category, index: usize) -> DetailKind {
     match (category.route, index) {
-        | ("/notifications", 3)
+        ("/notifications", 3)
         | ("/sound", 4)
         | ("/display", 1)
         | ("/wallpaper", 3)
@@ -809,9 +795,13 @@ fn navigation_row(label: &'static str, route: String, first: bool, last: bool) -
                 .font_size(px!(17.0))
                 .line_height(px!(24.0))
                 .color(TEXT)
-                .flex_grow(1.0)
+                .flex_grow(1.0),
         )
-        .child(View::new().color(MUTED).child(icon(codepoints::CHEVRON_RIGHT, 24.0, false)))
+        .child(
+            View::new()
+                .color(MUTED)
+                .child(icon(codepoints::CHEVRON_RIGHT, 24.0, false)),
+        )
         .on_click(move |_| xen_router::push(route.clone()))
 }
 
@@ -837,11 +827,12 @@ fn detail_page(category: Category, show_back: bool) -> Box<dyn Widget> {
                 rows.push(Box::new(value_row(label, value, first, last)));
             }
             DetailKind::Navigation => {
-                rows.push(
-                    Box::new(
-                        navigation_row(label, format!("{}/{index}", category.route), first, last)
-                    )
-                );
+                rows.push(Box::new(navigation_row(
+                    label,
+                    format!("{}/{index}", category.route),
+                    first,
+                    last,
+                )));
             }
         }
     }
@@ -851,7 +842,11 @@ fn detail_page(category: Category, show_back: bool) -> Box<dyn Widget> {
         .flex_direction(FlexDirection::Column)
         .width(pct!(100.0))
         .height(pct!(100.0))
-        .child(View::new().height(px!(platform_top_inset())).min_height(px!(platform_top_inset())))
+        .child(
+            View::new()
+                .height(px!(platform_top_inset()))
+                .min_height(px!(platform_top_inset())),
+        )
         .child(detail_app_bar(category.title, show_back))
         .child(
             View::new()
@@ -879,23 +874,23 @@ fn detail_page(category: Category, show_back: bool) -> Box<dyn Widget> {
                                 .background(category.accent)
                                 .color(category.icon_color)
                                 .border(Border::all(0.0, category.accent).radius(36.0))
-                                .child(icon(category.icon, 36.0, true))
+                                .child(icon(category.icon, 36.0, true)),
                         )
                         .child(
                             Label::new()
                                 .label(category.subtitle)
                                 .font_size(px!(16.0))
                                 .line_height(px!(24.0))
-                                .color(MUTED)
-                        )
+                                .color(MUTED),
+                        ),
                 )
                 .child(
                     View::new()
                         .display(Display::Flex)
                         .flex_direction(FlexDirection::Column)
                         .gap(0.0, 4.0)
-                        .children_vec(rows)
-                )
+                        .children_vec(rows),
+                ),
         );
     page_shell(content)
 }
@@ -911,7 +906,7 @@ fn profile_page(show_back: bool) -> Box<dyn Widget> {
             icon_color: Color::rgb(0, 56, 101),
             details: PROFILE_DETAILS,
         },
-        show_back
+        show_back,
     )
 }
 
@@ -919,7 +914,7 @@ fn leaf_page(
     category: Category,
     title: &'static str,
     route: String,
-    show_back: bool
+    show_back: bool,
 ) -> Box<dyn Widget> {
     let content = View::new()
         .display(Display::Flex)
@@ -1003,7 +998,7 @@ fn leaf_page(
 fn nested_route_page(
     category_segment: &str,
     setting_segment: &str,
-    show_back: bool
+    show_back: bool,
 ) -> Box<dyn Widget> {
     let index = setting_segment.parse::<usize>().ok();
     let category = if category_segment == "profile" {
@@ -1017,19 +1012,19 @@ fn nested_route_page(
             details: PROFILE_DETAILS,
         })
     } else {
-        CATEGORIES.iter()
+        CATEGORIES
+            .iter()
             .copied()
             .find(|category| category.route.trim_start_matches('/') == category_segment)
     };
 
     match (category, index) {
-        (Some(category), Some(index)) if index < category.details.len() =>
-            leaf_page(
-                category,
-                category.details[index],
-                format!("/{category_segment}/{setting_segment}"),
-                show_back
-            ),
+        (Some(category), Some(index)) if index < category.details.len() => leaf_page(
+            category,
+            category.details[index],
+            format!("/{category_segment}/{setting_segment}"),
+            show_back,
+        ),
         _ => not_found_page(),
     }
 }
@@ -1060,7 +1055,7 @@ fn search_result(category: Category) -> View {
                 .background(category.accent)
                 .color(category.icon_color)
                 .border(Border::all(0.0, category.accent).radius(20.0))
-                .child(icon(category.icon, 22.0, true))
+                .child(icon(category.icon, 22.0, true)),
         )
         .child(
             Label::new()
@@ -1069,7 +1064,7 @@ fn search_result(category: Category) -> View {
                 .line_height(px!(24.0))
                 .font_weight(FontWeight::Medium)
                 .color(TEXT)
-                .flex_grow(1.0)
+                .flex_grow(1.0),
         )
         .on_click(move |_| xen_router::push(category.route))
 }
@@ -1077,12 +1072,13 @@ fn search_result(category: Category) -> View {
 fn search_page() -> Box<dyn Widget> {
     let (query, set_query) = use_state(String::new());
     let normalized = query.to_lowercase();
-    let results = CATEGORIES.iter()
+    let results = CATEGORIES
+        .iter()
         .copied()
         .filter(|category| {
-            normalized.is_empty() ||
-                category.title.to_lowercase().contains(&normalized) ||
-                category.subtitle.to_lowercase().contains(&normalized)
+            normalized.is_empty()
+                || category.title.to_lowercase().contains(&normalized)
+                || category.subtitle.to_lowercase().contains(&normalized)
         })
         .map(|category| Box::new(search_result(category)) as Box<dyn Widget>)
         .collect();
@@ -1092,7 +1088,11 @@ fn search_page() -> Box<dyn Widget> {
         .flex_direction(FlexDirection::Column)
         .width(pct!(100.0))
         .height(pct!(100.0))
-        .child(View::new().height(px!(platform_top_inset())).min_height(px!(platform_top_inset())))
+        .child(
+            View::new()
+                .height(px!(platform_top_inset()))
+                .min_height(px!(platform_top_inset())),
+        )
         .child(
             View::new()
                 .display(Display::Flex)
@@ -1133,9 +1133,9 @@ fn search_page() -> Box<dyn Widget> {
                                 .color(TEXT)
                                 .background(Color::TRANSPARENT)
                                 .border(Border::all(0.0, Color::TRANSPARENT))
-                                .on_change(move |value, _| set_query.set(value.to_owned()))
-                        )
-                )
+                                .on_change(move |value, _| set_query.set(value.to_owned())),
+                        ),
+                ),
         )
         .child(
             View::new()
@@ -1149,14 +1149,18 @@ fn search_page() -> Box<dyn Widget> {
                 .padding(Edges::only(16.0, 12.0, 16.0, 32.0))
                 .child(
                     Label::new()
-                        .label(if normalized.is_empty() { "All settings" } else { "Quick results" })
+                        .label(if normalized.is_empty() {
+                            "All settings"
+                        } else {
+                            "Quick results"
+                        })
                         .font_size(px!(14.0))
                         .line_height(px!(20.0))
                         .font_weight(FontWeight::Bold)
                         .color(MUTED)
-                        .padding(Edges::symmetric(8.0, 0.0))
+                        .padding(Edges::symmetric(8.0, 0.0)),
                 )
-                .children_vec(results)
+                .children_vec(results),
         );
     page_shell(content)
 }
@@ -1171,7 +1175,12 @@ fn not_found_page() -> Box<dyn Widget> {
         .width(pct!(100.0))
         .height(pct!(100.0))
         .child(icon(codepoints::SEARCH_OFF, 48.0, false))
-        .child(Label::new().label("Page not found").font_size(px!(24.0)).color(TEXT))
+        .child(
+            Label::new()
+                .label("Page not found")
+                .font_size(px!(24.0))
+                .color(TEXT),
+        )
         .child(back_button());
     page_shell(content)
 }
@@ -1193,15 +1202,19 @@ fn adaptive_detail_placeholder() -> Box<dyn Widget> {
                     .label("Select a setting")
                     .font_size(px!(22.0))
                     .line_height(px!(28.0))
-                    .color(TEXT)
-            )
+                    .color(TEXT),
+            ),
     )
 }
 
 fn routed_page(show_back: bool, home_on_root: bool) -> Box<dyn Widget> {
     let mut router = Router::new()
         .route("/", move |_| {
-            if home_on_root { home_page() } else { adaptive_detail_placeholder() }
+            if home_on_root {
+                home_page()
+            } else {
+                adaptive_detail_placeholder()
+            }
         })
         .route("/search", |_| search_page())
         .route("/profile", move |_| profile_page(show_back));
@@ -1222,15 +1235,15 @@ fn routed_page(show_back: bool, home_on_root: bool) -> Box<dyn Widget> {
 }
 
 fn root() -> Box<dyn Widget> {
-    if !responsive_bool(Breakpoint::Sm, true) {
+    if !responsive_bool(Breakpoint::Medium, true) {
         return routed_page(true, true);
     }
 
     let sidebar_width: Length = match xengui::current_breakpoint() {
-        Breakpoint::Sm => pct!(50.0),
-        Breakpoint::Md => px!(360.0),
-        Breakpoint::Lg | Breakpoint::Xl | Breakpoint::Xl2 => px!(412.0),
-        Breakpoint::Base => pct!(100.0),
+        Breakpoint::Medium => pct!(50.0),
+        Breakpoint::Expanded => px!(360.0),
+        Breakpoint::Large | Breakpoint::ExtraLarge => px!(412.0),
+        Breakpoint::Compact => pct!(100.0),
     };
 
     Box::new(
@@ -1248,15 +1261,15 @@ fn root() -> Box<dyn Widget> {
                     .width(sidebar_width)
                     .height(pct!(100.0))
                     .flex_shrink(1.0)
-                    .child_boxed(xengui::component("settings-list-pane", || home_page()))
+                    .child_boxed(xengui::component("settings-list-pane", home_page)),
             )
             .child(
                 View::new()
                     .height(pct!(100.0))
                     .min_width(px!(0.0))
                     .flex_grow(1.0)
-                    .child_boxed(routed_page(true, false))
-            )
+                    .child_boxed(routed_page(true, false)),
+            ),
     )
 }
 
@@ -1288,7 +1301,11 @@ fn create_app() -> App {
     });
     app.with_font(
         "Fira_Sans",
-        include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/../../assets/fonts/FiraSans-Regular.ttf")).to_vec()
+        include_bytes!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../assets/fonts/FiraSans-Regular.ttf"
+        ))
+        .to_vec(),
     );
     app.on_system_back(xen_router::back);
     app.render(root);

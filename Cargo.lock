@@ -4617,9 +4617,6 @@ dependencies = [
 [[package]]
 name = "xengui-icons"
 version = "0.1.0"
-dependencies = [
- "xen-svg",
-]
 
 [[package]]
 name = "xengui-wgpu"

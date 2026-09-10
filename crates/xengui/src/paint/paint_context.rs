@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 use super::{
-    BoxShadowCommand, CompositedCommand, DrawCommand, ImageCommand, RectCommand, StrokeCommand,
-    TextCommand, TriangleCommand, VariableIconCommand,
+    BoxShadowCommand, CompositedCommand, DrawCommand, ImageCommand, RectCommand, RippleCommand,
+    StrokeCommand, TextCommand, TriangleCommand, VariableIconCommand,
 };
 
 /// Data and behavior represented by `PaintContext`.
@@ -27,6 +27,11 @@ impl<'a> PaintContext<'a> {
     /// Returns or updates the `draw_rect` value.
     pub fn draw_rect(&mut self, command: RectCommand) {
         self.commands.push(DrawCommand::Rect(command));
+    }
+
+    /// Draws a bounded Material patterned ripple.
+    pub fn draw_ripple(&mut self, command: RippleCommand) {
+        self.commands.push(DrawCommand::Ripple(command));
     }
 
     /// Returns or updates the `draw_triangle` value.

@@ -594,7 +594,7 @@ pub fn dispatch_positional_capturing(
         };
 
         let redraw_before = ctx.redraw_requested();
-        let status = widget.event(event, ctx);
+        let status = dispatch_widget_event(widget, event, ctx);
 
         if !redraw_before && ctx.redraw_requested() && crate::devtools::is_enabled() {
             crate::devtools::log_repaint(&path, widget.debug_name(), format!("{event:?}"));
@@ -624,7 +624,7 @@ pub fn dispatch_to_path(
     match find_widget_mut(tree, path) {
         Some(widget) => {
             let redraw_before = ctx.redraw_requested();
-            let status = widget.event(event, ctx);
+            let status = dispatch_widget_event(widget, event, ctx);
             if !redraw_before && ctx.redraw_requested() && crate::devtools::is_enabled() {
                 crate::devtools::log_repaint(path, widget.debug_name(), format!("{event:?}"));
             }
@@ -691,7 +691,11 @@ pub fn any_wants_animation(tree: &[Box<dyn Widget>]) -> bool {
 }
 
 fn widget_wants_animation_recursive(widget: &dyn Widget) -> bool {
-    if widget.wants_animation_frame() {
+    if widget.wants_animation_frame()
+        || widget
+            .interaction()
+            .is_some_and(|interaction| interaction.ripple_wants_animation())
+    {
         return true;
     }
     widget
@@ -714,8 +718,12 @@ fn dispatch_animation_tick_recursive(
     dt: f32,
     ctx: &mut EventCtx,
 ) {
-    if widget.wants_animation_frame() {
-        widget.event(&(InputEvent::AnimationTick { dt }), ctx);
+    if widget.wants_animation_frame()
+        || widget
+            .interaction()
+            .is_some_and(|interaction| interaction.ripple_wants_animation())
+    {
+        dispatch_widget_event(widget, &(InputEvent::AnimationTick { dt }), ctx);
 
         // AnimationTick has no ancestor-chain lookup of its own, unlike
         // dispatch_positional, so a focus request raised from it must be
@@ -734,6 +742,38 @@ fn dispatch_animation_tick_recursive(
             dispatch_animation_tick_recursive(child.as_mut(), &child_path, dt, ctx);
         }
     }
+}
+
+fn dispatch_widget_event(
+    widget: &mut dyn Widget,
+    event: &InputEvent,
+    ctx: &mut EventCtx,
+) -> EventStatus {
+    let status = widget.event(event, ctx);
+    let should_update = matches!(
+        event,
+        InputEvent::AnimationTick { .. } | InputEvent::PointerCancel | InputEvent::FocusLost
+    ) || status == EventStatus::Handled;
+
+    if should_update {
+        let layout = *widget.layout_box();
+        if let Some(interaction) = widget.interaction_mut()
+            && (interaction.is_ripple_target() || interaction.ripple.is_active())
+            && crate::ripple::handle_event(
+                &mut interaction.ripple,
+                interaction.ripple_overrides,
+                event,
+                (
+                    layout.x + layout.width * 0.5,
+                    layout.y + layout.height * 0.5,
+                ),
+            )
+        {
+            ctx.request_redraw();
+        }
+    }
+
+    status
 }
 
 #[derive(Default)]
@@ -891,5 +931,49 @@ pub fn cancel_auto_scroll_recursive(tree: &mut [Box<dyn Widget>], ctx: &mut Even
         if let Some(children) = widget.children_mut() {
             cancel_auto_scroll_recursive(children, ctx);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{collect_focusable_paths, find_widget_mut};
+    use crate::{View, Widget, reconciler::reconcile_now};
+
+    #[test]
+    fn keyed_reorder_preserves_focus_and_hover_state() {
+        let mut old: Vec<Box<dyn Widget>> = vec![
+            Box::new(View::new().key("alpha").focusable(true)),
+            Box::new(View::new().key("beta").focusable(true)),
+        ];
+        let alpha = find_widget_mut(&mut old, "kalpha").expect("keyed alpha widget");
+        let interaction = alpha.interaction_mut().expect("view interaction");
+        interaction.focused = true;
+        interaction.hovered = true;
+
+        let new: Vec<Box<dyn Widget>> = vec![
+            Box::new(View::new().key("beta").focusable(true)),
+            Box::new(View::new().key("alpha").focusable(true)),
+        ];
+        let mut reconciled = reconcile_now(new, &mut old);
+
+        assert_eq!(collect_focusable_paths(&reconciled), ["kbeta", "kalpha"]);
+        let alpha = find_widget_mut(&mut reconciled, "kalpha").expect("reordered alpha widget");
+        let interaction = alpha.interaction().expect("view interaction");
+        assert!(interaction.focused);
+        assert!(interaction.hovered);
+    }
+
+    #[test]
+    #[ignore = "Phase 2: string paths cannot encode keys containing the path separator"]
+    fn arbitrary_widget_keys_round_trip_through_runtime_paths() {
+        let mut tree: Vec<Box<dyn Widget>> =
+            vec![Box::new(View::new().key("account.menu").focusable(true))];
+        let path = collect_focusable_paths(&tree)
+            .into_iter()
+            .next()
+            .expect("focusable path");
+
+        assert_eq!(path, "kaccount.menu");
+        assert!(find_widget_mut(&mut tree, &path).is_some());
     }
 }

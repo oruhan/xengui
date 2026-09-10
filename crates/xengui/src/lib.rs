@@ -55,6 +55,8 @@ pub mod platform;
 pub mod reconciler;
 /// Redraw scheduling abstraction.
 pub mod redraw;
+/// Material pressed-state ripple feedback and platform policy.
+pub mod ripple;
 /// Theme, layout, typography, and visual style values.
 pub mod style;
 /// Compatibility conversions for SVG colors.
@@ -103,6 +105,7 @@ pub use platform::{
     set_safe_area_insets,
 };
 pub use redraw::RedrawRequester;
+pub use ripple::{RippleConfig, RipplePlatforms, ripple_config, set_ripple_config};
 pub use style::{
     Border, BoxShadow, BoxSizing, Color, Cursor, Edges, FlexDirection, FlexWrap, FontStyle,
     FontWeight, IntoThemed, Length, Overflow, Overscroll, Style, StyleBuilder, Theme, ThemeMode,

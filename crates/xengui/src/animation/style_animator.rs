@@ -315,15 +315,15 @@ pub fn animate_computed_style(
         }
     }
 
-    if properties.contains(TransitionProperty::TYPOGRAPHY) {
-        if let Some(weight) = style.font_weight {
-            let target = weight.to_numeric() as f32;
-            let k = key(AnimProperty::FontWeight);
-            anim.set_target(k, AnimValue([target, 0.0, 0.0, 0.0]), default_transition);
-            if let Some(value) = anim.value(k) {
-                animating = true;
-                style.font_weight = Some(FontWeight::from_numeric(value.0[0].round() as u16));
-            }
+    if properties.contains(TransitionProperty::TYPOGRAPHY)
+        && let Some(weight) = style.font_weight
+    {
+        let target = weight.to_numeric() as f32;
+        let k = key(AnimProperty::FontWeight);
+        anim.set_target(k, AnimValue([target, 0.0, 0.0, 0.0]), default_transition);
+        if let Some(value) = anim.value(k) {
+            animating = true;
+            style.font_weight = Some(FontWeight::from_numeric(value.0[0].round() as u16));
         }
     }
 

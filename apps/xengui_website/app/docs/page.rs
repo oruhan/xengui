@@ -555,7 +555,7 @@ pub fn page(_params: &RouteParams) -> Box<dyn Widget> {
     let (enabled, set_enabled) = use_state(true);
     let (checked, set_checked) = use_state(false);
     let (progress, set_progress) = use_state(0.64_f32);
-    let compact = !responsive_bool(Breakpoint::Md, true);
+    let compact = !responsive_bool(Breakpoint::Expanded, true);
 
     let mut navigation = View::new()
         .display(Display::Flex)

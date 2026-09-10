@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
+use super::render_cache::MeasurementEnvironment;
 use crate::{
     LayoutBox, LayoutContext, MeasureContext, Position, RenderCache, Style, Widget, WidgetPath,
     style_to_taffy,
@@ -31,6 +32,11 @@ impl LayoutEngine {
         // current frame's viewport size during measurement and layout.
         crate::set_viewport_size(viewport_width, viewport_height);
         crate::set_current_breakpoint_from_width(viewport_width / ctx.scale_factor);
+        cache.sync_measurement_environment(MeasurementEnvironment::new(
+            crate::style::theme::theme_generation(),
+            ctx.text.font_generation(),
+            ctx.scale_factor,
+        ));
 
         Self::cascade(tree, ctx);
         let mut taffy: TaffyTree<()> = TaffyTree::new();
@@ -509,8 +515,146 @@ fn sync_scroll_recursive(widget: &mut dyn Widget) {
 
 #[cfg(test)]
 mod tests {
-    use super::translate_subtree;
-    use crate::{LayoutBox, View, Widget};
+    use super::{LayoutEngine, translate_subtree};
+    use crate::{
+        AnimationManager, Constraints, FontStyle, FontWeight, LayoutBox, LayoutContext,
+        MeasureContext, MeasureResult, PaintContext, RenderCache, Style, StyleBuilder,
+        TextMeasurer, View, Widget,
+    };
+    use std::{any::Any, cell::Cell, rc::Rc};
+
+    struct NullTextMeasurer {
+        font_generation: u64,
+    }
+
+    impl TextMeasurer for NullTextMeasurer {
+        fn font_generation(&self) -> u64 {
+            self.font_generation
+        }
+
+        fn measure(
+            &mut self,
+            _text: &str,
+            _font: Option<&str>,
+            _font_size: f32,
+            _font_weight: FontWeight,
+            _font_style: FontStyle,
+            _letter_spacing: f32,
+            _line_height: f32,
+            _max_width: Option<f32>,
+            _scale_factor: f32,
+        ) -> MeasureResult {
+            MeasureResult::new(0.0, 0.0)
+        }
+
+        fn character_offsets(
+            &mut self,
+            text: &str,
+            _font: Option<&str>,
+            _font_size: f32,
+            _font_weight: FontWeight,
+            _font_style: FontStyle,
+            _letter_spacing: f32,
+            _line_height: f32,
+            _scale_factor: f32,
+        ) -> Vec<f32> {
+            vec![0.0; text.chars().count() + 1]
+        }
+
+        fn ascent(
+            &mut self,
+            _font: Option<&str>,
+            _font_size: f32,
+            _font_weight: FontWeight,
+            _font_style: FontStyle,
+            _scale_factor: f32,
+        ) -> f32 {
+            0.0
+        }
+
+        fn descent(
+            &mut self,
+            _font: Option<&str>,
+            _font_size: f32,
+            _font_weight: FontWeight,
+            _font_style: FontStyle,
+            _scale_factor: f32,
+        ) -> f32 {
+            0.0
+        }
+
+        fn line_height(
+            &mut self,
+            _font: Option<&str>,
+            _font_size: f32,
+            _font_weight: FontWeight,
+            _font_style: FontStyle,
+            _scale_factor: f32,
+        ) -> f32 {
+            0.0
+        }
+    }
+
+    struct ScaleMeasuredWidget {
+        dirty: bool,
+        style: Style,
+        layout: LayoutBox,
+        measure_calls: Rc<Cell<u32>>,
+        intrinsic_width: f32,
+        scale_sensitive: bool,
+        seen_max_width: Rc<Cell<Option<f32>>>,
+    }
+
+    impl Widget for ScaleMeasuredWidget {
+        fn as_any(&self) -> &dyn Any {
+            self
+        }
+
+        fn as_any_mut(&mut self) -> &mut dyn Any {
+            self
+        }
+
+        fn is_dirty(&self) -> bool {
+            self.dirty
+        }
+
+        fn set_dirty(&mut self, dirty: bool) {
+            self.dirty = dirty;
+        }
+
+        fn style(&self) -> &Style {
+            &self.style
+        }
+
+        fn style_mut(&mut self) -> &mut Style {
+            &mut self.style
+        }
+
+        fn measure(&self, ctx: &mut MeasureContext, constraints: Constraints) -> MeasureResult {
+            self.measure_calls.set(self.measure_calls.get() + 1);
+            self.seen_max_width.set(constraints.max_width);
+            let scale = if self.scale_sensitive {
+                ctx.scale_factor
+            } else {
+                1.0
+            };
+            MeasureResult::new(
+                constraints.constrain_width(self.intrinsic_width * scale),
+                10.0 * scale,
+            )
+        }
+
+        fn layout(&mut self, rect: LayoutBox) {
+            self.layout = rect;
+            self.dirty = false;
+        }
+
+        fn layout_box(&self) -> &LayoutBox {
+            &self.layout
+        }
+
+        fn paint(&self, _ctx: &mut PaintContext) {}
+    }
 
     #[test]
     fn repeated_fractional_scroll_deltas_accumulate() {
@@ -528,5 +672,177 @@ mod tests {
 
         assert_eq!(view.layout_box().x, 11.0);
         assert_eq!(view.layout_box().y, 21.0);
+    }
+
+    #[test]
+    fn scale_factor_change_invalidates_cached_measurement() {
+        let calls = Rc::new(Cell::new(0));
+        let mut tree: Vec<Box<dyn Widget>> = vec![Box::new(ScaleMeasuredWidget {
+            dirty: true,
+            style: Style::default(),
+            layout: LayoutBox::default(),
+            measure_calls: calls.clone(),
+            intrinsic_width: 10.0,
+            scale_sensitive: true,
+            seen_max_width: Rc::new(Cell::new(None)),
+        })];
+        let mut text = NullTextMeasurer { font_generation: 0 };
+        let mut animations = AnimationManager::new();
+        let mut cache = RenderCache::new();
+
+        LayoutEngine::layout(
+            &mut tree,
+            &mut LayoutContext {
+                text: &mut text,
+                anim: &mut animations,
+                scale_factor: 1.0,
+            },
+            &mut cache,
+            400.0,
+            300.0,
+        );
+        assert_eq!(tree[0].layout_box().width, 10.0);
+
+        LayoutEngine::layout(
+            &mut tree,
+            &mut LayoutContext {
+                text: &mut text,
+                anim: &mut animations,
+                scale_factor: 2.0,
+            },
+            &mut cache,
+            800.0,
+            600.0,
+        );
+
+        assert_eq!(calls.get(), 2);
+        assert_eq!(tree[0].layout_box().width, 20.0);
+    }
+
+    #[test]
+    fn font_generation_change_invalidates_cached_measurement() {
+        let calls = Rc::new(Cell::new(0));
+        let mut tree: Vec<Box<dyn Widget>> = vec![Box::new(ScaleMeasuredWidget {
+            dirty: true,
+            style: Style::default(),
+            layout: LayoutBox::default(),
+            measure_calls: calls.clone(),
+            intrinsic_width: 10.0,
+            scale_sensitive: false,
+            seen_max_width: Rc::new(Cell::new(None)),
+        })];
+        let mut text = NullTextMeasurer { font_generation: 0 };
+        let mut animations = AnimationManager::new();
+        let mut cache = RenderCache::new();
+
+        LayoutEngine::layout(
+            &mut tree,
+            &mut LayoutContext {
+                text: &mut text,
+                anim: &mut animations,
+                scale_factor: 1.0,
+            },
+            &mut cache,
+            400.0,
+            300.0,
+        );
+
+        text.font_generation = 1;
+        LayoutEngine::layout(
+            &mut tree,
+            &mut LayoutContext {
+                text: &mut text,
+                anim: &mut animations,
+                scale_factor: 1.0,
+            },
+            &mut cache,
+            400.0,
+            300.0,
+        );
+
+        assert_eq!(calls.get(), 2);
+    }
+
+    #[test]
+    fn theme_generation_change_invalidates_cached_measurement() {
+        let original_theme = crate::current_theme();
+        crate::style::theme::set_current_theme(crate::Theme::light());
+
+        let calls = Rc::new(Cell::new(0));
+        let mut tree: Vec<Box<dyn Widget>> = vec![Box::new(ScaleMeasuredWidget {
+            dirty: true,
+            style: Style::default(),
+            layout: LayoutBox::default(),
+            measure_calls: calls.clone(),
+            intrinsic_width: 10.0,
+            scale_sensitive: false,
+            seen_max_width: Rc::new(Cell::new(None)),
+        })];
+        let mut text = NullTextMeasurer { font_generation: 0 };
+        let mut animations = AnimationManager::new();
+        let mut cache = RenderCache::new();
+
+        LayoutEngine::layout(
+            &mut tree,
+            &mut LayoutContext {
+                text: &mut text,
+                anim: &mut animations,
+                scale_factor: 1.0,
+            },
+            &mut cache,
+            400.0,
+            300.0,
+        );
+
+        crate::style::theme::set_current_theme(crate::Theme::dark());
+        LayoutEngine::layout(
+            &mut tree,
+            &mut LayoutContext {
+                text: &mut text,
+                anim: &mut animations,
+                scale_factor: 1.0,
+            },
+            &mut cache,
+            400.0,
+            300.0,
+        );
+
+        crate::style::theme::set_current_theme(original_theme);
+        assert_eq!(calls.get(), 2);
+    }
+
+    #[test]
+    #[ignore = "Phase 4: parent available-space is not forwarded to leaf measurement"]
+    fn parent_width_is_forwarded_as_a_measurement_constraint() {
+        let seen_max_width = Rc::new(Cell::new(None));
+        let child = ScaleMeasuredWidget {
+            dirty: true,
+            style: Style::default(),
+            layout: LayoutBox::default(),
+            measure_calls: Rc::new(Cell::new(0)),
+            intrinsic_width: 300.0,
+            scale_sensitive: false,
+            seen_max_width: seen_max_width.clone(),
+        };
+        let mut tree: Vec<Box<dyn Widget>> =
+            vec![Box::new(View::new().width(crate::px!(100.0)).child(child))];
+        let mut text = NullTextMeasurer { font_generation: 0 };
+        let mut animations = AnimationManager::new();
+        let mut cache = RenderCache::new();
+
+        LayoutEngine::layout(
+            &mut tree,
+            &mut LayoutContext {
+                text: &mut text,
+                anim: &mut animations,
+                scale_factor: 1.0,
+            },
+            &mut cache,
+            400.0,
+            300.0,
+        );
+
+        assert_eq!(seen_max_width.get(), Some(100.0));
+        assert_eq!(tree[0].children()[0].layout_box().width, 100.0);
     }
 }

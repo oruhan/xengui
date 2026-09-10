@@ -359,10 +359,10 @@ impl Theme {
             selection_border_radius: Length::px(4.0),
 
             /* Scrollbar */
-            scrollbar_thumb: Color::NEUTRAL_400,
-            scrollbar_track: Color::NEUTRAL_100,
-            scrollbar_button: Color::NEUTRAL_300,
-            scrollbar_arrow: Color::NEUTRAL_400,
+            scrollbar_thumb: Color::NEUTRAL_600.with_alpha(160),
+            scrollbar_track: Color::TRANSPARENT,
+            scrollbar_button: Color::TRANSPARENT,
+            scrollbar_arrow: Color::NEUTRAL_600,
             scrollbar_thumb_border: Color::TRANSPARENT,
             scrollbar_track_border: Color::TRANSPARENT,
 
@@ -485,10 +485,10 @@ impl Theme {
             .selection_border_radius(Length::px(4.0))
             .caret_color(Color::BLUE_500)
             // Scrollbar
-            .scrollbar_thumb(Color::NEUTRAL_400)
-            .scrollbar_track(Color::NEUTRAL_100)
-            .scrollbar_button(Color::NEUTRAL_300)
-            .scrollbar_arrow(Color::NEUTRAL_400)
+            .scrollbar_thumb(Color::NEUTRAL_600.with_alpha(160))
+            .scrollbar_track(Color::TRANSPARENT)
+            .scrollbar_button(Color::TRANSPARENT)
+            .scrollbar_arrow(Color::NEUTRAL_600)
             .scrollbar_thumb_border(Color::TRANSPARENT)
             .scrollbar_track_border(Color::TRANSPARENT)
     }
@@ -578,10 +578,10 @@ impl Theme {
             .selection_border_radius(Length::px(4.0))
             .caret_color(Color::BLUE_400)
             // Scrollbar
-            .scrollbar_thumb(Color::NEUTRAL_600)
-            .scrollbar_track(Color::NEUTRAL_900)
-            .scrollbar_button(Color::NEUTRAL_700)
-            .scrollbar_arrow(Color::NEUTRAL_600)
+            .scrollbar_thumb(Color::NEUTRAL_300.with_alpha(160))
+            .scrollbar_track(Color::TRANSPARENT)
+            .scrollbar_button(Color::TRANSPARENT)
+            .scrollbar_arrow(Color::NEUTRAL_300)
             .scrollbar_thumb_border(Color::TRANSPARENT)
             .scrollbar_track_border(Color::TRANSPARENT)
     }
@@ -1276,6 +1276,7 @@ pub enum ThemeSwitch {
 
 thread_local! {
     static CURRENT_THEME: RefCell<Theme> = RefCell::new(Theme::default());
+    static THEME_GENERATION: Cell<u64> = const { Cell::new(0) };
     static THEME_SWITCH: RefCell<Option<ThemeSwitch>> = const { RefCell::new(None) };
     // Reflects the OS light/dark preference, refreshed once per painted
     // frame from the `SystemTheme` the render backend receives (see
@@ -1284,18 +1285,40 @@ thread_local! {
     static SYSTEM_IS_DARK: Cell<bool> = const { Cell::new(true) };
 }
 
+fn advance_theme_generation() {
+    THEME_GENERATION.with(|cell| cell.set(cell.get().wrapping_add(1)));
+}
+
 /// Updates the `set_current_theme` value.
 pub fn set_current_theme(theme: Theme) {
-    CURRENT_THEME.with(|cell| {
-        *cell.borrow_mut() = theme;
+    let changed = CURRENT_THEME.with(|cell| {
+        let mut current = cell.borrow_mut();
+        if *current == theme {
+            false
+        } else {
+            *current = theme;
+            true
+        }
     });
+    if changed {
+        advance_theme_generation();
+    }
 }
 
 /// Updates the OS light/dark flag used to resolve `Theme::auto()` themes.
 /// Called once per frame by the render pipeline - not meant to be called
 /// directly by application code.
 pub fn set_system_is_dark(is_dark: bool) {
-    SYSTEM_IS_DARK.with(|cell| cell.set(is_dark));
+    let changed = SYSTEM_IS_DARK.with(|cell| cell.replace(is_dark) != is_dark);
+    let active_theme_is_auto = CURRENT_THEME.with(|cell| cell.borrow().is_auto());
+    if changed && active_theme_is_auto {
+        advance_theme_generation();
+    }
+}
+
+/// Returns the generation of the resolved theme used by layout measurement.
+pub(crate) fn theme_generation() -> u64 {
+    THEME_GENERATION.with(Cell::get)
 }
 
 /// Returns or updates the `take_theme_switch` value.
@@ -1441,5 +1464,36 @@ impl IntoThemed<f32, ValueMarker> for f32 {
 impl<F: FnOnce(&Theme) -> f32> IntoThemed<f32, FnMarker> for F {
     fn resolve_themed(self) -> f32 {
         CURRENT_THEME.with(|cell| self(&cell.borrow()))
+    }
+}
+
+#[cfg(test)]
+mod generation_tests {
+    use super::{
+        CURRENT_THEME, SYSTEM_IS_DARK, Theme, set_current_theme, set_system_is_dark,
+        theme_generation,
+    };
+    use std::cell::Cell;
+
+    #[test]
+    fn generation_advances_only_when_the_resolved_theme_can_change() {
+        let original_theme = CURRENT_THEME.with(|cell| cell.borrow().clone());
+        let original_system_is_dark = SYSTEM_IS_DARK.with(Cell::get);
+
+        let light = Theme::light();
+        set_current_theme(light.clone());
+        let explicit_generation = theme_generation();
+
+        set_current_theme(light);
+        set_system_is_dark(!original_system_is_dark);
+        assert_eq!(theme_generation(), explicit_generation);
+
+        set_current_theme(Theme::auto());
+        let auto_generation = theme_generation();
+        set_system_is_dark(original_system_is_dark);
+        assert_eq!(theme_generation(), auto_generation.wrapping_add(1));
+
+        set_current_theme(original_theme);
+        set_system_is_dark(original_system_is_dark);
     }
 }

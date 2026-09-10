@@ -24,7 +24,7 @@
 
 use crate::Widget;
 use smol_str::SmolStr;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use web_time::{Duration, Instant};
 
 struct Frame {
@@ -43,10 +43,23 @@ impl Frame {
         old_path: Vec<usize>,
     ) -> Self {
         let mut keyed_old = HashMap::new();
+        let mut new_keys = HashSet::new();
+
+        for sibling in &new_siblings {
+            if let Some(key) = sibling.get_key() {
+                assert!(
+                    new_keys.insert(key.clone()),
+                    "duplicate sibling key `{key}` during reconciliation"
+                );
+            }
+        }
 
         for (i, old) in old_siblings.iter().enumerate() {
             if let Some(key) = old.get_key() {
-                keyed_old.entry(key.clone()).or_insert(i);
+                assert!(
+                    keyed_old.insert(key.clone(), i).is_none(),
+                    "duplicate sibling key `{key}` in committed tree"
+                );
             }
         }
 
@@ -305,5 +318,269 @@ pub fn reconcile_now(
                 continue;
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{
+        Constraints, LayoutBox, MeasureContext, MeasureResult, PaintContext, Style, Widget,
+    };
+    use std::{any::Any, cell::RefCell, rc::Rc};
+
+    type EventLog = Rc<RefCell<Vec<String>>>;
+
+    struct TestWidget {
+        name: &'static str,
+        key: Option<SmolStr>,
+        retained_state: u32,
+        dirty: bool,
+        style: Style,
+        layout: LayoutBox,
+        children: Vec<Box<dyn Widget>>,
+        events: EventLog,
+        drain_old_children_on_transfer: bool,
+    }
+
+    impl TestWidget {
+        fn new(name: &'static str, key: Option<&str>, state: u32, events: &EventLog) -> Self {
+            Self {
+                name,
+                key: key.map(SmolStr::new),
+                retained_state: state,
+                dirty: true,
+                style: Style::default(),
+                layout: LayoutBox::default(),
+                children: Vec::new(),
+                events: events.clone(),
+                drain_old_children_on_transfer: false,
+            }
+        }
+
+        fn with_children(mut self, children: Vec<Box<dyn Widget>>) -> Self {
+            self.children = children;
+            self
+        }
+
+        fn draining_old_children(mut self) -> Self {
+            self.drain_old_children_on_transfer = true;
+            self
+        }
+    }
+
+    impl Widget for TestWidget {
+        fn as_any(&self) -> &dyn Any {
+            self
+        }
+
+        fn as_any_mut(&mut self) -> &mut dyn Any {
+            self
+        }
+
+        fn debug_name(&self) -> &'static str {
+            self.name
+        }
+
+        fn get_key(&self) -> Option<&SmolStr> {
+            self.key.as_ref()
+        }
+
+        fn is_dirty(&self) -> bool {
+            self.dirty
+        }
+
+        fn set_dirty(&mut self, dirty: bool) {
+            self.dirty = dirty;
+        }
+
+        fn style(&self) -> &Style {
+            &self.style
+        }
+
+        fn style_mut(&mut self) -> &mut Style {
+            &mut self.style
+        }
+
+        fn on_mount(&mut self) {
+            self.events
+                .borrow_mut()
+                .push(format!("mount:{}", self.name));
+        }
+
+        fn on_unmount(&mut self) {
+            self.events
+                .borrow_mut()
+                .push(format!("unmount:{}", self.name));
+        }
+
+        fn children(&self) -> &[Box<dyn Widget>] {
+            &self.children
+        }
+
+        fn children_mut(&mut self) -> Option<&mut Vec<Box<dyn Widget>>> {
+            Some(&mut self.children)
+        }
+
+        fn measure(&self, _ctx: &mut MeasureContext, _constraints: Constraints) -> MeasureResult {
+            MeasureResult::new(0.0, 0.0)
+        }
+
+        fn layout(&mut self, rect: LayoutBox) {
+            self.layout = rect;
+        }
+
+        fn layout_box(&self) -> &LayoutBox {
+            &self.layout
+        }
+
+        fn paint(&self, _ctx: &mut PaintContext) {}
+
+        fn content_eq(&self, other: &dyn Widget) -> bool {
+            other
+                .as_any()
+                .downcast_ref::<Self>()
+                .is_some_and(|old| self.name == old.name)
+        }
+
+        fn transfer_measured_state(&mut self, old: &dyn Widget) {
+            if let Some(old) = old.as_any().downcast_ref::<Self>() {
+                self.retained_state = old.retained_state;
+            }
+        }
+
+        fn transfer_composite_children(&mut self, old: &mut dyn Widget) {
+            if self.drain_old_children_on_transfer
+                && let Some(old) = old.as_any_mut().downcast_mut::<Self>()
+            {
+                self.children = std::mem::take(&mut old.children);
+            }
+        }
+    }
+
+    fn widget(
+        name: &'static str,
+        key: Option<&str>,
+        state: u32,
+        events: &EventLog,
+    ) -> Box<dyn Widget> {
+        Box::new(TestWidget::new(name, key, state, events))
+    }
+
+    fn state(widget: &dyn Widget) -> u32 {
+        widget
+            .as_any()
+            .downcast_ref::<TestWidget>()
+            .expect("test widget")
+            .retained_state
+    }
+
+    #[test]
+    fn keyed_reorder_preserves_each_widgets_state() {
+        let events = EventLog::default();
+        let mut old = vec![
+            widget("alpha", Some("a"), 10, &events),
+            widget("beta", Some("b"), 20, &events),
+        ];
+        let new = vec![
+            widget("beta", Some("b"), 0, &events),
+            widget("alpha", Some("a"), 0, &events),
+        ];
+
+        let reconciled = reconcile_now(new, &mut old);
+
+        assert_eq!(state(reconciled[0].as_ref()), 20);
+        assert_eq!(state(reconciled[1].as_ref()), 10);
+        assert!(events.borrow().is_empty());
+    }
+
+    #[test]
+    fn keyed_insert_and_remove_fire_lifecycle_once() {
+        let events = EventLog::default();
+        let mut old = vec![
+            widget("removed", Some("a"), 1, &events),
+            widget("retained", Some("b"), 2, &events),
+        ];
+        let new = vec![
+            widget("retained", Some("b"), 0, &events),
+            widget("inserted", Some("c"), 0, &events),
+        ];
+
+        let reconciled = reconcile_now(new, &mut old);
+
+        assert_eq!(state(reconciled[0].as_ref()), 2);
+        assert_eq!(
+            events.borrow().as_slice(),
+            ["mount:inserted", "unmount:removed"]
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "duplicate sibling key `same` during reconciliation")]
+    fn duplicate_new_sibling_keys_are_rejected() {
+        let events = EventLog::default();
+        let _ = WorkLoop::new(
+            vec![
+                widget("first", Some("same"), 0, &events),
+                widget("second", Some("same"), 0, &events),
+            ],
+            &[],
+        );
+    }
+
+    #[test]
+    fn yielded_work_resumes_to_the_same_result_as_synchronous_work() {
+        let events = EventLog::default();
+        let mut old: Vec<Box<dyn Widget>> = (0..16)
+            .map(|index| widget("item", Some(&format!("key-{index}")), index, &events))
+            .collect();
+        let new: Vec<Box<dyn Widget>> = (0..16)
+            .rev()
+            .map(|index| widget("item", Some(&format!("key-{index}")), 0, &events))
+            .collect();
+        let mut work = WorkLoop::new(new, &old);
+
+        assert!(matches!(
+            work.perform_work(&mut old, Instant::now()),
+            WorkLoopStatus::Yielded
+        ));
+
+        let complete = loop {
+            match work.perform_work(&mut old, Instant::now() + Duration::from_secs(60)) {
+                WorkLoopStatus::Yielded => continue,
+                WorkLoopStatus::Complete(tree) => break tree,
+            }
+        };
+
+        let states: Vec<u32> = complete.iter().map(|item| state(item.as_ref())).collect();
+        assert_eq!(states, (0..16).rev().collect::<Vec<_>>());
+        assert!(events.borrow().is_empty());
+    }
+
+    #[test]
+    #[ignore = "Phase 2: composite transfer currently mutates the committed tree before commit"]
+    fn yielded_reconciliation_does_not_mutate_the_committed_tree() {
+        let events = EventLog::default();
+        let old_children = (0..8)
+            .map(|index| widget("child", Some(&format!("child-{index}")), index, &events))
+            .collect();
+        let mut old: Vec<Box<dyn Widget>> = vec![Box::new(
+            TestWidget::new("composite", Some("root"), 1, &events).with_children(old_children),
+        )];
+        let new_children = (0..8)
+            .map(|index| widget("child", Some(&format!("child-{index}")), 0, &events))
+            .collect();
+        let new: Vec<Box<dyn Widget>> = vec![Box::new(
+            TestWidget::new("composite", Some("root"), 0, &events)
+                .with_children(new_children)
+                .draining_old_children(),
+        )];
+        let mut work = WorkLoop::new(new, &old);
+
+        assert!(matches!(
+            work.perform_work(&mut old, Instant::now()),
+            WorkLoopStatus::Yielded
+        ));
+        assert_eq!(old[0].children().len(), 8);
     }
 }

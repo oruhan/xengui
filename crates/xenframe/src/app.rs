@@ -95,6 +95,7 @@ pub struct App {
 impl App {
     pub fn new(config: AppConfig) -> Self {
         log::info!(target: "xengui", "app initialized");
+        xengui::set_ripple_config(config.ripple);
         Self {
             renderer: None,
             window: None,
@@ -121,7 +122,7 @@ impl App {
             devtools_ever_opened: false,
             devtools_close_requested: Rc::new(Cell::new(false)),
             pending_maximize: false,
-            last_breakpoint: xengui::Breakpoint::Base,
+            last_breakpoint: xengui::Breakpoint::Compact,
 
             #[cfg(target_os = "windows")]
             last_rendered_size: None,

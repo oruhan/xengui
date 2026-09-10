@@ -150,7 +150,7 @@ fn feature(index: &str, title: &str, text: &str) -> View {
 }
 
 pub fn page(_params: &RouteParams) -> Box<dyn Widget> {
-    let stacked = !responsive_bool(Breakpoint::Lg, true);
+    let stacked = !responsive_bool(Breakpoint::Large, true);
     let mobile_content_width = (viewport_size().0 - 40.0).clamp(280.0, 720.0);
 
     let hero_copy = Column::new()

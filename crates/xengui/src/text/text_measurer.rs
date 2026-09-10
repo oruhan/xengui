@@ -10,6 +10,16 @@ use crate::{FontStyle, FontWeight, MeasureResult};
 /// Typical implementations wrap platform APIs such as DirectWrite,
 /// CoreText, FreeType, Skia, or any future text renderer.
 pub trait TextMeasurer {
+    /// Identifies the currently loaded font collection.
+    ///
+    /// Implementations that can add, remove, or replace fonts at runtime must
+    /// advance this value whenever that collection changes. The layout cache
+    /// uses it to prevent measurements produced by an older font set from
+    /// being reused.
+    fn font_generation(&self) -> u64 {
+        0
+    }
+
     /// Measures the visual size of a string.
     ///
     /// `font_size`, `letter_spacing` and `line_height` are logical

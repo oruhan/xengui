@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
+use crate::ripple::{RippleOverrides, RippleState};
 use crate::{
     Cursor, ElementState, EventCtx, EventStatus, InputEvent, Key, KeyState, KeyboardEvent,
     MouseButton,
@@ -49,6 +50,9 @@ pub struct Interaction {
     pub on_key: Option<KeyCallback>,
     /// The `on_click` value carried by this type.
     pub on_click: Option<Callback>,
+
+    pub(crate) ripple: RippleState,
+    pub(crate) ripple_overrides: RippleOverrides,
 }
 
 impl Interaction {
@@ -70,6 +74,8 @@ impl Interaction {
             on_mouse_input: None,
             on_key: None,
             on_click: None,
+            ripple: RippleState::default(),
+            ripple_overrides: RippleOverrides::default(),
         }
     }
 
@@ -101,6 +107,7 @@ impl Interaction {
         self.focused = old.focused;
         self.focus_visible = old.focus_visible;
         self.focus_within = old.focus_within;
+        self.ripple = old.ripple;
     }
 
     fn is_activation_key(key: Key) -> bool {
@@ -279,50 +286,21 @@ impl Interaction {
             _ => EventStatus::Ignored,
         }
     }
+
+    pub(crate) fn is_ripple_target(&self) -> bool {
+        self.enabled
+            && !self.drag_region
+            && (self.focusable || self.on_click.is_some() || self.on_mouse_input.is_some())
+    }
+
+    pub(crate) fn ripple_wants_animation(&self) -> bool {
+        self.ripple.is_active()
+    }
 }
 
 impl Default for Interaction {
     fn default() -> Self {
         Self::new()
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::{cell::Cell, rc::Rc};
-
-    #[test]
-    fn pointer_cancel_prevents_release_from_clicking() {
-        let clicked = Rc::new(Cell::new(false));
-        let clicked_for_callback = clicked.clone();
-        let mut interaction = Interaction::new();
-        interaction.hovered = true;
-        interaction.on_click = Some(Box::new(move |_| clicked_for_callback.set(true)));
-        let mut ctx = EventCtx::new();
-
-        interaction.handle(
-            &InputEvent::MouseInput {
-                state: ElementState::Pressed,
-                button: MouseButton::Left,
-                position: (0.0, 0.0),
-            },
-            &mut ctx,
-        );
-        assert!(interaction.pressed);
-
-        interaction.handle(&InputEvent::PointerCancel, &mut ctx);
-        assert!(!interaction.pressed);
-
-        interaction.handle(
-            &InputEvent::MouseInput {
-                state: ElementState::Released,
-                button: MouseButton::Left,
-                position: (20.0, 20.0),
-            },
-            &mut ctx,
-        );
-        assert!(!clicked.get());
     }
 }
 
@@ -334,6 +312,39 @@ macro_rules! impl_interaction_builders {
             /// Registers a callback invoked when the widget is activated.
             pub fn on_click(mut self, f: impl FnMut(&mut $crate::EventCtx) + 'static) -> Self {
                 self.base.interaction.on_click = Some(Box::new(f));
+                if self.base.style.cursor.is_none() {
+                    // Persist this as authored style so later theme/state
+                    // recomputation cannot accidentally reset a clickable
+                    // container to the default desktop cursor.
+                    self.base.style.cursor = Some($crate::Cursor::Pointer);
+                }
+                if self.base.interaction.hover_cursor.is_none() {
+                    self.base.interaction.hover_cursor = Some($crate::Cursor::Pointer);
+                }
+                self
+            }
+
+            /// Enables or disables Material ripple feedback for this widget.
+            pub fn ripple(mut self, enabled: bool) -> Self {
+                self.base.interaction.ripple_overrides.enabled = Some(enabled);
+                self
+            }
+
+            /// Multiplies the M3 pressed-state ripple opacity for this widget.
+            pub fn ripple_strength(mut self, strength: f32) -> Self {
+                self.base.interaction.ripple_overrides.strength = Some(strength.max(0.0));
+                self
+            }
+
+            /// Scales the patterned ripple's 450 ms enter and 375 ms exit.
+            pub fn ripple_duration_scale(mut self, scale: f32) -> Self {
+                self.base.interaction.ripple_overrides.duration_scale = Some(scale.max(0.05));
+                self
+            }
+
+            /// Overrides the content-derived Material ripple color.
+            pub fn ripple_color(mut self, color: $crate::Color) -> Self {
+                self.base.interaction.ripple_overrides.color = Some(color);
                 self
             }
 
@@ -390,4 +401,51 @@ macro_rules! impl_interaction_builders {
             }
         }
     };
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::{cell::Cell, rc::Rc};
+
+    #[test]
+    fn pointer_cancel_prevents_release_from_clicking() {
+        let clicked = Rc::new(Cell::new(false));
+        let clicked_for_callback = clicked.clone();
+        let mut interaction = Interaction::new();
+        interaction.hovered = true;
+        interaction.on_click = Some(Box::new(move |_| clicked_for_callback.set(true)));
+        let mut ctx = EventCtx::new();
+
+        interaction.handle(
+            &InputEvent::MouseInput {
+                state: ElementState::Pressed,
+                button: MouseButton::Left,
+                position: (0.0, 0.0),
+            },
+            &mut ctx,
+        );
+        assert!(interaction.pressed);
+
+        interaction.handle(&InputEvent::PointerCancel, &mut ctx);
+        assert!(!interaction.pressed);
+
+        interaction.handle(
+            &InputEvent::MouseInput {
+                state: ElementState::Released,
+                button: MouseButton::Left,
+                position: (20.0, 20.0),
+            },
+            &mut ctx,
+        );
+        assert!(!clicked.get());
+    }
+
+    #[test]
+    fn on_click_builder_persists_pointer_cursor_in_style() {
+        use crate::{View, Widget};
+
+        let view = View::new().on_click(|_| {});
+        assert_eq!(view.style().cursor, Some(Cursor::Pointer));
+    }
 }

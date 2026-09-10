@@ -2,8 +2,8 @@
 use crate::{
     AnimationManager, BackdropFilterCommand, BoxShadowCommand, CompositedCommand, DrawCommand,
     FilteredCommand, ImageCommand, LayoutBox, LayoutContext, LayoutEngine, PaintContext, Position,
-    RectCommand, RenderBackend, RenderCache, StrokeCommand, SystemTheme, TriangleCommand,
-    VariableIconCommand, Widget, WidgetPath,
+    RectCommand, RenderBackend, RenderCache, RippleCommand, StrokeCommand, SystemTheme,
+    TriangleCommand, VariableIconCommand, Widget, WidgetPath,
 };
 use web_time::Instant;
 
@@ -70,6 +70,7 @@ struct FrameArena {
     focus_commands: Vec<RectCommand>,
     top_commands: Vec<DrawCommand>,
     rects: Vec<RectCommand>,
+    ripples: Vec<RippleCommand>,
     triangles: Vec<TriangleCommand>,
     images: Vec<ImageCommand>,
     shadows: Vec<BoxShadowCommand>,
@@ -86,6 +87,7 @@ impl FrameArena {
         self.focus_commands.clear();
         self.top_commands.clear();
         self.rects.clear();
+        self.ripples.clear();
         self.triangles.clear();
         self.images.clear();
         self.shadows.clear();
@@ -186,6 +188,7 @@ impl FrameRenderer {
             focus_commands,
             top_commands,
             rects: rect_buf,
+            ripples: ripple_buf,
             triangles: tri_buf,
             images: img_buf,
             shadows: shadow_buf,
@@ -226,6 +229,7 @@ impl FrameRenderer {
         #[derive(PartialEq, Clone, Copy)]
         enum RunKind {
             Rect,
+            Ripple,
             Triangle,
             Image,
             Text,
@@ -242,6 +246,7 @@ impl FrameRenderer {
             () => {
                 match current_kind {
                     Some(RunKind::Rect) => backend.draw_rects(&rect_buf),
+                    Some(RunKind::Ripple) => backend.draw_ripples(&ripple_buf),
                     Some(RunKind::Triangle) => backend.draw_triangles(&tri_buf),
                     Some(RunKind::Image) => backend.draw_images(&img_buf),
                     Some(RunKind::BoxShadow) => backend.draw_box_shadows(&shadow_buf),
@@ -261,6 +266,7 @@ impl FrameRenderer {
                     None => {}
                 }
                 rect_buf.clear();
+                ripple_buf.clear();
                 tri_buf.clear();
                 img_buf.clear();
                 shadow_buf.clear();
@@ -287,6 +293,13 @@ impl FrameRenderer {
                         current_kind = Some(RunKind::Rect);
                     }
                     rect_buf.push(cmd);
+                }
+                DrawCommand::Ripple(cmd) => {
+                    if current_kind != Some(RunKind::Ripple) {
+                        flush_run!();
+                        current_kind = Some(RunKind::Ripple);
+                    }
+                    ripple_buf.push(cmd);
                 }
                 DrawCommand::Triangle(cmd) => {
                     if current_kind != Some(RunKind::Triangle) {
@@ -378,6 +391,7 @@ impl FrameRenderer {
                 () => {
                     match top_kind {
                         Some(RunKind::Rect) => backend.draw_rects(rect_buf),
+                        Some(RunKind::Ripple) => backend.draw_ripples(ripple_buf),
                         Some(RunKind::Triangle) => backend.draw_triangles(tri_buf),
                         Some(RunKind::Image) => backend.draw_images(img_buf),
                         Some(RunKind::Text) => {
@@ -397,6 +411,7 @@ impl FrameRenderer {
                         None => {}
                     }
                     rect_buf.clear();
+                    ripple_buf.clear();
                     tri_buf.clear();
                     img_buf.clear();
                     shadow_buf.clear();
@@ -420,6 +435,13 @@ impl FrameRenderer {
                             top_kind = Some(RunKind::Rect);
                         }
                         rect_buf.push(cmd);
+                    }
+                    DrawCommand::Ripple(cmd) => {
+                        if top_kind != Some(RunKind::Ripple) {
+                            flush_top_run!();
+                            top_kind = Some(RunKind::Ripple);
+                        }
+                        ripple_buf.push(cmd);
                     }
                     DrawCommand::Triangle(cmd) => {
                         if top_kind != Some(RunKind::Triangle) {
@@ -546,6 +568,7 @@ fn union_rect(a: (f32, f32, f32, f32), b: (f32, f32, f32, f32)) -> (f32, f32, f3
 fn draw_command_bounds(command: &DrawCommand) -> Option<(f32, f32, f32, f32)> {
     match command {
         DrawCommand::Rect(c) => Some((c.position.0, c.position.1, c.size.0, c.size.1)),
+        DrawCommand::Ripple(c) => Some(c.bounds),
         DrawCommand::Triangle(c) => {
             let x0 = c.p0.0.min(c.p1.0).min(c.p2.0);
             let y0 = c.p0.1.min(c.p1.1).min(c.p2.1);
@@ -814,6 +837,15 @@ fn paint_recursive(
             clip_rect,
         };
         commands.push((z_index, DrawCommand::Filtered(Box::new(filtered_cmd))));
+        paint_ripple_inline(
+            widget,
+            layout_box,
+            clip_rect,
+            scale_factor,
+            z_index,
+            commands,
+            paint_scratch,
+        );
         paint_chrome_layers_inline(
             widget,
             clip_rect,
@@ -892,6 +924,19 @@ fn paint_recursive(
         }
     }
 
+    // Ripple feedback is live interaction chrome, so it bypasses the widget
+    // paint cache and is inserted after the target's own pixels but before
+    // descendant content.
+    paint_ripple_inline(
+        widget,
+        layout_box,
+        clip_rect,
+        scale_factor,
+        z_index,
+        commands,
+        paint_scratch,
+    );
+
     let child_clip = match widget.clip_children() {
         Some(rect) => Some(clip_intersect(clip_rect, rect)),
         None => clip_rect,
@@ -961,6 +1006,39 @@ fn paint_recursive(
         focus_commands,
         paint_scratch,
     );
+}
+
+fn paint_ripple_inline(
+    widget: &dyn Widget,
+    layout_box: LayoutBox,
+    clip_rect: Option<(f32, f32, f32, f32)>,
+    scale_factor: f32,
+    z_index: i32,
+    commands: &mut Vec<(i32, DrawCommand)>,
+    paint_scratch: &mut Vec<DrawCommand>,
+) {
+    let Some(interaction) = widget
+        .interaction()
+        .filter(|interaction| interaction.ripple.is_active())
+    else {
+        return;
+    };
+
+    paint_scratch.clear();
+    {
+        let mut paint_ctx = PaintContext::new(paint_scratch, scale_factor);
+        crate::ripple::paint(
+            interaction.ripple,
+            interaction.ripple_overrides,
+            widget.computed_style(),
+            layout_box,
+            &mut paint_ctx,
+        );
+    }
+    for mut command in paint_scratch.drain(..) {
+        apply_clip(&mut command, clip_rect);
+        commands.push((z_index, command));
+    }
 }
 
 /// Records a widget's own `paint()` output plus every descendant's,
@@ -1135,6 +1213,11 @@ fn translate_rect_command(command: &mut RectCommand, translation: Translation) {
 fn translate_draw_command(command: &mut DrawCommand, translation: Translation) {
     match command {
         DrawCommand::Rect(command) => translate_rect_command(command, translation),
+        DrawCommand::Ripple(command) => {
+            command.bounds = translation.rect(command.bounds);
+            command.origin = translation.point(command.origin);
+            translate_clip(&mut command.clip_rect, translation);
+        }
         DrawCommand::Triangle(command) => {
             command.p0 = translation.point(command.p0);
             command.p1 = translation.point(command.p1);
@@ -1207,6 +1290,7 @@ fn apply_clip(command: &mut DrawCommand, clip_rect: Option<(f32, f32, f32, f32)>
     };
     let target = match command {
         DrawCommand::Rect(cmd) => &mut cmd.clip_rect,
+        DrawCommand::Ripple(cmd) => &mut cmd.clip_rect,
         DrawCommand::Image(cmd) => &mut cmd.clip_rect,
         DrawCommand::Text(cmd) => &mut cmd.clip_rect,
         DrawCommand::Triangle(cmd) => &mut cmd.clip_rect,

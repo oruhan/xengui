@@ -3,6 +3,7 @@ name = "xengui_website"
 version = "0.1.1"
 edition = { workspace = true }
 rust-version = { workspace = true }
+license = { workspace = true }
 
 [dependencies]
 xengui = { workspace = true }

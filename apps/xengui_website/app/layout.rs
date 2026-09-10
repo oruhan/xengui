@@ -3,7 +3,7 @@ use xen_router::RouteParams;
 use xengui::*;
 
 pub fn layout(_params: &RouteParams, child: Box<dyn Widget>) -> Box<dyn Widget> {
-    let desktop = responsive_bool(Breakpoint::Md, true);
+    let desktop = responsive_bool(Breakpoint::Expanded, true);
 
     Box::new(
         View::new()
@@ -163,7 +163,7 @@ fn footer_column(title: &str, links: &[(&str, &str)]) -> View {
 }
 
 fn footer() -> Box<View> {
-    let stacked = !responsive_bool(Breakpoint::Lg, true);
+    let stacked = !responsive_bool(Breakpoint::Large, true);
 
     let brand = View::new()
         .display(Display::Flex)

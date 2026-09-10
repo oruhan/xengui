@@ -7,11 +7,29 @@ struct CachedEntry {
     commands: Vec<DrawCommand>,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct MeasurementEnvironment {
+    theme_generation: u64,
+    font_generation: u64,
+    scale_factor_bits: u32,
+}
+
+impl MeasurementEnvironment {
+    pub(crate) fn new(theme_generation: u64, font_generation: u64, scale_factor: f32) -> Self {
+        Self {
+            theme_generation,
+            font_generation,
+            scale_factor_bits: scale_factor.to_bits(),
+        }
+    }
+}
+
 #[derive(Default)]
 /// Data and behavior represented by `RenderCache`.
 pub struct RenderCache {
     entries: HashMap<String, CachedEntry>,
     measured: HashMap<String, MeasureResult>,
+    measurement_environment: Option<MeasurementEnvironment>,
     live_generation: HashMap<String, u64>,
     generation: u64,
 }
@@ -91,6 +109,16 @@ impl RenderCache {
         self.measured.insert(key.to_string(), size);
     }
 
+    /// Discards measurements produced under a different external layout
+    /// environment. Paint entries remain eligible for their own geometry and
+    /// dirty-state checks.
+    pub(crate) fn sync_measurement_environment(&mut self, environment: MeasurementEnvironment) {
+        if self.measurement_environment != Some(environment) {
+            self.measured.clear();
+            self.measurement_environment = Some(environment);
+        }
+    }
+
     /// Starts a new cache-liveness generation.
     pub fn begin_frame(&mut self) {
         self.generation = self.generation.wrapping_add(1);
@@ -124,8 +152,22 @@ impl RenderCache {
 
 #[cfg(test)]
 mod tests {
-    use super::RenderCache;
-    use crate::{DrawCommand, LayoutBox, RectCommand};
+    use super::{MeasurementEnvironment, RenderCache};
+    use crate::{DrawCommand, LayoutBox, MeasureResult, RectCommand};
+
+    #[test]
+    fn measurement_environment_change_expires_only_measurements() {
+        let mut cache = RenderCache::new();
+        let initial = MeasurementEnvironment::new(1, 2, 1.0);
+        cache.sync_measurement_environment(initial);
+        cache.store_measure("text", MeasureResult::new(10.0, 20.0));
+
+        cache.sync_measurement_environment(initial);
+        assert!(cache.cached_measure("text").is_some());
+
+        cache.sync_measurement_environment(MeasurementEnvironment::new(1, 3, 1.0));
+        assert!(cache.cached_measure("text").is_none());
+    }
 
     #[test]
     fn liveness_generations_reuse_path_storage_and_expire_old_paths() {

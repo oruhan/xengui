@@ -25,6 +25,9 @@ pub struct AppConfig {
     /// GPU backend, presentation, and multisampling policy.
     pub renderer: xengui_wgpu::RendererOptions,
 
+    /// Material pressed-state ripple policy.
+    pub ripple: xengui::RippleConfig,
+
     /// Initial window width in pixels.
     #[cfg(not(target_arch = "wasm32"))]
     pub width: u32,
@@ -110,6 +113,7 @@ impl Default for AppConfig {
         Self {
             title: "XenGui App".to_string(),
             renderer: xengui_wgpu::RendererOptions::default(),
+            ripple: xengui::RippleConfig::default(),
 
             #[cfg(not(target_arch = "wasm32"))]
             width: 800,

@@ -1,0 +1,44 @@
+[graph]
+targets = [
+    "x86_64-unknown-linux-gnu",
+    "x86_64-pc-windows-msvc",
+    "wasm32-unknown-unknown",
+]
+all-features = true
+
+[advisories]
+ignore = [
+    { id = "RUSTSEC-2024-0436", reason = "paste is transitive through lofty, image 0.24 build tooling, and woff2-patched; the advisory reports unmaintained status and offers no safe upgrade" },
+    { id = "RUSTSEC-2026-0192", reason = "ttf-parser is transitive through current text and window stacks; the advisory reports unmaintained status and offers no safe upgrade" },
+    { id = "RUSTSEC-2026-0194", reason = "quick-xml is constrained to 0.39 by wayland-scanner and only parses vendored protocol XML during the build; 0.41 is not semver-compatible upstream" },
+    { id = "RUSTSEC-2026-0195", reason = "quick-xml is constrained to 0.39 by wayland-scanner and only parses vendored protocol XML during the build; 0.41 is not semver-compatible upstream" },
+]
+
+[licenses]
+confidence-threshold = 0.93
+allow = [
+    "0BSD",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "CC0-1.0",
+    "ISC",
+    "MIT",
+    "MPL-2.0",
+    "Unicode-3.0",
+    "Zlib",
+]
+
+[bans]
+multiple-versions = "warn"
+wildcards = "deny"
+highlight = "all"
+workspace-default-features = "allow"
+external-default-features = "allow"
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+allow-git = []

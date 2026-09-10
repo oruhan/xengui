@@ -1,19 +1,20 @@
 // SPDX-License-Identifier: Apache-2.0
 use crate::pipelines::postprocess::{BlitPass, directional_shadow_padding, padding_for_chain};
 use crate::pipelines::{
-    ImagePipeline, PostProcessEngine, RectPipeline, StrokePipeline, TextPipeline, TrianglePipeline,
-    VariableIconPipeline,
+    ImagePipeline, PostProcessEngine, RectPipeline, RipplePipeline, StrokePipeline, TextPipeline,
+    TrianglePipeline, VariableIconPipeline,
 };
 use xengui::{
     BoxShadowCommand, Color, CompositedCommand, DrawCommand, FilterChain, ImageCommand,
-    RectCommand, RenderBackend, StrokeCommand, SystemTheme, TextCommand, TextMeasurer,
-    TriangleCommand, VariableIconCommand,
+    RectCommand, RenderBackend, RippleCommand, StrokeCommand, SystemTheme, TextCommand,
+    TextMeasurer, TriangleCommand, VariableIconCommand,
 };
 
 /// Owns the four wgpu render pipelines xengui needs, built once against a
 /// device and reused across every frame via `begin_frame`.
 pub struct WgpuPipelines {
     pub(crate) rect: RectPipeline,
+    ripple: RipplePipeline,
     triangle: TrianglePipeline,
     triangle_offscreen: TrianglePipeline,
     stroke: StrokePipeline,
@@ -82,6 +83,7 @@ impl WgpuPipelines {
 
         Ok(Self {
             rect: RectPipeline::new(device, surface_format, 1),
+            ripple: RipplePipeline::new(device, surface_format),
             triangle: TrianglePipeline::new(device, surface_format, triangle_sample_count),
             triangle_offscreen: TrianglePipeline::new(device, surface_format, 1),
             stroke: StrokePipeline::new(device, surface_format, 1),
@@ -215,6 +217,7 @@ impl WgpuPipelines {
         self.ensure_scene_target(device, width, height);
         self.ensure_triangle_msaa_target(device, width, height);
         self.rect.reset_frame();
+        self.ripple.reset_frame();
         self.triangle.reset_frame();
         self.triangle_offscreen.reset_frame();
         self.stroke.reset_frame();
@@ -259,6 +262,12 @@ pub struct WgpuFrame<'a> {
     text_cmds: Vec<(SystemTheme, TextCommand)>,
 }
 
+struct RenderTarget<'a> {
+    view: &'a wgpu::TextureView,
+    width: u32,
+    height: u32,
+}
+
 impl<'a> WgpuFrame<'a> {
     fn draw_filtered_to_target(
         &mut self,
@@ -266,9 +275,7 @@ impl<'a> WgpuFrame<'a> {
         chain: &FilterChain,
         bounds: (f32, f32, f32, f32),
         clip_rect: Option<(f32, f32, f32, f32)>,
-        target_view: &wgpu::TextureView,
-        target_width: u32,
-        target_height: u32,
+        target: RenderTarget<'_>,
     ) {
         let (bx, by, bw, bh) = bounds;
         let (pad_left, pad_top, pad_right, pad_bottom) = box_shadow_overflow(cmds, bounds);
@@ -320,7 +327,7 @@ impl<'a> WgpuFrame<'a> {
             filtered.height as f32,
         );
         let Some((destination, source_uv)) =
-            clipped_composite_rect(raw_destination, target_width as f32, target_height as f32)
+            clipped_composite_rect(raw_destination, target.width as f32, target.height as f32)
         else {
             return;
         };
@@ -329,11 +336,11 @@ impl<'a> WgpuFrame<'a> {
             self.queue,
             self.encoder,
             &filtered.view,
-            target_view,
+            target.view,
             destination,
             clip_rect,
-            target_width,
-            target_height,
+            target.width,
+            target.height,
             source_uv,
             [0.0; 4],
         );
@@ -493,6 +500,7 @@ impl<'a> WgpuFrame<'a> {
         #[derive(PartialEq, Clone, Copy)]
         enum RunKind {
             Rect,
+            Ripple,
             Triangle,
             Image,
             Text,
@@ -504,6 +512,7 @@ impl<'a> WgpuFrame<'a> {
 
         let mut current_kind: Option<RunKind> = None;
         let mut rect_buf: Vec<RectCommand> = Vec::new();
+        let mut ripple_buf: Vec<RippleCommand> = Vec::new();
         let mut tri_buf: Vec<TriangleCommand> = Vec::new();
         let mut img_buf: Vec<ImageCommand> = Vec::new();
         let mut shadow_buf: Vec<BoxShadowCommand> = Vec::new();
@@ -573,6 +582,17 @@ impl<'a> WgpuFrame<'a> {
                             target_width,
                             target_height,
                             &rect_buf,
+                        );
+                    }
+                    Some(RunKind::Ripple) => {
+                        let mut pass = shape_pass!();
+                        self.pipelines.ripple.draw_batch(
+                            self.device,
+                            self.queue,
+                            &mut pass,
+                            target_width,
+                            target_height,
+                            &ripple_buf,
                         );
                     }
                     Some(RunKind::Triangle) => {
@@ -707,6 +727,7 @@ impl<'a> WgpuFrame<'a> {
                     None => {}
                 }
                 rect_buf.clear();
+                ripple_buf.clear();
                 tri_buf.clear();
                 img_buf.clear();
                 shadow_buf.clear();
@@ -731,6 +752,13 @@ impl<'a> WgpuFrame<'a> {
                         current_kind = Some(RunKind::Rect);
                     }
                     rect_buf.push(cmd.clone());
+                }
+                DrawCommand::Ripple(cmd) => {
+                    if current_kind != Some(RunKind::Ripple) {
+                        flush_run!();
+                        current_kind = Some(RunKind::Ripple);
+                    }
+                    ripple_buf.push(cmd.clone());
                 }
                 DrawCommand::Triangle(cmd) => {
                     if current_kind != Some(RunKind::Triangle) {
@@ -809,9 +837,11 @@ impl<'a> WgpuFrame<'a> {
                         &nested.chain,
                         nested.bounds,
                         nested.clip_rect,
-                        target_view,
-                        target_width,
-                        target_height,
+                        RenderTarget {
+                            view: target_view,
+                            width: target_width,
+                            height: target_height,
+                        },
                     );
                 }
                 // An isolated filtered subtree has no "behind" content of
@@ -867,6 +897,37 @@ impl<'a> RenderBackend for WgpuFrame<'a> {
             }),
         );
         self.pipelines.rect.draw_batch(
+            self.device,
+            self.queue,
+            &mut pass,
+            self.width,
+            self.height,
+            cmds,
+        );
+    }
+
+    fn draw_ripples(&mut self, cmds: &[RippleCommand]) {
+        if cmds.is_empty() {
+            return;
+        }
+        let load = self.shape_pass_load();
+        let mut pass = self.encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            label: Some("xengui patterned ripple pass"),
+            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                view: &self.view,
+                resolve_target: None,
+                ops: wgpu::Operations {
+                    load,
+                    store: wgpu::StoreOp::Store,
+                },
+                depth_slice: None,
+            })],
+            depth_stencil_attachment: None,
+            timestamp_writes: None,
+            occlusion_query_set: None,
+            multiview_mask: None,
+        });
+        self.pipelines.ripple.draw_batch(
             self.device,
             self.queue,
             &mut pass,
@@ -1169,9 +1230,11 @@ impl<'a> RenderBackend for WgpuFrame<'a> {
             chain,
             bounds,
             clip_rect,
-            &view,
-            self.width,
-            self.height,
+            RenderTarget {
+                view: &view,
+                width: self.width,
+                height: self.height,
+            },
         );
     }
 
@@ -1355,6 +1418,15 @@ fn translate_draw_command(command: &DrawCommand, ox: f32, oy: f32) -> DrawComman
             c.clip_rect = shift_clip(c.clip_rect);
             DrawCommand::Rect(c)
         }
+        DrawCommand::Ripple(c) => {
+            let mut c = c.clone();
+            c.bounds.0 -= ox;
+            c.bounds.1 -= oy;
+            c.origin.0 -= ox;
+            c.origin.1 -= oy;
+            c.clip_rect = shift_clip(c.clip_rect);
+            DrawCommand::Ripple(c)
+        }
         DrawCommand::Triangle(c) => {
             let mut c = c.clone();
             c.p0.0 -= ox;
@@ -1447,11 +1519,14 @@ fn translate_draw_command(command: &DrawCommand, ox: f32, oy: f32) -> DrawComman
 // WGPU viewports cannot begin outside their render target. Crop a transformed
 // destination against the target and return the matching source UV window so
 // edge clipping never stretches the remaining pixels.
+type Rect = (f32, f32, f32, f32);
+type CompositeRect = (Rect, Rect);
+
 fn clipped_composite_rect(
-    destination: (f32, f32, f32, f32),
+    destination: Rect,
     target_width: f32,
     target_height: f32,
-) -> Option<((f32, f32, f32, f32), (f32, f32, f32, f32))> {
+) -> Option<CompositeRect> {
     let (x, y, width, height) = destination;
     if width <= 0.0 || height <= 0.0 {
         return None;

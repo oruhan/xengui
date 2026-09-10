@@ -1,8 +1,8 @@
-use std::{ collections::BTreeSet, fs, process::Command };
+use std::{collections::BTreeSet, fs, process::Command};
 
-use anyhow::{ Context, Result, bail };
+use anyhow::{Context, Result, bail};
 
-use crate::{ cli::CommitCommand, workspace::Workspace };
+use crate::{cli::CommitCommand, workspace::Workspace};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum ChangeLevel {
@@ -20,7 +20,10 @@ pub struct ChangeAnalysis {
 
 pub fn analyze(workspace: &Workspace) -> Result<ChangeAnalysis> {
     ensure_git(workspace)?;
-    let status = git_output(workspace, &["status", "--porcelain=v1", "--untracked-files=all"])?;
+    let status = git_output(
+        workspace,
+        &["status", "--porcelain=v1", "--untracked-files=all"],
+    )?;
     if status.trim().is_empty() {
         bail!("there are no staged or unstaged Git changes to analyze");
     }
@@ -44,13 +47,15 @@ pub fn analyze(workspace: &Workspace) -> Result<ChangeAnalysis> {
 
     let mut diff = git_output(
         workspace,
-        &["diff", "--no-ext-diff", "--find-renames", "HEAD"]
-    ).or_else(|_| git_output(workspace, &["diff", "--no-ext-diff", "--find-renames"]))?;
+        &["diff", "--no-ext-diff", "--find-renames", "HEAD"],
+    )
+    .or_else(|_| git_output(workspace, &["diff", "--no-ext-diff", "--find-renames"]))?;
     for path in &untracked {
         let full_path = workspace.root.join(path);
-        if
-            full_path.extension().is_some_and(|extension| extension == "rs") &&
-            let Ok(contents) = fs::read_to_string(full_path)
+        if full_path
+            .extension()
+            .is_some_and(|extension| extension == "rs")
+            && let Ok(contents) = fs::read_to_string(full_path)
         {
             diff.push_str(&format!("\ndiff --git a/{path} b/{path}\n+++ b/{path}\n"));
             for line in contents.lines() {
@@ -123,7 +128,11 @@ pub fn commit_suggest(workspace: &Workspace, command: CommitCommand) -> Result<(
             let analysis = analyze(workspace)?;
             let scope = infer_scope(&analysis.files);
             let kind = infer_commit_type(&analysis);
-            let bang = if analysis.level == ChangeLevel::Major { "!" } else { "" };
+            let bang = if analysis.level == ChangeLevel::Major {
+                "!"
+            } else {
+                ""
+            };
             let subject = infer_subject(&analysis, kind);
             println!("Suggested commit:\n");
             println!("{kind}({scope}){bang}: {subject}");
@@ -149,7 +158,11 @@ fn git_output(workspace: &Workspace, args: &[&str]) -> Result<String> {
         .output()
         .with_context(|| format!("failed to run git {}", args.join(" ")))?;
     if !output.status.success() {
-        bail!("git {} failed: {}", args.join(" "), String::from_utf8_lossy(&output.stderr).trim());
+        bail!(
+            "git {} failed: {}",
+            args.join(" "),
+            String::from_utf8_lossy(&output.stderr).trim()
+        );
     }
     Ok(String::from_utf8_lossy(&output.stdout).into_owned())
 }
@@ -161,11 +174,10 @@ fn public_api_changes(diff: &str) -> (usize, usize) {
     let mut removed = 0;
     for line in diff.lines() {
         if let Some(path) = line.strip_prefix("+++ b/") {
-            public_crate_source =
-                path.starts_with("crates/") &&
-                path.contains("/src/") &&
-                !path.starts_with("crates/xengui-cli/") &&
-                !path.ends_with("/main.rs");
+            public_crate_source = path.starts_with("crates/")
+                && path.contains("/src/")
+                && !path.starts_with("crates/xengui-cli/")
+                && !path.ends_with("/main.rs");
             public_container = false;
         }
         if line.starts_with("@@") {
@@ -173,17 +185,15 @@ fn public_api_changes(diff: &str) -> (usize, usize) {
         } else if public_crate_source && contains_public_container(line) {
             public_container = true;
         }
-        if
-            public_crate_source &&
-            (is_public_change(line, '+') ||
-                (public_container && is_likely_container_member(line, '+')))
+        if public_crate_source
+            && (is_public_change(line, '+')
+                || (public_container && is_likely_container_member(line, '+')))
         {
             added += 1;
         }
-        if
-            public_crate_source &&
-            (is_public_change(line, '-') ||
-                (public_container && is_likely_container_member(line, '-')))
+        if public_crate_source
+            && (is_public_change(line, '-')
+                || (public_container && is_likely_container_member(line, '-')))
         {
             removed += 1;
         }
@@ -192,7 +202,9 @@ fn public_api_changes(diff: &str) -> (usize, usize) {
 }
 
 fn contains_public_container(line: &str) -> bool {
-    ["pub enum ", "pub trait ", "pub struct "].iter().any(|token| line.contains(token))
+    ["pub enum ", "pub trait ", "pub struct "]
+        .iter()
+        .any(|token| line.contains(token))
 }
 
 fn is_likely_container_member(line: &str, prefix: char) -> bool {
@@ -200,14 +212,14 @@ fn is_likely_container_member(line: &str, prefix: char) -> bool {
         return false;
     }
     let code = line[1..].trim();
-    !code.is_empty() &&
-        !code.starts_with("pub ") &&
-        !code.starts_with("//") &&
-        !code.starts_with("#") &&
-        !matches!(code, "{" | "}" | "}," | ";") &&
-        (code.starts_with("fn ") ||
-            code.contains(':') ||
-            code.chars().next().is_some_and(char::is_uppercase))
+    !code.is_empty()
+        && !code.starts_with("pub ")
+        && !code.starts_with("//")
+        && !code.starts_with("#")
+        && !matches!(code, "{" | "}" | "}," | ";")
+        && (code.starts_with("fn ")
+            || code.contains(':')
+            || code.chars().next().is_some_and(char::is_uppercase))
 }
 
 fn is_public_change(line: &str, prefix: char) -> bool {
@@ -226,8 +238,8 @@ fn is_public_change(line: &str, prefix: char) -> bool {
         "pub mod ",
         "pub use ",
     ]
-        .iter()
-        .any(|token| code.starts_with(token))
+    .iter()
+    .any(|token| code.starts_with(token))
 }
 
 fn added_cargo_feature(diff: &str) -> bool {
@@ -242,7 +254,10 @@ fn cargo_feature_change(diff: &str, prefix: char) -> bool {
     let mut cargo_file = false;
     let mut features_context = false;
     for line in diff.lines() {
-        if let Some(path) = line.strip_prefix("+++ b/").or_else(|| line.strip_prefix("--- a/")) {
+        if let Some(path) = line
+            .strip_prefix("+++ b/")
+            .or_else(|| line.strip_prefix("--- a/"))
+        {
             cargo_file = path.ends_with("Cargo.toml");
             features_context = false;
         }
@@ -253,12 +268,11 @@ fn cargo_feature_change(diff: &str, prefix: char) -> bool {
         if cargo_file && line.starts_with("@@") {
             features_context = false;
         }
-        if
-            cargo_file &&
-            features_context &&
-            line.starts_with(prefix) &&
-            !line.starts_with("+++") &&
-            !line.starts_with("---")
+        if cargo_file
+            && features_context
+            && line.starts_with(prefix)
+            && !line.starts_with("+++")
+            && !line.starts_with("---")
         {
             let value = line[1..].trim();
             if value.contains('=') && !value.starts_with('#') {
@@ -297,12 +311,16 @@ fn infer_commit_type(analysis: &ChangeAnalysis) -> &'static str {
         "feat"
     } else if analysis.files.iter().all(|path| path.ends_with(".md")) {
         "docs"
-    } else if analysis.files.iter().all(|path| (path.contains("test") || path.ends_with(".snap"))) {
+    } else if analysis
+        .files
+        .iter()
+        .all(|path| (path.contains("test") || path.ends_with(".snap")))
+    {
         "test"
-    } else if
-        analysis.files
-            .iter()
-            .all(|path| (path.ends_with("Cargo.toml") || path.ends_with("Cargo.lock")))
+    } else if analysis
+        .files
+        .iter()
+        .all(|path| (path.ends_with("Cargo.toml") || path.ends_with("Cargo.lock")))
     {
         "build"
     } else {
@@ -311,7 +329,11 @@ fn infer_commit_type(analysis: &ChangeAnalysis) -> &'static str {
 }
 
 fn infer_subject(analysis: &ChangeAnalysis, kind: &str) -> &'static str {
-    if analysis.files.iter().any(|path| path.starts_with("crates/xengui-cli/")) {
+    if analysis
+        .files
+        .iter()
+        .any(|path| path.starts_with("crates/xengui-cli/"))
+    {
         "add workspace development CLI"
     } else if analysis.level == ChangeLevel::Major {
         "update public API"
@@ -333,15 +355,13 @@ mod tests {
 
     #[test]
     fn only_publishable_library_source_counts_as_public_api() {
-        let diff =
-            "+++ b/crates/xengui-cli/src/cli.rs\n+pub struct InternalCli;\n+++ b/crates/xengui/src/lib.rs\n+pub struct NewWidget;\n-pub fn old_api() {}\n";
+        let diff = "+++ b/crates/xengui-cli/src/cli.rs\n+pub struct InternalCli;\n+++ b/crates/xengui/src/lib.rs\n+pub struct NewWidget;\n-pub fn old_api() {}\n";
         assert_eq!(public_api_changes(diff), (1, 1));
     }
 
     #[test]
     fn detects_public_enum_variant_changes() {
-        let diff =
-            "+++ b/crates/xengui/src/lib.rs\n@@ -1,3 +1,3 @@ pub enum Mode {\n-    Old,\n+    New,\n }\n";
+        let diff = "+++ b/crates/xengui/src/lib.rs\n@@ -1,3 +1,3 @@ pub enum Mode {\n-    Old,\n+    New,\n }\n";
         assert_eq!(public_api_changes(diff), (1, 1));
     }
 

@@ -360,6 +360,66 @@ mod tests {
         cancel_all();
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
+    #[test]
+    #[ignore = "Phase 3: the process-global ready queue lets another GUI thread consume this task id"]
+    fn task_woken_from_another_runtime_is_polled_only_by_its_owner() {
+        use std::sync::{
+            Arc,
+            atomic::{AtomicBool, Ordering},
+            mpsc,
+        };
+
+        let _guard = test_guard();
+        let completed = Arc::new(AtomicBool::new(false));
+        let completed_on_owner = completed.clone();
+        let (waker_tx, waker_rx) = mpsc::sync_channel::<Waker>(1);
+        let (drained_tx, drained_rx) = mpsc::sync_channel::<()>(1);
+
+        let owner = std::thread::spawn(move || {
+            struct ExternalWake {
+                waker_tx: Option<mpsc::SyncSender<Waker>>,
+            }
+
+            impl Future for ExternalWake {
+                type Output = ();
+
+                fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<()> {
+                    if let Some(sender) = self.waker_tx.take() {
+                        sender.send(cx.waker().clone()).unwrap();
+                        Poll::Pending
+                    } else {
+                        Poll::Ready(())
+                    }
+                }
+            }
+
+            spawn(async move {
+                ExternalWake {
+                    waker_tx: Some(waker_tx),
+                }
+                .await;
+                completed_on_owner.store(true, Ordering::SeqCst);
+            });
+            poll();
+
+            drained_rx.recv().unwrap();
+            poll();
+            cancel_all();
+        });
+
+        let task_waker = waker_rx.recv().unwrap();
+        task_waker.wake_by_ref();
+
+        // Simulate a second GUI runtime polling on another thread. The
+        // current global queue loses the first runtime's task id here.
+        poll();
+        drained_tx.send(()).unwrap();
+        owner.join().unwrap();
+
+        assert!(completed.load(Ordering::SeqCst));
+    }
+
     #[test]
     fn cancel_all_drops_pending_tasks() {
         let _guard = test_guard();

@@ -661,6 +661,9 @@ fn normalize_url(href: &str) -> String {
 
 #[cfg(not(target_arch = "wasm32"))]
 fn open_native(url: &str) {
+    #[cfg(any(target_os = "android", target_os = "ios"))]
+    let _ = url;
+
     #[cfg(target_os = "windows")]
     {
         let _ = std::process::Command::new("cmd")

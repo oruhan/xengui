@@ -946,4 +946,42 @@ mod effect_tests {
             ]
         );
     }
+
+    #[test]
+    fn effect_from_a_superseded_render_never_runs() {
+        let log = Rc::new(RefCell::new(Vec::<String>::new()));
+
+        begin_render();
+        component("superseded_effect_root", || {
+            let log = log.clone();
+            use_effect(
+                move || {
+                    log.borrow_mut().push("stale".to_string());
+                },
+                [1],
+            );
+        });
+        end_render();
+
+        // A new render starts before the first render reaches its effect
+        // commit point. Only the new generation is allowed to execute.
+        begin_render();
+        component("superseded_effect_root", || {
+            let log = log.clone();
+            use_effect(
+                move || {
+                    log.borrow_mut().push("committed".to_string());
+                },
+                [2],
+            );
+        });
+        end_render();
+        run_pending_effects();
+
+        assert_eq!(log.borrow().as_slice(), ["committed"]);
+
+        begin_render();
+        end_render();
+        run_pending_effects();
+    }
 }

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 use crate::{
-    BoxShadowCommand, Color, ImageCommand, RectCommand, StrokeCommand, SystemTheme, TextCommand,
-    TextMeasurer, TriangleCommand, VariableIconCommand,
+    BoxShadowCommand, Color, ImageCommand, RectCommand, RippleCommand, StrokeCommand, SystemTheme,
+    TextCommand, TextMeasurer, TriangleCommand, VariableIconCommand,
 };
 
 /// Abstracts the GPU backend so xengui's core (layout, widgets,
@@ -18,6 +18,9 @@ pub trait RenderBackend {
 
     /// Returns or updates the `draw_rects` value.
     fn draw_rects(&mut self, cmds: &[RectCommand]);
+    /// Draws procedural patterned ripple commands. Backends without a
+    /// dedicated implementation may ignore them.
+    fn draw_ripples(&mut self, _cmds: &[RippleCommand]) {}
     /// Returns or updates the `draw_triangles` value.
     fn draw_triangles(&mut self, cmds: &[TriangleCommand]);
     /// Returns or updates the `draw_images` value.

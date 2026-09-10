@@ -80,15 +80,17 @@ use xengui::{
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::JsCast;
 
+fn renderer_error_requires_rebuild(error: &xengui_wgpu::RendererError) -> bool {
+    matches!(
+        error,
+        xengui_wgpu::RendererError::DeviceLost(_) | xengui_wgpu::RendererError::Internal(_)
+    )
+}
+
 impl App {
     #[cfg(not(target_arch = "wasm32"))]
     pub(crate) fn recover_renderer(&mut self, error: xengui_wgpu::RendererError) {
-        use xengui_wgpu::RendererError;
-
-        if !matches!(
-            error,
-            RendererError::DeviceLost(_) | RendererError::Internal(_)
-        ) {
+        if !renderer_error_requires_rebuild(&error) {
             log::error!("unrecoverable renderer error: {error}");
             return;
         }
@@ -119,12 +121,8 @@ impl App {
     #[cfg(target_arch = "wasm32")]
     pub(crate) fn recover_renderer(&mut self, error: xengui_wgpu::RendererError) {
         use crate::overlay::show_fatal_overlay;
-        use xengui_wgpu::RendererError;
 
-        if !matches!(
-            error,
-            RendererError::DeviceLost(_) | RendererError::Internal(_)
-        ) {
+        if !renderer_error_requires_rebuild(&error) {
             log::error!("unrecoverable renderer error: {error}");
             return;
         }
@@ -186,9 +184,11 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
         #[cfg(target_os = "android")]
         {
             // Android destroys the native SurfaceView while an app is in the
-            // background. Any wgpu surface must be dropped before this callback
-            // returns and recreated by the next `resumed` event.
-            self.renderer = None;
+            // background. Drop only that surface: the device, pipelines, font
+            // atlases and retained frame stay GPU-resident for a fast resume.
+            if let Some(renderer) = &mut self.renderer {
+                renderer.suspend_surface();
+            }
             self.window = None;
             self.is_visible = false;
             crate::window_controls::clear_active_window();
@@ -562,7 +562,7 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
 
         // App::render() builds the initial tree before any window exists,
         // so Responsive<T> values resolve against the default
-        // Breakpoint::Base on that very first build. Recomputing it here,
+        // Breakpoint::Compact on that very first build. Recomputing it here,
         // before the window is ever shown, avoids a one-frame flash of
         // the wrong breakpoint on startup.
         let initial_logical_width = window
@@ -600,16 +600,59 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
         #[cfg(not(target_arch = "wasm32"))]
         {
             let size = window.inner_size();
-            match xengui_wgpu::WgpuWindowRenderer::new_with_options(
-                window.clone(),
-                size.width,
-                size.height,
-                self.config.fonts.clone(),
-                self.config.renderer,
-            ) {
-                Ok(renderer) => {
+            let retained_renderer = self.renderer.is_some();
+            let renderer_ready = if let Some(renderer) = &mut self.renderer {
+                renderer.resume_surface(window.clone(), size.width, size.height)
+            } else {
+                xengui_wgpu::WgpuWindowRenderer::new_with_options(
+                    window.clone(),
+                    size.width,
+                    size.height,
+                    self.config.fonts.clone(),
+                    self.config.renderer,
+                )
+                .map(|renderer| {
                     self.renderer = Some(renderer);
+                })
+            };
+            let renderer_ready = if retained_renderer && renderer_ready.is_err() {
+                log::warn!(
+                    "retained renderer could not attach replacement surface; rebuilding GPU core"
+                );
+                self.renderer = None;
+                xengui_wgpu::WgpuWindowRenderer::new_with_options(
+                    window.clone(),
+                    size.width,
+                    size.height,
+                    self.config.fonts.clone(),
+                    self.config.renderer,
+                )
+                .map(|renderer| self.renderer = Some(renderer))
+            } else {
+                renderer_ready
+            };
+
+            match renderer_ready {
+                Ok(()) => {
                     log::info!("application resumed, gpu context ready");
+
+                    // Android may composite a newly-created native surface as
+                    // black before the next RedrawRequested. Present the
+                    // retained scene synchronously while still inside resumed,
+                    // then reveal it, so no empty swapchain image is exposed.
+                    #[cfg(target_os = "android")]
+                    {
+                        let theme = crate::window::system_theme(self.config.theme);
+                        let scale_factor = window.scale_factor() as f32;
+                        let first_frame = self.renderer.as_mut().map(|renderer| {
+                            renderer.try_render_frame(&mut self.root, theme, scale_factor)
+                        });
+                        match first_frame {
+                            Some(Ok(xengui_wgpu::FrameOutcome::Presented)) => self.reveal_window(),
+                            Some(Ok(_)) | None => window.request_redraw(),
+                            Some(Err(error)) => self.recover_renderer(error),
+                        }
+                    }
 
                     // The window starts hidden and is revealed only after its
                     // first successfully rendered frame. Desktop window
@@ -1487,5 +1530,33 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
         }
 
         event_loop.set_control_flow(ControlFlow::WaitUntil(self.next_blink.unwrap()));
+    }
+}
+
+#[cfg(test)]
+mod renderer_recovery_tests {
+    use super::renderer_error_requires_rebuild;
+    use xengui_wgpu::RendererError;
+
+    #[test]
+    fn only_device_loss_and_internal_failures_trigger_renderer_rebuild() {
+        assert!(renderer_error_requires_rebuild(&RendererError::DeviceLost(
+            "lost".to_string()
+        )));
+        assert!(renderer_error_requires_rebuild(&RendererError::Internal(
+            "internal".to_string()
+        )));
+
+        for error in [
+            RendererError::SurfaceCreation("surface".to_string()),
+            RendererError::AdapterUnavailable("adapter".to_string()),
+            RendererError::DeviceRequest("device".to_string()),
+            RendererError::SurfaceUnsupported("unsupported"),
+            RendererError::PipelineCreation("pipeline".to_string()),
+            RendererError::OutOfMemory("oom".to_string()),
+            RendererError::Validation("validation".to_string()),
+        ] {
+            assert!(!renderer_error_requires_rebuild(&error), "{error}");
+        }
     }
 }

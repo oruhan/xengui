@@ -1692,7 +1692,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         // Sidebar only shows at Md+; below that we switch to the floating
         // bottom nav bubble, matching a phone/tablet-friendly layout.
-        let show_sidebar = xengui::responsive_bool(xengui::Breakpoint::Md, true);
+        let show_sidebar = xengui::responsive_bool(xengui::Breakpoint::Expanded, true);
 
         // Chrome (titlebar, sidebar/nav bar) always renders regardless of
         // library load state or track count - only the home page's own

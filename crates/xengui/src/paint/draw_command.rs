@@ -23,6 +23,30 @@ pub struct RectCommand {
     pub clip_rect: Option<(f32, f32, f32, f32)>,
 }
 
+/// One bounded Android-style patterned ripple, evaluated procedurally by
+/// capable render backends. A single command/quad produces both the soft
+/// expanding wave and the animated sparkle field.
+#[derive(Clone, Debug)]
+pub struct RippleCommand {
+    /// Widget bounds in paint coordinates.
+    pub bounds: (f32, f32, f32, f32),
+    /// Press hotspot in paint coordinates.
+    pub origin: (f32, f32),
+    /// Unified Android patterned-ripple progress in the `0..=1` range.
+    pub progress: f32,
+    /// Release fade multiplier. Expansion continues independently so a
+    /// short tap still reaches every corner of the target.
+    pub opacity: f32,
+    /// Continuously changing phase used by the procedural sparkle noise.
+    pub noise_phase: f32,
+    /// Theme/content-derived wave color, including its maximum alpha.
+    pub color: Color,
+    /// Corner radii used to mask the bounded effect.
+    pub radius: [f32; 4],
+    /// Optional ancestor/widget clip.
+    pub clip_rect: Option<(f32, f32, f32, f32)>,
+}
+
 #[derive(Clone, Debug)]
 /// Data and behavior represented by `TextCommand`.
 pub struct TextCommand {
@@ -209,6 +233,8 @@ pub struct BackdropFilterCommand {
 pub enum DrawCommand {
     /// The `Rect` variant.
     Rect(RectCommand),
+    /// A GPU-procedural patterned/sparkle ripple.
+    Ripple(RippleCommand),
     /// The `Triangle` variant.
     Triangle(TriangleCommand),
     /// The `Text` variant.

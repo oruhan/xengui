@@ -19,7 +19,10 @@ pub enum PresentModePreference {
 
 #[cfg(test)]
 mod tests {
-    use super::{PresentModePreference, select_present_mode};
+    use super::{
+        FrameOutcome, PresentModePreference, RendererError, exhausted_acquisition_result,
+        select_present_mode,
+    };
     use wgpu::PresentMode;
 
     #[test]
@@ -48,6 +51,24 @@ mod tests {
         assert_eq!(
             select_present_mode(&[], PresentModePreference::Immediate),
             None
+        );
+    }
+
+    #[test]
+    fn repeated_surface_timeouts_skip_the_frame_without_failing() {
+        assert_eq!(
+            exhausted_acquisition_result(true),
+            Ok(FrameOutcome::SkippedTimeout)
+        );
+    }
+
+    #[test]
+    fn repeated_recoverable_surface_loss_becomes_an_internal_error() {
+        assert_eq!(
+            exhausted_acquisition_result(false),
+            Err(RendererError::Internal(
+                "surface acquisition failed after recovery attempt".to_string()
+            ))
         );
     }
 }
@@ -79,10 +100,21 @@ impl Default for RendererOptions {
             } else {
                 wgpu::Backends::PRIMARY
             },
-            power_preference: wgpu::PowerPreference::None,
+            power_preference: if cfg!(target_os = "android") {
+                wgpu::PowerPreference::HighPerformance
+            } else {
+                wgpu::PowerPreference::None
+            },
             present_mode: PresentModePreference::Vsync,
-            sample_count: SampleCount::X4,
-            desired_maximum_frame_latency: 2,
+            // Mobile GPUs pay heavily for 4x MSAA bandwidth. The renderer's
+            // analytic geometry remains anti-aliased at X1; apps can still
+            // explicitly request X4 for content that benefits from it.
+            sample_count: if cfg!(target_os = "android") {
+                SampleCount::X1
+            } else {
+                SampleCount::X4
+            },
+            desired_maximum_frame_latency: if cfg!(target_os = "android") { 1 } else { 2 },
         }
     }
 }
@@ -160,6 +192,16 @@ fn select_present_mode(
         .or_else(|| available.first().copied())
 }
 
+fn exhausted_acquisition_result(timed_out: bool) -> Result<FrameOutcome, RendererError> {
+    if timed_out {
+        Ok(FrameOutcome::SkippedTimeout)
+    } else {
+        Err(RendererError::Internal(
+            "surface acquisition failed after recovery attempt".to_string(),
+        ))
+    }
+}
+
 fn install_error_handlers(device: &wgpu::Device, pending: PendingGpuError) {
     let device_lost = Arc::clone(&pending);
     device.set_device_lost_callback(move |_reason, message| {
@@ -185,7 +227,11 @@ fn install_error_handlers(device: &wgpu::Device, pending: PendingGpuError) {
 /// integration point. Not winit-specific: `W` only needs to provide a
 /// raw window/display handle, so any windowing crate works.
 pub struct WgpuWindowRenderer {
-    surface: wgpu::Surface<'static>,
+    #[cfg(not(target_arch = "wasm32"))]
+    instance: wgpu::Instance,
+    #[cfg(not(target_arch = "wasm32"))]
+    adapter: wgpu::Adapter,
+    surface: Option<wgpu::Surface<'static>>,
     device: wgpu::Device,
     queue: wgpu::Queue,
     config: wgpu::SurfaceConfiguration,
@@ -193,6 +239,14 @@ pub struct WgpuWindowRenderer {
     frame: FrameRenderer,
     options: RendererOptions,
     pending_gpu_error: PendingGpuError,
+}
+
+struct GpuContext {
+    instance: wgpu::Instance,
+    surface: wgpu::Surface<'static>,
+    adapter: wgpu::Adapter,
+    device: wgpu::Device,
+    queue: wgpu::Queue,
 }
 
 impl WgpuWindowRenderer {
@@ -259,10 +313,13 @@ impl WgpuWindowRenderer {
         .map_err(|error| RendererError::DeviceRequest(error.to_string()))?;
 
         Self::init_common(
-            surface,
-            &adapter,
-            device,
-            queue,
+            GpuContext {
+                instance,
+                surface,
+                adapter,
+                device,
+                queue,
+            },
             (width, height),
             user_fonts,
             options,
@@ -347,10 +404,13 @@ impl WgpuWindowRenderer {
 
         let t_pipelines = web_time::Instant::now();
         let result = Self::init_common(
-            surface,
-            &adapter,
-            device,
-            queue,
+            GpuContext {
+                instance,
+                surface,
+                adapter,
+                device,
+                queue,
+            },
             (width, height),
             user_fonts,
             options,
@@ -360,16 +420,20 @@ impl WgpuWindowRenderer {
     }
 
     fn init_common(
-        surface: wgpu::Surface<'static>,
-        adapter: &wgpu::Adapter,
-        device: wgpu::Device,
-        queue: wgpu::Queue,
+        gpu: GpuContext,
         size: (u32, u32),
         user_fonts: Vec<(String, Vec<u8>)>,
         options: RendererOptions,
     ) -> Result<Self, RendererError> {
+        let GpuContext {
+            instance,
+            surface,
+            adapter,
+            device,
+            queue,
+        } = gpu;
         let (width, height) = size;
-        let surface_caps = surface.get_capabilities(adapter);
+        let surface_caps = surface.get_capabilities(&adapter);
         let Some(surface_format) = surface_caps
             .formats
             .iter()
@@ -385,7 +449,7 @@ impl WgpuWindowRenderer {
         let pipelines = WgpuPipelines::new(
             &device,
             &queue,
-            adapter,
+            &adapter,
             surface_format,
             user_fonts,
             options.sample_count,
@@ -436,8 +500,15 @@ impl WgpuWindowRenderer {
         let pending_gpu_error = Arc::new(Mutex::new(None));
         install_error_handlers(&device, Arc::clone(&pending_gpu_error));
 
+        #[cfg(target_arch = "wasm32")]
+        let _ = instance;
+
         Ok(Self {
-            surface,
+            #[cfg(not(target_arch = "wasm32"))]
+            instance,
+            #[cfg(not(target_arch = "wasm32"))]
+            adapter,
+            surface: Some(surface),
             device,
             queue,
             config,
@@ -454,6 +525,60 @@ impl WgpuWindowRenderer {
 
     pub fn options(&self) -> RendererOptions {
         self.options
+    }
+
+    /// Drops only the native presentation surface while retaining the GPU
+    /// device, pipelines, font atlases, textures, and frame cache.
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn suspend_surface(&mut self) {
+        self.surface = None;
+    }
+
+    /// Attaches a replacement native surface to the retained renderer core.
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn resume_surface<W>(
+        &mut self,
+        window: Arc<W>,
+        width: u32,
+        height: u32,
+    ) -> Result<(), RendererError>
+    where
+        W: wgpu::WindowHandle + raw_window_handle::HasDisplayHandle + 'static,
+    {
+        let surface = self
+            .instance
+            .create_surface(window)
+            .map_err(|error| RendererError::SurfaceCreation(error.to_string()))?;
+        let capabilities = surface.get_capabilities(&self.adapter);
+
+        if !capabilities.formats.contains(&self.config.format) {
+            return Err(RendererError::SurfaceUnsupported(
+                "replacement surface changed texture format",
+            ));
+        }
+
+        self.config.width = width.max(1);
+        self.config.height = height.max(1);
+        self.config.present_mode =
+            select_present_mode(&capabilities.present_modes, self.options.present_mode)
+                .ok_or(RendererError::SurfaceUnsupported("no presentation modes"))?;
+        self.config.alpha_mode = if capabilities
+            .alpha_modes
+            .contains(&wgpu::CompositeAlphaMode::PreMultiplied)
+        {
+            wgpu::CompositeAlphaMode::PreMultiplied
+        } else {
+            capabilities
+                .alpha_modes
+                .first()
+                .copied()
+                .ok_or(RendererError::SurfaceUnsupported("no alpha modes"))?
+        };
+
+        surface.configure(&self.device, &self.config);
+        self.surface = Some(surface);
+        self.frame.resize();
+        Ok(())
     }
 
     fn take_gpu_error(&self) -> Option<RendererError> {
@@ -494,8 +619,11 @@ impl WgpuWindowRenderer {
         const MAX_ACQUIRE_ATTEMPTS: u32 = 2;
         let mut frame = None;
         let mut timed_out = false;
+        let Some(surface) = self.surface.as_ref() else {
+            return Ok(FrameOutcome::SkippedOccluded);
+        };
         for attempt in 0..MAX_ACQUIRE_ATTEMPTS {
-            match self.surface.get_current_texture() {
+            match surface.get_current_texture() {
                 wgpu::CurrentSurfaceTexture::Success(t) => {
                     xengui::devtools::record_note(
                         "surface:acquire",
@@ -510,14 +638,14 @@ impl WgpuWindowRenderer {
                         format!("suboptimal attempt={attempt}"),
                     );
                     drop(texture);
-                    self.surface.configure(&self.device, &self.config);
+                    surface.configure(&self.device, &self.config);
                 }
                 wgpu::CurrentSurfaceTexture::Outdated | wgpu::CurrentSurfaceTexture::Lost => {
                     xengui::devtools::record_note(
                         "surface:acquire",
                         format!("outdated/lost attempt={attempt}"),
                     );
-                    self.surface.configure(&self.device, &self.config);
+                    surface.configure(&self.device, &self.config);
                 }
                 wgpu::CurrentSurfaceTexture::Timeout => {
                     timed_out = true;
@@ -550,11 +678,8 @@ impl WgpuWindowRenderer {
             xengui::devtools::record("surface:acquire-failed-skip");
             if timed_out {
                 log::debug!("Surface acquisition timed out; skipping frame.");
-                return Ok(FrameOutcome::SkippedTimeout);
             }
-            return Err(RendererError::Internal(
-                "surface acquisition failed after recovery attempt".to_string(),
-            ));
+            return exhausted_acquisition_result(timed_out);
         };
 
         let frame_size = frame.texture.size();
@@ -641,7 +766,9 @@ impl WgpuWindowRenderer {
             xengui::devtools::record_size("surface:reconfigure", width, height);
             self.config.width = width;
             self.config.height = height;
-            self.surface.configure(&self.device, &self.config);
+            if let Some(surface) = &self.surface {
+                surface.configure(&self.device, &self.config);
+            }
             self.frame.resize();
         }
         self.try_render_frame(tree, theme, scale_factor).map(Some)
@@ -665,7 +792,9 @@ impl WgpuWindowRenderer {
         }
         self.config.width = width;
         self.config.height = height;
-        self.surface.configure(&self.device, &self.config);
+        if let Some(surface) = &self.surface {
+            surface.configure(&self.device, &self.config);
+        }
         self.frame.resize();
     }
 }
