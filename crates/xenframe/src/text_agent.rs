@@ -126,7 +126,7 @@ impl App {
     /// Mirrors the widget at `path` onto the text agent's input and
     /// optionally focuses it; hides the agent if `path` no longer points
     /// to a native-text-backed widget.
-    pub(crate) fn sync_native_input(&mut self, path: &str, focus: bool) {
+    pub(crate) fn sync_native_input(&mut self, path: &xengui::WidgetPath, focus: bool) {
         let Some(agent) = &self.text_agent else {
             return;
         };

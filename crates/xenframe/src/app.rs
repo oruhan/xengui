@@ -10,10 +10,10 @@ use winit::window::Window;
 use xengui::{
     Cursor, ElementState, EventCtx, EventStatus, InputEvent, InputState, MouseButton, StyleBuilder,
     TOUCH_LONG_PRESS_DURATION, TOUCH_LONG_PRESS_MOVE_TOLERANCE_DP, TOUCH_PAN_THRESHOLD_DP,
-    TouchPanPhase, Widget, clear_text_selection_recursive, collect_focusable_paths,
-    collect_selected_text_recursive, dispatch_focus_within_transition, dispatch_hover_transition,
-    dispatch_positional, dispatch_positional_capturing, dispatch_to_path, find_widget_mut,
-    hit_test_path, hooks, path_is_within, reconciler, style, update_global_text_selection,
+    TouchPanPhase, Widget, WidgetPath, clear_text_selection_recursive,
+    collect_selected_text_recursive, dispatch_hover_transition, dispatch_positional,
+    dispatch_positional_capturing, dispatch_to_path, find_widget_mut, hit_test_path, hooks,
+    path_is_within, reconciler, style, update_global_text_selection,
 };
 use xengui_wgpu::WgpuWindowRenderer;
 
@@ -53,8 +53,8 @@ pub struct App {
     pub(crate) next_animation: Option<Instant>,
     pub(crate) reconcile_work: Option<reconciler::WorkLoop>,
     pub(crate) clipboard: xen_clipboard::Clipboard,
-    pub(crate) pending_long_press: Option<(Instant, (f32, f32), String)>,
-    pub(crate) touch_pan_owner: Option<String>,
+    pub(crate) pending_long_press: Option<(Instant, (f32, f32), WidgetPath)>,
+    pub(crate) touch_pan_owner: Option<WidgetPath>,
     pub(crate) touch_start_point: Option<(f32, f32)>,
     pub(crate) touch_activation_cancelled: bool,
     pub(crate) system_back_handler: Option<Box<dyn FnMut() -> bool>>,
@@ -85,6 +85,7 @@ pub struct App {
     // (e.g. a background HTTP client's I/O driver); needed on every
     // platform, not just wasm.
     pub(crate) event_proxy: Option<winit::event_loop::EventLoopProxy<XenEvent>>,
+    pub(crate) task_runtime: xengui::task::Runtime,
     // Set right before focusing the hidden native <input>; the resulting
     // canvas blur is reported by winit as WindowEvent::Focused(false),
     // which must not be treated like a real window focus loss.
@@ -96,6 +97,8 @@ impl App {
     pub fn new(config: AppConfig) -> Self {
         log::info!(target: "xengui", "app initialized");
         xengui::set_ripple_config(config.ripple);
+        let task_runtime = xengui::task::Runtime::new();
+        task_runtime.activate();
         Self {
             renderer: None,
             window: None,
@@ -132,9 +135,18 @@ impl App {
             #[cfg(target_arch = "wasm32")]
             text_agent: None,
             event_proxy: None,
+            task_runtime,
             #[cfg(target_arch = "wasm32")]
             suppress_next_focus_loss: false,
         }
+    }
+
+    /// Returns the current platform-independent accessibility tree.
+    ///
+    /// Native adapters can translate this snapshot into their operating
+    /// system's accessibility protocol without inspecting concrete widgets.
+    pub fn semantics_tree(&self) -> Vec<xengui::SemanticsNode> {
+        xengui::build_semantics_tree(&self.root)
     }
 
     #[cfg(not(target_arch = "wasm32"))]
@@ -268,10 +280,10 @@ impl App {
         const SLICE: web_time::Duration = web_time::Duration::from_millis(5);
         let deadline = Instant::now() + SLICE;
 
-        match work.perform_work(&mut self.root, deadline) {
+        match work.perform_work(&self.root, deadline) {
             reconciler::WorkLoopStatus::Yielded => true,
-            reconciler::WorkLoopStatus::Complete(tree) => {
-                self.root = tree;
+            reconciler::WorkLoopStatus::Complete(commit) => {
+                self.root = commit.commit(&mut self.root);
                 self.reconcile_work = None;
 
                 // Runs effects only now that this tree is the real,
@@ -311,8 +323,8 @@ impl App {
 
         dispatch_hover_transition(
             &mut self.root,
-            old_hover.as_deref(),
-            new_hover.as_deref(),
+            old_hover.as_ref(),
+            new_hover.as_ref(),
             &mut ctx,
         );
 
@@ -346,6 +358,7 @@ impl App {
 impl App {
     #[cfg(not(target_os = "android"))]
     pub fn run(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        self.task_runtime.activate();
         let event_loop: EventLoop<XenEvent> = EventLoop::<XenEvent>::with_user_event().build()?;
         event_loop.set_control_flow(ControlFlow::Wait);
 
@@ -366,6 +379,7 @@ impl App {
     ) -> Result<(), Box<dyn std::error::Error>> {
         use winit::platform::android::EventLoopBuilderExtAndroid;
 
+        self.task_runtime.activate();
         let mut builder = EventLoop::<XenEvent>::with_user_event();
         builder.with_android_app(android_app);
         let event_loop = builder.build()?;
@@ -401,50 +415,25 @@ impl App {
 
     pub(crate) fn apply_event_ctx(&mut self, mut ctx: EventCtx) {
         if let Some(new_focus) = ctx.focus_target.take() {
-            if self.input.focused_path.as_deref() != Some(new_focus.as_str()) {
-                let old_focus = self.input.focused_path.take();
-
-                if let Some(old) = &old_focus {
-                    let mut sub_ctx = EventCtx::new();
-                    dispatch_to_path(&mut self.root, old, &InputEvent::FocusLost, &mut sub_ctx);
-                }
-
+            if self.input.focus.focused_path() != Some(&new_focus) {
                 let mut sub_ctx = EventCtx::new();
-
-                dispatch_to_path(
-                    &mut self.root,
-                    &new_focus,
-                    &(InputEvent::FocusGained {
-                        via_keyboard: false,
-                    }),
-                    &mut sub_ctx,
-                );
-
-                dispatch_focus_within_transition(
-                    &mut self.root,
-                    old_focus.as_deref(),
-                    Some(&new_focus),
-                    &mut sub_ctx,
-                );
-
+                self.input
+                    .focus
+                    .focus(&mut self.root, new_focus.clone(), false, &mut sub_ctx);
                 if let Some(icon) = sub_ctx.take_cursor_icon() {
                     ctx.set_cursor_icon(icon);
                 }
 
                 #[cfg(target_arch = "wasm32")]
                 self.sync_native_input(&new_focus, true);
-                self.input.focused_path = Some(new_focus);
                 self.next_blink = None;
             } else {
                 #[cfg(target_arch = "wasm32")]
                 self.sync_native_input(&new_focus, true);
             }
-        } else if ctx.clear_focus
-            && let Some(old) = self.input.focused_path.take()
-        {
+        } else if ctx.clear_focus && self.input.focus.focused_path().is_some() {
             let mut sub_ctx = EventCtx::new();
-            dispatch_to_path(&mut self.root, &old, &InputEvent::FocusLost, &mut sub_ctx);
-            dispatch_focus_within_transition(&mut self.root, Some(&old), None, &mut sub_ctx);
+            self.input.focus.clear(&mut self.root, &mut sub_ctx);
             #[cfg(target_arch = "wasm32")]
             self.hide_native_input();
         }
@@ -475,49 +464,8 @@ impl App {
     // Tab / Shift+Tab moves to the next (or previous, if backward=true) focusable
     // widget, wrapping to the beginning/end at the boundaries.
     pub(crate) fn advance_focus(&mut self, backward: bool) {
-        let focusable = collect_focusable_paths(&self.root);
-        if focusable.is_empty() {
-            return;
-        }
-
-        let current_index = self
-            .input
-            .focused_path
-            .as_ref()
-            .and_then(|p| focusable.iter().position(|f| f == p));
-
-        let next_index = match (current_index, backward) {
-            (None, false) => 0,
-            (None, true) => focusable.len() - 1,
-            (Some(i), false) => (i + 1) % focusable.len(),
-            (Some(i), true) => (i + focusable.len() - 1) % focusable.len(),
-        };
-
-        let old_focus = self.input.focused_path.take();
-
-        if let Some(old) = &old_focus {
-            let mut ctx = EventCtx::new();
-            dispatch_to_path(&mut self.root, old, &InputEvent::FocusLost, &mut ctx);
-            #[cfg(target_arch = "wasm32")]
-            self.hide_native_input();
-            self.apply_event_ctx(ctx);
-        }
-
-        let new_path = focusable[next_index].clone();
         let mut ctx = EventCtx::new();
-        dispatch_to_path(
-            &mut self.root,
-            &new_path,
-            &(InputEvent::FocusGained { via_keyboard: true }),
-            &mut ctx,
-        );
-        dispatch_focus_within_transition(
-            &mut self.root,
-            old_focus.as_deref(),
-            Some(&new_path),
-            &mut ctx,
-        );
-        self.input.focused_path = Some(new_path.to_string());
+        self.input.focus.advance(&mut self.root, backward, &mut ctx);
         self.next_blink = None;
         self.apply_event_ctx(ctx);
     }
@@ -540,7 +488,7 @@ impl App {
 
     // Simulates a same-spot double tap so the target widget's own
     // multi-click word-selection logic (already used for mouse) takes over.
-    pub(crate) fn trigger_long_press_select(&mut self, path: &str, point: (f32, f32)) {
+    pub(crate) fn trigger_long_press_select(&mut self, path: &WidgetPath, point: (f32, f32)) {
         for state in [ElementState::Pressed, ElementState::Released] {
             let mut ctx = EventCtx::new();
             dispatch_positional(
@@ -585,24 +533,11 @@ impl App {
                 self.touch_start_point = Some(point);
                 self.touch_activation_cancelled = false;
 
-                if let Some(focused) = self.input.focused_path.clone() {
-                    let stays_focused =
-                        path.as_deref().is_some_and(|p| path_is_within(p, &focused));
+                if let Some(focused) = self.input.focus.focused_path().cloned() {
+                    let stays_focused = path.as_ref().is_some_and(|p| path_is_within(p, &focused));
                     if !stays_focused {
                         let mut ctx = EventCtx::new();
-                        dispatch_to_path(
-                            &mut self.root,
-                            &focused,
-                            &InputEvent::FocusLost,
-                            &mut ctx,
-                        );
-                        dispatch_focus_within_transition(
-                            &mut self.root,
-                            Some(&focused),
-                            None,
-                            &mut ctx,
-                        );
-                        self.input.focused_path = None;
+                        self.input.focus.clear(&mut self.root, &mut ctx);
                         #[cfg(target_arch = "wasm32")]
                         self.hide_native_input();
                         self.apply_event_ctx(ctx);
@@ -613,8 +548,8 @@ impl App {
                     let mut ctx = EventCtx::new();
                     dispatch_hover_transition(
                         &mut self.root,
-                        self.input.hovered_path.as_deref(),
-                        path.as_deref(),
+                        self.input.hovered_path.as_ref(),
+                        path.as_ref(),
                         &mut ctx,
                     );
                     self.apply_event_ctx(ctx);
@@ -624,7 +559,9 @@ impl App {
                 let mut suppress_drag = false;
 
                 if let Some(path) = &path {
-                    self.input.pressed_path = Some(path.clone());
+                    self.input
+                        .pointer_capture
+                        .capture(Some(path.clone()), MouseButton::Left);
                     let mut ctx = EventCtx::new();
                     dispatch_positional(
                         &mut self.root,
@@ -684,7 +621,7 @@ impl App {
                         .map_or(1.0, |window| window.scale_factor() as f32);
                     let moved = (point.0 - start.0).abs() + (point.1 - start.1).abs();
                     if moved >= TOUCH_PAN_THRESHOLD_DP * scale_factor {
-                        if let Some(path) = self.input.pressed_path.clone() {
+                        if let Some(path) = self.input.pointer_capture.target().cloned() {
                             let mut cancel_ctx = EventCtx::new();
                             dispatch_positional(
                                 &mut self.root,
@@ -796,7 +733,7 @@ impl App {
                     self.apply_event_ctx(ctx);
                 }
 
-                self.input.pressed_path = None;
+                self.input.pointer_capture.release(MouseButton::Left);
                 self.input.cursor_pos = None;
                 self.input.text_drag_anchor = None;
                 self.pending_long_press = None;
@@ -828,7 +765,7 @@ impl App {
                     self.apply_event_ctx(ctx);
                 }
 
-                self.input.pressed_path = None;
+                self.input.pointer_capture.cancel();
                 self.input.cursor_pos = None;
                 self.input.text_drag_anchor = None;
                 self.pending_long_press = None;

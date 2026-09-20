@@ -132,10 +132,26 @@ crate::impl_common_style_builders!(base RadioButton);
 crate::impl_themed_style_builders!(base RadioButton; hover_style => hover_style, pressed_style => pressed_style, disabled_style => disabled_style, focus_style => focus_style, focused_hover_style => focused_hover_style, focused_pressed_style => focused_pressed_style);
 
 impl Widget for RadioButton {
+    fn semantics(&self) -> Option<crate::Semantics> {
+        let mut semantics =
+            crate::Semantics::new(crate::SemanticRole::Radio).action(crate::SemanticAction::Focus);
+        semantics.label = self.base.accessible_label.as_ref().map(ToString::to_string);
+        semantics.selected = Some(self.selected);
+        semantics.disabled = !self.base.interaction.enabled;
+        if !semantics.disabled {
+            semantics = semantics.action(crate::SemanticAction::Activate);
+        }
+        Some(semantics)
+    }
+
     crate::impl_widget_boilerplate!();
 
     fn debug_name(&self) -> &'static str {
         "Widget#RadioButton"
+    }
+
+    fn ripple_radius(&self, _scale_factor: f32, layout: LayoutBox) -> [f32; 4] {
+        [layout.width.min(layout.height) * 0.5; 4]
     }
 
     fn measure(&self, ctx: &mut MeasureContext, constraints: Constraints) -> MeasureResult {

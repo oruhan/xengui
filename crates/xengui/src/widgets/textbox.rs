@@ -11,6 +11,7 @@ use crate::{
 use smol_str::SmolStr;
 use std::cell::{Cell, RefCell};
 use std::sync::{Arc, Mutex};
+use unicode_segmentation::UnicodeSegmentation;
 use web_time::Instant;
 use xen_clipboard::Clipboard;
 
@@ -22,6 +23,7 @@ pub struct TextBox {
 
     anim_id: WidgetId,
     content: String,
+    ime_preedit: Option<String>,
     placeholder: SmolStr,
     cursor_index: usize,
     max_length: Option<usize>,
@@ -67,7 +69,7 @@ pub struct TextBox {
     // Pixel offset of the caret from the text start, cached during measure()
     // since PaintContext has no access to the text pipeline to shape text.
     cursor_offset: Cell<f32>,
-    // Pixel offset of every character boundary (index 0..=char_count),
+    // Pixel offset of every grapheme boundary (index 0..=grapheme_count),
     // cached during measure() and reused for caret placement, mouse
     // hit-testing, and selection-highlight geometry.
     char_offsets: RefCell<Vec<f32>>,
@@ -108,6 +110,7 @@ impl TextBox {
 
             anim_id: WidgetId::new_unique(),
             content: String::new(),
+            ime_preedit: None,
             placeholder: SmolStr::new(""),
             cursor_index: 0,
             max_length: None,
@@ -150,7 +153,7 @@ impl TextBox {
     /// Returns or updates the `value` value.
     pub fn value(mut self, value: impl Into<String>) -> Self {
         self.content = value.into();
-        self.cursor_index = self.content.chars().count();
+        self.cursor_index = self.content.graphemes(true).count();
         self.selection_anchor = None;
         self.mark_dirty();
         self
@@ -197,12 +200,24 @@ impl TextBox {
         self.base.interaction.hover_cursor = self.base.computed_style.cursor.or(Some(Cursor::Text));
     }
 
-    fn byte_index_for(&self, char_idx: usize) -> usize {
+    fn byte_index_for(&self, grapheme_idx: usize) -> usize {
         self.content
-            .char_indices()
-            .nth(char_idx)
-            .map(|(b, _)| b)
+            .grapheme_indices(true)
+            .nth(grapheme_idx)
+            .map(|(byte, _)| byte)
             .unwrap_or(self.content.len())
+    }
+
+    fn editing_text(&self) -> String {
+        let Some(preedit) = self.ime_preedit.as_deref() else {
+            return self.content.clone();
+        };
+        let byte_index = self.byte_index_for(self.cursor_index);
+        let mut text = String::with_capacity(self.content.len() + preedit.len());
+        text.push_str(&self.content[..byte_index]);
+        text.push_str(preedit);
+        text.push_str(&self.content[byte_index..]);
+        text
     }
 
     fn notify_change(&mut self, ctx: &mut EventCtx) {
@@ -218,7 +233,7 @@ impl TextBox {
         }
     }
 
-    // Returns the selection as an ordered (start, end) char-index pair,
+    // Returns the selection as an ordered (start, end) grapheme-index pair,
     // or None when nothing is selected.
     fn selection_range(&self) -> Option<(usize, usize)> {
         let anchor = self.selection_anchor?;
@@ -311,10 +326,34 @@ impl TextBox {
         self.cursor_index = target;
     }
 
-    fn char_class(c: char) -> u8 {
-        if c.is_whitespace() {
+    fn move_cursor_horizontally(&mut self, forward: bool, extend_selection: bool) {
+        if !extend_selection && let Some((start, end)) = self.selection_range() {
+            self.cursor_index = if forward { end } else { start };
+            self.selection_anchor = None;
+            return;
+        }
+
+        let target = if forward {
+            (self.cursor_index + 1).min(self.content.graphemes(true).count())
+        } else {
+            self.cursor_index.saturating_sub(1)
+        };
+        self.move_cursor_to(target, extend_selection);
+    }
+
+    fn horizontal_key_moves_forward(&self, key: Key) -> bool {
+        let rtl =
+            self.base.computed_style.text_direction == Some(crate::TextDirection::RightToLeft);
+        matches!(
+            (key, rtl),
+            (Key::ArrowRight, false) | (Key::ArrowLeft, true)
+        )
+    }
+
+    fn grapheme_class(grapheme: &str) -> u8 {
+        if grapheme.chars().all(char::is_whitespace) {
             0
-        } else if c.is_alphanumeric() || c == '_' {
+        } else if grapheme.chars().all(|c| c.is_alphanumeric() || c == '_') {
             1
         } else {
             2
@@ -324,59 +363,59 @@ impl TextBox {
     // Word (or punctuation/whitespace run) boundaries around `idx`, used
     // for double-click word selection.
     fn word_bounds_at(&self, idx: usize) -> (usize, usize) {
-        let chars: Vec<char> = self.content.chars().collect();
-        if chars.is_empty() {
+        let graphemes: Vec<&str> = self.content.graphemes(true).collect();
+        if graphemes.is_empty() {
             return (0, 0);
         }
-        let probe = idx.min(chars.len() - 1);
-        let class = Self::char_class(chars[probe]);
+        let probe = idx.min(graphemes.len() - 1);
+        let class = Self::grapheme_class(graphemes[probe]);
 
         let mut start = probe;
-        while start > 0 && Self::char_class(chars[start - 1]) == class {
+        while start > 0 && Self::grapheme_class(graphemes[start - 1]) == class {
             start -= 1;
         }
         let mut end = probe + 1;
-        while end < chars.len() && Self::char_class(chars[end]) == class {
+        while end < graphemes.len() && Self::grapheme_class(graphemes[end]) == class {
             end += 1;
         }
         (start, end)
     }
 
     fn word_left(&self, from: usize) -> usize {
-        let chars: Vec<char> = self.content.chars().collect();
+        let graphemes: Vec<&str> = self.content.graphemes(true).collect();
         let mut i = from;
-        while i > 0 && Self::char_class(chars[i - 1]) == 0 {
+        while i > 0 && Self::grapheme_class(graphemes[i - 1]) == 0 {
             i -= 1;
         }
         if i == 0 {
             return 0;
         }
-        let class = Self::char_class(chars[i - 1]);
-        while i > 0 && Self::char_class(chars[i - 1]) == class {
+        let class = Self::grapheme_class(graphemes[i - 1]);
+        while i > 0 && Self::grapheme_class(graphemes[i - 1]) == class {
             i -= 1;
         }
         i
     }
 
     fn word_right(&self, from: usize) -> usize {
-        let chars: Vec<char> = self.content.chars().collect();
-        let len = chars.len();
+        let graphemes: Vec<&str> = self.content.graphemes(true).collect();
+        let len = graphemes.len();
         let mut i = from;
-        while i < len && Self::char_class(chars[i]) == 0 {
+        while i < len && Self::grapheme_class(graphemes[i]) == 0 {
             i += 1;
         }
         if i == len {
             return len;
         }
-        let class = Self::char_class(chars[i]);
-        while i < len && Self::char_class(chars[i]) == class {
+        let class = Self::grapheme_class(graphemes[i]);
+        while i < len && Self::grapheme_class(graphemes[i]) == class {
             i += 1;
         }
         i
     }
 
     // Maps a pixel offset (relative to the text start) to the nearest
-    // character boundary, using the offsets cached by the last measure().
+    // grapheme boundary, using the offsets cached by the last measure().
     fn index_for_offset(&self, local_x: f32) -> usize {
         let offsets = self.char_offsets.borrow();
         if offsets.len() <= 1 {
@@ -396,33 +435,31 @@ impl TextBox {
     }
 
     fn insert_char(&mut self, c: char, ctx: &mut EventCtx) {
-        // return if read_only
         if self.read_only {
             return;
         }
 
-        let can_insert = match self.max_length {
-            Some(max) => self.selection_range().is_some() || self.content.chars().count() < max,
-            None => true,
-        };
-        if can_insert {
-            self.push_undo_snapshot();
-        }
-
-        let had_selection = self.delete_selection();
-
-        if let Some(max) = self.max_length
-            && self.content.chars().count() >= max
+        self.push_undo_snapshot();
+        self.delete_selection();
+        let byte_idx = self.byte_index_for(self.cursor_index);
+        let mut candidate = self.content.clone();
+        candidate.insert(byte_idx, c);
+        if self
+            .max_length
+            .is_some_and(|max| candidate.graphemes(true).count() > max)
         {
-            if had_selection {
-                self.notify_change(ctx);
+            if let Some((content, cursor, selection)) = self.undo_stack.pop() {
+                self.content = content;
+                self.cursor_index = cursor;
+                self.selection_anchor = selection;
             }
             return;
         }
 
-        let byte_idx = self.byte_index_for(self.cursor_index);
-        self.content.insert(byte_idx, c);
-        self.cursor_index += 1;
+        self.content = candidate;
+        self.cursor_index = self.content[..byte_idx + c.len_utf8()]
+            .graphemes(true)
+            .count();
         self.notify_change(ctx);
     }
 
@@ -443,8 +480,8 @@ impl TextBox {
         let had_selection = self.delete_selection();
 
         let to_insert: String = if let Some(max) = self.max_length {
-            let available = max.saturating_sub(self.content.chars().count());
-            filtered.chars().take(available).collect()
+            let available = max.saturating_sub(self.content.graphemes(true).count());
+            filtered.graphemes(true).take(available).collect()
         } else {
             filtered
         };
@@ -459,9 +496,9 @@ impl TextBox {
         }
 
         let byte_idx = self.byte_index_for(self.cursor_index);
-        let inserted_chars = to_insert.chars().count();
+        let insertion_end = byte_idx + to_insert.len();
         self.content.insert_str(byte_idx, &to_insert);
-        self.cursor_index += inserted_chars;
+        self.cursor_index = self.content[..insertion_end].graphemes(true).count();
         self.notify_change(ctx);
     }
 
@@ -529,7 +566,7 @@ impl TextBox {
             self.notify_change(ctx);
             return;
         }
-        let len = self.content.chars().count();
+        let len = self.content.graphemes(true).count();
         if self.cursor_index >= len {
             return;
         }
@@ -552,7 +589,7 @@ impl TextBox {
             return;
         }
 
-        let len = self.content.chars().count();
+        let len = self.content.graphemes(true).count();
 
         if self.cursor_index >= len {
             return;
@@ -624,7 +661,7 @@ impl TextBox {
             match key.key {
                 Key::Character('a' | 'A') => {
                     self.selection_anchor = Some(0);
-                    self.cursor_index = self.content.chars().count();
+                    self.cursor_index = self.content.graphemes(true).count();
                     self.base.dirty = true;
                     return;
                 }
@@ -659,13 +696,21 @@ impl TextBox {
                     return;
                 }
                 Key::ArrowLeft => {
-                    let target = self.word_left(self.cursor_index);
+                    let target = if self.horizontal_key_moves_forward(key.key) {
+                        self.word_right(self.cursor_index)
+                    } else {
+                        self.word_left(self.cursor_index)
+                    };
                     self.move_cursor_to(target, modifiers.shift);
                     self.base.dirty = true;
                     return;
                 }
                 Key::ArrowRight => {
-                    let target = self.word_right(self.cursor_index);
+                    let target = if self.horizontal_key_moves_forward(key.key) {
+                        self.word_right(self.cursor_index)
+                    } else {
+                        self.word_left(self.cursor_index)
+                    };
                     self.move_cursor_to(target, modifiers.shift);
                     self.base.dirty = true;
                     return;
@@ -689,32 +734,13 @@ impl TextBox {
             Key::Space => self.insert_char(' ', ctx),
             Key::Backspace => self.delete_before_cursor(ctx),
             Key::Delete => self.delete_after_cursor(ctx),
-            Key::ArrowLeft => {
-                if let Some((start, _)) = self.selection_range()
-                    && !modifiers.shift
-                {
-                    self.cursor_index = start;
-                    self.selection_anchor = None;
-                } else {
-                    let target = self.cursor_index.saturating_sub(1);
-                    self.move_cursor_to(target, modifiers.shift);
-                }
-            }
-            Key::ArrowRight => {
-                let len = self.content.chars().count();
-                if let Some((_, end)) = self.selection_range()
-                    && !modifiers.shift
-                {
-                    self.cursor_index = end;
-                    self.selection_anchor = None;
-                } else {
-                    let target = (self.cursor_index + 1).min(len);
-                    self.move_cursor_to(target, modifiers.shift);
-                }
-            }
+            Key::ArrowLeft | Key::ArrowRight => self.move_cursor_horizontally(
+                self.horizontal_key_moves_forward(key.key),
+                modifiers.shift,
+            ),
             Key::Home => self.move_cursor_to(0, modifiers.shift),
             Key::End => {
-                let len = self.content.chars().count();
+                let len = self.content.graphemes(true).count();
                 self.move_cursor_to(len, modifiers.shift);
             }
             Key::Enter => self.submit(ctx),
@@ -794,7 +820,7 @@ impl TextBox {
                 self.dragging = true;
             }
             _ => {
-                let len = self.content.chars().count();
+                let len = self.content.graphemes(true).count();
                 self.selection_anchor = if len > 0 { Some(0) } else { None };
                 self.drag_word_selection = false;
                 self.cursor_index = len;
@@ -875,6 +901,23 @@ crate::impl_common_style_builders!(base TextBox);
 crate::impl_themed_style_builders!(base TextBox; hover_style => hover_style, pressed_style => pressed_style, focus_style => focus_style, disabled_style => disabled_style, focused_hover_style => focused_hover_style, focused_pressed_style => focused_pressed_style);
 
 impl Widget for TextBox {
+    fn semantics(&self) -> Option<crate::Semantics> {
+        let mut semantics = crate::Semantics::new(crate::SemanticRole::TextField)
+            .value(self.content.clone())
+            .action(crate::SemanticAction::Focus);
+        if self.content.is_empty() && !self.placeholder.is_empty() {
+            semantics.label = Some(self.placeholder.to_string());
+        }
+        if let Some(label) = &self.base.accessible_label {
+            semantics.label = Some(label.to_string());
+        }
+        semantics.disabled = !self.base.interaction.enabled;
+        if !semantics.disabled && !self.read_only {
+            semantics = semantics.action(crate::SemanticAction::SetValue);
+        }
+        Some(semantics)
+    }
+
     crate::impl_widget_boilerplate!();
 
     fn debug_name(&self) -> &'static str {
@@ -897,10 +940,11 @@ impl Widget for TextBox {
             .map(|lh| lh.value().value())
             .unwrap_or(0.0);
 
-        let display_text: &str = if self.content.is_empty() {
+        let editing_text = self.editing_text();
+        let display_text: &str = if editing_text.is_empty() {
             &self.placeholder
         } else {
-            &self.content
+            &editing_text
         };
 
         let result = ctx.text.measure(
@@ -944,11 +988,10 @@ impl Widget for TextBox {
 
         let text_w = result.width.max(placeholder_w);
 
-        // Cumulative pixel offset for every character boundary, reused for
+        // Cumulative pixel offset for every grapheme boundary, reused for
         // the caret, mouse hit-testing, and selection-highlight geometry.
-        let char_count = self.content.chars().count();
-        let offsets = ctx.text.character_offsets(
-            &self.content,
+        let raw_offsets = ctx.text.character_offsets(
+            &editing_text,
             style.font.as_deref(),
             font_size,
             style.font_weight.unwrap_or_default(),
@@ -958,13 +1001,28 @@ impl Widget for TextBox {
             scale_factor,
         );
 
+        let mut offsets: Vec<f32> = editing_text
+            .grapheme_indices(true)
+            .map(|(byte, _)| {
+                let char_index = editing_text[..byte].chars().count();
+                raw_offsets.get(char_index).copied().unwrap_or(0.0)
+            })
+            .collect();
+        offsets.push(raw_offsets.last().copied().unwrap_or(0.0));
+        let grapheme_count = offsets.len().saturating_sub(1);
+
+        let display_cursor = self.cursor_index
+            + self
+                .ime_preedit
+                .as_deref()
+                .map_or(0, |preedit| preedit.graphemes(true).count());
         self.cursor_offset.set(
             *offsets
-                .get(self.cursor_index.min(char_count))
+                .get(display_cursor.min(grapheme_count))
                 .unwrap_or(&0.0),
         );
         *self.char_offsets.borrow_mut() = offsets;
-        self.measured_content.replace(self.content.clone());
+        self.measured_content.replace(editing_text);
         self.measured_cursor_index.set(self.cursor_index);
 
         let padding = &style.padding.unwrap_or_default();
@@ -1071,11 +1129,12 @@ impl Widget for TextBox {
             }
         }
 
-        let is_empty = self.content.is_empty();
+        let editing_text = self.editing_text();
+        let is_empty = editing_text.is_empty();
         let display_text: SmolStr = if is_empty {
             self.placeholder.clone()
         } else {
-            SmolStr::new(&self.content)
+            SmolStr::new(editing_text)
         };
 
         let mut text_style = style.clone();
@@ -1182,7 +1241,7 @@ impl Widget for TextBox {
                         }
                         crate::dom::DomAction::SetValue(value) => {
                             self.content = value;
-                            self.cursor_index = self.content.chars().count();
+                            self.cursor_index = self.content.graphemes(true).count();
                             self.selection_anchor = None;
                             self.base.dirty = true;
                             ctx.request_redraw();
@@ -1293,10 +1352,20 @@ impl Widget for TextBox {
             if !self.base.interaction.focused {
                 return EventStatus::Ignored;
             }
-            if let ImeEvent::Commit(text) = ime_event {
-                self.insert_text(text, ctx);
+            match ime_event {
+                ImeEvent::Enabled => self.ime_preedit = None,
+                ImeEvent::Preedit(text, _) => {
+                    self.ime_preedit = (!text.is_empty()).then(|| text.clone());
+                    self.selection_anchor = None;
+                }
+                ImeEvent::Commit(text) => {
+                    self.ime_preedit = None;
+                    self.insert_text(text, ctx);
+                }
+                ImeEvent::Disabled => self.ime_preedit = None,
             }
             self.base.dirty = true;
+            self.base.layout_dirty = true;
             ctx.request_redraw();
             return EventStatus::Handled;
         }
@@ -1316,7 +1385,7 @@ impl Widget for TextBox {
             if self.focus_via_pointer.get() {
                 self.focus_via_pointer.set(false);
             } else {
-                self.cursor_index = self.content.chars().count();
+                self.cursor_index = self.content.graphemes(true).count();
                 self.selection_anchor = None;
             }
             self.caret_visible.set(true);
@@ -1325,6 +1394,9 @@ impl Widget for TextBox {
         if matches!(event, InputEvent::FocusLost) {
             self.selection_anchor = None;
             self.dragging = false;
+            if self.ime_preedit.take().is_some() {
+                self.base.layout_dirty = true;
+            }
         }
 
         if matches!(status, EventStatus::Handled) {
@@ -1355,7 +1427,7 @@ impl Widget for TextBox {
             && self.cursor_index == other.cursor_index
             && self.selection_anchor == other.selection_anchor
             && self.base.authored_styles_eq(&other.base)
-            && *other.measured_content.borrow() == other.content
+            && *other.measured_content.borrow() == other.editing_text()
             && other.measured_cursor_index.get() == other.cursor_index
     }
 
@@ -1378,10 +1450,16 @@ impl Widget for TextBox {
 
         if let Some(old_tb) = old.as_any().downcast_ref::<TextBox>() {
             self.anim_id = old_tb.anim_id;
-            let new_len = self.content.chars().count();
+            let new_len = self.content.graphemes(true).count();
             self.cursor_index = old_tb.cursor_index.min(new_len);
             self.selection_anchor = old_tb.selection_anchor.map(|a| a.min(new_len));
             self.dragging = old_tb.dragging;
+            self.drag_word_selection = old_tb.drag_word_selection;
+            self.drag_word_anchor = old_tb.drag_word_anchor.min(new_len);
+            self.drag_start_pos.set(old_tb.drag_start_pos.get());
+            self.drag_threshold_passed
+                .set(old_tb.drag_threshold_passed.get());
+            self.mouse_button_held.set(old_tb.mouse_button_held.get());
             self.click_count.set(old_tb.click_count.get());
             self.last_click_time.set(old_tb.last_click_time.get());
             self.last_click_pos.set(old_tb.last_click_pos.get());
@@ -1389,6 +1467,7 @@ impl Widget for TextBox {
             self.current_modifiers.set(old_tb.current_modifiers.get());
             self.caret_visible.set(old_tb.caret_visible.get());
             self.pending_paste = old_tb.pending_paste.clone();
+            self.ime_preedit = old_tb.ime_preedit.clone();
             self.undo_stack = old_tb.undo_stack.clone();
             self.redo_stack = old_tb.redo_stack.clone();
         }
@@ -1446,7 +1525,7 @@ impl Widget for TextBox {
         }
         self.push_undo_snapshot();
         self.content = value.to_string();
-        self.cursor_index = self.content.chars().count();
+        self.cursor_index = self.content.graphemes(true).count();
         self.selection_anchor = None;
         self.base.dirty = true;
         self.notify_change(ctx);
@@ -1562,5 +1641,110 @@ mod tests {
         assert_eq!(result.width, 30.0);
         assert_eq!(textbox.content_size.get().0, 80.0);
         assert_eq!(textbox.cursor_offset.get(), 80.0);
+    }
+
+    #[test]
+    fn backspace_deletes_one_grapheme_cluster() {
+        let mut textbox = TextBox::new().value("a\u{301}b");
+        textbox.cursor_index = 1;
+
+        textbox.delete_before_cursor(&mut EventCtx::new());
+
+        assert_eq!(textbox.text(), "b");
+        assert_eq!(textbox.cursor_index, 0);
+    }
+
+    #[test]
+    fn cursor_navigation_does_not_enter_emoji_zwj_sequences() {
+        let mut textbox = TextBox::new().value("👨‍👩‍👧‍👦x");
+        assert_eq!(textbox.cursor_index, 2);
+
+        textbox.handle_key(
+            &KeyboardEvent {
+                key: Key::ArrowLeft,
+                state: KeyState::Pressed,
+                repeat: false,
+            },
+            ModifiersState::default(),
+            &mut EventCtx::new(),
+        );
+        assert_eq!(textbox.cursor_index, 1);
+
+        textbox.delete_before_cursor(&mut EventCtx::new());
+        assert_eq!(textbox.text(), "x");
+    }
+
+    #[test]
+    fn max_length_counts_user_perceived_characters() {
+        let mut textbox = TextBox::new().max_length(1);
+        let mut ctx = EventCtx::new();
+
+        textbox.insert_text("👨‍👩‍👧‍👦", &mut ctx);
+        textbox.insert_text("x", &mut ctx);
+
+        assert_eq!(textbox.text(), "👨‍👩‍👧‍👦");
+        assert_eq!(textbox.cursor_index, 1);
+    }
+
+    #[test]
+    fn rtl_horizontal_navigation_follows_visual_direction() {
+        let mut textbox = TextBox::new()
+            .text_direction(crate::TextDirection::RightToLeft)
+            .value("אב");
+        textbox.cursor_index = 1;
+
+        textbox.handle_key(
+            &KeyboardEvent {
+                key: Key::ArrowLeft,
+                state: KeyState::Pressed,
+                repeat: false,
+            },
+            ModifiersState::default(),
+            &mut EventCtx::new(),
+        );
+
+        assert_eq!(textbox.cursor_index, 2);
+    }
+
+    #[test]
+    fn ime_preedit_is_visible_but_only_commit_mutates_the_value() {
+        let mut textbox = TextBox::new().value("A");
+        textbox.base.interaction.focused = true;
+        let mut ctx = EventCtx::new();
+
+        textbox.event(
+            &InputEvent::Ime(ImeEvent::Preedit("に".to_string(), Some((0, 3)))),
+            &mut ctx,
+        );
+        assert_eq!(textbox.text(), "A");
+        assert_eq!(textbox.editing_text(), "Aに");
+
+        textbox.event(
+            &InputEvent::Ime(ImeEvent::Commit("日".to_string())),
+            &mut ctx,
+        );
+        assert_eq!(textbox.text(), "A日");
+        assert_eq!(textbox.editing_text(), "A日");
+    }
+
+    #[test]
+    fn controlled_reconciliation_preserves_pointer_selection_session() {
+        let mut old = TextBox::new().value("selectable text");
+        old.dragging = true;
+        old.drag_word_selection = true;
+        old.drag_word_anchor = 4;
+        old.drag_start_pos.set((12.0, 8.0));
+        old.drag_threshold_passed.set(true);
+        old.mouse_button_held.set(true);
+
+        let mut next = TextBox::new().value("selectable text");
+        next.transfer_interaction_state(&old);
+
+        assert!(next.dragging);
+        assert!(next.drag_word_selection);
+        assert_eq!(next.drag_word_anchor, 4);
+        assert_eq!(next.drag_start_pos.get(), (12.0, 8.0));
+        assert!(next.drag_threshold_passed.get());
+        assert!(next.mouse_button_held.get());
     }
 }

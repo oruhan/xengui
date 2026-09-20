@@ -45,6 +45,10 @@ impl Slider {
         let mut interaction = Interaction::new();
         interaction.focusable = true;
         interaction.hover_cursor = Some(DEFAULT_POINTER_CURSOR_ICON);
+        // M3 sliders express pressed state through their handle geometry;
+        // a bounded rectangular ripple across the track is not part of the
+        // component and conflicts with its pill-shaped visual language.
+        interaction.ripple_overrides.enabled = Some(false);
 
         let mut slider = Self {
             base: WidgetBase::new(interaction),
@@ -157,6 +161,21 @@ crate::impl_interaction_builders!(base Slider);
 crate::impl_common_style_builders!(base Slider);
 
 impl Widget for Slider {
+    fn semantics(&self) -> Option<crate::Semantics> {
+        let mut semantics = crate::Semantics::new(crate::SemanticRole::Slider)
+            .value(self.value.to_string())
+            .action(crate::SemanticAction::Focus);
+        semantics.label = self.base.accessible_label.as_ref().map(ToString::to_string);
+        semantics.disabled = !self.base.interaction.enabled;
+        if !semantics.disabled {
+            semantics = semantics
+                .action(crate::SemanticAction::SetValue)
+                .action(crate::SemanticAction::Increment)
+                .action(crate::SemanticAction::Decrement);
+        }
+        Some(semantics)
+    }
+
     crate::impl_widget_boilerplate!();
 
     fn debug_name(&self) -> &'static str {

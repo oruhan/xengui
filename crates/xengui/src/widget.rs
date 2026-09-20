@@ -465,6 +465,22 @@ pub trait Widget: Any {
         None
     }
 
+    /// Returns the physical corner radii used to clip this widget's bounded
+    /// pressed-state ripple.
+    ///
+    /// Most widgets derive the shape from their computed border. Widgets
+    /// that paint their geometry directly (for example switches and radio
+    /// buttons) override this so interaction feedback and visible geometry
+    /// always share the same silhouette.
+    fn ripple_radius(&self, scale_factor: f32, layout: LayoutBox) -> [f32; 4] {
+        self.computed_style()
+            .border
+            .as_ref()
+            .and_then(|border| border.radius)
+            .map(|radius| radius.to_physical_array(scale_factor, layout.width, layout.height))
+            .unwrap_or([0.0; 4])
+    }
+
     /// Returns or updates the `transfer_interaction_state` value.
     fn transfer_interaction_state(&mut self, old: &dyn Widget) {
         if let (Some(new), Some(old)) = (self.interaction_mut(), old.interaction()) {
@@ -472,13 +488,13 @@ pub trait Widget: Any {
         }
     }
 
-    /// Called during reconciliation for every widget matched against its
-    /// predecessor, with mutable access to that predecessor - lets a
-    /// composite widget reconcile its freshly re-rendered content against
-    /// whatever the predecessor already had committed, so a descendant's
-    /// interaction/hook state survives a parent prop update. Every other
-    /// widget can ignore this; the default does nothing.
-    fn transfer_composite_children(&mut self, _old: &mut dyn Widget) {}
+    /// Prepares a composite widget's freshly rendered children before the
+    /// reconciler descends into them.
+    ///
+    /// The committed predecessor is deliberately immutable: an interruptible
+    /// reconciliation pass must be discardable without changing the tree that
+    /// is still being painted and receiving input.
+    fn prepare_composite_children(&mut self, _old: &dyn Widget) {}
 
     /// Returns or updates the `event` value.
     fn event(&mut self, event: &InputEvent, ctx: &mut EventCtx) -> EventStatus {
@@ -492,6 +508,20 @@ pub trait Widget: Any {
         }
 
         status
+    }
+
+    /// Handles an event during the root-to-target capture phase.
+    ///
+    /// The default ignores capture so existing widgets retain their target and
+    /// bubble behavior. Returning [`EventStatus::Handled`] stops propagation
+    /// before the event reaches deeper descendants.
+    fn event_capture(&mut self, _event: &InputEvent, _ctx: &mut EventCtx) -> EventStatus {
+        EventStatus::Ignored
+    }
+
+    /// Returns the accessibility semantics contributed by this widget.
+    fn semantics(&self) -> Option<crate::Semantics> {
+        None
     }
 
     /// Returns or updates the `content_eq` value.

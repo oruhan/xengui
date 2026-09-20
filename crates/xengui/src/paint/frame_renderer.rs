@@ -537,7 +537,7 @@ fn effective_z_index(widget: &dyn Widget, parent_z_index: i32) -> i32 {
 
 fn reuse_cached_paint(
     cache: &RenderCache,
-    path: &str,
+    path: &WidgetPath,
     layout_box: LayoutBox,
     dirty: bool,
     out: &mut Vec<DrawCommand>,
@@ -783,7 +783,7 @@ fn paint_recursive(
         }
     }
 
-    cache.mark_live(path.as_str());
+    cache.mark_live(path);
 
     let z_index = effective_z_index(widget, parent_z_index);
 
@@ -858,18 +858,12 @@ fn paint_recursive(
     }
 
     paint_scratch.clear();
-    if !reuse_cached_paint(
-        cache,
-        path.as_str(),
-        layout_box,
-        widget.is_dirty(),
-        paint_scratch,
-    ) {
+    if !reuse_cached_paint(cache, path, layout_box, widget.is_dirty(), paint_scratch) {
         {
             let mut paint_ctx = PaintContext::new(paint_scratch, scale_factor);
             widget.paint(&mut paint_ctx);
         }
-        cache.store(path.as_str(), layout_box, paint_scratch.clone());
+        cache.store(path, layout_box, paint_scratch.clone());
     }
 
     let raw_paint = std::mem::take(paint_scratch);
@@ -1023,6 +1017,7 @@ fn paint_ripple_inline(
     else {
         return;
     };
+    let radius = widget.ripple_radius(scale_factor, layout_box);
 
     paint_scratch.clear();
     {
@@ -1032,6 +1027,7 @@ fn paint_ripple_inline(
             interaction.ripple_overrides,
             widget.computed_style(),
             layout_box,
+            radius,
             &mut paint_ctx,
         );
     }
@@ -1059,12 +1055,12 @@ fn paint_subtree_for_filter(
     scale_factor: f32,
     z_index: i32,
 ) {
-    cache.mark_live(path.as_str());
+    cache.mark_live(path);
 
     paint_scratch.clear();
     if !reuse_cached_paint(
         cache,
-        path.as_str(),
+        path,
         *widget.layout_box(),
         widget.is_dirty(),
         paint_scratch,
@@ -1073,7 +1069,7 @@ fn paint_subtree_for_filter(
             let mut paint_ctx = PaintContext::new(paint_scratch, scale_factor);
             widget.paint(&mut paint_ctx);
         }
-        cache.store(path.as_str(), *widget.layout_box(), paint_scratch.clone());
+        cache.store(path, *widget.layout_box(), paint_scratch.clone());
     }
     let raw_paint = std::mem::take(paint_scratch);
     *paint_scratch = composite_widget_paint(widget, raw_paint, None, scale_factor);
@@ -1319,21 +1315,15 @@ fn paint_portal_subtree(
     scale_factor: f32,
 ) {
     let layout_box = *widget.layout_box();
-    cache.mark_live(path.as_str());
+    cache.mark_live(path);
 
     paint_scratch.clear();
-    if !reuse_cached_paint(
-        cache,
-        path.as_str(),
-        layout_box,
-        widget.is_dirty(),
-        paint_scratch,
-    ) {
+    if !reuse_cached_paint(cache, path, layout_box, widget.is_dirty(), paint_scratch) {
         {
             let mut paint_ctx = PaintContext::new(paint_scratch, scale_factor);
             widget.paint(&mut paint_ctx);
         }
-        cache.store(path.as_str(), layout_box, paint_scratch.clone());
+        cache.store(path, layout_box, paint_scratch.clone());
     }
     let raw_paint = std::mem::take(paint_scratch);
     top_commands.extend(composite_widget_paint(
@@ -1453,14 +1443,15 @@ mod tests {
         assert_eq!(arena.commands.capacity(), capacities.0);
         assert_eq!(arena.rects.capacity(), capacities.1);
         assert_eq!(arena.paint_scratch.capacity(), capacities.2);
-        assert!(arena.path.as_str().is_empty());
+        assert!(arena.path.is_empty());
     }
 
     #[test]
     fn moved_cached_text_keeps_its_metrics_and_tracks_fractional_scroll() {
         let mut cache = RenderCache::new();
+        let path = WidgetPath::from_widget(&View::new(), 0);
         cache.store(
-            "label",
+            &path,
             LayoutBox {
                 x: 10.0,
                 y: 20.0,
@@ -1479,7 +1470,7 @@ mod tests {
         let mut commands = Vec::new();
         assert!(reuse_cached_paint(
             &cache,
-            "label",
+            &path,
             LayoutBox {
                 x: 10.25,
                 y: 19.5,

@@ -212,10 +212,30 @@ crate::impl_common_style_builders!(base Switch);
 crate::impl_themed_style_builders!(base Switch; hover_style => hover_style, pressed_style => pressed_style, disabled_style => disabled_style, focus_style => focus_style, focused_hover_style => focused_hover_style, focused_pressed_style => focused_pressed_style);
 
 impl Widget for Switch {
+    fn semantics(&self) -> Option<crate::Semantics> {
+        let mut semantics =
+            crate::Semantics::new(crate::SemanticRole::Switch).action(crate::SemanticAction::Focus);
+        semantics.label = self.base.accessible_label.as_ref().map(ToString::to_string);
+        semantics.checked = Some(if self.checked {
+            crate::SemanticCheckedState::On
+        } else {
+            crate::SemanticCheckedState::Off
+        });
+        semantics.disabled = !self.base.interaction.enabled;
+        if !semantics.disabled {
+            semantics = semantics.action(crate::SemanticAction::Activate);
+        }
+        Some(semantics)
+    }
+
     crate::impl_widget_boilerplate!();
 
     fn debug_name(&self) -> &'static str {
         "Widget#Switch"
+    }
+
+    fn ripple_radius(&self, _scale_factor: f32, layout: LayoutBox) -> [f32; 4] {
+        [layout.height * 0.5; 4]
     }
 
     fn measure(&self, ctx: &mut MeasureContext, constraints: Constraints) -> MeasureResult {

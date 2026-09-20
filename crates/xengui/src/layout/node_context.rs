@@ -1,46 +1,22 @@
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{MeasureResult, WidgetId};
+use crate::{Widget, WidgetPath};
 
-/// Context associated with a layout node.
+/// Immutable data needed to measure one Taffy leaf during layout.
 ///
-/// The layout engine owns this structure and passes it to the intrinsic
-/// measurement system. Widgets never access it directly.
-#[derive(Clone, Debug)]
-pub struct NodeContext {
-    /// Stable identifier of the associated widget.
-    pub widget_id: WidgetId,
-
-    /// Cached intrinsic measurement.
-    ///
-    /// The cache is invalidated whenever the widget becomes dirty.
-    pub measure: Option<MeasureResult>,
+/// The Taffy node stores this value's index in a layout-pass-local table.
+/// Keeping the widget borrow outside Taffy makes ownership explicit and
+/// ensures no layout context can survive beyond the pass that created it.
+pub(crate) struct NodeContext<'a> {
+    pub(crate) widget: &'a dyn Widget,
+    pub(crate) path: WidgetPath,
 }
 
-impl NodeContext {
-    /// Creates a new node context.
-    pub const fn new(widget_id: WidgetId) -> Self {
+impl<'a> NodeContext<'a> {
+    pub(crate) fn new(widget: &'a dyn Widget, path: &WidgetPath) -> Self {
         Self {
-            widget_id,
-            measure: None,
+            widget,
+            path: path.clone(),
         }
-    }
-
-    /// Returns the cached measurement, if available.
-    #[inline]
-    pub const fn measure(&self) -> Option<MeasureResult> {
-        self.measure
-    }
-
-    /// Stores the latest measurement.
-    #[inline]
-    pub fn set_measure(&mut self, measure: MeasureResult) {
-        self.measure = Some(measure);
-    }
-
-    /// Invalidates the cached measurement.
-    #[inline]
-    pub fn invalidate_measure(&mut self) {
-        self.measure = None;
     }
 }

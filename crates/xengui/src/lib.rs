@@ -37,6 +37,8 @@ pub mod devtools;
 pub mod dispatcher;
 /// Programmatic actions targeting widgets by identifier.
 pub mod dom;
+/// Runtime-owned keyboard focus state and transitions.
+pub mod focus;
 /// Component state, effects, and asynchronous resource hooks.
 pub mod hooks;
 /// Platform-independent input events and event context.
@@ -57,6 +59,8 @@ pub mod reconciler;
 pub mod redraw;
 /// Material pressed-state ripple feedback and platform policy.
 pub mod ripple;
+/// Platform-independent accessibility semantics tree.
+pub mod semantics;
 /// Theme, layout, typography, and visual style values.
 pub mod style;
 /// Compatibility conversions for SVG colors.
@@ -97,6 +101,7 @@ pub use widget_base::WidgetBase;
 pub use constants::*;
 pub use context::{ContextGuard, provide_context, use_context, with_context};
 pub use dispatcher::Dispatcher;
+pub use focus::FocusManager;
 pub use input::{
     InputEvent, Key, KeyState, any_wants_animation, dispatch_animation_tick, find_widget_mut,
 };
@@ -106,6 +111,7 @@ pub use platform::{
 };
 pub use redraw::RedrawRequester;
 pub use ripple::{RippleConfig, RipplePlatforms, ripple_config, set_ripple_config};
+pub use semantics::*;
 pub use style::{
     Border, BoxShadow, BoxSizing, Color, Cursor, Edges, FlexDirection, FlexWrap, FontStyle,
     FontWeight, IntoThemed, Length, Overflow, Overscroll, Style, StyleBuilder, Theme, ThemeMode,

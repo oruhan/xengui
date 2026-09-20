@@ -83,6 +83,7 @@ pub use style_builder::*;
 pub use system_theme::SystemTheme;
 pub use text_align::TextAlign;
 pub use text_decoration::TextDecoration;
+pub use text_direction::TextDirection;
 pub use theme::{
     IntoThemed, Theme, ThemeMode, current_theme, set_active_theme, set_active_theme_by_name,
 };

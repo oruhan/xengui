@@ -187,6 +187,23 @@ crate::impl_common_style_builders!(base Button);
 crate::impl_themed_style_builders!(base Button; hover_style => hover_style, pressed_style => pressed_style, disabled_style => disabled_style, focus_style => focus_style, focused_hover_style => focused_hover_style, focused_pressed_style => focused_pressed_style);
 
 impl Widget for Button {
+    fn semantics(&self) -> Option<crate::Semantics> {
+        let label = self
+            .base
+            .accessible_label
+            .as_ref()
+            .unwrap_or(&self.content)
+            .to_string();
+        let mut semantics = crate::Semantics::new(crate::SemanticRole::Button)
+            .label(label)
+            .action(crate::SemanticAction::Focus);
+        semantics.disabled = !self.base.interaction.enabled;
+        if !semantics.disabled {
+            semantics = semantics.action(crate::SemanticAction::Activate);
+        }
+        Some(semantics)
+    }
+
     crate::impl_widget_boilerplate!();
 
     fn debug_name(&self) -> &'static str {

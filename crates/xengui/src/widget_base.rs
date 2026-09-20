@@ -8,6 +8,8 @@ pub struct WidgetBase {
     pub key: Option<SmolStr>,
     /// Global identifier, usable with `xengui::dom` to trigger this widget from anywhere
     pub id: Option<SmolStr>,
+    /// Author-provided accessible name for controls without visible text.
+    pub accessible_label: Option<SmolStr>,
     /// The `dirty` value carried by this type.
     pub dirty: bool,
     /// Set when a style recompute actually changes something affecting
@@ -47,6 +49,7 @@ impl WidgetBase {
         Self {
             key: None,
             id: None,
+            accessible_label: None,
             dirty: true,
             layout_dirty: true,
 
@@ -143,6 +146,7 @@ impl WidgetBase {
     /// and computed styles are deliberately excluded.
     pub(crate) fn authored_styles_eq(&self, other: &Self) -> bool {
         self.style == other.style
+            && self.accessible_label == other.accessible_label
             && self.hover_style == other.hover_style
             && self.pressed_style == other.pressed_style
             && self.disabled_style == other.disabled_style

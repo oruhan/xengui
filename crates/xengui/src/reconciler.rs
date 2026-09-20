@@ -29,6 +29,7 @@ use web_time::{Duration, Instant};
 
 struct Frame {
     new_siblings: Vec<Box<dyn Widget>>,
+    new_path: Vec<usize>,
     old_path: Vec<usize>,
     keyed_old: HashMap<SmolStr, usize>,
     consumed: Vec<bool>,
@@ -40,6 +41,7 @@ impl Frame {
     fn new(
         new_siblings: Vec<Box<dyn Widget>>,
         old_siblings: &[Box<dyn Widget>],
+        new_path: Vec<usize>,
         old_path: Vec<usize>,
     ) -> Self {
         let mut keyed_old = HashMap::new();
@@ -65,6 +67,7 @@ impl Frame {
 
         Self {
             new_siblings,
+            new_path,
             old_path,
             keyed_old,
             consumed: vec![false; old_siblings.len()],
@@ -79,9 +82,35 @@ pub enum WorkLoopStatus {
     /// The time budget ran out before the tree was fully reconciled; call
     /// `perform_work` again with a fresh deadline to keep going.
     Yielded,
-    /// Reconciliation finished; this is the fully reconciled tree, ready
-    /// to be committed as the new current tree.
-    Complete(Vec<Box<dyn Widget>>),
+    /// Reconciliation finished; the returned transaction is ready to be
+    /// committed atomically as the new current tree.
+    Complete(ReconciliationCommit),
+}
+
+/// A completed reconciliation transaction.
+///
+/// Until [`Self::commit`] is called, neither lifecycle callbacks nor changes
+/// to the committed tree are observable.
+pub struct ReconciliationCommit {
+    tree: Vec<Box<dyn Widget>>,
+    lifecycle: Vec<LifecycleAction>,
+}
+
+impl ReconciliationCommit {
+    /// Applies deferred lifecycle callbacks and returns the new committed tree.
+    pub fn commit(mut self, old_root: &mut [Box<dyn Widget>]) -> Vec<Box<dyn Widget>> {
+        for action in self.lifecycle.drain(..) {
+            match action {
+                LifecycleAction::Mount(path) => {
+                    mount_subtree(resolve_widget_mut(&mut self.tree, &path));
+                }
+                LifecycleAction::Unmount(path) => {
+                    unmount_subtree(resolve_widget_mut(old_root, &path));
+                }
+            }
+        }
+        self.tree
+    }
 }
 
 const YIELD_CHECK_INTERVAL: u32 = 8;
@@ -89,7 +118,13 @@ const YIELD_CHECK_INTERVAL: u32 = 8;
 /// An in-progress, interruptible reconciliation pass.
 pub struct WorkLoop {
     stack: Vec<Frame>,
+    lifecycle: Vec<LifecycleAction>,
     units_since_check: u32,
+}
+
+enum LifecycleAction {
+    Mount(Vec<usize>),
+    Unmount(Vec<usize>),
 }
 
 // Walks down `root` following a path of child indices, returning the
@@ -102,16 +137,14 @@ fn resolve_old_siblings<'a>(root: &'a [Box<dyn Widget>], path: &[usize]) -> &'a 
     current
 }
 
-fn resolve_old_siblings_mut<'a>(
-    root: &'a mut [Box<dyn Widget>],
-    path: &[usize],
-) -> &'a mut [Box<dyn Widget>] {
-    let mut current = root;
-    for &idx in path {
-        current = current[idx]
+fn resolve_widget_mut<'a>(root: &'a mut [Box<dyn Widget>], path: &[usize]) -> &'a mut dyn Widget {
+    let (first, descendants) = path.split_first().expect("widget path is not empty");
+    let mut current = root[*first].as_mut();
+    for &index in descendants {
+        current = current
             .children_mut()
-            .expect("old tree structure changed during reconciliation")
-            .as_mut_slice();
+            .expect("tree structure changed before reconciliation commit")[index]
+            .as_mut();
     }
     current
 }
@@ -120,7 +153,8 @@ impl WorkLoop {
     /// Begins reconciling `new_root` against `old_root`.
     pub fn new(new_root: Vec<Box<dyn Widget>>, old_root: &[Box<dyn Widget>]) -> Self {
         Self {
-            stack: vec![Frame::new(new_root, old_root, Vec::new())],
+            stack: vec![Frame::new(new_root, old_root, Vec::new(), Vec::new())],
+            lifecycle: Vec::new(),
             units_since_check: 0,
         }
     }
@@ -130,7 +164,7 @@ impl WorkLoop {
     /// tree (unchanged in structure) this `WorkLoop` was created against.
     pub fn perform_work(
         &mut self,
-        old_root: &mut [Box<dyn Widget>],
+        old_root: &[Box<dyn Widget>],
         deadline: Instant,
     ) -> WorkLoopStatus {
         loop {
@@ -142,11 +176,12 @@ impl WorkLoop {
             if frame_done {
                 let finished = self.stack.pop().expect("frame exists");
 
-                let old_siblings = resolve_old_siblings_mut(old_root, &finished.old_path);
                 let mut any_removed = false;
                 for (i, consumed) in finished.consumed.iter().enumerate() {
                     if !consumed {
-                        unmount_subtree(old_siblings[i].as_mut());
+                        let mut path = finished.old_path.clone();
+                        path.push(i);
+                        self.lifecycle.push(LifecycleAction::Unmount(path));
                         any_removed = true;
                     }
                 }
@@ -168,7 +203,10 @@ impl WorkLoop {
                         }
                     }
                     None => {
-                        return WorkLoopStatus::Complete(finished.new_siblings);
+                        return WorkLoopStatus::Complete(ReconciliationCommit {
+                            tree: finished.new_siblings,
+                            lifecycle: std::mem::take(&mut self.lifecycle),
+                        });
                     }
                 }
                 continue;
@@ -186,24 +224,28 @@ impl WorkLoop {
         }
     }
 
-    fn process_one_node(&mut self, old_root: &mut [Box<dyn Widget>]) {
+    fn process_one_node(&mut self, old_root: &[Box<dyn Widget>]) {
         let frame = self.stack.last_mut().expect("root frame always present");
         let idx = frame.next_index;
         frame.next_index += 1;
 
         let Some(old_idx) = Self::find_match(frame, old_root, idx) else {
-            mount_subtree(frame.new_siblings[idx].as_mut());
+            let mut path = frame.new_path.clone();
+            path.push(idx);
+            self.lifecycle.push(LifecycleAction::Mount(path));
             return;
         };
         if frame.consumed[old_idx] {
-            mount_subtree(frame.new_siblings[idx].as_mut());
+            let mut path = frame.new_path.clone();
+            path.push(idx);
+            self.lifecycle.push(LifecycleAction::Mount(path));
             return;
         }
 
         frame.consumed[old_idx] = true;
         let old_path = frame.old_path.clone();
 
-        let old_siblings = resolve_old_siblings_mut(old_root, &old_path);
+        let old_siblings = resolve_old_siblings(old_root, &old_path);
 
         if frame.new_siblings[idx].as_any().type_id() != old_siblings[old_idx].as_any().type_id() {
             if crate::devtools::is_enabled() {
@@ -211,13 +253,18 @@ impl WorkLoop {
                 let path = reconcile_path(&old_path, idx);
                 crate::devtools::log_rerender(&path, name, "widget type changed");
             }
-            unmount_subtree(old_siblings[old_idx].as_mut());
-            mount_subtree(frame.new_siblings[idx].as_mut());
+            let mut old_widget_path = old_path;
+            old_widget_path.push(old_idx);
+            self.lifecycle
+                .push(LifecycleAction::Unmount(old_widget_path));
+            let mut new_widget_path = frame.new_path.clone();
+            new_widget_path.push(idx);
+            self.lifecycle.push(LifecycleAction::Mount(new_widget_path));
             return;
         }
 
         let new_node = &mut frame.new_siblings[idx];
-        let old_node = &mut old_siblings[old_idx];
+        let old_node = &old_siblings[old_idx];
 
         new_node.transfer_interaction_state(old_node.as_ref());
         let content_equal = new_node.content_eq(old_node.as_ref());
@@ -228,7 +275,7 @@ impl WorkLoop {
         }
 
         new_node.after_interaction_transfer();
-        new_node.transfer_composite_children(old_node.as_mut());
+        new_node.prepare_composite_children(old_node.as_ref());
 
         if content_equal {
             new_node.transfer_measured_state(old_node.as_ref());
@@ -237,16 +284,26 @@ impl WorkLoop {
             new_node.set_layout_dirty(false);
         }
 
-        let has_children = new_node.children_mut().is_some_and(|c| !c.is_empty());
+        let old_has_children = !old_node.children().is_empty();
+        let new_has_children = !new_node.children().is_empty();
 
-        if has_children {
+        if new_has_children || old_has_children {
             let mut child_path = old_path;
             child_path.push(old_idx);
+            let mut new_child_path = frame.new_path.clone();
+            new_child_path.push(idx);
 
-            let taken_children = std::mem::take(new_node.children_mut().unwrap());
+            let taken_children = new_node
+                .children_mut()
+                .map(std::mem::take)
+                .unwrap_or_default();
             let old_children = resolve_old_siblings(old_root, &child_path);
-            self.stack
-                .push(Frame::new(taken_children, old_children, child_path));
+            self.stack.push(Frame::new(
+                taken_children,
+                old_children,
+                new_child_path,
+                child_path,
+            ));
         }
     }
 
@@ -312,7 +369,7 @@ pub fn reconcile_now(
     loop {
         match work.perform_work(old_root, far_future) {
             WorkLoopStatus::Complete(tree) => {
-                return tree;
+                return tree.commit(old_root);
             }
             WorkLoopStatus::Yielded => {
                 continue;
@@ -449,11 +506,10 @@ mod tests {
             }
         }
 
-        fn transfer_composite_children(&mut self, old: &mut dyn Widget) {
-            if self.drain_old_children_on_transfer
-                && let Some(old) = old.as_any_mut().downcast_mut::<Self>()
-            {
-                self.children = std::mem::take(&mut old.children);
+        fn prepare_composite_children(&mut self, old: &dyn Widget) {
+            if self.drain_old_children_on_transfer {
+                let old = old.as_any().downcast_ref::<Self>().expect("test widget");
+                assert!(!old.children.is_empty());
             }
         }
     }
@@ -495,6 +551,30 @@ mod tests {
     }
 
     #[test]
+    fn matched_composite_descendants_keep_their_state_without_moving_old_children() {
+        let events = EventLog::default();
+        let mut old: Vec<Box<dyn Widget>> = vec![Box::new(
+            TestWidget::new("composite", Some("root"), 1, &events).with_children(vec![widget(
+                "child",
+                Some("child"),
+                42,
+                &events,
+            )]),
+        )];
+        let new: Vec<Box<dyn Widget>> = vec![Box::new(
+            TestWidget::new("composite", Some("root"), 0, &events)
+                .with_children(vec![widget("child", Some("child"), 0, &events)])
+                .draining_old_children(),
+        )];
+
+        let reconciled = reconcile_now(new, &mut old);
+
+        assert_eq!(state(reconciled[0].children()[0].as_ref()), 42);
+        assert_eq!(old[0].children().len(), 1);
+        assert!(events.borrow().is_empty());
+    }
+
+    #[test]
     fn keyed_insert_and_remove_fire_lifecycle_once() {
         let events = EventLog::default();
         let mut old = vec![
@@ -513,6 +593,25 @@ mod tests {
             events.borrow().as_slice(),
             ["mount:inserted", "unmount:removed"]
         );
+    }
+
+    #[test]
+    fn removing_the_last_child_unmounts_it_at_commit() {
+        let events = EventLog::default();
+        let mut old: Vec<Box<dyn Widget>> = vec![Box::new(
+            TestWidget::new("parent", Some("parent"), 1, &events).with_children(vec![widget(
+                "child",
+                Some("child"),
+                2,
+                &events,
+            )]),
+        )];
+        let new: Vec<Box<dyn Widget>> = vec![widget("parent", Some("parent"), 0, &events)];
+
+        let reconciled = reconcile_now(new, &mut old);
+
+        assert!(reconciled[0].children().is_empty());
+        assert_eq!(events.borrow().as_slice(), ["unmount:child"]);
     }
 
     #[test]
@@ -541,14 +640,14 @@ mod tests {
         let mut work = WorkLoop::new(new, &old);
 
         assert!(matches!(
-            work.perform_work(&mut old, Instant::now()),
+            work.perform_work(&old, Instant::now()),
             WorkLoopStatus::Yielded
         ));
 
         let complete = loop {
-            match work.perform_work(&mut old, Instant::now() + Duration::from_secs(60)) {
+            match work.perform_work(&old, Instant::now() + Duration::from_secs(60)) {
                 WorkLoopStatus::Yielded => continue,
-                WorkLoopStatus::Complete(tree) => break tree,
+                WorkLoopStatus::Complete(commit) => break commit.commit(&mut old),
             }
         };
 
@@ -558,13 +657,12 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "Phase 2: composite transfer currently mutates the committed tree before commit"]
     fn yielded_reconciliation_does_not_mutate_the_committed_tree() {
         let events = EventLog::default();
         let old_children = (0..8)
             .map(|index| widget("child", Some(&format!("child-{index}")), index, &events))
             .collect();
-        let mut old: Vec<Box<dyn Widget>> = vec![Box::new(
+        let old: Vec<Box<dyn Widget>> = vec![Box::new(
             TestWidget::new("composite", Some("root"), 1, &events).with_children(old_children),
         )];
         let new_children = (0..8)
@@ -578,9 +676,49 @@ mod tests {
         let mut work = WorkLoop::new(new, &old);
 
         assert!(matches!(
-            work.perform_work(&mut old, Instant::now()),
+            work.perform_work(&old, Instant::now()),
             WorkLoopStatus::Yielded
         ));
         assert_eq!(old[0].children().len(), 8);
+        assert!(events.borrow().is_empty());
+    }
+
+    #[test]
+    fn discarded_yielded_work_has_no_lifecycle_side_effects() {
+        let events = EventLog::default();
+        let old: Vec<Box<dyn Widget>> = (0..16)
+            .map(|index| widget("old", Some(&format!("old-{index}")), index, &events))
+            .collect();
+        let new: Vec<Box<dyn Widget>> = (0..16)
+            .map(|index| widget("new", Some(&format!("new-{index}")), index, &events))
+            .collect();
+        let mut work = WorkLoop::new(new, &old);
+
+        assert!(matches!(
+            work.perform_work(&old, Instant::now()),
+            WorkLoopStatus::Yielded
+        ));
+        drop(work);
+
+        assert_eq!(old.len(), 16);
+        assert!(events.borrow().is_empty());
+    }
+
+    #[test]
+    fn completed_transaction_has_no_effect_until_explicit_commit() {
+        let events = EventLog::default();
+        let old = vec![widget("old", Some("old"), 1, &events)];
+        let new = vec![widget("new", Some("new"), 0, &events)];
+        let mut work = WorkLoop::new(new, &old);
+
+        let commit = match work.perform_work(&old, Instant::now() + Duration::from_secs(60)) {
+            WorkLoopStatus::Complete(commit) => commit,
+            WorkLoopStatus::Yielded => panic!("small reconciliation unexpectedly yielded"),
+        };
+
+        assert_eq!(old.len(), 1);
+        assert!(events.borrow().is_empty());
+        drop(commit);
+        assert!(events.borrow().is_empty());
     }
 }

@@ -82,14 +82,16 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let point = in.local_pos + in.half_size;
     let distance = length(point - center);
     let wave_radius = max(in.origin_radius.z * scale_in, 0.001);
-    // A broad analytic feather avoids the hard legacy-ripple edge without
-    // requiring a costly offscreen blur pass on mobile GPUs.
-    let softness = clamp(in.origin_radius.z * 0.04, 6.0, 18.0);
+    // Keep the wave boundary as a broad alpha gradient. A narrow feather
+    // reads as a visible circular outline against flat component fills,
+    // especially on large desktop targets.
+    let softness = clamp(in.origin_radius.z * 0.11, 10.0, 36.0);
     let wave = 1.0 - smoothstep(wave_radius - softness, wave_radius + softness, distance);
 
-    let ring_width = max(7.0, wave_radius * 0.09);
-    let ring = 1.0 - smoothstep(ring_width * 0.2, ring_width,
-        abs(distance - wave_radius));
+    // Procedural sparkle energy follows the same soft boundary rather than
+    // reintroducing a sharp ring on top of the feathered wave.
+    let ring_width = max(softness * 1.35, wave_radius * 0.12);
+    let ring = 1.0 - smoothstep(0.0, ring_width, abs(distance - wave_radius));
     let turbulence = 0.65 + 0.35 * triangle_noise(
         atan2(point.y - center.y, point.x - center.x) * 3.8 + in.progress_noise.y * 31.0);
     let sparkle = sparkle_noise(point, in.progress_noise.y) * ring * turbulence * fade_in;

@@ -214,6 +214,13 @@ macro_rules! impl_common_style_builders {
                 self.mark_dirty();
                 self
             }
+
+            /// Sets the name exposed to accessibility services.
+            pub fn accessible_label(mut self, label: impl Into<smol_str::SmolStr>) -> Self {
+                self.base.accessible_label = Some(label.into());
+                self.mark_dirty();
+                self
+            }
         }
     };
 }
@@ -326,7 +333,7 @@ macro_rules! impl_composite_widget {
                 self.base.recompute_style();
 
                 // First mount only - there was no predecessor for
-                // `transfer_composite_children` to reconcile against, so
+                // `prepare_composite_children` to reconcile against, so
                 // this is the sole place content ever gets built from an
                 // empty `inner`.
                 if self.inner.is_empty() {
@@ -349,20 +356,13 @@ macro_rules! impl_composite_widget {
                 }
             }
 
-            fn transfer_composite_children(&mut self, old: &mut dyn $crate::Widget) {
-                // Re-renders against current props, then reconciles the
-                // result against the predecessor's already-committed
-                // content, so descendant interaction/hook state survives
-                // a parent prop update instead of rebuilding from scratch.
+            fn prepare_composite_children(&mut self, _old: &dyn $crate::Widget) {
+                // Re-render against current props. The outer work loop then
+                // reconciles this child against the predecessor's immutable
+                // committed child, preserving descendant state transactionally.
                 let key = format!("{}#{}", stringify!($ty), self.hooks_id.get());
                 let rendered = $crate::component(key, || $crate::composite::Render::render(self));
-
-                if let Some(old) = old.as_any_mut().downcast_mut::<$ty>() {
-                    let mut old_inner = std::mem::take(&mut old.inner);
-                    self.inner = $crate::reconciler::reconcile_now(vec![rendered], &mut old_inner);
-                } else {
-                    self.inner = vec![rendered];
-                }
+                self.inner = vec![rendered];
             }
         }
     };

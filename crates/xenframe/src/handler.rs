@@ -70,9 +70,8 @@ use winit::{
 use xengui::{
     ElementState, EventCtx, EventStatus, InputEvent, Key, KeyState, MULTI_CLICK_DISTANCE_DP,
     MULTI_CLICK_INTERVAL, ModifiersState, MouseButton, Theme, any_wants_animation,
-    clear_text_selection_recursive, dispatch_animation_tick, dispatch_focus_within_transition,
-    dispatch_hover_transition, dispatch_positional, dispatch_to_path, find_widget_mut,
-    hit_test_path,
+    clear_text_selection_recursive, dispatch_animation_tick, dispatch_hover_transition,
+    dispatch_positional, dispatch_to_path, find_widget_mut, hit_test_path,
     hooks::{self, set_redraw_handle},
     mark_tree_dirty, path_is_within, select_all_text_recursive, update_global_text_selection,
 };
@@ -592,7 +591,7 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
         set_redraw_handle(std::rc::Rc::new(crate::redraw::WinitRedraw(window.clone())));
 
         if let Some(proxy) = &self.event_proxy {
-            xengui::task::set_executor_waker(std::sync::Arc::new(
+            self.task_runtime.set_executor_waker(std::sync::Arc::new(
                 crate::executor::WinitExecutorWaker(proxy.clone()),
             ));
         }
@@ -863,7 +862,7 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
                 }
             }
             XenEvent::NativeInputChanged(text) => {
-                if let Some(path) = self.input.focused_path.clone() {
+                if let Some(path) = self.input.focus.focused_path().cloned() {
                     let mut ctx = EventCtx::new();
                     if let Some(widget) = find_widget_mut(&mut self.root, &path) {
                         widget.set_native_text_value(&text, &mut ctx);
@@ -885,7 +884,7 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
     fn window_event(&mut self, _event_loop: &ActiveEventLoop, _id: WindowId, event: WindowEvent) {
         match event {
             WindowEvent::CloseRequested => {
-                xengui::task::cancel_all();
+                self.task_runtime.cancel_all();
                 _event_loop.exit();
             }
             WindowEvent::RedrawRequested => {
@@ -953,7 +952,7 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
                 // scrolling, drag-reflow, or any other layout drift never
                 // leaves the native input stuck at a stale position.
                 #[cfg(target_arch = "wasm32")]
-                if let Some(path) = self.input.focused_path.clone() {
+                if let Some(path) = self.input.focus.focused_path().cloned() {
                     self.sync_native_input(&path, false);
                 }
             }
@@ -1080,15 +1079,15 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
                     let mut ctx = EventCtx::new();
                     dispatch_hover_transition(
                         &mut self.root,
-                        self.input.hovered_path.as_deref(),
-                        new_hover.as_deref(),
+                        self.input.hovered_path.as_ref(),
+                        new_hover.as_ref(),
                         &mut ctx,
                     );
                     self.apply_event_ctx(ctx);
                     self.input.hovered_path = new_hover.clone();
                 }
 
-                let move_target = self.input.pressed_path.clone().or(new_hover);
+                let move_target = self.input.pointer_capture.target().cloned().or(new_hover);
 
                 if let Some(path) = &move_target {
                     let mut ctx = EventCtx::new();
@@ -1117,6 +1116,7 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
                 }
             }
             WindowEvent::MouseInput { state, button, .. } => {
+                let mouse_button = convert_mouse_button(button);
                 if state == winit::event::ElementState::Pressed {
                     let had_selection = clear_text_selection_recursive(&mut self.root);
                     if had_selection && let Some(window) = &self.window {
@@ -1138,7 +1138,7 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
                 // capture) rather than re-hit-testing the current cursor position -
                 // the cursor may have left that widget's bounds during a drag.
                 let path = if state == winit::event::ElementState::Released {
-                    self.input.pressed_path.clone()
+                    self.input.pointer_capture.target().cloned()
                 } else {
                     self.input
                         .hovered_path
@@ -1147,27 +1147,17 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
                 };
 
                 if state == winit::event::ElementState::Pressed {
-                    self.input.pressed_path = path.clone();
+                    self.input
+                        .pointer_capture
+                        .capture(path.clone(), mouse_button);
 
                     // A click outside the focused widget's own subtree releases focus.
-                    if let Some(focused) = self.input.focused_path.clone() {
+                    if let Some(focused) = self.input.focus.focused_path().cloned() {
                         let stays_focused =
-                            path.as_deref().is_some_and(|p| path_is_within(p, &focused));
+                            path.as_ref().is_some_and(|p| path_is_within(p, &focused));
                         if !stays_focused {
                             let mut ctx = EventCtx::new();
-                            dispatch_to_path(
-                                &mut self.root,
-                                &focused,
-                                &InputEvent::FocusLost,
-                                &mut ctx,
-                            );
-                            dispatch_focus_within_transition(
-                                &mut self.root,
-                                Some(&focused),
-                                None,
-                                &mut ctx,
-                            );
-                            self.input.focused_path = None;
+                            self.input.focus.clear(&mut self.root, &mut ctx);
                             #[cfg(target_arch = "wasm32")]
                             self.hide_native_input();
                             self.apply_event_ctx(ctx);
@@ -1175,7 +1165,7 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
                     }
                 }
 
-                let is_drag_region = path.as_deref().is_some_and(|p| {
+                let is_drag_region = path.as_ref().is_some_and(|p| {
                     // Check the whole ancestor chain, not just the exact
                     // hit leaf - the leaf hit can be a decorative child
                     // (e.g. an icon) whose own on_click is unset even
@@ -1226,7 +1216,7 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
                         path,
                         &(InputEvent::MouseInput {
                             state: convert_element_state(state),
-                            button: convert_mouse_button(button),
+                            button: mouse_button,
                             position: point,
                         }),
                         &mut ctx,
@@ -1238,7 +1228,7 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
                 }
 
                 if state == winit::event::ElementState::Released {
-                    self.input.pressed_path = None;
+                    self.input.pointer_capture.release(mouse_button);
                     self.input.text_drag_anchor = None;
                 }
             }
@@ -1335,7 +1325,7 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
 
                 let mut status = EventStatus::Ignored;
 
-                if let Some(path) = self.input.focused_path.clone() {
+                if let Some(path) = self.input.focus.focused_path().cloned() {
                     let mut ctx = EventCtx::new();
 
                     status = dispatch_positional(
@@ -1400,7 +1390,7 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
                 };
             }
             WindowEvent::Ime(ime_event) => {
-                if let Some(path) = self.input.focused_path.clone() {
+                if let Some(path) = self.input.focus.focused_path().cloned() {
                     let mut ctx = EventCtx::new();
                     dispatch_positional(
                         &mut self.root,
@@ -1424,7 +1414,7 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
                 // scrollbar thumb) never delivers a real mouse-up, so synthesize
                 // one to the captured widget before clearing capture - otherwise
                 // it's left thinking the button is still held.
-                if let Some(path) = self.input.pressed_path.take() {
+                if let Some(path) = self.input.pointer_capture.cancel() {
                     let point = self.input.cursor_pos.unwrap_or((0.0, 0.0));
                     let mut ctx = EventCtx::new();
                     dispatch_positional(
@@ -1456,7 +1446,7 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
     }
 
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
-        xengui::task::poll();
+        self.task_runtime.poll();
 
         if crate::window_controls::take_close_requested() {
             log::trace!("event_loop.exit() called here");
@@ -1505,7 +1495,7 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
         }
         self.next_animation = None;
 
-        let Some(focused) = self.input.focused_path.clone() else {
+        let Some(focused) = self.input.focus.focused_path().cloned() else {
             self.next_blink = None;
             event_loop.set_control_flow(ControlFlow::Wait);
             return;

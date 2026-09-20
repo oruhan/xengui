@@ -459,18 +459,13 @@ impl Widget for DevtoolsPanel {
     // Its own internal rebuild/reconcile never gets logged and never
     // wakes another rebuild, so opening or closing the panel can't feed
     // back into itself.
-    fn transfer_composite_children(&mut self, old: &mut dyn Widget) {
+    fn prepare_composite_children(&mut self, _old: &dyn Widget) {
         let key = format!("DevtoolsPanel#{}", self.hooks_id.get());
 
         devtools::with_suppressed(|| {
             let rendered = crate::component(key, || Render::render(self));
 
-            if let Some(old) = old.as_any_mut().downcast_mut::<DevtoolsPanel>() {
-                let mut old_inner = std::mem::take(&mut old.inner);
-                self.inner = crate::reconciler::reconcile_now(vec![rendered], &mut old_inner);
-            } else {
-                self.inner = vec![rendered];
-            }
+            self.inner = vec![rendered];
         });
     }
 }

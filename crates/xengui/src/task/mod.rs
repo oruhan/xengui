@@ -8,11 +8,11 @@
 //! wakeup (a background HTTP client, a timer thread, ...) don't run on
 //! the GUI thread themselves.
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::future::Future;
 use std::pin::Pin;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::rc::{Rc, Weak};
 use std::sync::{Arc, Mutex};
 use std::task::{Context, Poll, Wake, Waker};
 
@@ -35,26 +35,7 @@ pub async fn yield_now() {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 struct TaskId(u64);
 
-impl TaskId {
-    // A global (not per-thread) counter, so an id can never collide with
-    // one from another thread even though the tasks themselves are kept
-    // in a thread-local table.
-    fn next() -> Self {
-        static NEXT: AtomicU64 = AtomicU64::new(0);
-        Self(NEXT.fetch_add(1, Ordering::Relaxed))
-    }
-}
-
 type BoxedTask = Pin<Box<dyn Future<Output = ()>>>;
-
-thread_local! {
-    static TASKS: RefCell<HashMap<TaskId, BoxedTask>> = RefCell::new(HashMap::new());
-}
-
-// Ids waiting to be polled. Deliberately not a thread_local: a task's
-// Waker can be called from any thread, and only the id needs to cross
-// that boundary - the future itself never leaves the thread that owns it.
-static READY: Mutex<Vec<TaskId>> = Mutex::new(Vec::new());
 
 /// Lets the executor wake its host event loop from any thread. The
 /// platform runtime (e.g. `xenframe`) implements this once over its own
@@ -72,55 +53,214 @@ pub trait ExecutorWaker {
     fn wake(&self);
 }
 
-#[cfg(not(target_arch = "wasm32"))]
-static EXECUTOR_WAKER: Mutex<Option<Arc<dyn ExecutorWaker>>> = Mutex::new(None);
-
-#[cfg(target_arch = "wasm32")]
-thread_local! {
-    static EXECUTOR_WAKER: RefCell<Option<Arc<dyn ExecutorWaker>>> = const { RefCell::new(None) };
-}
-
-#[cfg(not(target_arch = "wasm32"))]
-/// Updates the `set_executor_waker` value.
-/// Installs the callback used to wake the host event loop.
-pub fn set_executor_waker(waker: Arc<dyn ExecutorWaker>) {
-    *EXECUTOR_WAKER.lock().unwrap() = Some(waker);
-}
-
-#[cfg(target_arch = "wasm32")]
-/// Installs the callback used to wake the host event loop.
-pub fn set_executor_waker(waker: Arc<dyn ExecutorWaker>) {
-    EXECUTOR_WAKER.with(|cell| {
-        *cell.borrow_mut() = Some(waker);
-    });
-}
-
-fn wake_task(id: TaskId) {
-    READY.lock().unwrap().push(id);
-
+struct Scheduler {
+    ready: Mutex<Vec<TaskId>>,
     #[cfg(not(target_arch = "wasm32"))]
-    if let Some(waker) = EXECUTOR_WAKER.lock().unwrap().as_ref() {
-        waker.wake();
+    host_waker: Mutex<Option<Arc<dyn ExecutorWaker>>>,
+    #[cfg(target_arch = "wasm32")]
+    runtime_id: u64,
+}
+
+impl Scheduler {
+    fn new() -> Self {
+        #[cfg(target_arch = "wasm32")]
+        static NEXT_RUNTIME_ID: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+        Self {
+            ready: Mutex::new(Vec::new()),
+            #[cfg(not(target_arch = "wasm32"))]
+            host_waker: Mutex::new(None),
+            #[cfg(target_arch = "wasm32")]
+            runtime_id: NEXT_RUNTIME_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
+        }
     }
 
-    #[cfg(target_arch = "wasm32")]
-    EXECUTOR_WAKER.with(|cell| {
-        if let Some(waker) = cell.borrow().as_ref() {
+    fn enqueue(&self, id: TaskId) {
+        self.ready.lock().unwrap().push(id);
+
+        #[cfg(not(target_arch = "wasm32"))]
+        let host_waker = self.host_waker.lock().unwrap().clone();
+        #[cfg(not(target_arch = "wasm32"))]
+        if let Some(waker) = host_waker {
             waker.wake();
         }
-    });
+
+        #[cfg(target_arch = "wasm32")]
+        WASM_HOST_WAKERS.with(|wakers| {
+            let host_waker = wakers.borrow().get(&self.runtime_id).cloned();
+            if let Some(waker) = host_waker {
+                waker.wake();
+            }
+        });
+    }
+
+    fn take_ready(&self) -> Vec<TaskId> {
+        let mut ready = self.ready.lock().unwrap();
+        std::mem::take(&mut *ready)
+    }
 }
 
-struct TaskWaker(TaskId);
+struct TaskWaker {
+    id: TaskId,
+    scheduler: Arc<Scheduler>,
+}
 
 impl Wake for TaskWaker {
     fn wake(self: Arc<Self>) {
-        wake_task(self.0);
+        self.scheduler.enqueue(self.id);
     }
 
     fn wake_by_ref(self: &Arc<Self>) {
-        wake_task(self.0);
+        self.scheduler.enqueue(self.id);
     }
+}
+
+struct RuntimeInner {
+    owner: std::thread::ThreadId,
+    next_id: Cell<u64>,
+    tasks: RefCell<HashMap<TaskId, BoxedTask>>,
+    scheduler: Arc<Scheduler>,
+}
+
+thread_local! {
+    static CURRENT_RUNTIME: RefCell<Weak<RuntimeInner>> = const { RefCell::new(Weak::new()) };
+    #[cfg(target_arch = "wasm32")]
+    static WASM_HOST_WAKERS: RefCell<HashMap<u64, Arc<dyn ExecutorWaker>>> = RefCell::new(HashMap::new());
+}
+
+#[cfg(target_arch = "wasm32")]
+impl Drop for RuntimeInner {
+    fn drop(&mut self) {
+        WASM_HOST_WAKERS.with(|wakers| {
+            wakers.borrow_mut().remove(&self.scheduler.runtime_id);
+        });
+    }
+}
+
+/// An isolated GUI-task executor owned by one application runtime.
+///
+/// Futures never leave the creating thread. Only the scheduler queue carried
+/// by their `Waker`s is thread-safe, so an external wake always returns to the
+/// runtime that owns the future.
+#[derive(Clone)]
+pub struct Runtime {
+    inner: Rc<RuntimeInner>,
+}
+
+impl Runtime {
+    /// Creates an empty runtime owned by the current thread.
+    pub fn new() -> Self {
+        Self {
+            inner: Rc::new(RuntimeInner {
+                owner: std::thread::current().id(),
+                next_id: Cell::new(0),
+                tasks: RefCell::new(HashMap::new()),
+                scheduler: Arc::new(Scheduler::new()),
+            }),
+        }
+    }
+
+    fn assert_owner(&self) {
+        assert_eq!(
+            self.inner.owner,
+            std::thread::current().id(),
+            "GUI task runtime used from a non-owner thread"
+        );
+    }
+
+    /// Makes this runtime the target of the module-level [`spawn`] helpers on
+    /// its owner thread.
+    pub fn activate(&self) {
+        self.assert_owner();
+        CURRENT_RUNTIME.with(|current| {
+            *current.borrow_mut() = Rc::downgrade(&self.inner);
+        });
+    }
+
+    /// Installs the callback used to wake this runtime's host event loop.
+    pub fn set_executor_waker(&self, waker: Arc<dyn ExecutorWaker>) {
+        self.assert_owner();
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            *self.inner.scheduler.host_waker.lock().unwrap() = Some(waker);
+        }
+        #[cfg(target_arch = "wasm32")]
+        {
+            WASM_HOST_WAKERS.with(|wakers| {
+                wakers
+                    .borrow_mut()
+                    .insert(self.inner.scheduler.runtime_id, waker);
+            });
+        }
+    }
+
+    /// Spawns a future on this runtime.
+    pub fn spawn<F>(&self, future: F)
+    where
+        F: Future + 'static,
+    {
+        self.activate();
+        let next = self.inner.next_id.get();
+        self.inner
+            .next_id
+            .set(next.checked_add(1).expect("GUI task id space exhausted"));
+        let id = TaskId(next);
+        let boxed: BoxedTask = Box::pin(async move {
+            future.await;
+        });
+        self.inner.tasks.borrow_mut().insert(id, boxed);
+        self.inner.scheduler.enqueue(id);
+    }
+
+    /// Polls every task currently ready for this runtime.
+    pub fn poll(&self) {
+        self.activate();
+        let ready = self.inner.scheduler.take_ready();
+        if ready.is_empty() {
+            return;
+        }
+
+        for id in ready {
+            let Some(mut future) = self.inner.tasks.borrow_mut().remove(&id) else {
+                continue;
+            };
+            let waker = Waker::from(Arc::new(TaskWaker {
+                id,
+                scheduler: self.inner.scheduler.clone(),
+            }));
+            let mut cx = Context::from_waker(&waker);
+            if future.as_mut().poll(&mut cx).is_pending() {
+                self.inner.tasks.borrow_mut().insert(id, future);
+            }
+        }
+    }
+
+    /// Drops every task still pending in this runtime.
+    pub fn cancel_all(&self) {
+        self.assert_owner();
+        self.inner.tasks.borrow_mut().clear();
+        let _ = self.inner.scheduler.take_ready();
+    }
+}
+
+impl Default for Runtime {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+fn current_runtime() -> Runtime {
+    CURRENT_RUNTIME.with(|current| Runtime {
+        inner: current
+            .borrow()
+            .upgrade()
+            .expect("no active GUI task runtime on this thread"),
+    })
+}
+
+/// Installs the callback used to wake the active host event loop.
+pub fn set_executor_waker(waker: Arc<dyn ExecutorWaker>) {
+    current_runtime().set_executor_waker(waker);
 }
 
 /// Spawns a future onto the GUI-thread executor.
@@ -133,49 +273,20 @@ pub fn spawn<F>(future: F)
 where
     F: Future + 'static,
 {
-    let id = TaskId::next();
-    let boxed: BoxedTask = Box::pin(async move {
-        future.await;
-    });
-    TASKS.with(|tasks| tasks.borrow_mut().insert(id, boxed));
-    wake_task(id);
+    current_runtime().spawn(future);
 }
 
 /// Polls every task currently marked ready, dropping it once it
 /// completes. Safe to call every frame regardless of whether anything
 /// actually woke up - an empty ready queue returns immediately.
 pub fn poll() {
-    let ready: Vec<TaskId> = {
-        let mut queue = READY.lock().unwrap();
-        if queue.is_empty() {
-            return;
-        }
-        std::mem::take(&mut *queue)
-    };
-
-    for id in ready {
-        // Already completed (or spawned on a different thread) - a task
-        // can be woken more than once before its next poll.
-        let Some(mut future) = TASKS.with(|tasks| tasks.borrow_mut().remove(&id)) else {
-            continue;
-        };
-
-        let waker = Waker::from(Arc::new(TaskWaker(id)));
-        let mut cx = Context::from_waker(&waker);
-
-        match future.as_mut().poll(&mut cx) {
-            Poll::Ready(()) => {}
-            Poll::Pending => {
-                TASKS.with(|tasks| tasks.borrow_mut().insert(id, future));
-            }
-        }
-    }
+    current_runtime().poll();
 }
 
 /// Drops every task still pending on this thread, without polling them
 /// again. Called when the application exits.
 pub fn cancel_all() {
-    TASKS.with(|tasks| tasks.borrow_mut().clear());
+    current_runtime().cancel_all();
 }
 
 // --- spawn_blocking support -------------------------------------------------
@@ -295,12 +406,22 @@ mod tests {
     #[cfg(not(target_arch = "wasm32"))]
     use std::time::Duration;
 
-    // Serializes tests that touch the executor's process-wide ready
-    // queue and waker slot, since the test harness runs tests in
-    // parallel by default.
-    fn test_guard() -> std::sync::MutexGuard<'static, ()> {
+    struct TestGuard {
+        _lock: std::sync::MutexGuard<'static, ()>,
+        _runtime: Runtime,
+    }
+
+    // The lock keeps timing-sensitive spawn_blocking tests deterministic;
+    // every test still receives a distinct executor runtime.
+    fn test_guard() -> TestGuard {
         static LOCK: Mutex<()> = Mutex::new(());
-        LOCK.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+        let lock = LOCK.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        let runtime = Runtime::new();
+        runtime.activate();
+        TestGuard {
+            _lock: lock,
+            _runtime: runtime,
+        }
     }
 
     #[test]
@@ -360,9 +481,77 @@ mod tests {
         cancel_all();
     }
 
+    #[test]
+    fn runtimes_on_the_same_thread_keep_tasks_and_ready_queues_isolated() {
+        let _guard = test_guard();
+        let first_ran = Rc::new(Cell::new(false));
+        let second_ran = Rc::new(Cell::new(false));
+        let first = Runtime::new();
+        let second = Runtime::new();
+
+        let marker = first_ran.clone();
+        first.spawn(async move { marker.set(true) });
+        let marker = second_ran.clone();
+        second.spawn(async move { marker.set(true) });
+
+        first.poll();
+        assert!(first_ran.get());
+        assert!(!second_ran.get());
+
+        second.poll();
+        assert!(second_ran.get());
+    }
+
+    #[test]
+    fn task_spawned_while_polling_stays_on_the_polling_runtime() {
+        let _guard = test_guard();
+        let runtime = Runtime::new();
+        let nested_ran = Rc::new(Cell::new(false));
+        let nested_marker = nested_ran.clone();
+
+        runtime.spawn(async move {
+            spawn(async move {
+                nested_marker.set(true);
+            });
+        });
+        runtime.poll();
+        assert!(!nested_ran.get());
+        runtime.poll();
+        assert!(nested_ran.get());
+    }
+
     #[cfg(not(target_arch = "wasm32"))]
     #[test]
-    #[ignore = "Phase 3: the process-global ready queue lets another GUI thread consume this task id"]
+    fn each_runtime_wakes_only_its_own_host_event_loop() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        struct CountingWaker(Arc<AtomicUsize>);
+
+        impl ExecutorWaker for CountingWaker {
+            fn wake(&self) {
+                self.0.fetch_add(1, Ordering::SeqCst);
+            }
+        }
+
+        let _guard = test_guard();
+        let first_wakes = Arc::new(AtomicUsize::new(0));
+        let second_wakes = Arc::new(AtomicUsize::new(0));
+        let first = Runtime::new();
+        let second = Runtime::new();
+        first.set_executor_waker(Arc::new(CountingWaker(first_wakes.clone())));
+        second.set_executor_waker(Arc::new(CountingWaker(second_wakes.clone())));
+
+        first.spawn(async {});
+        assert_eq!(first_wakes.load(Ordering::SeqCst), 1);
+        assert_eq!(second_wakes.load(Ordering::SeqCst), 0);
+
+        second.spawn(async {});
+        assert_eq!(first_wakes.load(Ordering::SeqCst), 1);
+        assert_eq!(second_wakes.load(Ordering::SeqCst), 1);
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    #[test]
     fn task_woken_from_another_runtime_is_polled_only_by_its_owner() {
         use std::sync::{
             Arc,
@@ -377,6 +566,9 @@ mod tests {
         let (drained_tx, drained_rx) = mpsc::sync_channel::<()>(1);
 
         let owner = std::thread::spawn(move || {
+            let runtime = Runtime::new();
+            runtime.activate();
+
             struct ExternalWake {
                 waker_tx: Option<mpsc::SyncSender<Waker>>,
             }
@@ -394,18 +586,18 @@ mod tests {
                 }
             }
 
-            spawn(async move {
+            runtime.spawn(async move {
                 ExternalWake {
                     waker_tx: Some(waker_tx),
                 }
                 .await;
                 completed_on_owner.store(true, Ordering::SeqCst);
             });
-            poll();
+            runtime.poll();
 
             drained_rx.recv().unwrap();
-            poll();
-            cancel_all();
+            runtime.poll();
+            runtime.cancel_all();
         });
 
         let task_waker = waker_rx.recv().unwrap();

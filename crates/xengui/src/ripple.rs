@@ -277,6 +277,7 @@ pub(crate) fn paint(
     overrides: RippleOverrides,
     style: &Style,
     layout: LayoutBox,
+    radius: [f32; 4],
     ctx: &mut PaintContext<'_>,
 ) {
     if !state.active || !configured(overrides) || layout.width <= 0.0 || layout.height <= 0.0 {
@@ -298,13 +299,6 @@ pub(crate) fn paint(
         .duration_scale
         .unwrap_or(config.duration_scale)
         .max(0.05);
-    let radius = style
-        .border
-        .as_ref()
-        .and_then(|border| border.radius)
-        .map(|radius| radius.to_physical_array(ctx.scale_factor, layout.width, layout.height))
-        .unwrap_or([0.0; 4]);
-
     ctx.draw_ripple(RippleCommand {
         bounds: (layout.x, layout.y, layout.width, layout.height),
         origin: state.origin,
@@ -320,6 +314,7 @@ pub(crate) fn paint(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::{Checkbox, RadioButton, Switch, Widget};
 
     #[test]
     fn wasm_is_opt_in_and_linux_android_are_defaults() {
@@ -348,5 +343,35 @@ mod tests {
         assert!(ripple.is_active());
         assert_eq!(ripple.progress(1.0), 1.0);
         assert_eq!(ripple.opacity(1.0), 1.0);
+    }
+
+    #[test]
+    fn custom_controls_expose_their_painted_shape_to_ripple_clipping() {
+        let checkbox_bounds = LayoutBox {
+            width: 18.0,
+            height: 18.0,
+            ..LayoutBox::default()
+        };
+        assert_eq!(
+            Checkbox::new().ripple_radius(1.0, checkbox_bounds),
+            [4.0; 4]
+        );
+
+        let switch_bounds = LayoutBox {
+            width: 52.0,
+            height: 32.0,
+            ..LayoutBox::default()
+        };
+        assert_eq!(Switch::new().ripple_radius(1.0, switch_bounds), [16.0; 4]);
+
+        let radio_bounds = LayoutBox {
+            width: 20.0,
+            height: 20.0,
+            ..LayoutBox::default()
+        };
+        assert_eq!(
+            RadioButton::new().ripple_radius(1.0, radio_bounds),
+            [10.0; 4]
+        );
     }
 }

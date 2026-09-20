@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 use super::render_cache::MeasurementEnvironment;
 use crate::{
-    LayoutBox, LayoutContext, MeasureContext, Position, RenderCache, Style, Widget, WidgetPath,
-    style_to_taffy,
+    Constraints, LayoutBox, LayoutContext, MeasureContext, NodeContext, Position, RenderCache,
+    Style, Widget, WidgetPath, style_to_taffy,
 };
 use taffy::prelude::*;
 
@@ -39,7 +39,8 @@ impl LayoutEngine {
         ));
 
         Self::cascade(tree, ctx);
-        let mut taffy: TaffyTree<()> = TaffyTree::new();
+        let mut taffy: TaffyTree<usize> = TaffyTree::new();
+        let mut measurement_nodes = Vec::new();
         let mut path = WidgetPath::new();
 
         let child_ids: Vec<NodeId> = tree
@@ -48,7 +49,14 @@ impl LayoutEngine {
             .map(|(i, c)| {
                 let checkpoint = path.checkpoint();
                 path.push(c.as_ref(), i);
-                let id = build_taffy_node(c.as_ref(), &mut taffy, ctx, cache, &mut path);
+                let id = build_taffy_node(
+                    c.as_ref(),
+                    &mut taffy,
+                    ctx,
+                    cache,
+                    &mut path,
+                    &mut measurement_nodes,
+                );
                 path.restore(checkpoint);
                 id
             })
@@ -67,15 +75,48 @@ impl LayoutEngine {
             .new_with_children(root_style, &child_ids)
             .expect("cannot create taffy root node");
 
+        let scale_factor = ctx.scale_factor;
         taffy
-            .compute_layout(
+            .compute_layout_with_measure(
                 root_id,
                 Size {
                     width: AvailableSpace::Definite(viewport_width),
                     height: AvailableSpace::Definite(viewport_height),
                 },
+                |known_dimensions, available_space, _node_id, measurement_index, _style| {
+                    let Some(&mut measurement_index) = measurement_index else {
+                        return Size::ZERO;
+                    };
+                    let node = &measurement_nodes[measurement_index];
+                    let constraints = constraints_from_taffy(known_dimensions, available_space);
+
+                    if let (Some(width), Some(height)) =
+                        (constraints.known_width, constraints.known_height)
+                    {
+                        return Size { width, height };
+                    }
+
+                    if let Some(measurement) = cache.cached_measure(&node.path, constraints) {
+                        return Size {
+                            width: measurement.width,
+                            height: measurement.height,
+                        };
+                    }
+
+                    let mut measure_ctx = MeasureContext::new(ctx.text, scale_factor);
+                    let measurement = node.widget.measure(&mut measure_ctx, constraints);
+                    cache.store_measure(&node.path, constraints, measurement);
+                    Size {
+                        width: measurement.width,
+                        height: measurement.height,
+                    }
+                },
             )
             .expect("cannot calculate taffy layout");
+
+        // The measurement table borrows the immutable widget tree. Release it
+        // before applying the computed layout through mutable widget borrows.
+        drop(measurement_nodes);
 
         let viewport = (viewport_width, viewport_height);
 
@@ -116,12 +157,42 @@ impl LayoutEngine {
     }
 }
 
-fn build_taffy_node(
-    widget: &dyn Widget,
-    taffy: &mut TaffyTree<()>,
+fn constraints_from_taffy(
+    known_dimensions: Size<Option<f32>>,
+    available_space: Size<AvailableSpace>,
+) -> Constraints {
+    fn definite(space: AvailableSpace) -> Option<f32> {
+        match space {
+            AvailableSpace::Definite(value) => Some(value.max(0.0)),
+            AvailableSpace::MinContent | AvailableSpace::MaxContent => None,
+        }
+    }
+
+    fn effective_max(known: Option<f32>, available: Option<f32>) -> Option<f32> {
+        match (known, available) {
+            (Some(known), Some(available)) => Some(known.min(available)),
+            (Some(known), None) => Some(known),
+            (None, available) => available,
+        }
+    }
+
+    let max_width = definite(available_space.width);
+    let max_height = definite(available_space.height);
+    Constraints {
+        known_width: known_dimensions.width,
+        known_height: known_dimensions.height,
+        max_width: effective_max(known_dimensions.width, max_width),
+        max_height: effective_max(known_dimensions.height, max_height),
+    }
+}
+
+fn build_taffy_node<'a>(
+    widget: &'a dyn Widget,
+    taffy: &mut TaffyTree<usize>,
     ctx: &mut LayoutContext,
     cache: &mut RenderCache,
     path: &mut WidgetPath,
+    measurement_nodes: &mut Vec<NodeContext<'a>>,
 ) -> NodeId {
     let mut measure_ctx = MeasureContext::new(ctx.text, ctx.scale_factor);
 
@@ -144,66 +215,30 @@ fn build_taffy_node(
         let auto_h = style.size.height == taffy::style::Dimension::auto();
 
         if auto_w || auto_h {
-            let mut constraints = super::Constraints::default();
-
-            if let Some(max_size) = widget.computed_style().max_size {
-                if let Some(crate::Length::Px(w)) = max_size.width {
-                    constraints = constraints.with_max_width(w * ctx.scale_factor);
-                }
-                if let Some(crate::Length::Px(h)) = max_size.height {
-                    constraints = constraints.with_max_height(h * ctx.scale_factor);
-                }
+            // Intrinsic content is a preferred size, not an implicit minimum.
+            // A zero automatic minimum lets the parent flex/grid algorithm
+            // shrink the leaf and then ask the measure callback again with the
+            // final constrained dimension. Explicit min-size values remain
+            // authoritative because style_to_taffy has already resolved them.
+            if auto_w && style.min_size.width == taffy::style::Dimension::auto() {
+                style.min_size.width = length(0.0_f32);
+            }
+            if auto_h && style.min_size.height == taffy::style::Dimension::auto() {
+                style.min_size.height = length(0.0_f32);
             }
 
-            // If one axis is already fixed (e.g. width set, height auto), read
-            // it from xengui's own Style (not taffy's Dimension, which is an
-            // opaque struct in this taffy version) and pass it as a known
-            // constraint so the auto axis measures against the real size.
-            if let Some(size) = widget.computed_style().size {
-                if !auto_w && let Some(crate::Length::Px(w)) = size.width {
-                    constraints = constraints.with_known_width(w * ctx.scale_factor);
-                }
-                if !auto_h && let Some(crate::Length::Px(h)) = size.height {
-                    constraints = constraints.with_known_height(h * ctx.scale_factor);
-                }
+            if widget.is_layout_dirty() {
+                cache.invalidate_measure(path);
             }
 
-            let measure = if widget.is_dirty() {
-                let size = widget.measure(&mut measure_ctx, constraints);
-                cache.store_measure(path.as_str(), size);
-                size
-            } else {
-                cache.cached_measure(path.as_str()).unwrap_or_else(|| {
-                    let size = widget.measure(&mut measure_ctx, constraints);
-                    cache.store_measure(path.as_str(), size);
-                    size
-                })
-            };
-
-            let (w, h) = (measure.width.round(), measure.height.round());
-
-            if auto_w {
-                // A contentless widget (e.g. an empty View) measures 0 here;
-                // leaving the dimension as taffy's own auto in that case lets
-                // flex-grow / align-items:stretch size it instead of pinning
-                // it to a collapsed 0px box.
-                if w > 0.0 {
-                    style.size.width = length(w);
-                }
-                if style.min_size.width == taffy::style::Dimension::auto() {
-                    style.min_size.width = length(w);
-                }
-            }
-            if auto_h {
-                if h > 0.0 {
-                    style.size.height = length(h);
-                }
-                if style.min_size.height == taffy::style::Dimension::auto() {
-                    style.min_size.height = length(h);
-                }
-            }
+            let measurement_index = measurement_nodes.len();
+            measurement_nodes.push(NodeContext::new(widget, path));
+            taffy
+                .new_leaf_with_context(style, measurement_index)
+                .expect("cannot create measurable taffy leaf")
+        } else {
+            taffy.new_leaf(style).expect("cannot create taffy leaf")
         }
-        taffy.new_leaf(style).expect("cannot create taffy leaf")
     } else {
         let child_ids: Vec<NodeId> = children
             .iter()
@@ -211,7 +246,7 @@ fn build_taffy_node(
             .map(|(i, c)| {
                 let checkpoint = path.checkpoint();
                 path.push(c.as_ref(), i);
-                let id = build_taffy_node(c.as_ref(), taffy, ctx, cache, path);
+                let id = build_taffy_node(c.as_ref(), taffy, ctx, cache, path, measurement_nodes);
                 path.restore(checkpoint);
                 id
             })
@@ -225,7 +260,7 @@ fn build_taffy_node(
 #[allow(clippy::too_many_arguments)]
 fn apply_layout(
     widget: &mut dyn Widget,
-    taffy: &TaffyTree<()>,
+    taffy: &TaffyTree<usize>,
     node_id: NodeId,
     parent_x: f32,
     parent_y: f32,
@@ -605,6 +640,13 @@ mod tests {
         seen_max_width: Rc<Cell<Option<f32>>>,
     }
 
+    fn intrinsic_style() -> Style {
+        Style {
+            align_self: Some(crate::Align::Start),
+            ..Style::default()
+        }
+    }
+
     impl Widget for ScaleMeasuredWidget {
         fn as_any(&self) -> &dyn Any {
             self
@@ -632,7 +674,14 @@ mod tests {
 
         fn measure(&self, ctx: &mut MeasureContext, constraints: Constraints) -> MeasureResult {
             self.measure_calls.set(self.measure_calls.get() + 1);
-            self.seen_max_width.set(constraints.max_width);
+            if let Some(max_width) = constraints.max_width
+                && self
+                    .seen_max_width
+                    .get()
+                    .is_none_or(|seen| max_width < seen)
+            {
+                self.seen_max_width.set(Some(max_width));
+            }
             let scale = if self.scale_sensitive {
                 ctx.scale_factor
             } else {
@@ -679,7 +728,7 @@ mod tests {
         let calls = Rc::new(Cell::new(0));
         let mut tree: Vec<Box<dyn Widget>> = vec![Box::new(ScaleMeasuredWidget {
             dirty: true,
-            style: Style::default(),
+            style: intrinsic_style(),
             layout: LayoutBox::default(),
             measure_calls: calls.clone(),
             intrinsic_width: 10.0,
@@ -702,6 +751,7 @@ mod tests {
             300.0,
         );
         assert_eq!(tree[0].layout_box().width, 10.0);
+        let calls_after_first_layout = calls.get();
 
         LayoutEngine::layout(
             &mut tree,
@@ -715,8 +765,22 @@ mod tests {
             600.0,
         );
 
-        assert_eq!(calls.get(), 2);
+        assert!(calls.get() > calls_after_first_layout);
         assert_eq!(tree[0].layout_box().width, 20.0);
+
+        let calls_after_scale_change = calls.get();
+        LayoutEngine::layout(
+            &mut tree,
+            &mut LayoutContext {
+                text: &mut text,
+                anim: &mut animations,
+                scale_factor: 2.0,
+            },
+            &mut cache,
+            800.0,
+            600.0,
+        );
+        assert_eq!(calls.get(), calls_after_scale_change);
     }
 
     #[test]
@@ -724,7 +788,7 @@ mod tests {
         let calls = Rc::new(Cell::new(0));
         let mut tree: Vec<Box<dyn Widget>> = vec![Box::new(ScaleMeasuredWidget {
             dirty: true,
-            style: Style::default(),
+            style: intrinsic_style(),
             layout: LayoutBox::default(),
             measure_calls: calls.clone(),
             intrinsic_width: 10.0,
@@ -747,6 +811,7 @@ mod tests {
             300.0,
         );
 
+        let calls_after_first_layout = calls.get();
         text.font_generation = 1;
         LayoutEngine::layout(
             &mut tree,
@@ -760,7 +825,21 @@ mod tests {
             300.0,
         );
 
-        assert_eq!(calls.get(), 2);
+        assert!(calls.get() > calls_after_first_layout);
+
+        let calls_after_font_change = calls.get();
+        LayoutEngine::layout(
+            &mut tree,
+            &mut LayoutContext {
+                text: &mut text,
+                anim: &mut animations,
+                scale_factor: 1.0,
+            },
+            &mut cache,
+            400.0,
+            300.0,
+        );
+        assert_eq!(calls.get(), calls_after_font_change);
     }
 
     #[test]
@@ -771,7 +850,7 @@ mod tests {
         let calls = Rc::new(Cell::new(0));
         let mut tree: Vec<Box<dyn Widget>> = vec![Box::new(ScaleMeasuredWidget {
             dirty: true,
-            style: Style::default(),
+            style: intrinsic_style(),
             layout: LayoutBox::default(),
             measure_calls: calls.clone(),
             intrinsic_width: 10.0,
@@ -794,6 +873,7 @@ mod tests {
             300.0,
         );
 
+        let calls_after_first_layout = calls.get();
         crate::style::theme::set_current_theme(crate::Theme::dark());
         LayoutEngine::layout(
             &mut tree,
@@ -807,17 +887,30 @@ mod tests {
             300.0,
         );
 
+        assert!(calls.get() > calls_after_first_layout);
+
+        let calls_after_theme_change = calls.get();
+        LayoutEngine::layout(
+            &mut tree,
+            &mut LayoutContext {
+                text: &mut text,
+                anim: &mut animations,
+                scale_factor: 1.0,
+            },
+            &mut cache,
+            400.0,
+            300.0,
+        );
         crate::style::theme::set_current_theme(original_theme);
-        assert_eq!(calls.get(), 2);
+        assert_eq!(calls.get(), calls_after_theme_change);
     }
 
     #[test]
-    #[ignore = "Phase 4: parent available-space is not forwarded to leaf measurement"]
     fn parent_width_is_forwarded_as_a_measurement_constraint() {
         let seen_max_width = Rc::new(Cell::new(None));
         let child = ScaleMeasuredWidget {
             dirty: true,
-            style: Style::default(),
+            style: intrinsic_style(),
             layout: LayoutBox::default(),
             measure_calls: Rc::new(Cell::new(0)),
             intrinsic_width: 300.0,

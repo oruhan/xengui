@@ -2,7 +2,7 @@
 use super::{
     Align, Background, Border, Color, Display, Edges, FlexDirection, FlexWrap, FontStyle,
     FontWeight, GridPlacement, GridTrack, JustifyContent, Length, LetterSpacing, LineHeight,
-    Outline, Overflow, Position, ScrollbarStyle, Size, TextAlign, TextDecoration,
+    Outline, Overflow, Position, ScrollbarStyle, Size, TextAlign, TextDecoration, TextDirection,
 };
 use crate::{
     BoxShadow, BoxSizing, Cursor, FilterChain, Overscroll, ScrollbarGutter, TransformOrigin,
@@ -72,6 +72,8 @@ pub struct Style {
     pub font_style: Option<FontStyle>,
     /// The `text_align` value carried by this type.
     pub text_align: Option<TextAlign>,
+    /// Logical inline direction; inherited by descendants.
+    pub text_direction: Option<TextDirection>,
     /// The `text_decoration` value carried by this type.
     pub text_decoration: Option<TextDecoration>,
     /// The `letter_spacing` value carried by this type.
@@ -219,6 +221,7 @@ impl Style {
             font_weight: patch.font_weight.or(self.font_weight),
             font_style: patch.font_style.or(self.font_style),
             text_align: patch.text_align.or(self.text_align),
+            text_direction: patch.text_direction.or(self.text_direction),
             text_decoration: patch.text_decoration.or(self.text_decoration),
             letter_spacing: patch.letter_spacing.or(self.letter_spacing),
             line_height: patch.line_height.or(self.line_height),
@@ -334,6 +337,7 @@ impl Style {
         out.font_weight = patch.font_weight.or(self.font_weight);
         out.font_style = patch.font_style.or(self.font_style);
         out.text_align = patch.text_align.or(self.text_align);
+        out.text_direction = patch.text_direction.or(self.text_direction);
         out.text_decoration = patch.text_decoration.or(self.text_decoration);
         out.letter_spacing = patch.letter_spacing.or(self.letter_spacing);
         out.line_height = patch.line_height.or(self.line_height);
@@ -401,6 +405,7 @@ impl Style {
             || self.font_size != other.font_size
             || self.font_weight != other.font_weight
             || self.font_style != other.font_style
+            || self.text_direction != other.text_direction
             || self.letter_spacing != other.letter_spacing
             || self.line_height != other.line_height
     }

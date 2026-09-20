@@ -23,6 +23,10 @@ where
 /// Returns or updates the `style_to_taffy` value.
 pub fn style_to_taffy(style: &Style, scale_factor: f32, has_children: bool) -> TaffyStyle {
     let mut t = TaffyStyle {
+        direction: match style.text_direction.unwrap_or_default() {
+            crate::TextDirection::LeftToRight => taffy::style::Direction::Ltr,
+            crate::TextDirection::RightToLeft => taffy::style::Direction::Rtl,
+        },
         display: match style.display.unwrap_or_default() {
             XDisplay::Flex => taffy::style::Display::Flex,
             XDisplay::Grid => taffy::style::Display::Grid,

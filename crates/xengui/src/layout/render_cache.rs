@@ -1,10 +1,42 @@
 // SPDX-License-Identifier: Apache-2.0
-use crate::{DrawCommand, LayoutBox, MeasureResult};
+use crate::{Constraints, DrawCommand, LayoutBox, MeasureResult, WidgetPath};
 use std::collections::HashMap;
 
 struct CachedEntry {
     layout_box: LayoutBox,
     commands: Vec<DrawCommand>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+struct MeasurementConstraints {
+    known_width: Option<u32>,
+    known_height: Option<u32>,
+    max_width: Option<u32>,
+    max_height: Option<u32>,
+}
+
+impl From<Constraints> for MeasurementConstraints {
+    fn from(constraints: Constraints) -> Self {
+        fn bits(value: Option<f32>) -> Option<u32> {
+            value.map(|value| {
+                // Layout constraints are expected to be finite. Canonicalising
+                // zero still prevents equivalent `0.0` and `-0.0` constraints
+                // from occupying separate cache entries.
+                if value == 0.0 {
+                    0.0f32.to_bits()
+                } else {
+                    value.to_bits()
+                }
+            })
+        }
+
+        Self {
+            known_width: bits(constraints.known_width),
+            known_height: bits(constraints.known_height),
+            max_width: bits(constraints.max_width),
+            max_height: bits(constraints.max_height),
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -27,10 +59,10 @@ impl MeasurementEnvironment {
 #[derive(Default)]
 /// Data and behavior represented by `RenderCache`.
 pub struct RenderCache {
-    entries: HashMap<String, CachedEntry>,
-    measured: HashMap<String, MeasureResult>,
+    entries: HashMap<WidgetPath, CachedEntry>,
+    measured: HashMap<WidgetPath, HashMap<MeasurementConstraints, MeasureResult>>,
     measurement_environment: Option<MeasurementEnvironment>,
-    live_generation: HashMap<String, u64>,
+    live_generation: HashMap<WidgetPath, u64>,
     generation: u64,
 }
 
@@ -41,7 +73,7 @@ impl RenderCache {
     }
 
     /// Returns or updates the `cached_size` value.
-    pub fn cached_size(&self, key: &str) -> Option<(f32, f32)> {
+    pub fn cached_size(&self, key: &WidgetPath) -> Option<(f32, f32)> {
         self.entries
             .get(key)
             .map(|e| (e.layout_box.width, e.layout_box.height))
@@ -50,7 +82,7 @@ impl RenderCache {
     /// Returns or updates the `try_reuse` value.
     pub fn try_reuse(
         &self,
-        key: &str,
+        key: &WidgetPath,
         layout_box: LayoutBox,
         dirty: bool,
     ) -> Option<&[DrawCommand]> {
@@ -67,7 +99,7 @@ impl RenderCache {
     /// position to the widget's current position.
     pub(crate) fn try_reuse_moved(
         &self,
-        key: &str,
+        key: &WidgetPath,
         layout_box: LayoutBox,
         dirty: bool,
     ) -> Option<(&[DrawCommand], (f32, f32))> {
@@ -89,9 +121,9 @@ impl RenderCache {
     }
 
     /// Returns or updates the `store` value.
-    pub fn store(&mut self, key: &str, layout_box: LayoutBox, commands: Vec<DrawCommand>) {
+    pub fn store(&mut self, key: &WidgetPath, layout_box: LayoutBox, commands: Vec<DrawCommand>) {
         self.entries.insert(
-            key.to_string(),
+            key.clone(),
             CachedEntry {
                 layout_box,
                 commands,
@@ -99,14 +131,34 @@ impl RenderCache {
         );
     }
 
-    /// Returns or updates the `cached_measure` value.
-    pub fn cached_measure(&self, key: &str) -> Option<MeasureResult> {
-        self.measured.get(key).copied()
+    /// Returns a measurement made under exactly the same layout constraints.
+    pub(crate) fn cached_measure(
+        &self,
+        key: &WidgetPath,
+        constraints: Constraints,
+    ) -> Option<MeasureResult> {
+        self.measured
+            .get(key)
+            .and_then(|measurements| measurements.get(&constraints.into()))
+            .copied()
     }
 
-    /// Returns or updates the `store_measure` value.
-    pub fn store_measure(&mut self, key: &str, size: MeasureResult) {
-        self.measured.insert(key.to_string(), size);
+    /// Stores a measurement for one exact set of layout constraints.
+    pub(crate) fn store_measure(
+        &mut self,
+        key: &WidgetPath,
+        constraints: Constraints,
+        size: MeasureResult,
+    ) {
+        self.measured
+            .entry(key.clone())
+            .or_default()
+            .insert(constraints.into(), size);
+    }
+
+    /// Invalidates every constraint variant cached for a widget.
+    pub(crate) fn invalidate_measure(&mut self, key: &WidgetPath) {
+        self.measured.remove(key);
     }
 
     /// Discards measurements produced under a different external layout
@@ -130,11 +182,11 @@ impl RenderCache {
 
     /// Marks a widget path as live without allocating again once the path
     /// has reached the cache.
-    pub fn mark_live(&mut self, key: &str) {
+    pub fn mark_live(&mut self, key: &WidgetPath) {
         if let Some(generation) = self.live_generation.get_mut(key) {
             *generation = self.generation;
         } else {
-            self.live_generation.insert(key.to_owned(), self.generation);
+            self.live_generation.insert(key.clone(), self.generation);
         }
     }
 
@@ -153,32 +205,107 @@ impl RenderCache {
 #[cfg(test)]
 mod tests {
     use super::{MeasurementEnvironment, RenderCache};
-    use crate::{DrawCommand, LayoutBox, MeasureResult, RectCommand};
+    use crate::{DrawCommand, LayoutBox, MeasureResult, RectCommand, View, WidgetPath};
+
+    fn path(index: usize) -> WidgetPath {
+        WidgetPath::from_widget(&View::new(), index)
+    }
 
     #[test]
     fn measurement_environment_change_expires_only_measurements() {
         let mut cache = RenderCache::new();
         let initial = MeasurementEnvironment::new(1, 2, 1.0);
         cache.sync_measurement_environment(initial);
-        cache.store_measure("text", MeasureResult::new(10.0, 20.0));
+        let text = path(0);
+        cache.store_measure(
+            &text,
+            crate::Constraints::UNBOUNDED,
+            MeasureResult::new(10.0, 20.0),
+        );
 
         cache.sync_measurement_environment(initial);
-        assert!(cache.cached_measure("text").is_some());
+        assert!(
+            cache
+                .cached_measure(&text, crate::Constraints::UNBOUNDED)
+                .is_some()
+        );
 
         cache.sync_measurement_environment(MeasurementEnvironment::new(1, 3, 1.0));
-        assert!(cache.cached_measure("text").is_none());
+        assert!(
+            cache
+                .cached_measure(&text, crate::Constraints::UNBOUNDED)
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn structurally_different_paths_cannot_alias_in_the_cache() {
+        let flat_widget = View::new().key("a.kb");
+        let parent = View::new().key("a");
+        let child = View::new().key("b");
+        let flat = WidgetPath::from_widget(&flat_widget, 0);
+        let mut nested = WidgetPath::from_widget(&parent, 0);
+        nested.push(&child, 0);
+        assert_ne!(flat, nested);
+
+        let mut cache = RenderCache::new();
+        cache.store_measure(
+            &flat,
+            crate::Constraints::UNBOUNDED,
+            MeasureResult::new(10.0, 10.0),
+        );
+        cache.store_measure(
+            &nested,
+            crate::Constraints::UNBOUNDED,
+            MeasureResult::new(20.0, 20.0),
+        );
+
+        assert_eq!(
+            cache
+                .cached_measure(&flat, crate::Constraints::UNBOUNDED)
+                .unwrap()
+                .width,
+            10.0
+        );
+        assert_eq!(
+            cache
+                .cached_measure(&nested, crate::Constraints::UNBOUNDED)
+                .unwrap()
+                .width,
+            20.0
+        );
+    }
+
+    #[test]
+    fn measurements_are_partitioned_by_constraints() {
+        let mut cache = RenderCache::new();
+        let widget = path(0);
+        let narrow = crate::Constraints::UNBOUNDED.with_max_width(100.0);
+        let wide = crate::Constraints::UNBOUNDED.with_max_width(200.0);
+
+        cache.store_measure(&widget, narrow, MeasureResult::new(100.0, 20.0));
+        cache.store_measure(&widget, wide, MeasureResult::new(200.0, 10.0));
+
+        assert_eq!(cache.cached_measure(&widget, narrow).unwrap().height, 20.0);
+        assert_eq!(cache.cached_measure(&widget, wide).unwrap().height, 10.0);
+        assert!(
+            cache
+                .cached_measure(&widget, crate::Constraints::UNBOUNDED)
+                .is_none()
+        );
     }
 
     #[test]
     fn liveness_generations_reuse_path_storage_and_expire_old_paths() {
         let mut cache = RenderCache::new();
         cache.begin_frame();
-        cache.mark_live("root.panel.button");
+        let widget = path(0);
+        cache.mark_live(&widget);
         cache.finish_frame();
         let capacity = cache.live_generation.capacity();
 
         cache.begin_frame();
-        cache.mark_live("root.panel.button");
+        cache.mark_live(&widget);
         cache.finish_frame();
         assert_eq!(cache.live_generation.len(), 1);
         assert_eq!(cache.live_generation.capacity(), capacity);
@@ -198,8 +325,9 @@ mod tests {
             width: 100.0,
             height: 40.0,
         };
+        let text = path(0);
         cache.store(
-            "text",
+            &text,
             original,
             vec![DrawCommand::Rect(RectCommand {
                 position: (10.0, 20.0),
@@ -218,14 +346,14 @@ mod tests {
             ..original
         };
         let (_, offset) = cache
-            .try_reuse_moved("text", moved, false)
+            .try_reuse_moved(&text, moved, false)
             .expect("pure translation should reuse cached commands");
         assert_eq!(offset, (0.25, -0.5));
 
         assert!(
             cache
                 .try_reuse_moved(
-                    "text",
+                    &text,
                     LayoutBox {
                         width: 101.0,
                         ..moved
@@ -234,6 +362,6 @@ mod tests {
                 )
                 .is_none()
         );
-        assert!(cache.try_reuse_moved("text", moved, true).is_none());
+        assert!(cache.try_reuse_moved(&text, moved, true).is_none());
     }
 }

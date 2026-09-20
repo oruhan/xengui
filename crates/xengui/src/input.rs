@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-use crate::{Cursor, Widget};
+use crate::{Cursor, Widget, WidgetPath, WidgetPathSegment};
 use std::future::Future;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -330,6 +330,17 @@ pub enum EventStatus {
     Handled,
 }
 
+/// The propagation phase of the event currently being dispatched.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum EventPhase {
+    /// The event is travelling from the root towards the target's parent.
+    Capture,
+    /// The event is being delivered to its exact target.
+    Target,
+    /// The event is travelling from the target's parent back towards the root.
+    Bubble,
+}
+
 #[derive(Default)]
 /// Data and behavior represented by `EventCtx`.
 pub struct EventCtx {
@@ -338,10 +349,13 @@ pub struct EventCtx {
     focus_requested: bool,
     focus_released: bool,
     /// The `focus_target` value carried by this type.
-    pub focus_target: Option<String>,
+    pub focus_target: Option<WidgetPath>,
     /// The `clear_focus` value carried by this type.
     pub clear_focus: bool,
     suppress_text_drag: bool,
+    phase: Option<EventPhase>,
+    event_target: Option<WidgetPath>,
+    current_target: Option<WidgetPath>,
 }
 
 impl EventCtx {
@@ -390,6 +404,36 @@ impl EventCtx {
         self.cursor_icon.take()
     }
 
+    /// Returns the current propagation phase while an event handler is running.
+    pub fn event_phase(&self) -> Option<EventPhase> {
+        self.phase
+    }
+
+    /// Returns the path originally targeted by the current event.
+    pub fn event_target(&self) -> Option<&WidgetPath> {
+        self.event_target.as_ref()
+    }
+
+    /// Returns the path of the widget whose handler is currently running.
+    pub fn current_target(&self) -> Option<&WidgetPath> {
+        self.current_target.as_ref()
+    }
+
+    fn begin_dispatch(&mut self, target: &WidgetPath) {
+        self.event_target = Some(target.clone());
+    }
+
+    fn enter_phase(&mut self, phase: EventPhase, current_target: &WidgetPath) {
+        self.phase = Some(phase);
+        self.current_target = Some(current_target.clone());
+    }
+
+    fn end_dispatch(&mut self) {
+        self.phase = None;
+        self.event_target = None;
+        self.current_target = None;
+    }
+
     /// Returns or updates the `request_focus` value.
     pub fn request_focus(&mut self) {
         self.focus_requested = true;
@@ -410,53 +454,47 @@ impl EventCtx {
 }
 
 /// Returns or updates the `ancestor_paths` value.
-pub fn ancestor_paths(path: &str) -> Vec<String> {
-    let parts: Vec<&str> = path.split('.').collect();
-    (1..=parts.len()).map(|n| parts[..n].join(".")).collect()
+pub fn ancestor_paths(path: &WidgetPath) -> Vec<WidgetPath> {
+    path.ancestors()
 }
 
 /// Returns or updates the `path_segment` value.
-pub fn path_segment(widget: &dyn Widget, index: usize) -> String {
-    match widget.get_key() {
-        Some(key) => format!("k{key}"),
-        None => index.to_string(),
-    }
+pub fn path_segment(widget: &dyn Widget, index: usize) -> WidgetPath {
+    WidgetPath::from_widget(widget, index)
 }
 
 fn resolve_segment<'a>(
     siblings: &'a mut [Box<dyn Widget>],
-    segment: &str,
+    segment: &WidgetPathSegment,
 ) -> Option<&'a mut dyn Widget> {
-    if let Some(key) = segment.strip_prefix('k') {
-        siblings
+    match segment {
+        WidgetPathSegment::Key(key) => siblings
             .iter_mut()
-            .find(|w| w.get_key().is_some_and(|k| k.as_str() == key))
-            .map(|w| w.as_mut())
-    } else {
-        let idx: usize = segment.parse().ok()?;
-        siblings.get_mut(idx).map(|w| w.as_mut())
+            .find(|widget| widget.get_key() == Some(key))
+            .map(|widget| widget.as_mut()),
+        WidgetPathSegment::Index(index) => siblings.get_mut(*index).map(|widget| widget.as_mut()),
     }
 }
 
 /// Returns or updates the `find_widget_mut` value.
 pub fn find_widget_mut<'a>(
     tree: &'a mut [Box<dyn Widget>],
-    path: &str,
+    path: &WidgetPath,
 ) -> Option<&'a mut dyn Widget> {
-    let mut parts = path.split('.');
-    let mut current: &mut dyn Widget = resolve_segment(tree, parts.next()?)?;
+    let mut segments = path.segments.iter();
+    let mut current: &mut dyn Widget = resolve_segment(tree, segments.next()?)?;
 
-    for part in parts {
+    for segment in segments {
         let children = current.children_mut()?;
-        current = resolve_segment(children, part)?;
+        current = resolve_segment(children, segment)?;
     }
 
     Some(current)
 }
 
 /// Returns or updates the `hit_test_path` value.
-pub fn hit_test_path(tree: &[Box<dyn Widget>], point: (f32, f32)) -> Option<String> {
-    hit_test_children(tree, point, 0, "")
+pub fn hit_test_path(tree: &[Box<dyn Widget>], point: (f32, f32)) -> Option<WidgetPath> {
+    hit_test_children(tree, point, 0, &WidgetPath::new())
 }
 
 // Tests widgets in the same stacking order FrameRenderer paints them: sorted
@@ -467,19 +505,15 @@ fn hit_test_children(
     widgets: &[Box<dyn Widget>],
     point: (f32, f32),
     parent_z: i32,
-    parent_path: &str,
-) -> Option<String> {
+    parent_path: &WidgetPath,
+) -> Option<WidgetPath> {
     let mut order: Vec<usize> = (0..widgets.len()).collect();
     order.sort_by_key(|&i| widgets[i].computed_style().z_index.unwrap_or(parent_z));
 
     for &i in order.iter().rev() {
         let widget = &widgets[i];
-        let segment = path_segment(widget.as_ref(), i);
-        let path = if parent_path.is_empty() {
-            segment
-        } else {
-            format!("{parent_path}.{segment}")
-        };
+        let mut path = parent_path.clone();
+        path.push(widget.as_ref(), i);
         let z = widget.computed_style().z_index.unwrap_or(parent_z);
         if let Some(hit) = hit_test_recursive(widget.as_ref(), &path, point, z) {
             return Some(hit);
@@ -490,10 +524,10 @@ fn hit_test_children(
 
 fn hit_test_recursive(
     widget: &dyn Widget,
-    path: &str,
+    path: &WidgetPath,
     point: (f32, f32),
     z: i32,
-) -> Option<String> {
+) -> Option<WidgetPath> {
     if !widget.hit_test(point) {
         return None;
     }
@@ -504,12 +538,12 @@ fn hit_test_recursive(
         return Some(hit);
     }
 
-    Some(path.to_string())
+    Some(path.clone())
 }
 
 /// Collects the paths of every active, focusable widget in the tree in
 /// depth-first order, used to build the Tab / Shift+Tab sequence.
-pub fn collect_focusable_paths(tree: &[Box<dyn Widget>]) -> Vec<String> {
+pub fn collect_focusable_paths(tree: &[Box<dyn Widget>]) -> Vec<WidgetPath> {
     let mut paths = Vec::new();
     for (i, node) in tree.iter().enumerate() {
         let segment = path_segment(node.as_ref(), i);
@@ -518,43 +552,41 @@ pub fn collect_focusable_paths(tree: &[Box<dyn Widget>]) -> Vec<String> {
     paths
 }
 
-fn collect_focusable_recursive(widget: &dyn Widget, path: &str, out: &mut Vec<String>) {
+fn collect_focusable_recursive(widget: &dyn Widget, path: &WidgetPath, out: &mut Vec<WidgetPath>) {
     if widget
         .interaction()
         .is_some_and(|i| i.focusable && i.enabled)
     {
-        out.push(path.to_string());
+        out.push(path.clone());
     }
 
     for (i, child) in widget.children().iter().enumerate() {
-        let segment = path_segment(child.as_ref(), i);
-        let child_path = format!("{path}.{segment}");
+        let mut child_path = path.clone();
+        child_path.push(child.as_ref(), i);
         collect_focusable_recursive(child.as_ref(), &child_path, out);
     }
 }
 
 // True if `path` is `ancestor` itself or one of its descendants.
 /// Returns or updates the `path_is_within` value.
-pub fn path_is_within(path: &str, ancestor: &str) -> bool {
-    path == ancestor || path.starts_with(&format!("{ancestor}."))
+pub fn path_is_within(path: &WidgetPath, ancestor: &WidgetPath) -> bool {
+    path.is_within(ancestor)
 }
 
 // Walks the hover path from root to leaf and returns the deepest widget's
 // own hover cursor, so a plain (non-interactive) child inside a clickable
 // ancestor doesn't shadow that ancestor's cursor.
 /// Returns or updates the `resolve_hover_cursor` value.
-pub fn resolve_hover_cursor(tree: &[Box<dyn Widget>], path: &str) -> Option<Cursor> {
+pub fn resolve_hover_cursor(tree: &[Box<dyn Widget>], path: &WidgetPath) -> Option<Cursor> {
     let mut current: &[Box<dyn Widget>] = tree;
     let mut resolved = None;
 
-    for segment in path.split('.') {
-        let widget = if let Some(key) = segment.strip_prefix('k') {
-            current
+    for segment in &path.segments {
+        let widget = match segment {
+            WidgetPathSegment::Key(key) => current
                 .iter()
-                .find(|w| w.get_key().is_some_and(|k| k.as_str() == key))?
-        } else {
-            let idx: usize = segment.parse().ok()?;
-            current.get(idx)?
+                .find(|widget| widget.get_key() == Some(key))?,
+            WidgetPathSegment::Index(index) => current.get(*index)?,
         };
 
         if let Some(cursor) = widget.interaction().and_then(|i| i.hover_cursor) {
@@ -570,7 +602,7 @@ pub fn resolve_hover_cursor(tree: &[Box<dyn Widget>], path: &str) -> Option<Curs
 /// Returns or updates the `dispatch_positional` value.
 pub fn dispatch_positional(
     tree: &mut [Box<dyn Widget>],
-    leaf_path: &str,
+    leaf_path: &WidgetPath,
     event: &InputEvent,
     ctx: &mut EventCtx,
 ) -> EventStatus {
@@ -584,54 +616,87 @@ pub fn dispatch_positional(
 /// re-walking the whole ancestor chain from the original leaf every time.
 pub fn dispatch_positional_capturing(
     tree: &mut [Box<dyn Widget>],
-    leaf_path: &str,
+    leaf_path: &WidgetPath,
     event: &InputEvent,
     ctx: &mut EventCtx,
-) -> (EventStatus, Option<String>) {
-    for path in ancestor_paths(leaf_path).into_iter().rev() {
-        let Some(widget) = find_widget_mut(tree, &path) else {
-            continue;
-        };
+) -> (EventStatus, Option<WidgetPath>) {
+    let chain = ancestor_paths(leaf_path);
+    ctx.begin_dispatch(leaf_path);
 
-        let redraw_before = ctx.redraw_requested();
-        let status = dispatch_widget_event(widget, event, ctx);
-
-        if !redraw_before && ctx.redraw_requested() && crate::devtools::is_enabled() {
-            crate::devtools::log_repaint(&path, widget.debug_name(), format!("{event:?}"));
-        }
-
-        if ctx.take_focus_request() {
-            ctx.focus_target = Some(path.clone());
-        }
-        if ctx.take_release_focus_request() {
-            ctx.clear_focus = true;
-        }
-
+    // `ancestors()` is root-first. Capture excludes the final target.
+    for path in chain.iter().take(chain.len().saturating_sub(1)) {
+        ctx.enter_phase(EventPhase::Capture, path);
+        let status = dispatch_at_path(tree, path, event, ctx, true);
         if status == EventStatus::Handled {
-            return (EventStatus::Handled, Some(path));
+            ctx.end_dispatch();
+            return (EventStatus::Handled, Some(path.clone()));
         }
     }
+
+    ctx.enter_phase(EventPhase::Target, leaf_path);
+    let status = dispatch_at_path(tree, leaf_path, event, ctx, false);
+    if status == EventStatus::Handled {
+        ctx.end_dispatch();
+        return (EventStatus::Handled, Some(leaf_path.clone()));
+    }
+
+    for path in chain.iter().take(chain.len().saturating_sub(1)).rev() {
+        ctx.enter_phase(EventPhase::Bubble, path);
+        let status = dispatch_at_path(tree, path, event, ctx, false);
+        if status == EventStatus::Handled {
+            ctx.end_dispatch();
+            return (EventStatus::Handled, Some(path.clone()));
+        }
+    }
+
+    ctx.end_dispatch();
     (EventStatus::Ignored, None)
 }
 
 /// Returns or updates the `dispatch_to_path` value.
 pub fn dispatch_to_path(
     tree: &mut [Box<dyn Widget>],
-    path: &str,
+    path: &WidgetPath,
     event: &InputEvent,
     ctx: &mut EventCtx,
 ) -> EventStatus {
-    match find_widget_mut(tree, path) {
-        Some(widget) => {
-            let redraw_before = ctx.redraw_requested();
-            let status = dispatch_widget_event(widget, event, ctx);
-            if !redraw_before && ctx.redraw_requested() && crate::devtools::is_enabled() {
-                crate::devtools::log_repaint(path, widget.debug_name(), format!("{event:?}"));
-            }
-            status
-        }
-        None => EventStatus::Ignored,
+    ctx.begin_dispatch(path);
+    ctx.enter_phase(EventPhase::Target, path);
+    let status = dispatch_at_path(tree, path, event, ctx, false);
+    ctx.end_dispatch();
+    status
+}
+
+fn dispatch_at_path(
+    tree: &mut [Box<dyn Widget>],
+    path: &WidgetPath,
+    event: &InputEvent,
+    ctx: &mut EventCtx,
+    capture: bool,
+) -> EventStatus {
+    let Some(widget) = find_widget_mut(tree, path) else {
+        return EventStatus::Ignored;
+    };
+
+    let redraw_before = ctx.redraw_requested();
+    let status = if capture {
+        widget.event_capture(event, ctx)
+    } else {
+        dispatch_widget_event(widget, event, ctx)
+    };
+
+    if !redraw_before && ctx.redraw_requested() && crate::devtools::is_enabled() {
+        crate::devtools::log_repaint(&path.to_string(), widget.debug_name(), format!("{event:?}"));
     }
+
+    if ctx.take_focus_request() {
+        ctx.focus_target = Some(path.clone());
+    }
+    if ctx.take_release_focus_request() {
+        ctx.clear_focus = true;
+    }
+
+    status
 }
 
 /// Transitions hover state from `old_path` to `new_path`, dispatching
@@ -641,12 +706,12 @@ pub fn dispatch_to_path(
 /// never sets that ancestor's own `hovered` flag.
 pub fn dispatch_hover_transition(
     tree: &mut [Box<dyn Widget>],
-    old_path: Option<&str>,
-    new_path: Option<&str>,
+    old_path: Option<&WidgetPath>,
+    new_path: Option<&WidgetPath>,
     ctx: &mut EventCtx,
 ) {
-    let old_chain: Vec<String> = old_path.map(ancestor_paths).unwrap_or_default();
-    let new_chain: Vec<String> = new_path.map(ancestor_paths).unwrap_or_default();
+    let old_chain: Vec<WidgetPath> = old_path.map(ancestor_paths).unwrap_or_default();
+    let new_chain: Vec<WidgetPath> = new_path.map(ancestor_paths).unwrap_or_default();
 
     for path in &old_chain {
         if !new_chain.contains(path) {
@@ -665,12 +730,12 @@ pub fn dispatch_hover_transition(
 /// lets a container react when any descendant gains/loses focus.
 pub fn dispatch_focus_within_transition(
     tree: &mut [Box<dyn Widget>],
-    old_path: Option<&str>,
-    new_path: Option<&str>,
+    old_path: Option<&WidgetPath>,
+    new_path: Option<&WidgetPath>,
     ctx: &mut EventCtx,
 ) {
-    let old_chain: Vec<String> = old_path.map(ancestor_paths).unwrap_or_default();
-    let new_chain: Vec<String> = new_path.map(ancestor_paths).unwrap_or_default();
+    let old_chain: Vec<WidgetPath> = old_path.map(ancestor_paths).unwrap_or_default();
+    let new_chain: Vec<WidgetPath> = new_path.map(ancestor_paths).unwrap_or_default();
 
     for path in &old_chain {
         if !new_chain.contains(path) {
@@ -714,7 +779,7 @@ pub fn dispatch_animation_tick(tree: &mut [Box<dyn Widget>], dt: f32, ctx: &mut 
 
 fn dispatch_animation_tick_recursive(
     widget: &mut dyn Widget,
-    path: &str,
+    path: &WidgetPath,
     dt: f32,
     ctx: &mut EventCtx,
 ) {
@@ -729,7 +794,7 @@ fn dispatch_animation_tick_recursive(
         // dispatch_positional, so a focus request raised from it must be
         // resolved against this path explicitly.
         if ctx.take_focus_request() {
-            ctx.focus_target = Some(path.to_string());
+            ctx.focus_target = Some(path.clone());
         }
         if ctx.take_release_focus_request() {
             ctx.clear_focus = true;
@@ -737,8 +802,8 @@ fn dispatch_animation_tick_recursive(
     }
     if let Some(children) = widget.children_mut() {
         for (i, child) in children.iter_mut().enumerate() {
-            let segment = path_segment(child.as_ref(), i);
-            let child_path = format!("{path}.{segment}");
+            let mut child_path = path.clone();
+            child_path.push(child.as_ref(), i);
             dispatch_animation_tick_recursive(child.as_mut(), &child_path, dt, ctx);
         }
     }
@@ -777,16 +842,51 @@ fn dispatch_widget_event(
 }
 
 #[derive(Default)]
+/// Pointer/gesture ownership for one input runtime.
+pub struct PointerCapture {
+    target: Option<WidgetPath>,
+    button: Option<MouseButton>,
+}
+
+impl PointerCapture {
+    /// Returns the widget currently owning pointer delivery.
+    pub fn target(&self) -> Option<&WidgetPath> {
+        self.target.as_ref()
+    }
+
+    /// Captures pointer delivery for `target` and the initiating button.
+    pub fn capture(&mut self, target: Option<WidgetPath>, button: MouseButton) {
+        self.target = target;
+        self.button = self.target.as_ref().map(|_| button);
+    }
+
+    /// Releases capture if `button` owns it, returning the former target.
+    pub fn release(&mut self, button: MouseButton) -> Option<WidgetPath> {
+        if self.button != Some(button) {
+            return None;
+        }
+        self.button = None;
+        self.target.take()
+    }
+
+    /// Cancels capture regardless of its initiating button.
+    pub fn cancel(&mut self) -> Option<WidgetPath> {
+        self.button = None;
+        self.target.take()
+    }
+}
+
+#[derive(Default)]
 /// Data and behavior represented by `InputState`.
 pub struct InputState {
     /// The `cursor_pos` value carried by this type.
     pub cursor_pos: Option<(f32, f32)>,
     /// The `hovered_path` value carried by this type.
-    pub hovered_path: Option<String>,
-    /// The `pressed_path` value carried by this type.
-    pub pressed_path: Option<String>,
-    /// The `focused_path` value carried by this type.
-    pub focused_path: Option<String>,
+    pub hovered_path: Option<WidgetPath>,
+    /// Typed pointer capture and gesture ownership state.
+    pub pointer_capture: PointerCapture,
+    /// Keyboard focus state for this input/runtime instance.
+    pub focus: crate::FocusManager,
     /// The `modifiers` value carried by this type.
     pub modifiers: ModifiersState,
     /// Screen point where a cross-widget text-selection drag started;
@@ -936,8 +1036,189 @@ pub fn cancel_auto_scroll_recursive(tree: &mut [Box<dyn Widget>], ctx: &mut Even
 
 #[cfg(test)]
 mod tests {
-    use super::{collect_focusable_paths, find_widget_mut};
-    use crate::{View, Widget, reconciler::reconcile_now};
+    use super::{
+        EventCtx, EventStatus, InputEvent, collect_focusable_paths, dispatch_positional,
+        find_widget_mut,
+    };
+    use crate::{
+        Constraints, LayoutBox, MeasureContext, MeasureResult, PaintContext, Style, View, Widget,
+        WidgetPath, reconciler::reconcile_now,
+    };
+    use std::{any::Any, cell::RefCell, rc::Rc};
+
+    struct EventProbe {
+        name: &'static str,
+        style: Style,
+        layout: LayoutBox,
+        children: Vec<Box<dyn Widget>>,
+        log: Rc<RefCell<Vec<String>>>,
+        stop_capture: bool,
+    }
+
+    impl EventProbe {
+        fn new(name: &'static str, log: Rc<RefCell<Vec<String>>>) -> Self {
+            Self {
+                name,
+                style: Style::default(),
+                layout: LayoutBox::default(),
+                children: Vec::new(),
+                log,
+                stop_capture: false,
+            }
+        }
+
+        fn child(mut self, child: impl Widget + 'static) -> Self {
+            self.children.push(Box::new(child));
+            self
+        }
+
+        fn stop_capture(mut self) -> Self {
+            self.stop_capture = true;
+            self
+        }
+
+        fn record(&self, ctx: &EventCtx) {
+            self.log.borrow_mut().push(format!(
+                "{}:{:?}:{}:{}",
+                self.name,
+                ctx.event_phase().expect("active event phase"),
+                ctx.current_target().expect("current target"),
+                ctx.event_target().expect("event target")
+            ));
+        }
+    }
+
+    impl Widget for EventProbe {
+        fn as_any(&self) -> &dyn Any {
+            self
+        }
+
+        fn as_any_mut(&mut self) -> &mut dyn Any {
+            self
+        }
+
+        fn is_dirty(&self) -> bool {
+            false
+        }
+
+        fn set_dirty(&mut self, _dirty: bool) {}
+
+        fn style(&self) -> &Style {
+            &self.style
+        }
+
+        fn style_mut(&mut self) -> &mut Style {
+            &mut self.style
+        }
+
+        fn children(&self) -> &[Box<dyn Widget>] {
+            &self.children
+        }
+
+        fn children_mut(&mut self) -> Option<&mut Vec<Box<dyn Widget>>> {
+            Some(&mut self.children)
+        }
+
+        fn measure(&self, _ctx: &mut MeasureContext, _constraints: Constraints) -> MeasureResult {
+            MeasureResult::new(0.0, 0.0)
+        }
+
+        fn layout(&mut self, rect: LayoutBox) {
+            self.layout = rect;
+        }
+
+        fn layout_box(&self) -> &LayoutBox {
+            &self.layout
+        }
+
+        fn paint(&self, _ctx: &mut PaintContext) {}
+
+        fn event_capture(&mut self, _event: &InputEvent, ctx: &mut EventCtx) -> EventStatus {
+            self.record(ctx);
+            if self.stop_capture {
+                EventStatus::Handled
+            } else {
+                EventStatus::Ignored
+            }
+        }
+
+        fn event(&mut self, _event: &InputEvent, ctx: &mut EventCtx) -> EventStatus {
+            self.record(ctx);
+            EventStatus::Ignored
+        }
+    }
+
+    fn probe_tree(log: Rc<RefCell<Vec<String>>>, stop_capture: bool) -> Vec<Box<dyn Widget>> {
+        let root = if stop_capture {
+            EventProbe::new("root", log.clone()).stop_capture()
+        } else {
+            EventProbe::new("root", log.clone())
+        };
+        vec![Box::new(root.child(EventProbe::new("leaf", log)))]
+    }
+
+    fn leaf_path(tree: &[Box<dyn Widget>]) -> WidgetPath {
+        let mut path = WidgetPath::from_widget(tree[0].as_ref(), 0);
+        path.push(tree[0].children()[0].as_ref(), 0);
+        path
+    }
+
+    #[test]
+    fn positional_events_follow_capture_target_bubble_order() {
+        let log = Rc::new(RefCell::new(Vec::new()));
+        let mut tree = probe_tree(log.clone(), false);
+        let target = leaf_path(&tree);
+
+        let status = dispatch_positional(
+            &mut tree,
+            &target,
+            &InputEvent::MouseEntered,
+            &mut EventCtx::new(),
+        );
+
+        assert_eq!(status, EventStatus::Ignored);
+        let entries = log.borrow();
+        assert_eq!(entries.len(), 3);
+        assert!(entries[0].starts_with("root:Capture:"));
+        assert!(entries[1].starts_with("leaf:Target:"));
+        assert!(entries[2].starts_with("root:Bubble:"));
+        assert!(
+            entries
+                .iter()
+                .all(|entry| entry.ends_with(&target.to_string()))
+        );
+    }
+
+    #[test]
+    fn handled_capture_prevents_target_and_bubble_delivery() {
+        let log = Rc::new(RefCell::new(Vec::new()));
+        let mut tree = probe_tree(log.clone(), true);
+        let target = leaf_path(&tree);
+
+        let status = dispatch_positional(
+            &mut tree,
+            &target,
+            &InputEvent::MouseEntered,
+            &mut EventCtx::new(),
+        );
+
+        assert_eq!(status, EventStatus::Handled);
+        assert_eq!(log.borrow().len(), 1);
+        assert!(log.borrow()[0].starts_with("root:Capture:"));
+    }
+
+    #[test]
+    fn pointer_capture_releases_only_for_its_owning_button() {
+        let tree = probe_tree(Rc::new(RefCell::new(Vec::new())), false);
+        let target = leaf_path(&tree);
+        let mut capture = super::PointerCapture::default();
+
+        capture.capture(Some(target.clone()), super::MouseButton::Left);
+        assert!(capture.release(super::MouseButton::Right).is_none());
+        assert_eq!(capture.target(), Some(&target));
+        assert_eq!(capture.release(super::MouseButton::Left), Some(target));
+        assert!(capture.target().is_none());
+    }
 
     #[test]
     fn keyed_reorder_preserves_focus_and_hover_state() {
@@ -945,7 +1226,8 @@ mod tests {
             Box::new(View::new().key("alpha").focusable(true)),
             Box::new(View::new().key("beta").focusable(true)),
         ];
-        let alpha = find_widget_mut(&mut old, "kalpha").expect("keyed alpha widget");
+        let alpha_path = collect_focusable_paths(&old)[0].clone();
+        let alpha = find_widget_mut(&mut old, &alpha_path).expect("keyed alpha widget");
         let interaction = alpha.interaction_mut().expect("view interaction");
         interaction.focused = true;
         interaction.hovered = true;
@@ -956,15 +1238,16 @@ mod tests {
         ];
         let mut reconciled = reconcile_now(new, &mut old);
 
-        assert_eq!(collect_focusable_paths(&reconciled), ["kbeta", "kalpha"]);
-        let alpha = find_widget_mut(&mut reconciled, "kalpha").expect("reordered alpha widget");
+        let paths = collect_focusable_paths(&reconciled);
+        assert_eq!(paths[0].to_string(), "key(\"beta\")");
+        assert_eq!(paths[1].to_string(), "key(\"alpha\")");
+        let alpha = find_widget_mut(&mut reconciled, &paths[1]).expect("reordered alpha widget");
         let interaction = alpha.interaction().expect("view interaction");
         assert!(interaction.focused);
         assert!(interaction.hovered);
     }
 
     #[test]
-    #[ignore = "Phase 2: string paths cannot encode keys containing the path separator"]
     fn arbitrary_widget_keys_round_trip_through_runtime_paths() {
         let mut tree: Vec<Box<dyn Widget>> =
             vec![Box::new(View::new().key("account.menu").focusable(true))];
@@ -973,7 +1256,7 @@ mod tests {
             .next()
             .expect("focusable path");
 
-        assert_eq!(path, "kaccount.menu");
         assert!(find_widget_mut(&mut tree, &path).is_some());
+        assert_eq!(path.to_string(), "key(\"account.menu\")");
     }
 }

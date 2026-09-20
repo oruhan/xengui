@@ -4595,6 +4595,7 @@ dependencies = [
  "smol_str 0.3.6",
  "system-fonts",
  "taffy",
+ "unicode-segmentation",
  "web-sys",
  "web-time",
  "xen-animation",
@@ -4617,6 +4618,19 @@ dependencies = [
 [[package]]
 name = "xengui-icons"
 version = "0.1.0"
+
+[[package]]
+name = "xengui-showcase"
+version = "0.1.0"
+dependencies = [
+ "console_error_panic_hook",
+ "console_log",
+ "env_logger",
+ "log",
+ "xenframe",
+ "xengui",
+ "xengui-icons",
+]
 
 [[package]]
 name = "xengui-wgpu"

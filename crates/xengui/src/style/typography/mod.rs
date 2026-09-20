@@ -11,6 +11,8 @@ pub mod line_height;
 pub mod text_align;
 /// Types and operations for `text_decoration`.
 pub mod text_decoration;
+/// Types and operations for `text_direction`.
+pub mod text_direction;
 
 pub use font_style::FontStyle;
 pub use font_weight::FontWeight;
@@ -18,3 +20,4 @@ pub use letter_spacing::LetterSpacing;
 pub use line_height::LineHeight;
 pub use text_align::TextAlign;
 pub use text_decoration::TextDecoration;
+pub use text_direction::TextDirection;

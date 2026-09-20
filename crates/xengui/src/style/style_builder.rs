@@ -9,7 +9,7 @@ use crate::{
 use super::{
     Align, Background, Border, Color, Cursor, Display, Edges, FlexDirection, FlexWrap,
     GridPlacement, GridTrack, JustifyContent, Length, LineHeight, Outline, Position,
-    ScrollbarStyle, Size, Style, TextAlign, TextDecoration,
+    ScrollbarStyle, Size, Style, TextAlign, TextDecoration, TextDirection,
 };
 
 /// Fluent style setters shared by all built-in widgets.
@@ -345,6 +345,12 @@ pub trait StyleBuilder: Sized {
 
     fn overscroll(mut self, overscroll: Overscroll) -> Self {
         self.style_mut().overscroll = Some(overscroll);
+        self.mark_dirty();
+        self
+    }
+
+    fn text_direction(mut self, direction: TextDirection) -> Self {
+        self.style_mut().text_direction = Some(direction);
         self.mark_dirty();
         self
     }
