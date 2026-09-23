@@ -38,7 +38,13 @@ pub struct TextPipeline {
     font_system: FontSystem,
     swash_cache: SwashCache,
     atlas: TextAtlas,
-    renderer: TextRenderer,
+    // One renderer (and therefore one vertex buffer) per text run recorded
+    // in the current frame. Slots are retained at the high-water mark and
+    // reused next frame, allowing all runs to stay in one command submission
+    // without a later prepare() overwriting an earlier run's vertices.
+    renderers: Vec<TextRenderer>,
+    renderer_cursor: usize,
+    multisample: wgpu::MultisampleState,
     viewport: Viewport,
     user_font_map: HashMap<String, String>,
     default_family_name: Option<String>,
@@ -105,23 +111,21 @@ impl TextPipeline {
             surface_format,
             text_color_mode(surface_format),
         );
-        let renderer = TextRenderer::new(
-            &mut atlas,
-            device,
-            wgpu::MultisampleState {
-                count: sample_count,
-                mask: !0,
-                alpha_to_coverage_enabled: false,
-            },
-            None,
-        );
+        let multisample = wgpu::MultisampleState {
+            count: sample_count,
+            mask: !0,
+            alpha_to_coverage_enabled: false,
+        };
+        let renderer = TextRenderer::new(&mut atlas, device, multisample, None);
         let viewport = Viewport::new(device, &cache);
 
         Ok(Self {
             font_system,
             swash_cache,
             atlas,
-            renderer,
+            renderers: vec![renderer],
+            renderer_cursor: 0,
+            multisample,
             viewport,
             user_font_map,
             default_family_name,
@@ -166,6 +170,68 @@ impl TextPipeline {
     }
 
     #[allow(clippy::too_many_arguments)]
+    fn shaped_buffer(
+        &mut self,
+        text: &str,
+        font: Option<&str>,
+        weight: FontWeight,
+        style: FontStyle,
+        scale: f32,
+        line_height: f32,
+        max_width: Option<f32>,
+        align: TextAlign,
+    ) -> Arc<GlyphonBuffer> {
+        let final_line_height = resolve_line_height(scale, line_height);
+        let align_code: u8 = match align {
+            TextAlign::Start => 0,
+            TextAlign::Center => 1,
+            TextAlign::End => 2,
+            TextAlign::Justify => 3,
+        };
+        let key = ShapeKey {
+            text: smol_str::SmolStr::new(text),
+            font: font.map(smol_str::SmolStr::new),
+            weight,
+            style,
+            scale_bits: scale.to_bits(),
+            line_height_bits: final_line_height.to_bits(),
+            max_width_bits: max_width.map(f32::to_bits),
+            align: align_code,
+        };
+
+        if let Some(cached) = self.shape_cache.get(&key) {
+            return Arc::clone(cached);
+        }
+
+        let attrs = Self::resolve_attrs(
+            &self.user_font_map,
+            &self.default_family_name,
+            font,
+            weight,
+            style,
+        );
+        let metrics = Metrics::new(scale, final_line_height);
+        let mut buffer = new_text_buffer(&mut self.font_system, metrics);
+        buffer.set_size(Some(max_width.unwrap_or(f32::MAX)), Some(f32::MAX));
+        buffer.set_text(text, &attrs, Shaping::Advanced, None);
+
+        if max_width.is_some() && align != TextAlign::Start {
+            let mapped = map_text_align(align);
+            for line in buffer.lines.iter_mut() {
+                line.set_align(Some(mapped));
+            }
+        }
+        buffer.shape_until_scroll(&mut self.font_system, false);
+
+        if self.shape_cache.len() > 4096 {
+            self.shape_cache.clear();
+        }
+        let buffer = Arc::new(buffer);
+        self.shape_cache.insert(key, Arc::clone(&buffer));
+        buffer
+    }
+
+    #[allow(clippy::too_many_arguments)]
     fn queue_run(
         &mut self,
         text: &str,
@@ -182,62 +248,19 @@ impl TextPipeline {
         max_width: Option<f32>,
         clip_rect: Option<(f32, f32, f32, f32)>,
     ) {
-        let final_line_height = resolve_line_height(scale, line_height);
-
-        let align_code: u8 = match align {
-            TextAlign::Start => 0,
-            TextAlign::Center => 1,
-            TextAlign::End => 2,
-            TextAlign::Justify => 3,
-        };
-
-        let key = ShapeKey {
-            text: smol_str::SmolStr::new(text),
-            font: font.map(smol_str::SmolStr::new),
-            weight,
-            style,
-            scale_bits: scale.to_bits(),
-            line_height_bits: final_line_height.to_bits(),
-            max_width_bits: max_width.map(f32::to_bits),
-            align: align_code,
-        };
-
         // Reshaping (glyph lookup, font fallback, line breaking) is the
         // most expensive part of a text-heavy frame; an unchanged run
         // reuses the buffer already shaped on a previous frame.
-        let buffer = if let Some(cached) = self.shape_cache.get(&key) {
-            cached.clone()
-        } else {
-            let attrs = Self::resolve_attrs(
-                &self.user_font_map,
-                &self.default_family_name,
-                font,
-                weight,
-                style,
-            );
-
-            let metrics = Metrics::new(scale, final_line_height);
-            let mut buffer = new_text_buffer(&mut self.font_system, metrics);
-            buffer.set_size(Some(max_width.unwrap_or(f32::MAX)), Some(f32::MAX));
-            buffer.set_text(text, &attrs, Shaping::Advanced, None);
-
-            if max_width.is_some() && align != TextAlign::Start {
-                let mapped = map_text_align(align);
-                for line in buffer.lines.iter_mut() {
-                    line.set_align(Some(mapped));
-                }
-            }
-
-            buffer.shape_until_scroll(&mut self.font_system, false);
-
-            if self.shape_cache.len() > 4096 {
-                self.shape_cache.clear();
-            }
-
-            let buffer = Arc::new(buffer);
-            self.shape_cache.insert(key, buffer.clone());
-            buffer
-        };
+        let buffer = self.shaped_buffer(
+            text,
+            font,
+            weight,
+            style,
+            scale,
+            line_height,
+            max_width,
+            align,
+        );
 
         if decoration.underline() || decoration.strike() || decoration.overline() {
             self.queue_decorations(
@@ -359,21 +382,17 @@ impl TextPipeline {
         line_height: f32,
         max_width: Option<f32>,
     ) -> (f32, f32, f32) {
-        let attrs = Self::resolve_attrs(
-            &self.user_font_map,
-            &self.default_family_name,
+        let final_line_height = resolve_line_height(scale, line_height);
+        let buffer = self.shaped_buffer(
+            text,
             font,
             weight,
             style,
+            scale,
+            line_height,
+            max_width,
+            TextAlign::Start,
         );
-        let final_line_height = resolve_line_height(scale, line_height);
-        let metrics = Metrics::new(scale, final_line_height);
-        let mut buffer = new_text_buffer(&mut self.font_system, metrics);
-        // A bounded width here is what makes glyphon break the text into
-        // multiple lines instead of one long run.
-        buffer.set_size(Some(max_width.unwrap_or(f32::MAX)), Some(f32::MAX));
-        buffer.set_text(text, &attrs, Shaping::Advanced, None);
-        buffer.shape_until_scroll(&mut self.font_system, false);
 
         let mut width = 0.0f32;
         let mut top = f32::MAX;
@@ -576,6 +595,11 @@ impl TextPipeline {
         }
     }
 
+    /// Rewinds the retained renderer pool for a new frame.
+    pub fn reset_frame(&mut self) {
+        self.renderer_cursor = 0;
+    }
+
     pub fn flush(
         &mut self,
         device: &wgpu::Device,
@@ -604,7 +628,17 @@ impl TextPipeline {
             })
             .collect();
 
-        self.renderer
+        if self.renderer_cursor == self.renderers.len() {
+            self.renderers.push(TextRenderer::new(
+                &mut self.atlas,
+                device,
+                self.multisample,
+                None,
+            ));
+        }
+        let renderer = &mut self.renderers[self.renderer_cursor];
+
+        renderer
             .prepare(
                 device,
                 queue,
@@ -636,12 +670,13 @@ impl TextPipeline {
                 }),
             );
 
-            self.renderer
+            renderer
                 .render(&self.atlas, &self.viewport, &mut pass)
                 .map_err(|e| e.to_string())?;
         }
 
         self.pending.clear();
+        self.renderer_cursor += 1;
 
         Ok(())
     }
@@ -738,14 +773,12 @@ impl TextMeasurer for TextPipeline {
         let letter_spacing = letter_spacing * scale_factor;
         let line_height = line_height * scale_factor;
 
-        let chars: Vec<char> = text.chars().collect();
-        let mut offsets = Vec::with_capacity(chars.len() + 1);
+        let mut chars = text.chars().peekable();
+        let mut offsets = Vec::with_capacity(chars.size_hint().1.unwrap_or(0) + 1);
         offsets.push(0.0);
 
         let mut cursor = 0.0;
-        let last_index = chars.len().saturating_sub(1);
-
-        for (i, ch) in chars.iter().enumerate() {
+        while let Some(ch) = chars.next() {
             let mut buf = [0u8; 4];
             let ch_str = ch.encode_utf8(&mut buf);
 
@@ -762,7 +795,7 @@ impl TextMeasurer for TextPipeline {
             cursor += advance;
             offsets.push(cursor);
 
-            if i != last_index {
+            if chars.peek().is_some() {
                 cursor += letter_spacing;
             }
         }

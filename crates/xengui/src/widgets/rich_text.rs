@@ -641,6 +641,22 @@ impl Widget for RichText {
         MeasureResult::new(width, height)
     }
 
+    fn finalize_layout(&mut self, ctx: &mut MeasureContext) {
+        // Taffy can finish its probing with a min-content measurement even
+        // when the final flex item is much wider. RichText caches wrapping
+        // data during measure for paint and hit-testing, so always rebuild it
+        // once with the width that was actually assigned. Otherwise a wide
+        // paragraph can retain narrow provisional lines and be clipped to the
+        // single-line height selected by the final layout.
+        let width = self.layout_box.width.max(0.0);
+        let _ = self.measure(
+            ctx,
+            Constraints::new()
+                .with_known_width(width)
+                .with_max_width(width),
+        );
+    }
+
     fn paint(&self, ctx: &mut PaintContext) {
         self.paint_box(ctx);
         self.paint_outline(ctx);
@@ -1059,6 +1075,27 @@ mod tests {
         assert_eq!(result.width, 30.0);
         assert_eq!(result.height, 90.0);
         assert_eq!(rich_text.lines.borrow().len(), 4);
+    }
+
+    #[test]
+    fn final_layout_rebuilds_provisional_wrapping_at_assigned_width() {
+        let mut rich_text = RichText::new().span("one two three four");
+        let mut measurer = FixedTextMeasurer;
+        let mut context = MeasureContext::new(&mut measurer, 1.0);
+
+        let _ = rich_text.measure(&mut context, Constraints::new().with_max_width(40.0));
+        assert!(rich_text.lines.borrow().len() > 1);
+
+        rich_text.layout(LayoutBox {
+            x: 0.0,
+            y: 0.0,
+            width: 200.0,
+            height: 20.0,
+        });
+        rich_text.finalize_layout(&mut context);
+
+        assert_eq!(rich_text.measured_max_width.get(), Some(200.0));
+        assert_eq!(rich_text.lines.borrow().len(), 1);
     }
 
     #[test]

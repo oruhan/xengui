@@ -3,6 +3,21 @@ use xen_router::RouteParams;
 use xengui::*;
 
 pub fn layout(_params: &RouteParams, child: Box<dyn Widget>) -> Box<dyn Widget> {
+    if xen_router::current_path().starts_with("/docs") {
+        return Box::new(
+            View::new()
+                .font("Inter")
+                .width(pct!(100.0))
+                .height(pct!(100.0))
+                .min_width(px!(0.0))
+                .background(|theme: &Theme| theme.background)
+                // Docs owns its compact/desktop scroll regions so the desktop
+                // sidebar never moves with the article pane.
+                .overflow_y(Overflow::Hidden)
+                .child_boxed(child),
+        );
+    }
+
     let desktop = responsive_bool(Breakpoint::Expanded, true);
 
     Box::new(
@@ -26,8 +41,10 @@ pub fn layout(_params: &RouteParams, child: Box<dyn Widget>) -> Box<dyn Widget> 
                     .justify_content(JustifyContent::SpaceBetween)
                     .width(pct!(100.0))
                     .height(px!(64.0))
-                    .backdrop_filter(Filter::Blur(px!(18.0)))
-                    .background(|theme: &Theme| theme.background.with_alpha(232))
+                    // A translucent live blur forces a full offscreen pass for every
+                    // scroll frame on the canvas renderer. An opaque M3 surface keeps
+                    // the app bar crisp while preserving high-refresh-rate scrolling.
+                    .background(|theme: &Theme| theme.surface_container_lowest)
                     .border(|theme: &Theme| Border::bottom(1.0, theme.outline_variant))
                     .padding(
                         Responsive::new(Edges::symmetric(20.0, 0.0))
@@ -75,8 +92,9 @@ pub fn layout(_params: &RouteParams, child: Box<dyn Widget>) -> Box<dyn Widget> 
                             .font_weight(FontWeight::SemiBold)
                             .background(|theme: &Theme| theme.on_background)
                             .color(|theme: &Theme| theme.background)
-                            .border(Border::all(0.0, Color::TRANSPARENT).radius(10.0))
-                            .padding(Edges::symmetric(if desktop { 16.0 } else { 13.0 }, 9.0))
+                            .height(px!(40.0))
+                            .border(Border::all(0.0, Color::TRANSPARENT).radius(999.0))
+                            .padding(Edges::symmetric(if desktop { 18.0 } else { 16.0 }, 0.0))
                             .transition_all(
                                 Transition::new(Duration::from_millis(140)).easing(Easing::EaseOut),
                             )
@@ -97,8 +115,9 @@ fn nav_link(path: &str, label: &str) -> Button {
         .font_weight(FontWeight::Medium)
         .color(|theme: &Theme| theme.on_surface_variant)
         .background(Color::TRANSPARENT)
-        .padding(Edges::symmetric(12.0, 8.0))
-        .border(Border::all(0.0, Color::TRANSPARENT).radius(8.0))
+        .height(px!(40.0))
+        .padding(Edges::symmetric(16.0, 0.0))
+        .border(Border::all(0.0, Color::TRANSPARENT).radius(999.0))
         .transition_colors(Transition::new(Duration::from_millis(140)).easing(Easing::EaseOut))
         .hover_style(|style: StylePatch, theme: &Theme| {
             style
@@ -116,7 +135,8 @@ fn external_nav_link(label: &str, href: &str) -> Link {
         .font_weight(FontWeight::Medium)
         .color(|theme: &Theme| theme.on_surface_variant)
         .background(Color::TRANSPARENT)
-        .padding(Edges::symmetric(12.0, 8.0))
+        .height(px!(40.0))
+        .padding(Edges::symmetric(16.0, 0.0))
 }
 
 fn footer_link(path: &str, label: &str) -> Button {
@@ -177,7 +197,7 @@ fn footer() -> Box<View> {
                     env!("CARGO_MANIFEST_DIR"),
                     "/assets/XenGui_header.svg"
                 )))
-                .icon_size(100.0, 100.0)
+                .icon_size(100.0, 32.0)
                 .transition_all(
                     Transition::new(Duration::from_millis(150)).easing(Easing::EaseInOut),
                 )

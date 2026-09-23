@@ -123,6 +123,15 @@ pub trait Widget: Any {
     /// Returns or updates the `layout` value.
     fn layout(&mut self, rect: LayoutBox);
 
+    /// Lets widgets whose paint data depends on their final box rebuild that
+    /// data after the flex/grid algorithm has chosen the definitive size.
+    ///
+    /// Layout engines may call [`Widget::measure`] more than once with
+    /// min-content, max-content, and definite constraints in no guaranteed
+    /// order. A widget must therefore not assume the last intrinsic measure
+    /// call used the size that was ultimately assigned to it.
+    fn finalize_layout(&mut self, _ctx: &mut MeasureContext) {}
+
     /// Returns or updates the `layout_box` value.
     fn layout_box(&self) -> &LayoutBox;
 

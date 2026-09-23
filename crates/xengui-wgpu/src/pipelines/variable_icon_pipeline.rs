@@ -65,6 +65,8 @@ pub struct VariableIconPipeline {
     vertex_buffer: wgpu::Buffer,
     vertex_capacity: usize,
     write_offset: usize,
+    vertices: Vec<Vertex>,
+    keys: Vec<Option<GlyphKey>>,
     glyphs: HashMap<GlyphKey, CachedGlyph>,
     scale_context: ScaleContext,
     // WOFF2 containers must be unpacked into raw TTF/OTF bytes before
@@ -180,6 +182,8 @@ impl VariableIconPipeline {
             vertex_buffer,
             vertex_capacity,
             write_offset: 0,
+            vertices: Vec::with_capacity(DEFAULT_ICON_CAPACITY * VERTICES_PER_ICON),
+            keys: Vec::with_capacity(DEFAULT_ICON_CAPACITY),
             glyphs: HashMap::new(),
             scale_context: ScaleContext::new(),
             decoded_fonts: HashMap::new(),
@@ -358,12 +362,14 @@ impl VariableIconPipeline {
         let inv_h = 2.0 / (surface_height.max(1) as f32);
         let ndc = |px: f32, py: f32| -> [f32; 2] { [px * inv_w - 1.0, 1.0 - py * inv_h] };
 
-        let mut vertices = Vec::with_capacity(cmds.len() * VERTICES_PER_ICON);
-        let mut keys: Vec<Option<GlyphKey>> = Vec::with_capacity(cmds.len());
+        self.vertices.clear();
+        self.vertices.reserve(cmds.len() * VERTICES_PER_ICON);
+        self.keys.clear();
+        self.keys.reserve(cmds.len());
 
         for cmd in cmds {
             let Some(key) = self.ensure_glyph(device, queue, cmd) else {
-                keys.push(None);
+                self.keys.push(None);
                 continue;
             };
             let glyph = &self.glyphs[&key];
@@ -392,7 +398,7 @@ impl VariableIconPipeline {
                 uv,
                 tint,
             };
-            vertices.extend_from_slice(&[
+            self.vertices.extend_from_slice(&[
                 mk(p0, [0.0, 0.0]),
                 mk(p1, [1.0, 0.0]),
                 mk(p2, [0.0, 1.0]),
@@ -400,17 +406,17 @@ impl VariableIconPipeline {
                 mk(p1, [1.0, 0.0]),
                 mk(p3, [1.0, 1.0]),
             ]);
-            keys.push(Some(key));
+            self.keys.push(Some(key));
         }
 
         let base_vertex = self.write_offset;
-        self.ensure_capacity(device, base_vertex + vertices.len());
+        self.ensure_capacity(device, base_vertex + self.vertices.len());
         queue.write_buffer(
             &self.vertex_buffer,
             (base_vertex * std::mem::size_of::<Vertex>()) as u64,
-            bytemuck::cast_slice(&vertices),
+            bytemuck::cast_slice(&self.vertices),
         );
-        self.write_offset += vertices.len();
+        self.write_offset += self.vertices.len();
 
         render_pass.set_pipeline(&self.pipeline);
         render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
@@ -424,7 +430,7 @@ impl VariableIconPipeline {
         );
 
         let mut vertex_cursor = base_vertex;
-        for (cmd, key) in cmds.iter().zip(keys.iter()) {
+        for (cmd, key) in cmds.iter().zip(self.keys.iter()) {
             let Some(key) = key else {
                 continue;
             };

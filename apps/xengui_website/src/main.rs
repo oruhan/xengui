@@ -98,6 +98,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             "/fonts/Inter-Italic-VariableFont.ttf"
         ))
         .to_vec(),
+    )
+    .with_font(
+        "XenMono",
+        include_bytes!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/fonts/NotoSansMono-VariableFont.ttf"
+        ))
+        .to_vec(),
     );
 
     app.render(|| build_router().build());

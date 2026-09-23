@@ -827,6 +827,7 @@ fn dispatch_widget_event(
             && crate::ripple::handle_event(
                 &mut interaction.ripple,
                 interaction.ripple_overrides,
+                interaction.ripple_keyboard_activation,
                 event,
                 (
                     layout.x + layout.width * 0.5,

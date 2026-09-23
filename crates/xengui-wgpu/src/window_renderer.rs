@@ -4,6 +4,21 @@ use std::fmt;
 use std::sync::{Arc, Mutex};
 use xengui::{FrameRenderer, SystemTheme, Widget};
 
+fn widget_uses_backdrop(widget: &dyn Widget) -> bool {
+    widget
+        .backdrop_filter()
+        .is_some_and(|chain| !chain.is_empty())
+        || widget
+            .style()
+            .backdrop_filter
+            .as_ref()
+            .is_some_and(|chain| !chain.is_empty())
+        || widget
+            .children()
+            .iter()
+            .any(|child| widget_uses_backdrop(child.as_ref()))
+}
+
 /// Controls how the swapchain presentation mode is selected.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum PresentModePreference {
@@ -21,9 +36,10 @@ pub enum PresentModePreference {
 mod tests {
     use super::{
         FrameOutcome, PresentModePreference, RendererError, exhausted_acquisition_result,
-        select_present_mode,
+        select_present_mode, widget_uses_backdrop,
     };
     use wgpu::PresentMode;
+    use xengui::{Filter, Length, StyleBuilder, View};
 
     #[test]
     fn vsync_prefers_fifo_over_faster_modes() {
@@ -70,6 +86,24 @@ mod tests {
                 "surface acquisition failed after recovery attempt".to_string()
             ))
         );
+    }
+
+    #[test]
+    fn detects_authored_backdrop_filter_before_style_cascade() {
+        let view = View::new().backdrop_filter(Filter::Blur(Length::px(8.0)));
+        assert!(widget_uses_backdrop(&view));
+    }
+
+    #[test]
+    fn detects_nested_backdrop_filter() {
+        let view = View::new()
+            .child(View::new().child(View::new().backdrop_filter(Filter::Blur(Length::px(8.0)))));
+        assert!(widget_uses_backdrop(&view));
+    }
+
+    #[test]
+    fn backdrop_free_tree_stays_on_direct_render_path() {
+        assert!(!widget_uses_backdrop(&View::new().child(View::new())));
     }
 }
 
@@ -691,6 +725,16 @@ impl WgpuWindowRenderer {
             format!("config={}x{}", self.config.width, self.config.height),
         );
 
+        let surface_view = frame.texture.create_view(&Default::default());
+        // A single-sample scene without backdrop filters can render directly
+        // into the swapchain. MSAA triangles need to sample the accumulated
+        // scene while resolving, and backdrop filters need COPY_SRC access,
+        // so those cases retain the offscreen scene target.
+        let use_scene_target = self.pipelines.sample_count() > 1
+            || tree
+                .iter()
+                .any(|widget| widget_uses_backdrop(widget.as_ref()));
+
         let mut encoder = self.device.create_command_encoder(&Default::default());
 
         {
@@ -698,6 +742,8 @@ impl WgpuWindowRenderer {
                 &self.device,
                 &self.queue,
                 &mut encoder,
+                &surface_view,
+                use_scene_target,
                 frame_width,
                 frame_height,
                 scale_factor,
@@ -712,19 +758,16 @@ impl WgpuWindowRenderer {
             );
         }
 
-        // Everything above painted into an offscreen scene target instead
-        // of the swapchain directly, so a backdrop-blur widget could read
-        // back already-painted content mid-frame - this final blit is what
-        // actually presents that scene onto the real surface.
-        let surface_view = frame.texture.create_view(&Default::default());
-        self.pipelines.present_scene(
-            &self.device,
-            &self.queue,
-            &mut encoder,
-            &surface_view,
-            frame_width,
-            frame_height,
-        );
+        if use_scene_target {
+            self.pipelines.present_scene(
+                &self.device,
+                &self.queue,
+                &mut encoder,
+                &surface_view,
+                frame_width,
+                frame_height,
+            );
+        }
 
         xengui::devtools::record("frame:submit");
         self.queue.submit(Some(encoder.finish()));

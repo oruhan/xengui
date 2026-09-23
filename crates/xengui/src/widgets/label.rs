@@ -50,6 +50,9 @@ impl Label {
         let mut interaction = Interaction::new();
         interaction.focusable = false;
         interaction.hover_cursor = Some(DEFAULT_CURSOR_ICON);
+        // Labels may be selectable or forward activation to a control, but
+        // they are not themselves Material action surfaces.
+        interaction.ripple_overrides.enabled = Some(false);
 
         let mut label = Self {
             base: WidgetBase::new(interaction),
@@ -532,5 +535,18 @@ impl Widget for Label {
 
     fn anim_id(&self) -> WidgetId {
         self.anim_id
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn labels_disable_ripple_even_when_they_forward_a_click() {
+        let label = Label::new().for_control("field");
+
+        assert!(label.base.interaction.on_click.is_some());
+        assert_eq!(label.base.interaction.ripple_overrides.enabled, Some(false));
     }
 }

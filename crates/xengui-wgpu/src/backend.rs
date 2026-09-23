@@ -203,18 +203,23 @@ impl WgpuPipelines {
         self.sample_count
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn begin_frame<'a>(
         &'a mut self,
         device: &'a wgpu::Device,
         queue: &'a wgpu::Queue,
         encoder: &'a mut wgpu::CommandEncoder,
+        surface_view: &wgpu::TextureView,
+        use_scene_target: bool,
         width: u32,
         height: u32,
         scale_factor: f32,
     ) -> WgpuFrame<'a> {
         log::trace!("WgpuPipelines::begin_frame size={width}x{height} scale_factor={scale_factor}");
 
-        self.ensure_scene_target(device, width, height);
+        if use_scene_target {
+            self.ensure_scene_target(device, width, height);
+        }
         self.ensure_triangle_msaa_target(device, width, height);
         self.rect.reset_frame();
         self.ripple.reset_frame();
@@ -223,9 +228,14 @@ impl WgpuPipelines {
         self.stroke.reset_frame();
         self.image.reset_frame();
         self.variable_icon.reset_frame();
+        self.text.reset_frame();
         self.postprocess.reset_frame();
 
-        let view = self.scene_view.clone();
+        let view = if use_scene_target {
+            self.scene_view.clone()
+        } else {
+            surface_view.clone()
+        };
 
         WgpuFrame {
             pipelines: self,
@@ -238,7 +248,6 @@ impl WgpuPipelines {
             background: Color::TRANSPARENT,
             scale_factor,
             shape_pass_open: false,
-            text_cmds: Vec::new(),
         }
     }
 }
@@ -257,9 +266,6 @@ pub struct WgpuFrame<'a> {
     background: Color,
     scale_factor: f32,
     shape_pass_open: bool,
-    // Kept only to redraw glyph buffers if `flush_text` needs a retry
-    // after a text-atlas resize.
-    text_cmds: Vec<(SystemTheme, TextCommand)>,
 }
 
 struct RenderTarget<'a> {
@@ -290,24 +296,10 @@ impl<'a> WgpuFrame<'a> {
             .iter()
             .map(|command| translate_draw_command(command, cap_x, cap_y))
             .collect();
-        let source_texture = self.device.create_texture(
-            &(wgpu::TextureDescriptor {
-                label: Some("xengui filtered subtree source"),
-                size: wgpu::Extent3d {
-                    width,
-                    height,
-                    depth_or_array_layers: 1,
-                },
-                mip_level_count: 1,
-                sample_count: 1,
-                dimension: wgpu::TextureDimension::D2,
-                format: self.pipelines.surface_format(),
-                usage: wgpu::TextureUsages::RENDER_ATTACHMENT
-                    | wgpu::TextureUsages::TEXTURE_BINDING,
-                view_formats: &[],
-            }),
-        );
-        let source_view = source_texture.create_view(&Default::default());
+        let (_source_texture, source_view) =
+            self.pipelines
+                .postprocess
+                .acquire_capture_texture(self.device, width, height);
         self.paint_subtree_to_offscreen(&translated, &source_view, width, height);
 
         let filtered = self.pipelines.postprocess.apply(
@@ -373,24 +365,11 @@ impl<'a> WgpuFrame<'a> {
             .map(|nested| translate_draw_command(nested, left, top))
             .collect();
 
-        let source_texture = self.device.create_texture(
-            &(wgpu::TextureDescriptor {
-                label: Some("xengui stable transform layer"),
-                size: wgpu::Extent3d {
-                    width: source_width,
-                    height: source_height,
-                    depth_or_array_layers: 1,
-                },
-                mip_level_count: 1,
-                sample_count: 1,
-                dimension: wgpu::TextureDimension::D2,
-                format: self.pipelines.surface_format(),
-                usage: wgpu::TextureUsages::RENDER_ATTACHMENT
-                    | wgpu::TextureUsages::TEXTURE_BINDING,
-                view_formats: &[],
-            }),
+        let (_source_texture, source_view) = self.pipelines.postprocess.acquire_capture_texture(
+            self.device,
+            source_width,
+            source_height,
         );
-        let source_view = source_texture.create_view(&Default::default());
         self.paint_subtree_to_offscreen(&translated, &source_view, source_width, source_height);
 
         let scale_rect = |rect: (f32, f32, f32, f32)| {
@@ -1147,7 +1126,6 @@ impl<'a> RenderBackend for WgpuFrame<'a> {
     fn draw_text(&mut self, theme: SystemTheme, scale_factor: f32, cmd: &TextCommand) {
         self.scale_factor = scale_factor;
         self.pipelines.text.draw(scale_factor, theme, cmd);
-        self.text_cmds.push((theme, cmd.clone()));
     }
 
     fn draw_composited(&mut self, cmd: &CompositedCommand) {
@@ -1181,9 +1159,6 @@ impl<'a> RenderBackend for WgpuFrame<'a> {
                 Err(e) if attempts < MAX_RETRIES => {
                     attempts += 1;
                     log::warn!("text cache resize, retrying flush ({attempts}/{MAX_RETRIES}): {e}");
-                    for (theme, cmd) in &self.text_cmds {
-                        self.pipelines.text.draw(self.scale_factor, *theme, cmd);
-                    }
                 }
                 Err(e) => {
                     log::error!("text drawing failed permanently, skipping frame: {e}");
@@ -1191,26 +1166,6 @@ impl<'a> RenderBackend for WgpuFrame<'a> {
                 }
             }
         }
-        self.text_cmds.clear();
-
-        // glyphon's TextRenderer reuses ONE internal vertex buffer across
-        // prepare() calls (overwrite, not append) — unlike our own shape
-        // pipelines. flush_text() now runs once per text run instead of once
-        // per frame, so a later run's prepare() would clobber an earlier run's
-        // glyph data before the GPU ever executes that earlier run's render()
-        // call, since both were recorded into the same not-yet-submitted
-        // encoder. Submitting right here — and swapping in a fresh encoder for
-        // whatever comes next — forces this run to actually execute before its
-        // buffer can be reused by the next one.
-        let finished = std::mem::replace(
-            &mut *self.encoder,
-            self.device.create_command_encoder(
-                &(wgpu::CommandEncoderDescriptor {
-                    label: Some("xengui frame encoder (continued)"),
-                }),
-            ),
-        );
-        self.queue.submit(Some(finished.finish()));
     }
 
     fn end_frame(&mut self) {

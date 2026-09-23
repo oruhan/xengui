@@ -119,6 +119,7 @@ impl LayoutEngine {
         drop(measurement_nodes);
 
         let viewport = (viewport_width, viewport_height);
+        let mut final_measure_ctx = MeasureContext::new(ctx.text, ctx.scale_factor);
 
         for (widget, node_id) in tree.iter_mut().zip(child_ids) {
             apply_layout(
@@ -132,6 +133,7 @@ impl LayoutEngine {
                 ctx.scale_factor,
                 viewport,
                 None,
+                &mut final_measure_ctx,
             );
         }
     }
@@ -269,6 +271,7 @@ fn apply_layout(
     scale_factor: f32,
     viewport: (f32, f32),
     scroll_viewport: Option<LayoutBox>,
+    measure_ctx: &mut MeasureContext,
 ) {
     let layout = taffy
         .layout(node_id)
@@ -359,6 +362,7 @@ fn apply_layout(
         width,
         height,
     });
+    widget.finalize_layout(measure_ctx);
 
     let child_ids = taffy.children(node_id).ok();
 
@@ -418,6 +422,7 @@ fn apply_layout(
                 scale_factor,
                 viewport,
                 next_scroll_viewport,
+                measure_ctx,
             );
         }
     }

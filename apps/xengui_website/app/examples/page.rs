@@ -3,15 +3,6 @@ use xen_router::RouteParams;
 use xengui::*;
 
 fn example_card(kind: &str, title: &str, desc: &str, preview: impl Widget + 'static) -> View {
-    let viewport_width = viewport_size().0;
-    let text_width = if responsive_bool(Breakpoint::Large, true) {
-        ((viewport_width - 272.0) * 0.31 - 36.0).clamp(200.0, 420.0)
-    } else if responsive_bool(Breakpoint::Expanded, true) {
-        ((viewport_width - 144.0) * 0.48 - 36.0).clamp(200.0, 420.0)
-    } else {
-        (viewport_width - 76.0).clamp(200.0, 420.0)
-    };
-
     Column::new()
         .flex_basis(Responsive::new(pct!(100.0)).md(pct!(48.0)).lg(pct!(31.0)))
         .min_width(px!(0.0))
@@ -56,7 +47,7 @@ fn example_card(kind: &str, title: &str, desc: &str, preview: impl Widget + 'sta
                     RichText::new()
                         .with_content(desc)
                         .width(pct!(100.0))
-                        .max_width(px!(text_width))
+                        .max_width(px!(420.0))
                         .font_size(13.0)
                         .line_height(px!(20.0))
                         .color(|theme: &Theme| theme.on_surface_variant),
@@ -65,8 +56,6 @@ fn example_card(kind: &str, title: &str, desc: &str, preview: impl Widget + 'sta
 }
 
 pub fn page(_params: &RouteParams) -> Box<dyn Widget> {
-    let content_width = (viewport_size().0 - 40.0).clamp(280.0, 760.0);
-
     let hero = Column::new()
         .align_items(Align::Start)
         .gap(0.0, 16.0)
@@ -87,7 +76,7 @@ pub fn page(_params: &RouteParams) -> Box<dyn Widget> {
             RichText::new()
                 .with_content("Temel parçalar, gerçek davranışlarıyla.")
                 .width(pct!(100.0))
-                .max_width(px!(content_width))
+                .max_width(px!(760.0))
                 .font_size(Responsive::new(px!(36.0)).md(px!(52.0)))
                 .line_height(Responsive::new(px!(41.0)).md(px!(58.0)).resolve())
                 .font_weight(FontWeight::SemiBold)
@@ -98,7 +87,7 @@ pub fn page(_params: &RouteParams) -> Box<dyn Widget> {
             RichText::new()
                 .with_content("XenGui widget'larını tema, input ve layout davranışlarıyla birlikte inceleyin. Bunlar statik çizimler değil; aşağıdaki kontroller etkileşimlidir.")
                 .width(pct!(100.0))
-                .max_width(px!(content_width.min(680.0)))
+                .max_width(px!(680.0))
                 .font_size(15.0)
                 .line_height(px!(24.0))
                 .color(|theme: &Theme| theme.on_surface_variant),

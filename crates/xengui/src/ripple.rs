@@ -140,52 +140,43 @@ pub fn ripple_config() -> RippleConfig {
 const ENTER_DURATION: f32 = 0.450;
 const EXIT_DURATION: f32 = 0.375;
 const NOISE_DURATION: f32 = 7.0;
+// Bounds pathological synthetic input without imposing a practical limit on
+// human clicking. Storage stays lazy, so untouched widgets pay no heap cost.
+const MAX_CONCURRENT_RIPPLES: usize = 32;
 
-/// Runtime state for one bounded ripple.
+/// Runtime state for one wave within a bounded ripple.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
-pub(crate) struct RippleState {
+struct RippleWave {
     origin: (f32, f32),
     elapsed: f32,
     released_at: Option<f32>,
-    active: bool,
 }
 
-impl RippleState {
-    pub(crate) fn is_active(self) -> bool {
-        self.active
-    }
-
+impl RippleWave {
     fn start(&mut self, origin: (f32, f32)) {
         *self = Self {
             origin,
             elapsed: 0.0,
             released_at: None,
-            active: true,
         };
     }
 
     fn release(&mut self) {
-        if self.active && self.released_at.is_none() {
+        if self.released_at.is_none() {
             self.released_at = Some(self.elapsed);
         }
     }
 
-    fn cancel(&mut self) {
-        if self.active {
-            self.released_at = Some(self.elapsed);
-        }
-    }
-
-    fn tick(&mut self, dt: f32, duration_scale: f32) {
-        if !self.active {
-            return;
-        }
+    fn tick(&mut self, dt: f32) {
         self.elapsed += dt.max(0.0);
+    }
+
+    fn is_finished(self, duration_scale: f32) -> bool {
         if let Some(released_at) = self.released_at {
             let fade_start = released_at.max(ENTER_DURATION * duration_scale.max(0.05));
-            if self.elapsed - fade_start >= EXIT_DURATION * duration_scale.max(0.05) {
-                self.active = false;
-            }
+            self.elapsed - fade_start >= EXIT_DURATION * duration_scale.max(0.05)
+        } else {
+            false
         }
     }
 
@@ -204,6 +195,62 @@ impl RippleState {
         let scale = duration_scale.max(0.05);
         let fade_start = released_at.max(ENTER_DURATION * scale);
         (1.0 - (self.elapsed - fade_start).max(0.0) / (EXIT_DURATION * scale)).clamp(0.0, 1.0)
+    }
+}
+
+/// Runtime state for all overlapping waves in one bounded ripple.
+///
+/// The vector allocates only after the first interaction and reuses its
+/// capacity across subsequent clicks. Each wave remains a compact value; no
+/// CPU-side particles or per-frame geometry are generated.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub(crate) struct RippleState {
+    waves: Vec<RippleWave>,
+}
+
+impl RippleState {
+    pub(crate) fn is_active(&self) -> bool {
+        !self.waves.is_empty()
+    }
+
+    fn start(&mut self, origin: (f32, f32)) {
+        if self.waves.len() == MAX_CONCURRENT_RIPPLES {
+            // The oldest wave is closest to completion and least noticeable.
+            self.waves.remove(0);
+        }
+        let mut wave = RippleWave::default();
+        wave.start(origin);
+        self.waves.push(wave);
+    }
+
+    fn release_latest(&mut self) {
+        if let Some(wave) = self
+            .waves
+            .iter_mut()
+            .rev()
+            .find(|wave| wave.released_at.is_none())
+        {
+            wave.release();
+        }
+    }
+
+    fn cancel_unreleased(&mut self) {
+        for wave in &mut self.waves {
+            if wave.released_at.is_none() {
+                wave.release();
+            }
+        }
+    }
+
+    fn tick(&mut self, dt: f32, duration_scale: f32) {
+        for wave in &mut self.waves {
+            wave.tick(dt);
+        }
+        self.waves.retain(|wave| !wave.is_finished(duration_scale));
+    }
+
+    fn clear(&mut self) {
+        self.waves.clear();
     }
 }
 
@@ -227,12 +274,13 @@ pub(crate) fn configured(overrides: RippleOverrides) -> bool {
 pub(crate) fn handle_event(
     state: &mut RippleState,
     overrides: RippleOverrides,
+    keyboard_activation: bool,
     event: &InputEvent,
     center: (f32, f32),
 ) -> bool {
     if !configured(overrides) {
-        let changed = state.active;
-        state.active = false;
+        let changed = state.is_active();
+        state.clear();
         return changed;
     }
 
@@ -251,21 +299,26 @@ pub(crate) fn handle_event(
             state: ElementState::Released,
             button: MouseButton::Left,
             ..
-        } => state.release(),
+        } => state.release_latest(),
         InputEvent::KeyInput { event, .. }
-            if matches!(event.key, Key::Enter | Key::Space)
+            if keyboard_activation
+                && matches!(event.key, Key::Enter | Key::Space)
                 && event.state == KeyState::Pressed
                 && !event.repeat =>
         {
             state.start(center)
         }
         InputEvent::KeyInput { event, .. }
-            if matches!(event.key, Key::Enter | Key::Space)
+            if keyboard_activation
+                && matches!(event.key, Key::Enter | Key::Space)
                 && event.state == KeyState::Released =>
         {
-            state.release()
+            state.release_latest()
         }
-        InputEvent::PointerCancel | InputEvent::FocusLost => state.cancel(),
+        // Leaving an actionable target ends its pressed state immediately,
+        // but the visual feedback completes its normal enter/fade lifecycle.
+        InputEvent::MouseExited => state.release_latest(),
+        InputEvent::PointerCancel | InputEvent::FocusLost => state.cancel_unreleased(),
         InputEvent::AnimationTick { dt } => state.tick(*dt, duration_scale),
         _ => return false,
     }
@@ -273,14 +326,14 @@ pub(crate) fn handle_event(
 }
 
 pub(crate) fn paint(
-    state: RippleState,
+    state: &RippleState,
     overrides: RippleOverrides,
     style: &Style,
     layout: LayoutBox,
     radius: [f32; 4],
     ctx: &mut PaintContext<'_>,
 ) {
-    if !state.active || !configured(overrides) || layout.width <= 0.0 || layout.height <= 0.0 {
+    if !state.is_active() || !configured(overrides) || layout.width <= 0.0 || layout.height <= 0.0 {
         return;
     }
 
@@ -299,16 +352,18 @@ pub(crate) fn paint(
         .duration_scale
         .unwrap_or(config.duration_scale)
         .max(0.05);
-    ctx.draw_ripple(RippleCommand {
-        bounds: (layout.x, layout.y, layout.width, layout.height),
-        origin: state.origin,
-        progress: state.progress(duration_scale),
-        opacity: state.opacity(duration_scale),
-        noise_phase: (state.elapsed / NOISE_DURATION).fract(),
-        color: base.with_alpha_f32(alpha),
-        radius,
-        clip_rect: Some((layout.x, layout.y, layout.width, layout.height)),
-    });
+    for wave in &state.waves {
+        ctx.draw_ripple(RippleCommand {
+            bounds: (layout.x, layout.y, layout.width, layout.height),
+            origin: wave.origin,
+            progress: wave.progress(duration_scale),
+            opacity: wave.opacity(duration_scale),
+            noise_phase: (wave.elapsed / NOISE_DURATION).fract(),
+            color: base.with_alpha_f32(alpha),
+            radius,
+            clip_rect: Some((layout.x, layout.y, layout.width, layout.height)),
+        });
+    }
 }
 
 #[cfg(test)]
@@ -329,7 +384,7 @@ mod tests {
         let mut ripple = RippleState::default();
         ripple.start((2.0, 3.0));
         ripple.tick(ENTER_DURATION, 1.0);
-        ripple.release();
+        ripple.release_latest();
         ripple.tick(EXIT_DURATION + 0.001, 1.0);
         assert!(!ripple.is_active());
     }
@@ -338,11 +393,99 @@ mod tests {
     fn quick_tap_still_expands_fully_before_fading() {
         let mut ripple = RippleState::default();
         ripple.start((2.0, 3.0));
-        ripple.release();
+        ripple.release_latest();
         ripple.tick(ENTER_DURATION, 1.0);
         assert!(ripple.is_active());
-        assert_eq!(ripple.progress(1.0), 1.0);
-        assert_eq!(ripple.opacity(1.0), 1.0);
+        assert_eq!(ripple.waves[0].progress(1.0), 1.0);
+        assert_eq!(ripple.waves[0].opacity(1.0), 1.0);
+    }
+
+    #[test]
+    fn repeated_clicks_keep_previous_waves_alive() {
+        let mut ripple = RippleState::default();
+        ripple.start((2.0, 3.0));
+        ripple.release_latest();
+        ripple.tick(0.1, 1.0);
+        ripple.start((8.0, 9.0));
+
+        assert_eq!(ripple.waves.len(), 2);
+        assert_eq!(ripple.waves[0].origin, (2.0, 3.0));
+        assert_eq!(ripple.waves[1].origin, (8.0, 9.0));
+        assert!(ripple.waves[0].elapsed > ripple.waves[1].elapsed);
+    }
+
+    #[test]
+    fn mouse_exit_releases_without_cutting_off_the_wave() {
+        let mut ripple = RippleState::default();
+        ripple.start((2.0, 3.0));
+
+        assert!(handle_event(
+            &mut ripple,
+            RippleOverrides {
+                enabled: Some(true),
+                ..RippleOverrides::default()
+            },
+            true,
+            &InputEvent::MouseExited,
+            (0.0, 0.0),
+        ));
+        assert!(ripple.is_active());
+        assert!(ripple.waves[0].released_at.is_some());
+
+        ripple.tick(ENTER_DURATION + EXIT_DURATION + 0.001, 1.0);
+        assert!(!ripple.is_active());
+    }
+
+    #[test]
+    fn text_input_can_disable_keyboard_activation_ripples() {
+        let mut ripple = RippleState::default();
+        let event = InputEvent::KeyInput {
+            event: crate::KeyboardEvent {
+                key: Key::Space,
+                state: KeyState::Pressed,
+                repeat: false,
+            },
+            modifiers: crate::ModifiersState::default(),
+        };
+
+        assert!(!handle_event(
+            &mut ripple,
+            RippleOverrides {
+                enabled: Some(true),
+                ..RippleOverrides::default()
+            },
+            false,
+            &event,
+            (0.0, 0.0),
+        ));
+        assert!(!ripple.is_active());
+    }
+
+    #[test]
+    fn wave_storage_is_lazy_and_reused() {
+        let mut ripple = RippleState::default();
+        assert_eq!(ripple.waves.capacity(), 0);
+
+        ripple.start((2.0, 3.0));
+        let allocated_capacity = ripple.waves.capacity();
+        ripple.release_latest();
+        ripple.tick(ENTER_DURATION + EXIT_DURATION + 0.001, 1.0);
+        assert!(!ripple.is_active());
+
+        ripple.start((8.0, 9.0));
+        assert_eq!(ripple.waves.capacity(), allocated_capacity);
+    }
+
+    #[test]
+    fn synthetic_input_is_bounded_to_a_small_active_set() {
+        let mut ripple = RippleState::default();
+        for index in 0..MAX_CONCURRENT_RIPPLES + 5 {
+            ripple.start((index as f32, 0.0));
+            ripple.release_latest();
+        }
+
+        assert_eq!(ripple.waves.len(), MAX_CONCURRENT_RIPPLES);
+        assert_eq!(ripple.waves[0].origin.0, 5.0);
     }
 
     #[test]

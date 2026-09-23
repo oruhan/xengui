@@ -53,6 +53,11 @@ pub struct Interaction {
 
     pub(crate) ripple: RippleState,
     pub(crate) ripple_overrides: RippleOverrides,
+    // Text editors consume Enter/Space as input rather than activation.
+    // Keeping this separate from `focusable` prevents those keystrokes from
+    // creating a pressed-state ripple that can never receive a matching
+    // activation release.
+    pub(crate) ripple_keyboard_activation: bool,
 }
 
 impl Interaction {
@@ -76,6 +81,7 @@ impl Interaction {
             on_click: None,
             ripple: RippleState::default(),
             ripple_overrides: RippleOverrides::default(),
+            ripple_keyboard_activation: true,
         }
     }
 
@@ -107,7 +113,7 @@ impl Interaction {
         self.focused = old.focused;
         self.focus_visible = old.focus_visible;
         self.focus_within = old.focus_within;
-        self.ripple = old.ripple;
+        self.ripple.clone_from(&old.ripple);
     }
 
     fn is_activation_key(key: Key) -> bool {

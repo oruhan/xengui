@@ -1506,10 +1506,12 @@ impl View {
         let continuing_wheel_gesture = self.wheel_gesture_last_event.get().is_some();
         self.cancel_conflicting_gestures();
 
-        // PixelDelta is emitted by both touchpads and browser mouse wheels.
-        // It is direct manipulation only when an explicitly enabled
-        // Bounce/Stretch mode needs to track rubber-banding at the edge;
-        // ordinary clamped scrolling keeps the eased target animation.
+        // PixelDelta is emitted by touchpads and by browser wheel events
+        // that the browser has already converted to precise pixel motion.
+        // Applying our target animation on top double-filters that input,
+        // adds many redundant frames, and makes canvas pages feel far behind
+        // the pointer. Treat precise deltas as direct manipulation; line
+        // deltas still use the keyboard/mouse-wheel easing path below.
         let rubber_mode = matches!(
             self.effective_overscroll(),
             Overscroll::Bounce | Overscroll::Stretch
@@ -1531,7 +1533,7 @@ impl View {
         let rubber_y = rubber_mode
             && self.can_scroll_y()
             && (precision || continuing_wheel_gesture || proposed_y < 0.0 || proposed_y > max_y);
-        let direct_wheel = rubber_x || rubber_y;
+        let direct_wheel = precision || rubber_x || rubber_y;
         let (next_x, hit_x) = self.react_to_bounds(proposed_x, max_x, rubber_x);
         let (next_y, hit_y) = self.react_to_bounds(proposed_y, max_y, rubber_y);
 
@@ -3392,7 +3394,7 @@ mod tests {
     }
 
     #[test]
-    fn default_pixel_wheel_uses_smooth_scroll_target() {
+    fn default_pixel_wheel_tracks_precise_input_directly() {
         let mut view = sized_view(
             View::new().overflow_y(Overflow::Auto),
             (100.0, 100.0),
@@ -3407,9 +3409,9 @@ mod tests {
             &mut ctx,
             96.0,
         ));
-        assert_eq!(view.scroll_offset.get(), (0.0, 0.0));
+        assert_eq!(view.scroll_offset.get(), (0.0, 30.0));
         assert_eq!(view.scroll_target.get(), (0.0, 30.0));
-        assert!(view.wheel_gesture_last_event.get().is_none());
+        assert!(view.wheel_gesture_last_event.get().is_some());
     }
 
     #[test]

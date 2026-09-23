@@ -105,12 +105,19 @@ impl CompositeVertex {
 }
 
 const VERTICES_PER_QUAD: usize = 6;
+const INITIAL_QUAD_CAPACITY: usize = 16;
 
 pub struct BoxShadowEngine {
     mask_pipeline: wgpu::RenderPipeline,
     composite_pipeline: wgpu::RenderPipeline,
     composite_bind_group_layout: wgpu::BindGroupLayout,
     mask_sampler: wgpu::Sampler,
+    mask_vertex_buffer: wgpu::Buffer,
+    mask_vertex_capacity: usize,
+    mask_write_offset: usize,
+    composite_vertex_buffer: wgpu::Buffer,
+    composite_vertex_capacity: usize,
+    composite_write_offset: usize,
 }
 
 impl BoxShadowEngine {
@@ -236,18 +243,54 @@ impl BoxShadowEngine {
                 ..Default::default()
             }),
         );
+        let mask_vertex_capacity = INITIAL_QUAD_CAPACITY * VERTICES_PER_QUAD;
+        let composite_vertex_capacity = INITIAL_QUAD_CAPACITY * VERTICES_PER_QUAD;
+        let mask_vertex_buffer = Self::vertex_buffer::<MaskVertex>(
+            device,
+            "Box Shadow Mask Vertex Buffer",
+            mask_vertex_capacity,
+        );
+        let composite_vertex_buffer = Self::vertex_buffer::<CompositeVertex>(
+            device,
+            "Box Shadow Composite Vertex Buffer",
+            composite_vertex_capacity,
+        );
 
         Self {
             mask_pipeline,
             composite_pipeline,
             composite_bind_group_layout,
             mask_sampler,
+            mask_vertex_buffer,
+            mask_vertex_capacity,
+            mask_write_offset: 0,
+            composite_vertex_buffer,
+            composite_vertex_capacity,
+            composite_write_offset: 0,
         }
+    }
+
+    fn vertex_buffer<T>(
+        device: &wgpu::Device,
+        label: &'static str,
+        capacity: usize,
+    ) -> wgpu::Buffer {
+        device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some(label),
+            size: (capacity * std::mem::size_of::<T>()) as u64,
+            usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        })
+    }
+
+    pub fn reset_frame(&mut self) {
+        self.mask_write_offset = 0;
+        self.composite_write_offset = 0;
     }
 
     #[allow(clippy::too_many_arguments)]
     pub fn draw_batch(
-        &self,
+        &mut self,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
         encoder: &mut wgpu::CommandEncoder,
@@ -275,7 +318,7 @@ impl BoxShadowEngine {
 
     #[allow(clippy::too_many_arguments)]
     fn draw_one(
-        &self,
+        &mut self,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
         encoder: &mut wgpu::CommandEncoder,
@@ -341,7 +384,7 @@ impl BoxShadowEngine {
     }
 
     fn render_mask(
-        &self,
+        &mut self,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
         encoder: &mut wgpu::CommandEncoder,
@@ -377,15 +420,22 @@ impl BoxShadowEngine {
             mk([shape_half[0], shape_half[1]]),
         ];
 
-        let vertex_buffer = device.create_buffer(
-            &(wgpu::BufferDescriptor {
-                label: Some("Box Shadow Mask Vertex Buffer"),
-                size: (std::mem::size_of::<MaskVertex>() * VERTICES_PER_QUAD) as u64,
-                usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
-                mapped_at_creation: false,
-            }),
+        let base_vertex = self.mask_write_offset;
+        let required = base_vertex + VERTICES_PER_QUAD;
+        if required > self.mask_vertex_capacity {
+            self.mask_vertex_capacity = required.next_power_of_two();
+            self.mask_vertex_buffer = Self::vertex_buffer::<MaskVertex>(
+                device,
+                "Box Shadow Mask Vertex Buffer",
+                self.mask_vertex_capacity,
+            );
+        }
+        queue.write_buffer(
+            &self.mask_vertex_buffer,
+            (base_vertex * std::mem::size_of::<MaskVertex>()) as u64,
+            bytemuck::cast_slice(&vertices),
         );
-        queue.write_buffer(&vertex_buffer, 0, bytemuck::cast_slice(&vertices));
+        self.mask_write_offset = required;
 
         let mut pass = encoder.begin_render_pass(
             &(wgpu::RenderPassDescriptor {
@@ -406,14 +456,14 @@ impl BoxShadowEngine {
             }),
         );
         pass.set_pipeline(&self.mask_pipeline);
-        pass.set_vertex_buffer(0, vertex_buffer.slice(..));
+        pass.set_vertex_buffer(0, self.mask_vertex_buffer.slice(..));
         pass.set_viewport(0.0, 0.0, width as f32, height as f32, 0.0, 1.0);
-        pass.draw(0..VERTICES_PER_QUAD as u32, 0..1);
+        pass.draw(base_vertex as u32..required as u32, 0..1);
     }
 
     #[allow(clippy::too_many_arguments)]
     fn render_composite(
-        &self,
+        &mut self,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
         encoder: &mut wgpu::CommandEncoder,
@@ -497,15 +547,22 @@ impl BoxShadowEngine {
             mk(corners[3]),
         ];
 
-        let vertex_buffer = device.create_buffer(
-            &(wgpu::BufferDescriptor {
-                label: Some("Box Shadow Composite Vertex Buffer"),
-                size: (std::mem::size_of::<CompositeVertex>() * VERTICES_PER_QUAD) as u64,
-                usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
-                mapped_at_creation: false,
-            }),
+        let base_vertex = self.composite_write_offset;
+        let required = base_vertex + VERTICES_PER_QUAD;
+        if required > self.composite_vertex_capacity {
+            self.composite_vertex_capacity = required.next_power_of_two();
+            self.composite_vertex_buffer = Self::vertex_buffer::<CompositeVertex>(
+                device,
+                "Box Shadow Composite Vertex Buffer",
+                self.composite_vertex_capacity,
+            );
+        }
+        queue.write_buffer(
+            &self.composite_vertex_buffer,
+            (base_vertex * std::mem::size_of::<CompositeVertex>()) as u64,
+            bytemuck::cast_slice(&vertices),
         );
-        queue.write_buffer(&vertex_buffer, 0, bytemuck::cast_slice(&vertices));
+        self.composite_write_offset = required;
 
         let bind_group = device.create_bind_group(
             &(wgpu::BindGroupDescriptor {
@@ -544,7 +601,7 @@ impl BoxShadowEngine {
         );
         pass.set_pipeline(&self.composite_pipeline);
         pass.set_bind_group(0, &bind_group, &[]);
-        pass.set_vertex_buffer(0, vertex_buffer.slice(..));
+        pass.set_vertex_buffer(0, self.composite_vertex_buffer.slice(..));
         pass.set_viewport(
             0.0,
             0.0,
@@ -554,7 +611,7 @@ impl BoxShadowEngine {
             1.0,
         );
         pass.set_scissor_rect(sx, sy, sw, sh);
-        pass.draw(0..VERTICES_PER_QUAD as u32, 0..1);
+        pass.draw(base_vertex as u32..required as u32, 0..1);
     }
 }
 

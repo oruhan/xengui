@@ -57,6 +57,7 @@ pub struct FrameRenderer {
     anim: AnimationManager,
     last_tick: Instant,
     force_layout: bool,
+    last_cascade_theme_generation: u64,
     frame_arena: FrameArena,
 }
 
@@ -107,6 +108,7 @@ impl FrameRenderer {
             anim: AnimationManager::new(),
             last_tick: Instant::now(),
             force_layout: false,
+            last_cascade_theme_generation: 0,
             frame_arena: FrameArena::default(),
         }
     }
@@ -139,6 +141,7 @@ impl FrameRenderer {
         let now = Instant::now();
         let dt = now.duration_since(self.last_tick);
         self.last_tick = now;
+        let animations_were_active = self.anim.is_animating();
         self.anim.tick(dt);
 
         // Keeps Theme::auto() resolving against the OS's real light/dark
@@ -146,14 +149,17 @@ impl FrameRenderer {
         // here as `theme`.
         crate::style::theme::set_system_is_dark(matches!(theme, SystemTheme::Dark));
         let app_background = crate::current_theme().background;
+        let theme_generation = crate::style::theme::theme_generation();
 
         if !backend.begin_frame(app_background, width, height) {
             return;
         }
 
+        let (tree_layout_dirty, tree_paint_dirty) = tree_dirty_flags(tree);
         let needs_full_layout = std::mem::take(&mut self.force_layout)
-            || tree_needs_layout(tree)
+            || tree_layout_dirty
             || self.anim.active_keys().any(|k| k.property.affects_layout());
+        let animations_are_active = self.anim.is_animating();
 
         let mut layout_ctx = LayoutContext {
             text: backend.text_measurer(),
@@ -171,8 +177,20 @@ impl FrameRenderer {
             );
             LayoutEngine::sync_scroll_offsets(tree);
             reset_layout_dirty_recursive(tree);
+            self.last_cascade_theme_generation = theme_generation;
         } else {
-            LayoutEngine::cascade(tree, &mut layout_ctx);
+            // Event handlers already recompute their immediate state. A full
+            // cascade is only needed to start/advance style animations,
+            // propagate dirty authored/inherited styles, or resolve a theme
+            // change. Ripple/scroll-only frames avoid another whole-tree walk.
+            if animations_were_active
+                || animations_are_active
+                || tree_paint_dirty
+                || self.last_cascade_theme_generation != theme_generation
+            {
+                LayoutEngine::cascade(tree, &mut layout_ctx);
+                self.last_cascade_theme_generation = theme_generation;
+            }
             // Scrolling never changes box sizes, so reposition the
             // already-laid-out subtree directly instead of paying for a
             // full taffy re-layout every animated-scroll frame. A no-op
@@ -224,7 +242,7 @@ impl FrameRenderer {
 
         // Stable sort keeps original paint order for widgets sharing the
         // same z-index; only different values get reordered.
-        commands.sort_by_key(|(z, _)| *z);
+        sort_by_z_if_needed(commands);
 
         #[derive(PartialEq, Clone, Copy)]
         enum RunKind {
@@ -535,6 +553,15 @@ fn effective_z_index(widget: &dyn Widget, parent_z_index: i32) -> i32 {
     }
 }
 
+// Paint traversal already emits monotonic z-order for the common case. Avoid
+// invoking stable sort (and its merge scratch work) unless an explicit or
+// positioned z-index actually introduced an inversion.
+fn sort_by_z_if_needed(commands: &mut [(i32, DrawCommand)]) {
+    if commands.windows(2).any(|pair| pair[0].0 > pair[1].0) {
+        commands.sort_by_key(|(z, _)| *z);
+    }
+}
+
 fn reuse_cached_paint(
     cache: &RenderCache,
     path: &WidgetPath,
@@ -690,6 +717,12 @@ fn composite_widget_paint(
     let fallback = (b.x, b.y, b.width, b.height);
 
     if (root_transform.scale - content_transform.scale).abs() < f32::EPSILON {
+        if !commands
+            .iter()
+            .any(|command| matches!(command, DrawCommand::Content(_)))
+        {
+            return composite_commands(commands, root_transform, fallback, clip_rect);
+        }
         let commands = commands
             .into_iter()
             .map(|command| match command {
@@ -730,7 +763,7 @@ fn composite_z_range(
         return;
     }
     let mut nested: Vec<(i32, DrawCommand)> = commands.drain(start..).collect();
-    nested.sort_by_key(|(z, _)| *z);
+    sort_by_z_if_needed(&mut nested);
     let nested: Vec<DrawCommand> = nested.into_iter().map(|(_, command)| command).collect();
     let bounds = commands_bounds(&nested, fallback_bounds);
     commands.push((
@@ -804,22 +837,21 @@ fn paint_recursive(
             scale_factor,
             z_index,
         );
-        subtree.sort_by_key(|(z, _)| *z);
+        sort_by_z_if_needed(&mut subtree);
 
         // Outset shadows are pulled out of the offscreen-filtered bitmap
         // entirely and pushed onto the main command stream instead, so
         // they paint straight onto the scene as a crisp background layer
         // before the (possibly blurred) content composites on top of them.
         let mut shadow_layer: Vec<(i32, DrawCommand)> = Vec::new();
-        subtree.retain(|(z, cmd)| {
-            if let DrawCommand::BoxShadow(sc) = cmd
-                && !sc.inset
-            {
-                shadow_layer.push((*z, cmd.clone()));
-                return false;
+        let mut filtered_commands = Vec::with_capacity(subtree.len());
+        for (z, command) in subtree {
+            if matches!(&command, DrawCommand::BoxShadow(shadow) if !shadow.inset) {
+                shadow_layer.push((z, command));
+            } else {
+                filtered_commands.push(command);
             }
-            true
-        });
+        }
 
         for (shadow_z, mut shadow_cmd) in shadow_layer {
             apply_clip(&mut shadow_cmd, clip_rect);
@@ -827,8 +859,6 @@ fn paint_recursive(
         }
 
         let b = layout_box;
-        let filtered_commands: Vec<DrawCommand> =
-            subtree.into_iter().map(|(_, command)| command).collect();
         let bounds = commands_bounds(&filtered_commands, (b.x, b.y, b.width, b.height));
         let filtered_cmd = FilteredCommand {
             commands: filtered_commands,
@@ -1023,7 +1053,7 @@ fn paint_ripple_inline(
     {
         let mut paint_ctx = PaintContext::new(paint_scratch, scale_factor);
         crate::ripple::paint(
-            interaction.ripple,
+            &interaction.ripple,
             interaction.ripple_overrides,
             widget.computed_style(),
             layout_box,
@@ -1396,17 +1426,30 @@ fn reset_dirty_recursive(widget: &mut dyn Widget) {
     }
 }
 
-fn tree_needs_layout(tree: &[Box<dyn Widget>]) -> bool {
-    tree.iter()
-        .any(|w| widget_needs_layout_recursive(w.as_ref()))
-}
+fn tree_dirty_flags(tree: &[Box<dyn Widget>]) -> (bool, bool) {
+    fn visit(widget: &dyn Widget, layout: &mut bool, paint: &mut bool) {
+        *layout |= widget.is_layout_dirty();
+        *paint |= widget.is_dirty();
+        if *layout && *paint {
+            return;
+        }
+        for child in widget.children() {
+            visit(child.as_ref(), layout, paint);
+            if *layout && *paint {
+                return;
+            }
+        }
+    }
 
-fn widget_needs_layout_recursive(widget: &dyn Widget) -> bool {
-    widget.is_layout_dirty()
-        || widget
-            .children()
-            .iter()
-            .any(|c| widget_needs_layout_recursive(c.as_ref()))
+    let mut layout = false;
+    let mut paint = false;
+    for widget in tree {
+        visit(widget.as_ref(), &mut layout, &mut paint);
+        if layout && paint {
+            break;
+        }
+    }
+    (layout, paint)
 }
 
 fn reset_layout_dirty_recursive(tree: &mut [Box<dyn Widget>]) {

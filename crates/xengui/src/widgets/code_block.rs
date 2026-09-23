@@ -168,6 +168,7 @@ pub struct CodeBlock {
     font_size: Length,
     line_height: Length,
     copy_label: SmolStr,
+    copied_label: SmolStr,
     show_header: bool,
     show_copy_button: bool,
     highlighter: SyntaxHighlighter,
@@ -189,6 +190,7 @@ impl CodeBlock {
             font_size: Length::px(13.0),
             line_height: Length::px(21.0),
             copy_label: SmolStr::new("Copy"),
+            copied_label: SmolStr::new("Copied"),
             show_header: true,
             show_copy_button: true,
             highlighter: highlight_code,
@@ -248,6 +250,12 @@ impl CodeBlock {
         self
     }
 
+    /// Sets the success text shown after copying.
+    pub fn copied_label(mut self, label: impl Into<SmolStr>) -> Self {
+        self.copied_label = label.into();
+        self
+    }
+
     /// Shows or hides the complete header row.
     pub fn show_header(mut self, show: bool) -> Self {
         self.show_header = show;
@@ -295,6 +303,8 @@ impl Render for CodeBlock {
             .border(Border::all(BORDER_WIDTH, self.theme.border).radius(CONTAINER_RADIUS))
             .overflow(Overflow::Hidden, Overflow::Hidden);
 
+        let (copied, set_copied) = crate::use_state(false);
+
         if self.show_header {
             let title = self
                 .label
@@ -326,16 +336,31 @@ impl Render for CodeBlock {
 
             if self.show_copy_button {
                 let code = self.code.to_string();
+                let set_copied = set_copied.clone();
                 header = header.child(
                     Button::new()
-                        .label(self.copy_label.clone())
+                        .label(if copied {
+                            self.copied_label.clone()
+                        } else {
+                            self.copy_label.clone()
+                        })
                         .font_size(11.0)
                         .font_weight(FontWeight::SemiBold)
-                        .padding(Edges::symmetric(10.0, 6.0))
-                        .color(self.theme.copy_text)
-                        .background(self.theme.copy_background)
-                        .border(Border::all(1.0, self.theme.border).radius(8.0))
+                        .height(Length::px(32.0))
+                        .padding(Edges::symmetric(12.0, 0.0))
+                        .color(if copied {
+                            Color::rgb(187, 247, 208)
+                        } else {
+                            self.theme.copy_text
+                        })
+                        .background(if copied {
+                            Color::rgb(20, 83, 45)
+                        } else {
+                            self.theme.copy_background
+                        })
+                        .border(Border::all(1.0, self.theme.border).radius(Length::px(999.0)))
                         .on_click(move |_ctx| {
+                            set_copied.set(true);
                             Clipboard::new().set_text(code.clone(), |result| {
                                 if let Err(error) = result {
                                     log::error!("CodeBlock copy failed: {error}");

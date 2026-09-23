@@ -32,7 +32,6 @@ fn panel_header(title: &str, meta: &str, dark: bool) -> View {
 
 pub fn page(_params: &RouteParams) -> Box<dyn Widget> {
     let stacked = !responsive_bool(Breakpoint::Large, true);
-    let content_width = (viewport_size().0 - 40.0).clamp(280.0, 620.0);
 
     let intro = Column::new()
         .gap(0.0, 15.0)
@@ -53,7 +52,7 @@ pub fn page(_params: &RouteParams) -> Box<dyn Widget> {
             RichText::new()
                 .with_content("Kod ve çıktı, yan yana.")
                 .width(pct!(100.0))
-                .max_width(px!(content_width))
+                .max_width(px!(620.0))
                 .font_size(Responsive::new(px!(36.0)).md(px!(52.0)))
                 .line_height(Responsive::new(px!(41.0)).md(px!(58.0)).resolve())
                 .font_weight(FontWeight::SemiBold)
@@ -66,7 +65,7 @@ pub fn page(_params: &RouteParams) -> Box<dyn Widget> {
                 .width(pct!(100.0))
                 .font_size(15.0)
                 .line_height(px!(24.0))
-                .max_width(px!(content_width))
+                .max_width(px!(620.0))
                 .color(|theme: &Theme| theme.on_surface_variant),
         );
 
@@ -85,6 +84,7 @@ pub fn page(_params: &RouteParams) -> Box<dyn Widget> {
                     "Button::new()\n    .label(\"Gönder\")\n    .font_weight(FontWeight::SemiBold)\n    .background(|theme: &Theme| theme.primary)\n    .color(|theme: &Theme| theme.on_primary)\n    .padding(Edges::symmetric(18.0, 11.0))\n    .border(Border::all(0.0, Color::TRANSPARENT)\n        .radius(10.0))\n    .hover_style(|style, theme|\n        style.background(theme.inverse_primary)\n    )\n    .on_click(|_ctx| submit())",
                 )
                 .padding(Responsive::new(Edges::all(18.0)).md(Edges::all(24.0)))
+                .font("XenMono")
                 .font_size(13.0)
                 .line_height(px!(21.0))
                 .color(Color::NEUTRAL_200),

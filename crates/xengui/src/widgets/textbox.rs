@@ -93,6 +93,7 @@ impl TextBox {
         let mut interaction = Interaction::new();
         interaction.focusable = true;
         interaction.hover_cursor = Some(Cursor::Text);
+        interaction.ripple_keyboard_activation = false;
 
         let mut base = WidgetBase::new(interaction);
         let style = Style {
@@ -221,6 +222,9 @@ impl TextBox {
     }
 
     fn notify_change(&mut self, ctx: &mut EventCtx) {
+        // Text metrics and grapheme offsets back both caret placement and
+        // pointer selection, so every content edit must invalidate measure.
+        self.base.layout_dirty = true;
         if let Some(cb) = self.on_change.as_mut() {
             cb(&self.content, ctx);
         }
@@ -432,6 +436,29 @@ impl TextBox {
             }
         }
         best
+    }
+
+    // Cursor-only changes (arrow keys and pointer selection) do not alter
+    // glyph metrics. Reuse the existing grapheme offsets immediately instead
+    // of waiting for a layout pass, while refusing stale offsets after edits.
+    fn sync_cursor_offset_from_cache(&self) {
+        let measurement_matches = if self.ime_preedit.is_none() {
+            self.measured_content.borrow().as_str() == self.content
+        } else {
+            *self.measured_content.borrow() == self.editing_text()
+        };
+        if !measurement_matches {
+            return;
+        }
+
+        let display_cursor = self.cursor_index
+            + self
+                .ime_preedit
+                .as_deref()
+                .map_or(0, |preedit| preedit.graphemes(true).count());
+        if let Some(offset) = self.char_offsets.borrow().get(display_cursor).copied() {
+            self.cursor_offset.set(offset);
+        }
     }
 
     fn insert_char(&mut self, c: char, ctx: &mut EventCtx) {
@@ -827,6 +854,7 @@ impl TextBox {
                 self.dragging = false;
             }
         }
+        self.sync_cursor_offset_from_cache();
     }
 
     fn handle_mouse_drag(&mut self, position: (f32, f32)) {
@@ -862,6 +890,7 @@ impl TextBox {
                 self.cursor_index = word_start;
             }
 
+            self.sync_cursor_offset_from_cache();
             return;
         }
 
@@ -870,6 +899,7 @@ impl TextBox {
         }
 
         self.cursor_index = idx;
+        self.sync_cursor_offset_from_cache();
     }
 }
 
@@ -1244,6 +1274,7 @@ impl Widget for TextBox {
                             self.cursor_index = self.content.graphemes(true).count();
                             self.selection_anchor = None;
                             self.base.dirty = true;
+                            self.base.layout_dirty = true;
                             ctx.request_redraw();
                         }
                         _ => {}
@@ -1285,6 +1316,9 @@ impl Widget for TextBox {
             let before_style = self.base.computed_style.clone();
 
             self.handle_key(key_event, *modifiers, ctx);
+            if self.content == before_content {
+                self.sync_cursor_offset_from_cache();
+            }
             self.recompute_style();
 
             let changed = self.content != before_content
@@ -1318,6 +1352,9 @@ impl Widget for TextBox {
                     ElementState::Pressed => {
                         self.mouse_button_held.set(true);
                         self.handle_mouse_press(*position);
+                        // TextBox owns this drag for caret/selection updates;
+                        // do not also run cross-widget Label selection.
+                        ctx.suppress_text_drag();
                     }
                     ElementState::Released => {
                         self.mouse_button_held.set(false);
@@ -1389,6 +1426,7 @@ impl Widget for TextBox {
                 self.selection_anchor = None;
             }
             self.caret_visible.set(true);
+            self.sync_cursor_offset_from_cache();
         }
 
         if matches!(event, InputEvent::FocusLost) {
@@ -1632,6 +1670,33 @@ mod tests {
     }
 
     #[test]
+    fn editing_invalidates_caret_and_selection_measurements() {
+        let mut textbox = TextBox::new();
+        textbox.base.layout_dirty = false;
+
+        textbox.insert_char('a', &mut EventCtx::new());
+
+        assert!(textbox.base.layout_dirty);
+    }
+
+    #[test]
+    fn textbox_pointer_selection_suppresses_cross_widget_selection() {
+        let mut textbox = TextBox::new().value("select me");
+        let mut ctx = EventCtx::new();
+
+        textbox.event(
+            &InputEvent::MouseInput {
+                state: ElementState::Pressed,
+                button: MouseButton::Left,
+                position: (0.0, 0.0),
+            },
+            &mut ctx,
+        );
+
+        assert!(ctx.take_suppress_text_drag());
+    }
+
+    #[test]
     fn constrained_textbox_keeps_intrinsic_width_for_caret_scrolling() {
         let textbox = TextBox::new().value("abcdefgh");
         let mut measurer = FixedTextMeasurer;
@@ -1641,6 +1706,31 @@ mod tests {
         assert_eq!(result.width, 30.0);
         assert_eq!(textbox.content_size.get().0, 80.0);
         assert_eq!(textbox.cursor_offset.get(), 80.0);
+    }
+
+    #[test]
+    fn cursor_only_navigation_updates_caret_without_remeasurement() {
+        let mut textbox = TextBox::new().value("abc");
+        let mut measurer = FixedTextMeasurer;
+        let mut context = MeasureContext::new(&mut measurer, 1.0);
+        textbox.measure(&mut context, Constraints::new());
+        assert_eq!(textbox.cursor_offset.get(), 30.0);
+
+        textbox.base.interaction.focused = true;
+        textbox.event(
+            &InputEvent::KeyInput {
+                event: KeyboardEvent {
+                    key: Key::ArrowLeft,
+                    state: KeyState::Pressed,
+                    repeat: false,
+                },
+                modifiers: ModifiersState::default(),
+            },
+            &mut EventCtx::new(),
+        );
+
+        assert_eq!(textbox.cursor_index, 2);
+        assert_eq!(textbox.cursor_offset.get(), 20.0);
     }
 
     #[test]

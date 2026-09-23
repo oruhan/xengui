@@ -38,12 +38,11 @@ const NAV_ITEMS: &[(DocsSection, &str, &str)] = &[
 ];
 
 fn paragraph(text: &str, font_size: f32, line_height: f32) -> RichText {
-    let available_width = (viewport_size().0 - 40.0).clamp(200.0, 760.0);
     RichText::new()
         .with_content(text)
         .width(pct!(100.0))
         .min_width(px!(0.0))
-        .max_width(px!(available_width))
+        .max_width(px!(760.0))
         .font_size(font_size)
         .line_height(px!(line_height))
         .color(|theme: &Theme| theme.on_surface_variant)
@@ -66,10 +65,10 @@ fn heading(kicker: &str, title: &str, description: &str) -> View {
             RichText::new()
                 .with_content(title)
                 .width(pct!(100.0))
-                .max_width(px!((viewport_size().0 - 40.0).clamp(220.0, 760.0)))
-                .font_size(Responsive::new(px!(30.0)).md(px!(44.0)))
-                .font_weight(FontWeight::SemiBold)
-                .letter_spacing(px!(-1.5))
+                .max_width(px!(760.0))
+                .font_size(Responsive::new(px!(28.0)).md(px!(32.0)))
+                .line_height(Responsive::new(px!(36.0)).md(px!(40.0)).resolve())
+                .font_weight(FontWeight::Medium)
                 .color(|theme: &Theme| theme.on_background),
         )
         .child(paragraph(description, 15.0, 24.0))
@@ -84,9 +83,10 @@ fn section_title(title: &str, description: &str) -> View {
             RichText::new()
                 .with_content(title)
                 .width(pct!(100.0))
-                .max_width(px!((viewport_size().0 - 40.0).clamp(220.0, 760.0)))
+                .max_width(px!(760.0))
                 .font_size(22.0)
-                .font_weight(FontWeight::SemiBold),
+                .line_height(px!(28.0))
+                .font_weight(FontWeight::Medium),
         )
         .child(paragraph(description, 14.0, 22.0))
 }
@@ -100,32 +100,71 @@ fn code_block(label: &str, code: &str) -> CodeBlock {
     CodeBlock::new(code)
         .label(label)
         .language(language)
+        .code_font("XenMono")
         .copy_label("Kopyala")
+        .copied_label("Kopyalandı")
 }
 
 fn note(title: &str, text: &str) -> View {
-    Row::new()
+    let compact = !responsive_bool(Breakpoint::Medium, true);
+    let icon = || {
+        StyleBuilder::color(
+            VariableIcon::new(xengui_icons::codepoints::INFO).size(20.0),
+            |theme: &Theme| theme.primary,
+        )
+    };
+    let title = || {
+        Label::new()
+            .label(title)
+            .font_weight(FontWeight::SemiBold)
+            .color(|theme: &Theme| theme.on_surface)
+    };
+
+    let mut note = View::new()
         // HTML'deki block-level `display:flex; width:auto` gibi mevcut
         // satırı doldur. Yüzde genişlikli RichText'in intrinsic ölçüme
         // katılamadığı shrink-to-fit döngüsünü bu sınır kırar.
+        .display(Display::Flex)
+        .flex_direction(if compact {
+            FlexDirection::Column
+        } else {
+            FlexDirection::Row
+        })
         .width(pct!(100.0))
         .min_width(px!(0.0))
-        .gap(12.0, 0.0)
-        .padding(Edges::all(18.0))
-        .background(|theme: &Theme| theme.primary_container.with_alpha_f32(0.62))
-        .border(|theme: &Theme| Border::all(1.0, theme.primary.with_alpha_f32(0.28)).radius(20.0))
-        .child(VariableIcon::new(xengui_icons::codepoints::INFO).size(20.0))
-        .child(
+        .gap(
+            if compact { 0.0 } else { 12.0 },
+            if compact { 10.0 } else { 0.0 },
+        )
+        .padding(Edges::all(16.0))
+        // Documentation notes are supporting content, not primary actions.
+        // Use a quiet M3 surface role and reserve the brand color for the
+        // small semantic accent instead of flooding the whole container.
+        .background(|theme: &Theme| theme.surface_container_low)
+        .border(|theme: &Theme| Border::all(1.0, theme.outline_variant).radius(16.0));
+
+    if compact {
+        note = note
+            .child(
+                Row::new()
+                    .align_items(Align::Center)
+                    .gap(10.0, 0.0)
+                    .child(icon())
+                    .child(title()),
+            )
+            .child(paragraph(text, 13.0, 20.0).max_width(px!(660.0)));
+    } else {
+        note = note.child(icon()).child(
             Column::new()
                 .flex_grow(1.0)
                 .min_width(px!(0.0))
                 .gap(0.0, 4.0)
-                .child(Label::new().label(title).font_weight(FontWeight::SemiBold))
-                .child(
-                    paragraph(text, 13.0, 20.0)
-                        .max_width(px!((viewport_size().0 - 104.0).clamp(180.0, 660.0))),
-                ),
-        )
+                .child(title())
+                .child(paragraph(text, 13.0, 20.0).max_width(px!(660.0))),
+        );
+    }
+
+    note
 }
 
 fn feature_card(title: &str, description: &str) -> View {
@@ -142,8 +181,7 @@ fn feature_card(title: &str, description: &str) -> View {
                 .font_weight(FontWeight::SemiBold),
         )
         .child(
-            paragraph(description, 13.0, 20.0)
-                .max_width(px!((viewport_size().0 - 76.0).clamp(180.0, 400.0))),
+            paragraph(description, 13.0, 20.0).max_width(px!(400.0)),
         )
 }
 
@@ -157,36 +195,36 @@ fn nav_button(
 ) -> Button {
     let selected = active == section;
     Button::new()
-        .width(if compact { px!(142.0) } else { pct!(100.0) })
+        .width(if compact { px!(148.0) } else { pct!(100.0) })
         .flex_shrink(0.0)
         .label(if compact {
             title.to_owned()
         } else {
-            let index = NAV_ITEMS
-                .iter()
-                .position(|(item, _, _)| *item == section)
-                .unwrap_or_default()
-                + 1;
-            format!("{index:02}   {title}\n       {subtitle}")
+            format!("{title}\n{subtitle}")
         })
         .font_size(13.0)
-        .line_height(px!(19.0))
+        .line_height(px!(20.0))
+        .font_weight(if selected {
+            FontWeight::SemiBold
+        } else {
+            FontWeight::Regular
+        })
         .color(move |theme: &Theme| {
             if selected {
-                theme.on_primary_container
+                theme.on_surface
             } else {
                 theme.on_surface_variant
             }
         })
         .background(move |theme: &Theme| {
             if selected {
-                theme.primary_container
+                theme.surface_container_high
             } else {
                 Color::TRANSPARENT
             }
         })
-        .border(Border::all(0.0, Color::TRANSPARENT).radius(18.0))
-        .padding(Edges::symmetric(15.0, 12.0))
+        .border(Border::all(0.0, Color::TRANSPARENT).radius(16.0))
+        .padding(Edges::symmetric(16.0, if compact { 10.0 } else { 12.0 }))
         .hover_style(|style, theme| style.background(theme.surface_container_high))
         .transition_all(Transition::new(Duration::from_millis(140)).easing(Easing::EaseOut))
         .on_click(move |_ctx| set_active.set(section))
@@ -203,103 +241,32 @@ fn cards(items: &[(&str, &str)]) -> View {
     grid
 }
 
-fn meta_chip(label: &str) -> View {
-    View::new()
-        .padding(Edges::symmetric(11.0, 7.0))
-        .background(|theme: &Theme| theme.surface_container_lowest)
-        .border(|theme: &Theme| Border::all(1.0, theme.outline_variant).radius(8.0))
+fn docs_brand(compact: bool) -> View {
+    Row::new()
+        .width(pct!(100.0))
+        .height(px!(64.0))
+        .align_items(Align::Center)
+        .justify_content(JustifyContent::SpaceBetween)
+        .child(
+            Button::new()
+                .icon(include_str!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/assets/XenGui_header.svg"
+                )))
+                .icon_size(if compact { 94.0 } else { 104.0 }, 32.0)
+                .width(px!(if compact { 104.0 } else { 114.0 }))
+                .flex_shrink(0.0)
+                .background(Color::TRANSPARENT)
+                .padding(Edges::all(0.0))
+                .on_click(|_ctx| xen_router::push("/")),
+        )
         .child(
             Label::new()
-                .label(label)
+                .label("DOCS")
                 .font_size(11.0)
-                .font_weight(FontWeight::Medium)
-                .color(|theme: &Theme| theme.on_surface_variant),
-        )
-}
-
-fn docs_hero(set_active: SetState<DocsSection>) -> View {
-    let set_api = set_active.clone();
-    Column::new()
-        .width(pct!(100.0))
-        .gap(0.0, 18.0)
-        .padding(Responsive::new(Edges::all(24.0)).md(Edges::all(40.0)))
-        .background(|theme: &Theme| theme.surface_container_low)
-        .border(|theme: &Theme| Border::all(1.0, theme.outline_variant).radius(14.0))
-        .child(
-            Row::new()
-                .align_items(Align::Center)
-                .gap(8.0, 0.0)
-                .child(
-                    StyleBuilder::color(
-                        VariableIcon::new(xengui_icons::codepoints::AUTO_STORIES).size(18.0),
-                        |theme: &Theme| theme.primary,
-                    ),
-                )
-                .child(
-                    Label::new()
-                        .label("XENGUI DOCUMENTATION")
-                        .font_size(12.0)
-                        .font_weight(FontWeight::SemiBold)
-                        .letter_spacing(px!(1.1))
-                        .color(|theme: &Theme| theme.on_surface_variant),
-                ),
-        )
-        .child(
-            RichText::new()
-                .with_content("Rust UI, baştan sona anlaşılır.")
-                .width(pct!(100.0))
-                .max_width(px!((viewport_size().0 - 88.0).clamp(220.0, 820.0)))
-                .font_size(Responsive::new(px!(38.0)).md(px!(58.0)))
-                .line_height(Responsive::new(px!(44.0)).md(px!(64.0)).resolve())
                 .font_weight(FontWeight::SemiBold)
-                .letter_spacing(px!(-2.0))
-                .color(|theme: &Theme| theme.on_background),
-        )
-        .child(
-            paragraph(
-                "Kurulumdan renderer mimarisine kadar, üretimde ihtiyaç duyacağın kavramları çalışan örneklerle öğren.",
-                16.0,
-                25.0,
-            )
-            .max_width(px!((viewport_size().0 - 88.0).clamp(220.0, 680.0))),
-        )
-        .child(
-            View::new()
-                .display(Display::Flex)
-                .flex_wrap(FlexWrap::Wrap)
-                .gap(10.0, 10.0)
-                .child(
-                    Button::new()
-                        .label("Başlangıç rehberi  →")
-                        .font_weight(FontWeight::SemiBold)
-                        .background(|theme: &Theme| theme.on_background)
-                        .color(|theme: &Theme| theme.background)
-                        .border(Border::all(0.0, Color::TRANSPARENT).radius(10.0))
-                        .padding(Edges::symmetric(16.0, 10.0))
-                        .on_click(move |_ctx| set_active.set(DocsSection::Start)),
-                )
-                .child(
-                    Button::new()
-                        .label("API referansı")
-                        .font_weight(FontWeight::SemiBold)
-                        .background(Color::TRANSPARENT)
-                        .color(|theme: &Theme| theme.on_surface)
-                        .border(|theme: &Theme| {
-                            Border::all(1.0, theme.outline_variant).radius(10.0)
-                        })
-                        .padding(Edges::symmetric(16.0, 10.0))
-                        .on_click(move |_ctx| set_api.set(DocsSection::Api)),
-                ),
-        )
-        .child(
-            View::new()
-                .display(Display::Flex)
-                .flex_wrap(FlexWrap::Wrap)
-                .gap(8.0, 8.0)
-                .child(meta_chip("xengui 0.2.8"))
-                .child(meta_chip("Native + Web"))
-                .child(meta_chip("wgpu"))
-                .child(meta_chip("Rust 1.92+")),
+                .letter_spacing(px!(1.0))
+                .color(|theme: &Theme| theme.primary),
         )
 }
 
@@ -564,7 +531,7 @@ pub fn page(_params: &RouteParams) -> Box<dyn Widget> {
         } else {
             FlexDirection::Column
         })
-        .width(if compact { pct!(100.0) } else { px!(220.0) })
+        .width(if compact { pct!(100.0) } else { pct!(100.0) })
         .gap(
             if compact { 8.0 } else { 0.0 },
             if compact { 0.0 } else { 6.0 },
@@ -600,42 +567,100 @@ pub fn page(_params: &RouteParams) -> Box<dyn Widget> {
         DocsSection::Styling => styling_page(),
         DocsSection::Rendering => rendering_page(),
         DocsSection::Api => api_page(),
-    };
+    }
+    .flex_shrink(0.0);
 
-    let body = View::new()
-        .display(Display::Flex)
-        .flex_direction(if compact {
-            FlexDirection::Column
-        } else {
-            FlexDirection::Row
-        })
-        .gap(
-            if compact { 0.0 } else { 42.0 },
-            if compact { 24.0 } else { 0.0 },
+    if compact {
+        return Box::new(
+            Column::new()
+                .width(pct!(100.0))
+                .height(pct!(100.0))
+                .min_width(px!(0.0))
+                .flex_shrink(0.0)
+                .overflow_x(Overflow::Hidden)
+                .overflow_y(Overflow::Scroll)
+                .scrollbar_gutter(ScrollbarGutter::Stable)
+                .child(
+                    View::new()
+                        .padding(Edges::symmetric(20.0, 0.0))
+                        .background(|theme: &Theme| theme.surface_container_lowest)
+                        .border(|theme: &Theme| Border::bottom(1.0, theme.outline_variant))
+                        .child(docs_brand(true)),
+                )
+                .child(
+                    View::new()
+                        .padding(Edges::only(20.0, 14.0, 20.0, 8.0))
+                        .child(navigation),
+                )
+                .child(
+                    View::new()
+                        .width(pct!(100.0))
+                        .min_width(px!(0.0))
+                        .padding(Edges::only(20.0, 28.0, 20.0, 72.0))
+                        .child(content),
+                ),
+        );
+    }
+
+    let sidebar = Column::new()
+        .position(Position::Sticky)
+        .top(0.0)
+        .width(px!(284.0))
+        .height(pct!(100.0))
+        .flex_shrink(0.0)
+        .gap(0.0, 20.0)
+        .padding(Edges::only(24.0, 0.0, 20.0, 24.0))
+        .background(|theme: &Theme| theme.surface_container_lowest)
+        .border(|theme: &Theme| Border::right(1.0, theme.outline_variant))
+        .child(docs_brand(false))
+        .child(
+            Label::new()
+                .label("KILAVUZLAR")
+                .font_size(11.0)
+                .font_weight(FontWeight::SemiBold)
+                .letter_spacing(px!(1.0))
+                .color(|theme: &Theme| theme.on_surface_variant),
         )
-        .width(pct!(100.0))
-        .min_width(px!(0.0))
         .child(navigation)
         .child(
-            View::new()
-                .width(pct!(100.0))
-                .flex_grow(1.0)
-                .min_width(px!(0.0))
-                .child(content),
+            Link::new()
+                .label("GitHub'da görüntüle")
+                .href("https://github.com/randseas/xengui")
+                .target_blank(true)
+                .font_size(13.0)
+                .color(|theme: &Theme| theme.on_surface_variant),
         );
 
     Box::new(
-        Column::new()
+        Row::new()
             .width(pct!(100.0))
+            .height(pct!(100.0))
             .min_width(px!(0.0))
-            .gap(0.0, Responsive::new(px!(32.0)).md(px!(52.0)))
-            .overflow_x(Overflow::Hidden)
-            .padding(
-                Responsive::new(Edges::only(20.0, 32.0, 20.0, 72.0))
-                    .md(Edges::only(64.0, 48.0, 64.0, 88.0))
-                    .lg(Edges::only(80.0, 56.0, 80.0, 104.0)),
+            .flex_shrink(0.0)
+            .align_items(Align::Start)
+            .child(sidebar)
+            .child(
+                Row::new()
+                    .width(pct!(100.0))
+                    .height(pct!(100.0))
+                    .flex_grow(1.0)
+                    .min_width(px!(0.0))
+                    .align_items(Align::Start)
+                    .justify_content(JustifyContent::Center)
+                    .overflow_y(Overflow::Scroll)
+                    .scrollbar_gutter(ScrollbarGutter::Stable)
+                    .padding(
+                        Responsive::new(Edges::only(40.0, 48.0, 40.0, 88.0))
+                            .lg(Edges::only(64.0, 64.0, 64.0, 112.0)),
+                    )
+                    .child(
+                        Column::new()
+                            .width(pct!(100.0))
+                            .max_width(px!(920.0))
+                            .min_width(px!(0.0))
+                            .flex_shrink(0.0)
+                            .child(content),
+                    ),
             )
-            .child(docs_hero(set_active))
-            .child(body),
     )
 }

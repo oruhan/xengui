@@ -88,6 +88,7 @@ impl PostProcessEngine {
 
     pub fn reset_frame(&mut self) {
         self.pool.reset_frame();
+        self.box_shadow.reset_frame();
     }
 
     /// Borrows a reusable texture suitable for capturing already-rendered

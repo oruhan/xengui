@@ -6,7 +6,7 @@ XenGui keeps widget identity and hook state in a retained tree. Retained widgets
 
 1. Layout runs only when geometry-affecting state is dirty. Scroll-only frames reuse layout and reflow positions.
 2. The paint walk writes commands, focus chrome, top-layer commands, batch buffers, text decorations, and widget paths into reusable storage owned by `FrameRenderer`.
-3. Commands are stably sorted by z-index and drained into typed batches without releasing their capacity.
+3. Commands are checked for monotonic z-order. The stable sort runs only when an explicit z-index introduced an inversion, then commands are drained into typed batches without releasing their capacity.
 4. Rectangle commands become one `RectInstance` each. The vertex shader synthesizes the six quad corners from `vertex_index`.
 5. Each compatible run is copied once from its contiguous CPU staging slice into the growable GPU buffer, then drawn as one instanced range per clip run.
 
@@ -26,6 +26,18 @@ This is a steady-state allocation policy, not an unsafe claim that arbitrary dyn
 Rectangle instances use a 92-byte GPU record containing screen bounds, local half-size, corner radii, border width, fill and border colors, and gradient metadata. Previously, every rectangle expanded the same payload into six 92-byte vertices (552 bytes). Triangle, stroke, and image pipelines retain flattened staging vectors and upload each compatible run as one contiguous slice.
 
 Taffy types do not cross into the GPU backend. Layout boxes are lowered to backend-neutral paint commands first, then flattened into pipeline-specific records. This keeps alternative render backends possible while ensuring only one contiguous staging-to-buffer copy per run.
+
+## CPU fast paths
+
+- Clean, non-layout frames skip the full style cascade unless a style animation, dirty paint state, or theme-generation change requires it. Scroll and ripple reflow keep their existing behavior without paying for an unrelated whole-tree style walk.
+- Text measurement and drawing share the same shaped glyph buffer cache. Caret hit-testing, layout measurement, and the following draw therefore do not reshape an identical run independently.
+- Variable-icon staging vectors, frame paint arenas, and pipeline staging vectors retain their high-water capacities.
+
+## GPU fast paths
+
+- A single-sample frame with no backdrop filter renders directly into the swapchain. It avoids the full-screen scene texture write, read, and presentation blit. MSAA and backdrop-filter frames retain the offscreen path required by their existing semantics.
+- Text runs use a retained pool of `glyphon` renderers, so independently ordered text runs can remain in one frame command submission without later `prepare` calls overwriting earlier vertex data.
+- Filter/composite capture textures come from the post-process texture pool. Box-shadow mask/composite vertices and variable-icon vertices use growable retained buffers instead of creating fresh GPU buffers for every draw.
 
 ## Verification
 
