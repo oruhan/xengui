@@ -7,7 +7,6 @@ use crate::{
     VariableIcon, View, Widget, WidgetBase, WidgetId, pct,
 };
 use smol_str::SmolStr;
-use xen_clipboard::Clipboard;
 
 /// A language hint used by [`CodeBlock`]'s built-in lightweight highlighter.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -303,6 +302,12 @@ impl Render for CodeBlock {
             .border(Border::all(BORDER_WIDTH, self.theme.border).radius(CONTAINER_RADIUS))
             .overflow(Overflow::Hidden, Overflow::Hidden);
 
+        // CodeBlock is a composite wrapper and does not paint its own box.
+        // Apply its authored style to the visible root so callers can
+        // override component defaults such as the border/background/size.
+        let root_style = Widget::style(&root).overlay(&self.base.style);
+        *Widget::style_mut(&mut root) = root_style;
+
         let (copied, set_copied) = crate::use_state(false);
 
         if self.show_header {
@@ -359,13 +364,11 @@ impl Render for CodeBlock {
                             self.theme.copy_background
                         })
                         .border(Border::all(1.0, self.theme.border).radius(Length::px(999.0)))
-                        .on_click(move |_ctx| {
-                            set_copied.set(true);
-                            Clipboard::new().set_text(code.clone(), |result| {
-                                if let Err(error) = result {
-                                    log::error!("CodeBlock copy failed: {error}");
-                                }
-                            });
+                        .on_click(move |ctx| {
+                            match ctx.platform_services().clipboard().write_text(code.clone()) {
+                                Ok(()) => set_copied.set(true),
+                                Err(error) => log::error!("CodeBlock copy failed: {error}"),
+                            }
                         }),
                 );
             }
@@ -653,5 +656,13 @@ mod tests {
         assert_eq!(CodeLanguage::from_name("Cargo.toml"), CodeLanguage::Toml);
         assert_eq!(CodeLanguage::from_name("TSX"), CodeLanguage::TypeScript);
         assert_eq!(CodeLanguage::from_name("Terminal"), CodeLanguage::Shell);
+    }
+
+    #[test]
+    fn authored_border_overrides_the_visible_composite_root() {
+        let block = CodeBlock::new("let answer = 42;").border(Border::none());
+        let rendered = crate::component("code-block-border-override", || block.render());
+
+        assert_eq!(rendered.style().border, Some(Border::NONE));
     }
 }

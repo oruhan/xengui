@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 use crate::{
-    AnimationManager, BackdropFilterCommand, BoxShadowCommand, CompositedCommand, DrawCommand,
-    FilteredCommand, ImageCommand, LayoutBox, LayoutContext, LayoutEngine, PaintContext, Position,
-    RectCommand, RenderBackend, RenderCache, RippleCommand, StrokeCommand, SystemTheme,
-    TriangleCommand, VariableIconCommand, Widget, WidgetPath,
+    AnimationManager, BackdropFilterCommand, BackendDiagnostic, BackendError, BackendFeature,
+    BoxShadowCommand, CompositedCommand, DrawCommand, FilteredCommand, ImageCommand, LayoutBox,
+    LayoutContext, LayoutEngine, PaintContext, RectCommand, RenderBackend, RenderCache,
+    RippleCommand, SceneOrder, StrokeCommand, SystemTheme, TriangleCommand,
+    UnsupportedFeaturePolicy, VariableIconCommand, Widget, WidgetPath,
 };
 use web_time::Instant;
 
@@ -59,6 +60,7 @@ pub struct FrameRenderer {
     force_layout: bool,
     last_cascade_theme_generation: u64,
     frame_arena: FrameArena,
+    scene_order: SceneOrder,
 }
 
 /// Resettable storage for data whose lifetime is exactly one frame.
@@ -110,6 +112,7 @@ impl FrameRenderer {
             force_layout: false,
             last_cascade_theme_generation: 0,
             frame_arena: FrameArena::default(),
+            scene_order: SceneOrder::default(),
         }
     }
 
@@ -128,6 +131,11 @@ impl FrameRenderer {
         self.force_layout = true;
     }
 
+    /// Returns the immutable scene snapshot produced for the latest frame.
+    pub fn scene_order(&self) -> &SceneOrder {
+        &self.scene_order
+    }
+
     /// Returns or updates the `render_frame` value.
     pub fn render_frame(
         &mut self,
@@ -137,7 +145,7 @@ impl FrameRenderer {
         scale_factor: f32,
         width: u32,
         height: u32,
-    ) {
+    ) -> Result<(), BackendError> {
         let now = Instant::now();
         let dt = now.duration_since(self.last_tick);
         self.last_tick = now;
@@ -152,7 +160,7 @@ impl FrameRenderer {
         let theme_generation = crate::style::theme::theme_generation();
 
         if !backend.begin_frame(app_background, width, height) {
-            return;
+            return Ok(());
         }
 
         let (tree_layout_dirty, tree_paint_dirty) = tree_dirty_flags(tree);
@@ -198,6 +206,7 @@ impl FrameRenderer {
             LayoutEngine::reflow_scroll(tree, scale_factor);
         }
 
+        let scene_order = SceneOrder::build(tree, scale_factor);
         let mut frame_arena = std::mem::take(&mut self.frame_arena);
         frame_arena.reset();
         self.render_cache.begin_frame();
@@ -220,7 +229,7 @@ impl FrameRenderer {
         for (i, node) in tree.iter().enumerate() {
             let checkpoint = path.checkpoint();
             path.push(node.as_ref(), i);
-            paint_recursive(
+            paint_recursive_in_scene(
                 node.as_ref(),
                 path,
                 &mut self.render_cache,
@@ -231,6 +240,7 @@ impl FrameRenderer {
                 None,
                 scale_factor,
                 0,
+                Some(&scene_order),
             );
             path.restore(checkpoint);
         }
@@ -264,13 +274,17 @@ impl FrameRenderer {
             () => {
                 match current_kind {
                     Some(RunKind::Rect) => backend.draw_rects(&rect_buf),
-                    Some(RunKind::Ripple) => backend.draw_ripples(&ripple_buf),
+                    Some(RunKind::Ripple) => {
+                        if prepare_feature(backend, BackendFeature::Ripple)? {
+                            backend.draw_ripples(&ripple_buf)?;
+                        }
+                    }
                     Some(RunKind::Triangle) => backend.draw_triangles(&tri_buf),
                     Some(RunKind::Image) => backend.draw_images(&img_buf),
                     Some(RunKind::BoxShadow) => backend.draw_box_shadows(&shadow_buf),
                     Some(RunKind::Stroke) => backend.draw_strokes(&stroke_buf),
                     Some(RunKind::Text) => {
-                        backend.flush_text();
+                        backend.flush_text()?;
                         decorations.clear();
                         backend.drain_text_decorations(decorations);
                         if !decorations.is_empty() {
@@ -279,7 +293,7 @@ impl FrameRenderer {
                     }
                     Some(RunKind::Filtered) => {}
                     Some(RunKind::BackdropFilter) => {}
-                    Some(RunKind::VariableIcon) => backend.draw_variable_icons(&icon_buf),
+                    Some(RunKind::VariableIcon) => backend.draw_variable_icons(&icon_buf)?,
                     Some(RunKind::Composited) => {}
                     None => {}
                 }
@@ -362,34 +376,38 @@ impl FrameRenderer {
                     // Filtered subtrees don't batch with anything else -
                     // each is its own isolated offscreen pass, so it's
                     // dispatched immediately rather than buffered.
-                    backend.flush_text();
-                    backend.draw_filtered(
-                        &filtered.commands,
-                        &filtered.chain,
-                        filtered.bounds,
-                        filtered.clip_rect,
-                    );
+                    backend.flush_text()?;
+                    if prepare_feature(backend, BackendFeature::Filter)? {
+                        backend.draw_filtered(
+                            &filtered.commands,
+                            &filtered.chain,
+                            filtered.bounds,
+                            filtered.clip_rect,
+                        )?;
+                    }
                 }
                 DrawCommand::BackdropFilter(cmd) => {
                     if current_kind != Some(RunKind::BackdropFilter) {
                         flush_run!();
                         current_kind = Some(RunKind::BackdropFilter);
                     }
-                    backend.flush_text();
-                    backend.draw_backdrop_filtered(
-                        &cmd.chain,
-                        cmd.bounds,
-                        cmd.clip_rect,
-                        cmd.radius,
-                    );
+                    backend.flush_text()?;
+                    if prepare_feature(backend, BackendFeature::BackdropFilter)? {
+                        backend.draw_backdrop_filtered(
+                            &cmd.chain,
+                            cmd.bounds,
+                            cmd.clip_rect,
+                            cmd.radius,
+                        )?;
+                    }
                 }
                 DrawCommand::Composited(cmd) => {
                     if current_kind != Some(RunKind::Composited) {
                         flush_run!();
                         current_kind = Some(RunKind::Composited);
                     }
-                    backend.flush_text();
-                    backend.draw_composited(&cmd);
+                    backend.flush_text()?;
+                    backend.draw_composited(&cmd)?;
                 }
                 DrawCommand::Content(_) => {
                     unreachable!("content marker escaped frame composition")
@@ -409,11 +427,15 @@ impl FrameRenderer {
                 () => {
                     match top_kind {
                         Some(RunKind::Rect) => backend.draw_rects(rect_buf),
-                        Some(RunKind::Ripple) => backend.draw_ripples(ripple_buf),
+                        Some(RunKind::Ripple) => {
+                            if prepare_feature(backend, BackendFeature::Ripple)? {
+                                backend.draw_ripples(ripple_buf)?;
+                            }
+                        }
                         Some(RunKind::Triangle) => backend.draw_triangles(tri_buf),
                         Some(RunKind::Image) => backend.draw_images(img_buf),
                         Some(RunKind::Text) => {
-                            backend.flush_text();
+                            backend.flush_text()?;
                             decorations.clear();
                             backend.drain_text_decorations(decorations);
                             if !decorations.is_empty() {
@@ -424,7 +446,7 @@ impl FrameRenderer {
                         Some(RunKind::Stroke) => backend.draw_strokes(stroke_buf),
                         Some(RunKind::Filtered) => {}
                         Some(RunKind::BackdropFilter) => {}
-                        Some(RunKind::VariableIcon) => backend.draw_variable_icons(icon_buf),
+                        Some(RunKind::VariableIcon) => backend.draw_variable_icons(icon_buf)?,
                         Some(RunKind::Composited) => {}
                         None => {}
                     }
@@ -496,18 +518,39 @@ impl FrameRenderer {
                         }
                         icon_buf.push(*cmd);
                     }
-                    DrawCommand::Filtered(_) => {}
-                    // Overlay/top-layer content never produces a backdrop
-                    // filter today - paint_recursive only emits it for the
-                    // main tree walk.
-                    DrawCommand::BackdropFilter(_) => {}
+                    DrawCommand::Filtered(filtered) => {
+                        flush_top_run!();
+                        top_kind = Some(RunKind::Filtered);
+                        backend.flush_text()?;
+                        if prepare_feature(backend, BackendFeature::Filter)? {
+                            backend.draw_filtered(
+                                &filtered.commands,
+                                &filtered.chain,
+                                filtered.bounds,
+                                filtered.clip_rect,
+                            )?;
+                        }
+                    }
+                    DrawCommand::BackdropFilter(cmd) => {
+                        flush_top_run!();
+                        top_kind = Some(RunKind::BackdropFilter);
+                        backend.flush_text()?;
+                        if prepare_feature(backend, BackendFeature::BackdropFilter)? {
+                            backend.draw_backdrop_filtered(
+                                &cmd.chain,
+                                cmd.bounds,
+                                cmd.clip_rect,
+                                cmd.radius,
+                            )?;
+                        }
+                    }
                     DrawCommand::Composited(cmd) => {
                         if top_kind != Some(RunKind::Composited) {
                             flush_top_run!();
                             top_kind = Some(RunKind::Composited);
                         }
-                        backend.flush_text();
-                        backend.draw_composited(&cmd);
+                        backend.flush_text()?;
+                        backend.draw_composited(&cmd)?;
                     }
                     DrawCommand::Content(_) => {
                         unreachable!("content marker escaped top-layer composition")
@@ -526,30 +569,34 @@ impl FrameRenderer {
 
         backend.end_frame();
         self.frame_arena = frame_arena;
+        self.scene_order = scene_order;
+        Ok(())
+    }
+}
+
+fn prepare_feature(
+    backend: &mut dyn RenderBackend,
+    feature: BackendFeature,
+) -> Result<bool, BackendError> {
+    if backend.capabilities().supports(feature) {
+        return Ok(true);
+    }
+    match backend.unsupported_feature_policy() {
+        UnsupportedFeaturePolicy::Strict => Err(BackendError::UnsupportedFeature { feature }),
+        UnsupportedFeaturePolicy::Fallback => {
+            backend.report_diagnostic(BackendDiagnostic::FeatureFallback { feature });
+            Ok(true)
+        }
+        UnsupportedFeaturePolicy::Disabled => {
+            backend.report_diagnostic(BackendDiagnostic::FeatureDisabled { feature });
+            Ok(false)
+        }
     }
 }
 
 impl Default for FrameRenderer {
     fn default() -> Self {
         Self::new()
-    }
-}
-
-// Positioned widgets (relative/sticky/absolute/fixed) paint above static
-// in-flow siblings sharing the same explicit z-index, matching CSS's
-// default z-index:auto stacking order.
-fn effective_z_index(widget: &dyn Widget, parent_z_index: i32) -> i32 {
-    if let Some(z) = widget.computed_style().z_index {
-        return z;
-    }
-    let positioned = !matches!(
-        widget.computed_style().position.unwrap_or_default(),
-        Position::Static
-    );
-    if positioned {
-        parent_z_index + 1
-    } else {
-        parent_z_index
     }
 }
 
@@ -792,6 +839,7 @@ fn composite_plain_range(
 }
 
 #[allow(clippy::too_many_arguments)]
+#[cfg(test)]
 fn paint_recursive(
     widget: &dyn Widget,
     path: &mut WidgetPath,
@@ -804,6 +852,37 @@ fn paint_recursive(
     scale_factor: f32,
     parent_z_index: i32,
 ) {
+    paint_recursive_in_scene(
+        widget,
+        path,
+        cache,
+        commands,
+        focus_commands,
+        top_commands,
+        paint_scratch,
+        clip_rect,
+        scale_factor,
+        parent_z_index,
+        None,
+    );
+}
+
+#[allow(clippy::too_many_arguments)]
+fn paint_recursive_in_scene(
+    widget: &dyn Widget,
+    path: &mut WidgetPath,
+    cache: &mut RenderCache,
+    commands: &mut Vec<(i32, DrawCommand)>,
+    focus_commands: &mut Vec<RectCommand>,
+    top_commands: &mut Vec<DrawCommand>,
+    paint_scratch: &mut Vec<DrawCommand>,
+    clip_rect: Option<(f32, f32, f32, f32)>,
+    scale_factor: f32,
+    parent_z_index: i32,
+    scene_order: Option<&SceneOrder>,
+) {
+    let scene_node = scene_order.and_then(|scene| scene.node(path));
+    let clip_rect = scene_node.map_or(clip_rect, |node| node.clip_rect);
     let layout_box = *widget.layout_box();
 
     if let Some((cx, cy, cw, ch)) = clip_rect {
@@ -818,7 +897,10 @@ fn paint_recursive(
 
     cache.mark_live(path);
 
-    let z_index = effective_z_index(widget, parent_z_index);
+    let z_index = scene_node.map_or_else(
+        || crate::scene_order::effective_z_index(widget, parent_z_index),
+        |node| node.effective_z,
+    );
 
     // A filtered widget's own subtree (paint + descendants, but not its
     // overlay/top/focus layers - those stay outside the filter so a
@@ -875,6 +957,15 @@ fn paint_recursive(
             z_index,
             commands,
             paint_scratch,
+        );
+        paint_portals_in_children(
+            widget,
+            path,
+            cache,
+            top_commands,
+            focus_commands,
+            paint_scratch,
+            scale_factor,
         );
         paint_chrome_layers_inline(
             widget,
@@ -994,7 +1085,7 @@ fn paint_recursive(
         let command_start = commands.len();
         let top_start = top_commands.len();
         let focus_start = focus_commands.len();
-        paint_recursive(
+        paint_recursive_in_scene(
             child.as_ref(),
             path,
             cache,
@@ -1005,6 +1096,7 @@ fn paint_recursive(
             child_clip,
             scale_factor,
             z_index,
+            scene_order,
         );
         composite_z_range(
             commands,
@@ -1030,6 +1122,44 @@ fn paint_recursive(
         focus_commands,
         paint_scratch,
     );
+}
+
+#[allow(clippy::too_many_arguments)]
+fn paint_portals_in_children(
+    widget: &dyn Widget,
+    path: &mut WidgetPath,
+    cache: &mut RenderCache,
+    top_commands: &mut Vec<DrawCommand>,
+    focus_commands: &mut Vec<RectCommand>,
+    paint_scratch: &mut Vec<DrawCommand>,
+    scale_factor: f32,
+) {
+    for (index, child) in widget.children().iter().enumerate() {
+        let checkpoint = path.checkpoint();
+        path.push(child.as_ref(), index);
+        if child.is_portal() {
+            paint_portal_subtree(
+                child.as_ref(),
+                path,
+                cache,
+                top_commands,
+                focus_commands,
+                paint_scratch,
+                scale_factor,
+            );
+        } else {
+            paint_portals_in_children(
+                child.as_ref(),
+                path,
+                cache,
+                top_commands,
+                focus_commands,
+                paint_scratch,
+                scale_factor,
+            );
+        }
+        path.restore(checkpoint);
+    }
 }
 
 fn paint_ripple_inline(
@@ -1116,7 +1246,7 @@ fn paint_subtree_for_filter(
         }
         let checkpoint = path.checkpoint();
         path.push(child.as_ref(), i);
-        let child_z = effective_z_index(child.as_ref(), z_index);
+        let child_z = crate::scene_order::effective_z_index(child.as_ref(), z_index);
         let command_start = out.len();
         paint_subtree_for_filter(
             child.as_ref(),

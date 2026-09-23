@@ -78,7 +78,20 @@ impl TextAgent {
     /// Copies a widget's text-input snapshot onto the hidden input so
     /// mobile keyboards get the correct value/placeholder/read-only state.
     pub(crate) fn mirror(&self, widget: &dyn Widget) {
-        widget.sync_native_input(&self.input);
+        let Some(snapshot) = widget.native_text_input() else {
+            return;
+        };
+        self.input.set_value(&snapshot.value);
+        let _ = self
+            .input
+            .set_attribute("placeholder", &snapshot.placeholder);
+        self.input.set_read_only(snapshot.read_only);
+        if let Some(max_length) = snapshot.max_length {
+            self.input
+                .set_max_length(max_length.min(i32::MAX as usize) as i32);
+        } else {
+            self.input.set_max_length(-1);
+        }
     }
 
     /// Focuses the hidden input without letting Safari scroll the page -

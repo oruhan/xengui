@@ -3,17 +3,15 @@ use crate::{
     AnimationManager, Background, Color, Constraints, Cursor, Edges, ElementState, EventCtx,
     EventStatus, ImeEvent, InputEvent, Interaction, Key, KeyState, KeyboardEvent, LayoutBox,
     Length, MULTI_CLICK_DISTANCE_DP, MULTI_CLICK_INTERVAL, MeasureContext, MeasureResult,
-    ModifiersState, MouseButton, PaintContext, RectCommand, Size, Style, StyleBuilder, TextCommand,
-    Widget, WidgetBase, WidgetContent, WidgetId,
+    ModifiersState, MouseButton, NativeTextInputSnapshot, PaintContext, RectCommand, Size, Style,
+    StyleBuilder, TextCommand, Widget, WidgetBase, WidgetContent, WidgetId,
     constants::{DEFAULT_FONT_SIZE, DEFAULT_LINE_HEIGHT_RATIO},
-    widget::NativeTextInputSnapshot,
 };
 use smol_str::SmolStr;
 use std::cell::{Cell, RefCell};
 use std::sync::{Arc, Mutex};
 use unicode_segmentation::UnicodeSegmentation;
 use web_time::Instant;
-use xen_clipboard::Clipboard;
 
 type TextCallback = Box<dyn FnMut(&str, &mut EventCtx)>;
 
@@ -53,7 +51,6 @@ pub struct TextBox {
     focus_via_pointer: Cell<bool>,
     current_modifiers: Cell<ModifiersState>,
 
-    clipboard: Clipboard,
     // Clipboard reads are callback-based (required for WASM, where they're
     // promise-based), so a completed read is parked here and applied on
     // the next event this widget receives.
@@ -132,7 +129,6 @@ impl TextBox {
             last_click_pos: Cell::new((0.0, 0.0)),
             focus_via_pointer: Cell::new(false),
             current_modifiers: Cell::new(ModifiersState::default()),
-            clipboard: Clipboard::new(),
             pending_paste: Arc::new(Mutex::new(None)),
             on_change: None,
             on_submit: None,
@@ -634,9 +630,11 @@ impl TextBox {
         self.notify_change(ctx);
     }
 
-    fn copy_selection(&self) {
-        if let Some(text) = self.selected_text() {
-            self.clipboard.set_text(text, |_| {});
+    fn copy_selection(&self, ctx: &EventCtx) {
+        if let Some(text) = self.selected_text()
+            && let Err(error) = ctx.platform_services().clipboard().write_text(text)
+        {
+            log::error!("TextBox copy failed: {error}");
         }
     }
 
@@ -649,7 +647,10 @@ impl TextBox {
         let Some(text) = self.selected_text() else {
             return;
         };
-        self.clipboard.set_text(text, |_| {});
+        if let Err(error) = ctx.platform_services().clipboard().write_text(text) {
+            log::error!("TextBox cut copy failed: {error}");
+            return;
+        }
         self.push_undo_snapshot();
         self.delete_selection();
         self.notify_change(ctx);
@@ -657,16 +658,18 @@ impl TextBox {
 
     // Kicks off an async clipboard read; the result lands in `pending_paste`
     // and is applied by poll_clipboard_paste (called on the next event).
-    fn paste_from_clipboard(&mut self) {
+    fn paste_from_clipboard(&mut self, ctx: &EventCtx) {
         let pending = Arc::clone(&self.pending_paste);
-        self.clipboard.get_text(move |result| {
-            if let Ok(Some(text)) = result
-                && !text.is_empty()
-                && let Ok(mut guard) = pending.lock()
-            {
-                *guard = Some(text);
-            }
-        });
+        ctx.platform_services()
+            .clipboard()
+            .read_text(Box::new(move |result| {
+                if let Ok(Some(text)) = result
+                    && !text.is_empty()
+                    && let Ok(mut guard) = pending.lock()
+                {
+                    *guard = Some(text);
+                }
+            }));
     }
 
     fn poll_clipboard_paste(&mut self, ctx: &mut EventCtx) {
@@ -693,7 +696,7 @@ impl TextBox {
                     return;
                 }
                 Key::Character('c' | 'C') => {
-                    self.copy_selection();
+                    self.copy_selection(ctx);
                     return;
                 }
                 Key::Character('x' | 'X') => {
@@ -702,7 +705,7 @@ impl TextBox {
                     return;
                 }
                 Key::Character('v' | 'V') => {
-                    self.paste_from_clipboard();
+                    self.paste_from_clipboard(ctx);
                     // Applies immediately on backends that resolve synchronously.
                     self.poll_clipboard_paste(ctx);
                     self.base.dirty = true;
@@ -1567,13 +1570,6 @@ impl Widget for TextBox {
         self.selection_anchor = None;
         self.base.dirty = true;
         self.notify_change(ctx);
-    }
-
-    #[cfg(target_arch = "wasm32")]
-    fn sync_native_input(&self, input: &web_sys::HtmlInputElement) {
-        input.set_value(&self.content);
-        let _ = input.set_attribute("placeholder", &self.placeholder);
-        input.set_read_only(self.read_only);
     }
 }
 

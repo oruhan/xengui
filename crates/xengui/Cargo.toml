@@ -20,31 +20,10 @@ log = { workspace = true }
 web-time = { workspace = true }
 taffy = { workspace = true }
 image = { workspace = true }
-xen-clipboard = { workspace = true }
 xen-animation = { workspace = true }
 xen-svg = { workspace = true }
 xengui-icons = { workspace = true }
 unicode-segmentation = { workspace = true }
-
-[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-system-fonts = "0.1.2"
-
-[target.'cfg(target_arch = "wasm32")'.dependencies]
-web-sys = { version = "0.3", features = [
-    "Window",
-    "Document",
-    "Element",
-    "HtmlElement",
-    "Node",
-    "HtmlCanvasElement",
-    "HtmlInputElement",
-    "Navigator",
-    "KeyboardEvent",
-    "Event",
-    "MediaQueryList",
-    "MediaQueryListEvent",
-    "VisualViewport",
-] }
 
 [lints]
 workspace = true

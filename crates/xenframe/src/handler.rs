@@ -71,7 +71,7 @@ use xengui::{
     ElementState, EventCtx, EventStatus, InputEvent, Key, KeyState, MULTI_CLICK_DISTANCE_DP,
     MULTI_CLICK_INTERVAL, ModifiersState, MouseButton, Theme, any_wants_animation,
     clear_text_selection_recursive, dispatch_animation_tick, dispatch_hover_transition,
-    dispatch_positional, dispatch_to_path, find_widget_mut, hit_test_path,
+    dispatch_positional, dispatch_to_path, find_widget_mut,
     hooks::{self, set_redraw_handle},
     mark_tree_dirty, path_is_within, select_all_text_recursive, update_global_text_selection,
 };
@@ -87,8 +87,28 @@ fn renderer_error_requires_rebuild(error: &xengui_wgpu::RendererError) -> bool {
 }
 
 impl App {
+    fn report_renderer_diagnostic(&self, error: &xengui_wgpu::RendererError) {
+        if let Some(sink) = &self.config.diagnostics_sink {
+            sink(crate::AppDiagnostic::Renderer(error.clone()));
+        }
+    }
+
+    fn drain_backend_diagnostics(&mut self) {
+        let diagnostics = self
+            .renderer
+            .as_mut()
+            .map(xengui_wgpu::WgpuWindowRenderer::take_diagnostics)
+            .unwrap_or_default();
+        if let Some(sink) = &self.config.diagnostics_sink {
+            for diagnostic in diagnostics {
+                sink(crate::AppDiagnostic::Backend(diagnostic));
+            }
+        }
+    }
+
     #[cfg(not(target_arch = "wasm32"))]
     pub(crate) fn recover_renderer(&mut self, error: xengui_wgpu::RendererError) {
+        self.report_renderer_diagnostic(&error);
         if !renderer_error_requires_rebuild(&error) {
             log::error!("unrecoverable renderer error: {error}");
             return;
@@ -113,7 +133,10 @@ impl App {
                 window.request_redraw();
                 log::info!("renderer recovery succeeded");
             }
-            Err(recovery_error) => log::error!("renderer recovery failed: {recovery_error}"),
+            Err(recovery_error) => {
+                self.report_renderer_diagnostic(&recovery_error);
+                log::error!("renderer recovery failed: {recovery_error}");
+            }
         }
     }
 
@@ -121,6 +144,7 @@ impl App {
     pub(crate) fn recover_renderer(&mut self, error: xengui_wgpu::RendererError) {
         use crate::overlay::show_fatal_overlay;
 
+        self.report_renderer_diagnostic(&error);
         if !renderer_error_requires_rebuild(&error) {
             log::error!("unrecoverable renderer error: {error}");
             return;
@@ -132,6 +156,7 @@ impl App {
         let size = window.inner_size();
         let fonts = self.config.fonts.clone();
         let options = self.config.renderer;
+        let diagnostics_sink = self.config.diagnostics_sink.clone();
         self.renderer = None;
         log::warn!("recovering renderer after: {error}");
         wasm_bindgen_futures::spawn_local(async move {
@@ -148,6 +173,9 @@ impl App {
                     let _ = proxy.send_event(XenEvent::RendererReady(Box::new(renderer)));
                 }
                 Err(recovery_error) => {
+                    if let Some(sink) = &diagnostics_sink {
+                        sink(crate::AppDiagnostic::Renderer(recovery_error.clone()));
+                    }
                     let message = format!("xengui: renderer recovery failed\n\n{recovery_error}");
                     log::error!("{message}");
                     show_fatal_overlay(&message);
@@ -663,6 +691,7 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
                     window.request_redraw();
                 }
                 Err(e) => {
+                    self.report_renderer_diagnostic(&e);
                     log::info!("cannot start gpu pipeline: {}", e);
                     std::process::exit(1);
                 }
@@ -678,6 +707,7 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
                 let proxy_clone = proxy.clone();
                 let user_fonts = self.config.fonts.clone();
                 let renderer_options = self.config.renderer;
+                let diagnostics_sink = self.config.diagnostics_sink.clone();
                 let size = window_clone.inner_size();
 
                 wasm_bindgen_futures::spawn_local(async move {
@@ -698,6 +728,9 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
                                 proxy_clone.send_event(XenEvent::RendererReady(Box::new(renderer)));
                         }
                         Err(e) => {
+                            if let Some(sink) = &diagnostics_sink {
+                                sink(crate::AppDiagnostic::Renderer(e.clone()));
+                            }
                             let message = format!("xengui: renderer init failed\n\n{e}");
                             log::error!("{message}");
                             show_fatal_overlay(&message);
@@ -930,6 +963,7 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
                     if let Some(error) = render_error {
                         self.recover_renderer(error);
                     }
+                    self.drain_backend_diagnostics();
 
                     self.recalc_hover_at_cursor();
                     self.recheck_breakpoint();
@@ -1009,8 +1043,11 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
                         // Desktop resize events arrive in bursts. Keep the
                         // swapchain current immediately, but coalesce layout,
                         // paint and present into the next RedrawRequested.
-                        if let Some(renderer) = &mut self.renderer {
-                            renderer.reconfigure_surface(new_size.width, new_size.height);
+                        if let Some(renderer) = &mut self.renderer
+                            && let Err(error) =
+                                renderer.reconfigure_surface(new_size.width, new_size.height)
+                        {
+                            self.recover_renderer(error);
                         }
                         let scale_factor = self
                             .window
@@ -1074,7 +1111,7 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
                 let point = (position.x as f32, position.y as f32);
                 self.input.cursor_pos = Some(point);
 
-                let new_hover = hit_test_path(&self.root, point);
+                let new_hover = self.hit_test_at(point);
                 if new_hover != self.input.hovered_path {
                     let mut ctx = EventCtx::new();
                     dispatch_hover_transition(
@@ -1128,12 +1165,6 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
                     return;
                 };
 
-                if state == winit::event::ElementState::Pressed
-                    && button == winit::event::MouseButton::Left
-                {
-                    self.input.text_drag_anchor = Some(point);
-                }
-
                 // On release, target the widget that was actually pressed (mouse
                 // capture) rather than re-hit-testing the current cursor position -
                 // the cursor may have left that widget's bounds during a drag.
@@ -1143,8 +1174,23 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
                     self.input
                         .hovered_path
                         .clone()
-                        .or_else(|| hit_test_path(&self.root, point))
+                        .or_else(|| self.hit_test_at(point))
                 };
+
+                if state == winit::event::ElementState::Pressed
+                    && button == winit::event::MouseButton::Left
+                {
+                    self.input.text_drag_anchor = path.as_ref().and_then(|path| {
+                        xengui::ancestor_paths(path)
+                            .iter()
+                            .rev()
+                            .any(|ancestor| {
+                                find_widget_mut(&mut self.root, ancestor)
+                                    .is_some_and(|widget| widget.selectable_text_hit_test(point))
+                            })
+                            .then_some(point)
+                    });
+                }
 
                 if state == winit::event::ElementState::Pressed {
                     self.input
@@ -1240,7 +1286,7 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
                     .input
                     .hovered_path
                     .clone()
-                    .or_else(|| hit_test_path(&self.root, point));
+                    .or_else(|| self.hit_test_at(point));
 
                 if let Some(path) = &path {
                     let mut ctx = EventCtx::new();

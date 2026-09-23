@@ -94,8 +94,20 @@ pub struct App {
 }
 
 impl App {
+    pub(crate) fn hit_test_at(&self, point: (f32, f32)) -> Option<WidgetPath> {
+        self.renderer
+            .as_ref()
+            .map(|renderer| renderer.scene_order())
+            .filter(|scene| !scene.is_empty())
+            .map_or_else(
+                || hit_test_path(&self.root, point),
+                |scene| scene.hit_test(&self.root, point),
+            )
+    }
+
     pub fn new(config: AppConfig) -> Self {
         log::info!(target: "xengui", "app initialized");
+        xengui::set_platform_services(Rc::new(crate::services::HostPlatformServices::new()));
         xengui::set_ripple_config(config.ripple);
         let task_runtime = xengui::task::Runtime::new();
         task_runtime.activate();
@@ -309,7 +321,7 @@ impl App {
             return;
         };
 
-        let new_hover = hit_test_path(&self.root, point);
+        let new_hover = self.hit_test_at(point);
         if new_hover == self.input.hovered_path {
             return;
         }
@@ -357,9 +369,11 @@ impl App {
 
 impl App {
     #[cfg(not(target_os = "android"))]
-    pub fn run(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+    pub fn run(&mut self) -> Result<(), xengui::PlatformError> {
         self.task_runtime.activate();
-        let event_loop: EventLoop<XenEvent> = EventLoop::<XenEvent>::with_user_event().build()?;
+        let event_loop: EventLoop<XenEvent> = EventLoop::<XenEvent>::with_user_event()
+            .build()
+            .map_err(|error| xengui::PlatformError::Initialization(error.to_string()))?;
         event_loop.set_control_flow(ControlFlow::Wait);
 
         // Registered on every platform so the async executor can wake a
@@ -367,7 +381,9 @@ impl App {
         // browser-callback plumbing.
         self.event_proxy = Some(event_loop.create_proxy());
 
-        event_loop.run_app(self)?;
+        event_loop
+            .run_app(self)
+            .map_err(|error| xengui::PlatformError::Operation(error.to_string()))?;
         Ok(())
     }
 
@@ -376,17 +392,21 @@ impl App {
     pub fn run_android(
         &mut self,
         android_app: winit::platform::android::activity::AndroidApp,
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    ) -> Result<(), xengui::PlatformError> {
         use winit::platform::android::EventLoopBuilderExtAndroid;
 
         self.task_runtime.activate();
         let mut builder = EventLoop::<XenEvent>::with_user_event();
         builder.with_android_app(android_app);
-        let event_loop = builder.build()?;
+        let event_loop = builder
+            .build()
+            .map_err(|error| xengui::PlatformError::Initialization(error.to_string()))?;
         event_loop.set_control_flow(ControlFlow::Wait);
 
         self.event_proxy = Some(event_loop.create_proxy());
-        event_loop.run_app(self)?;
+        event_loop
+            .run_app(self)
+            .map_err(|error| xengui::PlatformError::Operation(error.to_string()))?;
 
         // Winit intentionally permits only one Android EventLoop per process.
         // Removing a NativeActivity task can return from `run_app` while the
@@ -528,7 +548,7 @@ impl App {
 
                 clear_text_selection_recursive(&mut self.root);
                 self.input.cursor_pos = Some(point);
-                let path = hit_test_path(&self.root, point);
+                let path = self.hit_test_at(point);
                 self.touch_pan_owner = None;
                 self.touch_start_point = Some(point);
                 self.touch_activation_cancelled = false;

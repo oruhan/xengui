@@ -9,6 +9,7 @@ use std::sync::Arc;
 use swash::FontRef;
 use swash::scale::{Render, ScaleContext, Source};
 use swash::zeno::Format;
+use xengui::FontError;
 use xengui::{VariableIconCommand, paint};
 
 #[repr(C)]
@@ -197,18 +198,19 @@ impl VariableIconPipeline {
     // swash only parses raw TTF/OTF outline tables, not WOFF2's own
     // compressed container - unpacks (and caches by font pointer) once
     // per distinct font instead of on every glyph rasterization.
-    fn decoded_font_bytes(&mut self, font: &'static [u8]) -> Arc<Vec<u8>> {
+    fn decoded_font_bytes(&mut self, font: &'static [u8]) -> Result<Arc<Vec<u8>>, FontError> {
         let key = font.as_ptr() as usize;
         if let Some(bytes) = self.decoded_fonts.get(&key) {
-            return bytes.clone();
+            return Ok(bytes.clone());
         }
 
         let decoded = if woff2_patched::decode::is_woff2(font) {
             match woff2_patched::decode::convert_woff2_to_ttf(&mut std::io::Cursor::new(font)) {
                 Ok(ttf) => ttf,
                 Err(err) => {
-                    log::error!("xengui-wgpu: failed to decode woff2 font: {err:?}");
-                    font.to_vec()
+                    return Err(FontError::InvalidData(format!(
+                        "WOFF2 decode failed: {err:?}"
+                    )));
                 }
             }
         } else {
@@ -217,7 +219,7 @@ impl VariableIconPipeline {
 
         let decoded = Arc::new(decoded);
         self.decoded_fonts.insert(key, decoded.clone());
-        decoded
+        Ok(decoded)
     }
 
     // Rasterizes (or reuses a cached rasterization of) the glyph a
@@ -228,7 +230,7 @@ impl VariableIconPipeline {
         device: &wgpu::Device,
         queue: &wgpu::Queue,
         cmd: &VariableIconCommand,
-    ) -> Option<GlyphKey> {
+    ) -> Result<Option<GlyphKey>, FontError> {
         let physical_size = cmd.size.1.max(cmd.size.0);
         let key = GlyphKey {
             font_ptr: cmd.font.as_ptr() as usize,
@@ -238,11 +240,13 @@ impl VariableIconPipeline {
         };
 
         if self.glyphs.contains_key(&key) {
-            return Some(key);
+            return Ok(Some(key));
         }
 
-        let font_bytes = self.decoded_font_bytes(cmd.font);
-        let font = FontRef::from_index(&font_bytes, 0)?;
+        let font_bytes = self.decoded_font_bytes(cmd.font)?;
+        let font = FontRef::from_index(&font_bytes, 0).ok_or_else(|| {
+            FontError::InvalidData("variable icon font has no face at index 0".into())
+        })?;
         let glyph_id = font.charmap().map(cmd.codepoint);
 
         if glyph_id == 0 {
@@ -250,7 +254,7 @@ impl VariableIconPipeline {
                 "xengui-wgpu: VariableIcon codepoint U+{:04X} not found in font",
                 cmd.codepoint as u32
             );
-            return None;
+            return Ok(None);
         }
 
         let variation_settings: Vec<(swash::Tag, f32)> = cmd
@@ -270,10 +274,13 @@ impl VariableIconPipeline {
 
         let image = Render::new(&[Source::Outline])
             .format(Format::Alpha)
-            .render(&mut scaler, glyph_id)?;
+            .render(&mut scaler, glyph_id);
+        let Some(image) = image else {
+            return Ok(None);
+        };
 
         if image.placement.width == 0 || image.placement.height == 0 {
-            return None;
+            return Ok(None);
         }
 
         let width = image.placement.width;
@@ -342,7 +349,7 @@ impl VariableIconPipeline {
             },
         );
 
-        Some(key)
+        Ok(Some(key))
     }
 
     pub fn draw_batch(
@@ -353,9 +360,9 @@ impl VariableIconPipeline {
         surface_width: u32,
         surface_height: u32,
         cmds: &[VariableIconCommand],
-    ) {
+    ) -> Result<(), FontError> {
         if cmds.is_empty() {
-            return;
+            return Ok(());
         }
 
         let inv_w = 2.0 / (surface_width.max(1) as f32);
@@ -368,7 +375,7 @@ impl VariableIconPipeline {
         self.keys.reserve(cmds.len());
 
         for cmd in cmds {
-            let Some(key) = self.ensure_glyph(device, queue, cmd) else {
+            let Some(key) = self.ensure_glyph(device, queue, cmd)? else {
                 self.keys.push(None);
                 continue;
             };
@@ -450,6 +457,7 @@ impl VariableIconPipeline {
             );
             vertex_cursor += VERTICES_PER_ICON;
         }
+        Ok(())
     }
 
     fn ensure_capacity(&mut self, device: &wgpu::Device, required: usize) {

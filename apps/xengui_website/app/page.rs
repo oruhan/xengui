@@ -33,6 +33,7 @@ fn code_window() -> View {
         .background(Color::NEUTRAL_950)
         .border(Border::all(1.0, Color::NEUTRAL_800).radius(16.0))
         .overflow_x(Overflow::Hidden)
+        .overflow_y(Overflow::Hidden)
         .box_shadow(
             BoxShadow::new(0.0, 18.0, 48.0, Color::BLACK.with_alpha(42)).direction(
                 ShadowDirection::Bottom
@@ -45,7 +46,7 @@ fn code_window() -> View {
                 .code_font("XenMono")
                 .copy_label("Kopyala")
                 .copied_label("Kopyalandı")
-                .border(Border::default())
+                .border(Border::none())
         )
         .child(
             Row::new()

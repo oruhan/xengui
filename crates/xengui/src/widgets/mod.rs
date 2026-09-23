@@ -53,7 +53,10 @@ pub use button::{Button, IconPosition};
 pub use checkbox::Checkbox;
 pub use code_block::{CodeBlock, CodeBlockTheme, CodeLanguage, SyntaxHighlighter, highlight_code};
 pub use context_menu::{ContextMenu, ContextMenuHandle, ContextMenuItem};
-pub use image::{Image, ImageSource, ObjectFit, image_source_from_bytes, image_source_from_rgba8};
+pub use image::{
+    Image, ImageSource, ObjectFit, image_source_from_bytes, image_source_from_rgba8,
+    image_source_from_uri,
+};
 pub use kbd::Kbd;
 pub use label::Label;
 pub use layout_sugar::{Column, Row};
@@ -78,6 +81,3 @@ pub use devtools_panel::*;
 pub use split_handle::*;
 pub use split_pane::*;
 pub use variable_icon::VariableIcon;
-
-#[cfg(not(target_arch = "wasm32"))]
-pub use image::image_source_from_path;

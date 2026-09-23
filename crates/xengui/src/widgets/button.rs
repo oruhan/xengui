@@ -89,17 +89,16 @@ impl Button {
         self
     }
 
-    /// Sets the icon's SVG source. Fails soft (icon stays empty) on invalid markup.
-    pub fn icon(mut self, svg_source: &str) -> Self {
-        match parse_svg(svg_source) {
-            Ok(document) => {
-                self.icon_triangles = Arc::new(tessellate_document(&document));
-                self.icon_document = Some(Arc::new(document));
-            }
-            Err(err) => log::error!("Button::icon parse error: {err}"),
-        }
+    /// Sets the icon's SVG source.
+    pub fn icon(mut self, svg_source: &str) -> Result<Self, crate::AssetError> {
+        let document = parse_svg(svg_source).map_err(|message| crate::AssetError::Parse {
+            kind: "SVG icon",
+            message,
+        })?;
+        self.icon_triangles = Arc::new(tessellate_document(&document));
+        self.icon_document = Some(Arc::new(document));
         self.mark_dirty();
-        self
+        Ok(self)
     }
 
     /// Overrides the icon's rendered size; otherwise the SVG's own viewBox size is used.

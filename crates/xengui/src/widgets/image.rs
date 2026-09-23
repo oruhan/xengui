@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 use crate::{
-    AnimationManager, Color, Constraints, EventCtx, EventStatus, ImageCommand, ImageData,
-    InputEvent, Interaction, LayoutBox, Length, MeasureContext, MeasureResult, PaintContext, Style,
-    StyleBuilder, Widget, WidgetBase, WidgetId,
+    AnimationManager, AssetError, Color, Constraints, EventCtx, EventStatus, ImageCommand,
+    ImageData, InputEvent, Interaction, LayoutBox, Length, MeasureContext, MeasureResult,
+    PaintContext, Style, StyleBuilder, Widget, WidgetBase, WidgetId,
 };
 use std::hash::{Hash, Hasher};
 use std::sync::Arc;
@@ -31,28 +31,34 @@ fn hash_bytes(bytes: &[u8]) -> u64 {
 }
 
 /// Returns or updates the `image_source_from_rgba8` value.
-pub fn image_source_from_rgba8(mut rgba: Vec<u8>, width: u32, height: u32) -> ImageSource {
+pub fn image_source_from_rgba8(
+    rgba: Vec<u8>,
+    width: u32,
+    height: u32,
+) -> Result<ImageSource, AssetError> {
     let expected_len = ((width as u64) * (height as u64) * 4) as usize;
     if rgba.len() != expected_len {
-        log::error!(
-            "image_source_from_rgba8: buffer size mismatch (expected {expected_len}, got {})",
-            rgba.len()
-        );
-        rgba.resize(expected_len, 0);
+        return Err(AssetError::InvalidBuffer {
+            expected: expected_len,
+            actual: rgba.len(),
+        });
     }
     let id = hash_bytes(&rgba);
-    Arc::new(ImageData {
+    Ok(Arc::new(ImageData {
         id,
         width,
         height,
         rgba,
-    })
+    }))
 }
 
 /// Returns or updates the `image_source_from_bytes` value.
-pub fn image_source_from_bytes(bytes: &[u8]) -> Result<ImageSource, String> {
+pub fn image_source_from_bytes(bytes: &[u8]) -> Result<ImageSource, AssetError> {
     let decoded = image::load_from_memory(bytes)
-        .map_err(|e| e.to_string())?
+        .map_err(|e| AssetError::Decode {
+            kind: "image",
+            message: e.to_string(),
+        })?
         .to_rgba8();
     let (width, height) = decoded.dimensions();
     let id = hash_bytes(bytes);
@@ -64,10 +70,15 @@ pub fn image_source_from_bytes(bytes: &[u8]) -> Result<ImageSource, String> {
     }))
 }
 
-#[cfg(not(target_arch = "wasm32"))]
-/// Returns or updates the `image_source_from_path` value.
-pub fn image_source_from_path(path: impl AsRef<std::path::Path>) -> Result<ImageSource, String> {
-    let bytes = std::fs::read(path).map_err(|e| e.to_string())?;
+/// Loads and decodes an image through a host-provided asset loader.
+pub fn image_source_from_uri(
+    uri: &crate::Uri,
+    loader: &dyn crate::AssetLoader,
+) -> Result<ImageSource, AssetError> {
+    let bytes = loader.load(uri).map_err(|error| AssetError::Load {
+        uri: uri.as_str().to_string(),
+        message: error.to_string(),
+    })?;
     image_source_from_bytes(&bytes)
 }
 
@@ -107,31 +118,21 @@ impl Image {
     }
 
     /// Returns or updates the `bytes` value.
-    pub fn bytes(mut self, bytes: &[u8]) -> Self {
-        match image_source_from_bytes(bytes) {
-            Ok(source) => {
-                self.source = Some(source);
-            }
-            Err(err) => log::error!("Image::bytes decode error: {err}"),
-        }
+    pub fn bytes(mut self, bytes: &[u8]) -> Result<Self, AssetError> {
+        self.source = Some(image_source_from_bytes(bytes)?);
         self.mark_dirty();
-        self
+        Ok(self)
     }
 
-    #[cfg(not(target_arch = "wasm32"))]
-    /// Returns or updates the `path` value.
-    pub fn path(mut self, path: impl AsRef<std::path::Path>) -> Self {
-        match image_source_from_path(path.as_ref()) {
-            Ok(source) => {
-                self.source = Some(source);
-            }
-            Err(err) => log::error!(
-                "Image::path('{}') decode error: {err}",
-                path.as_ref().display()
-            ),
-        }
+    /// Loads this image through a host-provided asset loader.
+    pub fn uri(
+        mut self,
+        uri: &crate::Uri,
+        loader: &dyn crate::AssetLoader,
+    ) -> Result<Self, AssetError> {
+        self.source = Some(image_source_from_uri(uri, loader)?);
         self.mark_dirty();
-        self
+        Ok(self)
     }
 
     /// Returns or updates the `object_fit` value.
@@ -196,6 +197,23 @@ impl Image {
 impl Default for Image {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+#[cfg(test)]
+mod error_tests {
+    use super::image_source_from_rgba8;
+    use crate::AssetError;
+
+    #[test]
+    fn invalid_rgba_length_is_observable() {
+        assert!(matches!(
+            image_source_from_rgba8(vec![0; 3], 1, 1),
+            Err(AssetError::InvalidBuffer {
+                expected: 4,
+                actual: 3
+            })
+        ));
     }
 }
 

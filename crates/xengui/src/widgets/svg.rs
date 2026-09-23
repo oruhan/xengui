@@ -1,17 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
 use crate::{
-    AnimationManager, Constraints, EventCtx, EventStatus, ImageCommand, ImageSource, InputEvent,
-    Interaction, LayoutBox, MeasureContext, MeasureResult, PaintContext, Style, StyleBuilder,
-    TriangleCommand, Widget, WidgetBase, WidgetId, image_source_from_rgba8,
+    AnimationManager, AssetError, Constraints, EventCtx, EventStatus, ImageCommand, ImageSource,
+    InputEvent, Interaction, LayoutBox, MeasureContext, MeasureResult, PaintContext, Style,
+    StyleBuilder, TriangleCommand, Widget, WidgetBase, WidgetId, image_source_from_rgba8,
     svg_compat::{IntoSvgColor, from_svg_color},
 };
 use smol_str::SmolStr;
 use std::sync::Arc;
-#[cfg(not(target_arch = "wasm32"))]
-use xen_svg::SvgImageSource;
 use xen_svg::{
-    PathCommand, SvgAttributes, SvgDocument, SvgDrawOp, SvgElement, SvgTriangle, Transform2D,
-    collect_draw_ops, parse_svg,
+    PathCommand, SvgAttributes, SvgDocument, SvgDrawOp, SvgElement, SvgImageSource, SvgTriangle,
+    Transform2D, collect_draw_ops, parse_svg,
 };
 
 macro_rules! impl_svg_attrs_builder {
@@ -327,39 +325,72 @@ fn transform_uniform_scale(t: Transform2D) -> f32 {
     (sx + sy) * 0.5
 }
 
-// Resolves any <image> href xen-svg's own parser couldn't decode (a bare
-// file path rather than a data: URI), reading it relative to the current
-// working directory - the same convention Image::path already uses.
-#[cfg(not(target_arch = "wasm32"))]
-fn resolve_document_images(document: &mut SvgDocument) {
-    document.resolve_images(
-        &mut (|href| {
-            let bytes = std::fs::read(href).ok()?;
-            let is_svg = href
-                .rsplit('.')
-                .next()
-                .is_some_and(|ext| ext.eq_ignore_ascii_case("svg"));
-
-            if is_svg {
-                let text = std::str::from_utf8(&bytes).ok()?;
-                parse_svg(text)
-                    .ok()
-                    .map(|doc| SvgImageSource::Svg(Box::new(doc)))
-            } else {
-                let decoded = image::load_from_memory(&bytes).ok()?.to_rgba8();
-                let (width, height) = decoded.dimensions();
-                Some(SvgImageSource::Raster {
-                    width,
-                    height,
-                    rgba: Arc::new(decoded.into_raw()),
-                })
+fn resolve_document_images_with_loader(
+    document: &mut SvgDocument,
+    loader: &dyn crate::AssetLoader,
+) -> Result<(), AssetError> {
+    let mut failure = None;
+    document.resolve_images(&mut |href| {
+        let uri = crate::Uri::new(href);
+        let bytes = match loader.load(&uri) {
+            Ok(bytes) => bytes,
+            Err(error) => {
+                failure = Some(AssetError::Load {
+                    uri: href.to_string(),
+                    message: error.to_string(),
+                });
+                return None;
             }
-        }),
-    );
+        };
+        let is_svg = href
+            .rsplit('.')
+            .next()
+            .is_some_and(|extension| extension.eq_ignore_ascii_case("svg"));
+        if is_svg {
+            match std::str::from_utf8(&bytes)
+                .map_err(|error| AssetError::InvalidUtf8(error.to_string()))
+                .and_then(|source| {
+                    parse_svg(source).map_err(|message| AssetError::Parse {
+                        kind: "SVG",
+                        message,
+                    })
+                }) {
+                Ok(mut nested) => {
+                    if let Err(error) = resolve_document_images_with_loader(&mut nested, loader) {
+                        failure = Some(error);
+                        None
+                    } else {
+                        Some(SvgImageSource::Svg(Box::new(nested)))
+                    }
+                }
+                Err(error) => {
+                    failure = Some(error);
+                    None
+                }
+            }
+        } else {
+            match image::load_from_memory(&bytes) {
+                Ok(decoded) => {
+                    let rgba = decoded.to_rgba8();
+                    let (width, height) = rgba.dimensions();
+                    Some(SvgImageSource::Raster {
+                        width,
+                        height,
+                        rgba: Arc::new(rgba.into_raw()),
+                    })
+                }
+                Err(error) => {
+                    failure = Some(AssetError::Decode {
+                        kind: "image",
+                        message: error.to_string(),
+                    });
+                    None
+                }
+            }
+        }
+    });
+    failure.map_or(Ok(()), Err)
 }
-
-#[cfg(target_arch = "wasm32")]
-fn resolve_document_images(_document: &mut SvgDocument) {}
 
 /// A vector-graphics widget rendering a small subset of SVG (path, rect,
 /// circle, line, image, group) through the existing triangle pipeline
@@ -397,28 +428,37 @@ impl Svg {
     }
 
     /// Parses a full `<svg>...</svg>` document string.
-    pub fn from_string(source: &str) -> Self {
+    pub fn from_string(source: &str) -> Result<Self, AssetError> {
         let mut svg = Self::new();
-        match parse_svg(source) {
-            Ok(mut document) => {
-                resolve_document_images(&mut document);
-                svg.set_document(document);
-            }
-            Err(err) => log::error!("Svg::from_string parse error: {err}"),
-        }
-        svg
+        let document = parse_svg(source).map_err(|message| AssetError::Parse {
+            kind: "SVG",
+            message,
+        })?;
+        svg.set_document(document);
+        Ok(svg)
     }
 
-    /// Parses raw UTF-8 SVG bytes; invalid UTF-8 or malformed markup logs
-    /// an error and leaves the widget empty, matching `Image::bytes`.
-    pub fn from_bytes(bytes: &[u8]) -> Self {
-        match std::str::from_utf8(bytes) {
-            Ok(source) => Self::from_string(source),
-            Err(err) => {
-                log::error!("Svg::from_bytes invalid utf-8: {err}");
-                Self::new()
-            }
-        }
+    /// Parses raw UTF-8 SVG bytes, returning malformed markup and encoding
+    /// failures to the caller.
+    pub fn from_bytes(bytes: &[u8]) -> Result<Self, AssetError> {
+        let source = std::str::from_utf8(bytes)
+            .map_err(|error| AssetError::InvalidUtf8(error.to_string()))?;
+        Self::from_string(source)
+    }
+
+    /// Parses SVG and resolves external image references through `loader`.
+    pub fn from_string_with_loader(
+        source: &str,
+        loader: &dyn crate::AssetLoader,
+    ) -> Result<Self, AssetError> {
+        let mut svg = Self::new();
+        let mut document = parse_svg(source).map_err(|message| AssetError::Parse {
+            kind: "SVG",
+            message,
+        })?;
+        resolve_document_images_with_loader(&mut document, loader)?;
+        svg.set_document(document);
+        Ok(svg)
     }
 
     /// Returns or updates the `key` value.
@@ -535,7 +575,8 @@ impl Svg {
                         size: img.size,
                         transform: img.transform,
                         opacity: img.opacity,
-                        source: image_source_from_rgba8((*img.rgba).clone(), img.width, img.height),
+                        source: image_source_from_rgba8((*img.rgba).clone(), img.width, img.height)
+                            .expect("SVG raster image dimensions were validated by the parser"),
                         clip: img.clip,
                     }),
                 })

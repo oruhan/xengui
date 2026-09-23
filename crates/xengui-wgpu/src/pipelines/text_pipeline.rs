@@ -8,7 +8,7 @@ use glyphon::{
 use std::collections::HashMap;
 use std::sync::Arc;
 use xengui::{
-    Background, Color, DEFAULT_LINE_HEIGHT_RATIO, FontStyle, FontWeight, MeasureResult,
+    Background, Color, DEFAULT_LINE_HEIGHT_RATIO, FontError, FontStyle, FontWeight, MeasureResult,
     RectCommand, SystemTheme, TextAlign, TextCommand, TextDecoration, TextMeasurer,
     constants::DEFAULT_FONT_SIZE,
 };
@@ -60,10 +60,12 @@ impl TextPipeline {
         surface_format: wgpu::TextureFormat,
         user_fonts: Vec<(String, Vec<u8>)>,
         sample_count: u32,
-    ) -> Result<Self, String> {
+    ) -> Result<Self, FontError> {
         #[cfg(target_arch = "wasm32")]
         if user_fonts.is_empty() {
-            return Err("WASM target requires at least one font supplied.".to_string());
+            return Err(FontError::InvalidData(
+                "WASM target requires at least one font supplied.".to_string(),
+            ));
         }
 
         let mut font_system = FontSystem::new();
@@ -92,7 +94,9 @@ impl TextPipeline {
             match name {
                 Some(n) => Some(n),
                 None => {
-                    return Err("Invalid fallback font provided for WASM context.".to_string());
+                    return Err(FontError::InvalidData(
+                        "Invalid fallback font provided for WASM context.".to_string(),
+                    ));
                 }
             }
         };
@@ -608,7 +612,7 @@ impl TextPipeline {
         view: &wgpu::TextureView,
         width: u32,
         height: u32,
-    ) -> Result<(), String> {
+    ) -> Result<(), FontError> {
         self.viewport.update(queue, Resolution { width, height });
 
         let text_areas: Vec<TextArea> = self
@@ -648,7 +652,7 @@ impl TextPipeline {
                 text_areas,
                 &mut self.swash_cache,
             )
-            .map_err(|e| e.to_string())?;
+            .map_err(|e| FontError::Atlas(e.to_string()))?;
 
         {
             let mut pass = encoder.begin_render_pass(
@@ -672,7 +676,7 @@ impl TextPipeline {
 
             renderer
                 .render(&self.atlas, &self.viewport, &mut pass)
-                .map_err(|e| e.to_string())?;
+                .map_err(|e| FontError::Render(e.to_string()))?;
         }
 
         self.pending.clear();

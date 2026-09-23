@@ -1314,7 +1314,7 @@ fn create_app() -> App {
 
 #[cfg(not(target_os = "android"))]
 pub fn run_desktop() -> Result<(), Box<dyn std::error::Error>> {
-    create_app().run()
+    Ok(create_app().run()?)
 }
 
 #[cfg(target_os = "android")]

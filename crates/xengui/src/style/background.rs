@@ -104,6 +104,17 @@ impl From<RadialGradient> for Background {
 }
 
 impl Background {
+    /// No visible background.
+    ///
+    /// This transparent explicit value can override a background from a
+    /// lower-priority style, unlike an unset `Option<Background>`.
+    pub const NONE: Self = Self::Color(Color::TRANSPARENT);
+
+    /// Returns an explicit background-free value suitable for style patches.
+    pub const fn none() -> Self {
+        Self::NONE
+    }
+
     // Single-color stand-in for call sites that only need one color
     // (fading, non-gradient fallback paths, etc). Uses the first stop.
     /// Returns or updates the `representative_color` value.

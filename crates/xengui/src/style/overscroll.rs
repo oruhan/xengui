@@ -4,7 +4,7 @@
 /// its scroll bounds.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub enum Overscroll {
-    /// Resolves to the framework default, currently [`Disabled`] on every
+    /// Resolves to the framework default, currently [`Self::Disabled`] on every
     /// native and WebAssembly target.
     #[default]
     Auto,

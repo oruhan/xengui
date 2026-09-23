@@ -163,16 +163,18 @@ xengui release check
 
 The CLI supersedes the former Python version-bump helper. Setup, platform-specific watch, and source-inventory scripts remain in `scripts/` because they serve separate workflows.
 
-Run the standard quality checks from the repository root:
+Install `cargo-deny` and the cross-platform targets once, then run every local
+quality gate from the repository root with one command:
 
 ```bash
-cargo fmt --all --check
-cargo check --workspace
-cargo test --workspace
-cargo clippy --workspace --all-targets -- -D warnings
+rustup target add wasm32-unknown-unknown aarch64-linux-android x86_64-linux-android
+cargo install --locked cargo-deny
+cargo xtask quality
 ```
 
-GPU availability and target-specific dependencies can affect native or WebAssembly checks. When changing rendering code, test both a native example and a browser build.
+The command checks formatting, Clippy, tests, rustdoc, the explicit WebAssembly,
+Android, and current desktop package groups, and dependency policy. CI runs the
+same command on Linux, Windows, and macOS to complete the native compile matrix.
 
 On Linux, a missing `alsa.pc` error means the distribution's ALSA development package and `pkg-config` must be installed before testing `xen-audio` or `pearl`.
 

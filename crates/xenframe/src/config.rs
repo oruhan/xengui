@@ -1,4 +1,17 @@
+use std::sync::Arc;
 use xengui::Theme;
+
+/// Structured runtime diagnostics delivered without relying on log parsing.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum AppDiagnostic {
+    /// A frame, surface, device, or backend operation failed.
+    Renderer(xengui_wgpu::RendererError),
+    /// A non-fatal backend fallback or explicit disablement occurred.
+    Backend(xengui::BackendDiagnostic),
+}
+
+/// Thread-safe application diagnostics callback.
+pub type DiagnosticsSink = Arc<dyn Fn(AppDiagnostic) + Send + Sync + 'static>;
 
 #[cfg(not(target_arch = "wasm32"))]
 use crate::WindowPosition;
@@ -24,6 +37,9 @@ pub struct AppConfig {
 
     /// GPU backend, presentation, and multisampling policy.
     pub renderer: xengui_wgpu::RendererOptions,
+
+    /// Optional structured diagnostics callback for runtime failures and fallbacks.
+    pub diagnostics_sink: Option<DiagnosticsSink>,
 
     /// Material pressed-state ripple policy.
     pub ripple: xengui::RippleConfig,
@@ -113,6 +129,7 @@ impl Default for AppConfig {
         Self {
             title: "XenGui App".to_string(),
             renderer: xengui_wgpu::RendererOptions::default(),
+            diagnostics_sink: None,
             ripple: xengui::RippleConfig::default(),
 
             #[cfg(not(target_arch = "wasm32"))]

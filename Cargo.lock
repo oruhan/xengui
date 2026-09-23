@@ -3313,17 +3313,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "system-fonts"
-version = "0.1.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "46ba78ea149d4bb0626dacad10aa789eedc83395889890a0e6e7ec69a4577442"
-dependencies = [
- "fontdb",
- "sys-locale",
- "web-sys",
-]
-
-[[package]]
 name = "taffy"
 version = "0.12.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4593,13 +4582,10 @@ dependencies = [
  "image 0.25.10",
  "log",
  "smol_str 0.3.6",
- "system-fonts",
  "taffy",
  "unicode-segmentation",
- "web-sys",
  "web-time",
  "xen-animation",
- "xen-clipboard",
  "xen-svg",
  "xengui-icons",
 ]
@@ -4694,6 +4680,10 @@ name = "xml-rs"
 version = "0.8.28"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3ae8337f8a065cfc972643663ea4279e04e7256de865aa66fe25cec5fb912d3f"
+
+[[package]]
+name = "xtask"
+version = "0.0.0"
 
 [[package]]
 name = "yazi"

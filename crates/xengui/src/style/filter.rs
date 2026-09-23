@@ -108,6 +108,9 @@ impl Filter {
 pub struct FilterChain(Vec<Filter>);
 
 impl FilterChain {
+    /// An explicit empty filter chain suitable for clearing state styles.
+    pub const NONE: Self = Self(Vec::new());
+
     /// Creates a value with its default configuration.
     pub const fn new() -> Self {
         Self(Vec::new())

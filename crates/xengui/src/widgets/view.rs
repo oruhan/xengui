@@ -1204,11 +1204,12 @@ impl View {
         let b = self.layout_box;
         let t = self.active_scrollbar().thickness;
         let full_h = if has_x { b.height - t } else { b.height };
+        let end_padding = t * 0.5;
         // Always reserve the same end padding whether or not arrow buttons
         // are actually drawn, so a touch scrollbar (no arrows) still keeps
         // its thumb clear of the track's rounded ends instead of running
         // flush edge-to-edge.
-        Some((b.y + t, (full_h - 2.0 * t).max(0.0)))
+        Some((b.y + end_padding, (full_h - 2.0 * end_padding).max(0.0)))
     }
 
     fn horizontal_track_bounds(&self) -> Option<(f32, f32)> {
@@ -1481,7 +1482,11 @@ impl View {
 
         let scroll_step = scroll_step * self.scale_factor.get();
 
-        let precision = matches!(delta, MouseScrollDelta::PixelDelta(..));
+        // Browsers report ordinary wheel input as PixelDelta too. It is not
+        // direct-manipulation input there, so run it through the same easing
+        // path as native mouse wheels instead of snapping immediately.
+        let precision =
+            matches!(delta, MouseScrollDelta::PixelDelta(..)) && !cfg!(target_arch = "wasm32");
         let (raw_dx, raw_dy) = match delta {
             MouseScrollDelta::LineDelta(x, y) => (-x * scroll_step, -y * scroll_step),
             MouseScrollDelta::PixelDelta(x, y) => (-x as f32, -y as f32),
@@ -2989,6 +2994,9 @@ impl Widget for View {
         } = event
             && self.handle_scrollbar_mouse(*state, *button, *position, ctx)
         {
+            if *state == ElementState::Pressed && *button == MouseButton::Left {
+                ctx.suppress_text_drag();
+            }
             return EventStatus::Handled;
         }
 
@@ -3519,6 +3527,42 @@ mod tests {
         );
         assert!(view.scrollbar_thumb_hovered.get());
         assert_eq!(view.target_scrollbar_thickness(), hover_thickness);
+    }
+
+    #[test]
+    fn vertical_track_uses_half_thickness_end_padding() {
+        let view = sized_view(
+            View::new().overflow_y(Overflow::Auto),
+            (100.0, 100.0),
+            (100.0, 400.0),
+        );
+        let thickness = view.active_scrollbar().thickness;
+        let (track_y, track_height) = view.vertical_track_bounds().expect("vertical track");
+
+        assert_eq!(track_y, thickness * 0.5);
+        assert_eq!(track_height, 100.0 - thickness);
+    }
+
+    #[test]
+    fn scrollbar_press_suppresses_text_drag_selection() {
+        let mut view = sized_view(
+            View::new().overflow_y(Overflow::Auto),
+            (100.0, 100.0),
+            (100.0, 400.0),
+        );
+        let thumb = view.vertical_thumb_hit_rect().expect("vertical thumb");
+        let mut ctx = EventCtx::new();
+        let status = view.event(
+            &InputEvent::MouseInput {
+                state: ElementState::Pressed,
+                button: MouseButton::Left,
+                position: (thumb.0 + thumb.2 * 0.5, thumb.1 + thumb.3 * 0.5),
+            },
+            &mut ctx,
+        );
+
+        assert_eq!(status, EventStatus::Handled);
+        assert!(ctx.take_suppress_text_drag());
     }
 
     #[test]

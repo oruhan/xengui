@@ -4,15 +4,25 @@ use crate::{
     Widget, cancel_auto_scroll_recursive, dispatch_hover_transition, dispatch_positional,
     hit_test_path, resolve_hover_cursor,
 };
+use std::rc::Rc;
 
 /// High-level pointer/keyboard/focus dispatcher built on top of the
 /// low-level primitives in `input.rs`. Platform crates (e.g. xenframe)
 /// can own a single `Dispatcher` instead of re-implementing hover,
 /// pointer-capture and focus bookkeeping themselves.
-#[derive(Default)]
 pub struct Dispatcher {
     /// The `state` value carried by this type.
     pub state: InputState,
+    platform_services: Rc<dyn crate::PlatformServices>,
+}
+
+impl Default for Dispatcher {
+    fn default() -> Self {
+        Self {
+            state: InputState::default(),
+            platform_services: crate::platform_services::default_platform_services(),
+        }
+    }
 }
 
 impl Dispatcher {
@@ -21,10 +31,22 @@ impl Dispatcher {
         Self::default()
     }
 
+    /// Creates a dispatcher whose event contexts use `services`.
+    pub fn with_platform_services(services: Rc<dyn crate::PlatformServices>) -> Self {
+        Self {
+            state: InputState::default(),
+            platform_services: services,
+        }
+    }
+
+    fn event_ctx(&self) -> EventCtx {
+        EventCtx::with_platform_services(Rc::clone(&self.platform_services))
+    }
+
     /// Updates hover state for the widget under `point` and forwards the
     /// move event to whichever widget currently has pointer capture.
     pub fn pointer_moved(&mut self, tree: &mut [Box<dyn Widget>], point: (f32, f32)) -> EventCtx {
-        let mut ctx = EventCtx::new();
+        let mut ctx = self.event_ctx();
         self.state.cursor_pos = Some(point);
 
         let new_hover = hit_test_path(tree, point);
@@ -69,7 +91,7 @@ impl Dispatcher {
         input_state: ElementState,
         button: MouseButton,
     ) -> EventCtx {
-        let mut ctx = EventCtx::new();
+        let mut ctx = self.event_ctx();
 
         // A press with any button other than Middle cancels any in-progress
         // AutoScroll gesture across the whole tree: a click landing on an
@@ -121,7 +143,7 @@ impl Dispatcher {
         event: KeyboardEvent,
         modifiers: ModifiersState,
     ) -> EventCtx {
-        let mut ctx = EventCtx::new();
+        let mut ctx = self.event_ctx();
         if let Some(path) = self.state.focus.focused_path().cloned() {
             dispatch_positional(
                 tree,
@@ -136,7 +158,7 @@ impl Dispatcher {
     /// Moves keyboard focus to the next (or previous) focusable widget,
     /// wrapping at the boundaries.
     pub fn advance_focus(&mut self, tree: &mut [Box<dyn Widget>], backward: bool) -> EventCtx {
-        let mut ctx = EventCtx::new();
+        let mut ctx = self.event_ctx();
         self.state.focus.advance(tree, backward, &mut ctx);
 
         ctx

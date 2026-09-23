@@ -114,28 +114,15 @@ impl Link {
             }));
     }
 
-    fn open_href(&self, _force_new_tab: bool) {
+    fn open_href(&self, force_new_tab: bool, ctx: &EventCtx) {
         let Some(href) = &self.href else {
             return;
         };
 
         let url = normalize_url(href);
-
-        #[cfg(target_arch = "wasm32")]
-        {
-            if let Some(window) = web_sys::window() {
-                let target = if self.target_blank || _force_new_tab {
-                    "_blank"
-                } else {
-                    "_self"
-                };
-                let _ = window.open_with_url_and_target(&url, target);
-            }
-        }
-
-        #[cfg(not(target_arch = "wasm32"))]
-        {
-            open_native(&url);
+        let uri = crate::Uri::new(url).with_new_context(self.target_blank || force_new_tab);
+        if let Err(error) = ctx.platform_services().open_uri(&uri) {
+            log::error!("Link open failed: {error}");
         }
     }
 
@@ -427,7 +414,7 @@ impl Widget for Link {
             && self.base.interaction.hovered
             && self.href.is_some()
         {
-            self.open_href(true);
+            self.open_href(true, ctx);
             return EventStatus::Handled;
         }
 
@@ -550,7 +537,7 @@ impl Widget for Link {
         let status = self.base.interaction.handle(event, ctx);
 
         if is_click {
-            self.open_href(false);
+            self.open_href(false, ctx);
         }
 
         if matches!(status, EventStatus::Handled) {
@@ -674,31 +661,5 @@ fn normalize_url(href: &str) -> String {
         href.to_string()
     } else {
         format!("https://{href}")
-    }
-}
-
-#[cfg(not(target_arch = "wasm32"))]
-fn open_native(url: &str) {
-    #[cfg(any(target_os = "android", target_os = "ios"))]
-    let _ = url;
-
-    #[cfg(target_os = "windows")]
-    {
-        let _ = std::process::Command::new("cmd")
-            .args(["/C", "start", "", url])
-            .spawn();
-    }
-    #[cfg(target_os = "macos")]
-    {
-        let _ = std::process::Command::new("open").arg(url).spawn();
-    }
-    #[cfg(any(
-        target_os = "linux",
-        target_os = "freebsd",
-        target_os = "openbsd",
-        target_os = "netbsd"
-    ))]
-    {
-        let _ = std::process::Command::new("xdg-open").arg(url).spawn();
     }
 }

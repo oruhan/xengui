@@ -2,7 +2,9 @@
 use crate::{SampleCount, WgpuPipelines};
 use std::fmt;
 use std::sync::{Arc, Mutex};
-use xengui::{FrameRenderer, SystemTheme, Widget};
+use xengui::{
+    BackendDiagnostic, BackendError, FrameRenderer, SystemTheme, UnsupportedFeaturePolicy, Widget,
+};
 
 fn widget_uses_backdrop(widget: &dyn Widget) -> bool {
     widget
@@ -124,6 +126,8 @@ pub struct RendererOptions {
     pub sample_count: SampleCount,
     /// Preferred number of frames queued by the presentation engine.
     pub desired_maximum_frame_latency: u32,
+    /// Behavior for authored effects unavailable in a custom backend.
+    pub unsupported_feature_policy: UnsupportedFeaturePolicy,
 }
 
 impl Default for RendererOptions {
@@ -149,6 +153,7 @@ impl Default for RendererOptions {
                 SampleCount::X4
             },
             desired_maximum_frame_latency: if cfg!(target_os = "android") { 1 } else { 2 },
+            unsupported_feature_policy: UnsupportedFeaturePolicy::Strict,
         }
     }
 }
@@ -165,6 +170,7 @@ pub enum RendererError {
     OutOfMemory(String),
     Validation(String),
     Internal(String),
+    Backend(BackendError),
 }
 
 impl fmt::Display for RendererError {
@@ -179,6 +185,7 @@ impl fmt::Display for RendererError {
             Self::OutOfMemory(message) => write!(f, "GPU out of memory: {message}"),
             Self::Validation(message) => write!(f, "GPU validation error: {message}"),
             Self::Internal(message) => write!(f, "internal GPU error: {message}"),
+            Self::Backend(error) => write!(f, "render backend failed: {error}"),
         }
     }
 }
@@ -290,7 +297,7 @@ impl WgpuWindowRenderer {
         width: u32,
         height: u32,
         user_fonts: Vec<(String, Vec<u8>)>,
-    ) -> Result<Self, String>
+    ) -> Result<Self, RendererError>
     where
         W: wgpu::WindowHandle + raw_window_handle::HasDisplayHandle + 'static,
     {
@@ -301,7 +308,6 @@ impl WgpuWindowRenderer {
             user_fonts,
             RendererOptions::default(),
         )
-        .map_err(|error| error.to_string())
     }
 
     #[cfg(not(target_arch = "wasm32"))]
@@ -366,7 +372,7 @@ impl WgpuWindowRenderer {
         width: u32,
         height: u32,
         user_fonts: Vec<(String, Vec<u8>)>,
-    ) -> Result<Self, String>
+    ) -> Result<Self, RendererError>
     where
         W: wgpu::WindowHandle + raw_window_handle::HasDisplayHandle + 'static,
     {
@@ -378,7 +384,6 @@ impl WgpuWindowRenderer {
             RendererOptions::default(),
         )
         .await
-        .map_err(|error| error.to_string())
     }
 
     #[cfg(target_arch = "wasm32")]
@@ -488,7 +493,7 @@ impl WgpuWindowRenderer {
             user_fonts,
             options.sample_count,
         )
-        .map_err(RendererError::PipelineCreation)?;
+        .map_err(RendererError::Backend)?;
 
         let alpha_mode = if surface_caps
             .alpha_modes
@@ -557,8 +562,23 @@ impl WgpuWindowRenderer {
         self.frame.is_animating()
     }
 
+    /// Returns the scene snapshot used to paint the latest presented frame.
+    pub fn scene_order(&self) -> &xengui::SceneOrder {
+        self.frame.scene_order()
+    }
+
     pub fn options(&self) -> RendererOptions {
         self.options
+    }
+
+    /// Returns the optional operations negotiated for this backend.
+    pub fn backend_capabilities(&self) -> xengui::BackendCapabilities {
+        xengui::BackendCapabilities::ALL
+    }
+
+    /// Drains structured non-fatal diagnostics reported by the backend.
+    pub fn take_diagnostics(&mut self) -> Vec<BackendDiagnostic> {
+        self.pipelines.take_diagnostics()
     }
 
     /// Drops only the native presentation surface while retaining the GPU
@@ -627,10 +647,8 @@ impl WgpuWindowRenderer {
         tree: &mut [Box<dyn Widget>],
         theme: SystemTheme,
         scale_factor: f32,
-    ) {
-        if let Err(error) = self.try_render_frame(tree, theme, scale_factor) {
-            log::error!("renderer frame failed: {error}");
-        }
+    ) -> Result<FrameOutcome, RendererError> {
+        self.try_render_frame(tree, theme, scale_factor)
     }
 
     pub fn try_render_frame(
@@ -747,15 +765,18 @@ impl WgpuWindowRenderer {
                 frame_width,
                 frame_height,
                 scale_factor,
+                self.options.unsupported_feature_policy,
             );
-            self.frame.render_frame(
-                tree,
-                &mut backend,
-                theme,
-                scale_factor,
-                frame_width,
-                frame_height,
-            );
+            self.frame
+                .render_frame(
+                    tree,
+                    &mut backend,
+                    theme,
+                    scale_factor,
+                    frame_width,
+                    frame_height,
+                )
+                .map_err(RendererError::Backend)?;
         }
 
         if use_scene_target {
@@ -788,10 +809,8 @@ impl WgpuWindowRenderer {
         scale_factor: f32,
         width: u32,
         height: u32,
-    ) {
-        if let Err(error) = self.try_resize(tree, theme, scale_factor, width, height) {
-            log::error!("renderer resize failed: {error}");
-        }
+    ) -> Result<Option<FrameOutcome>, RendererError> {
+        self.try_resize(tree, theme, scale_factor, width, height)
     }
 
     pub fn try_resize(
@@ -822,7 +841,10 @@ impl WgpuWindowRenderer {
     /// sync immediately while the actual (expensive) redraw is deferred to
     /// a single coalesced `RedrawRequested`, so the GPU never has to submit
     /// and present a frame per intermediate resize step.
-    pub fn reconfigure_surface(&mut self, width: u32, height: u32) {
+    pub fn reconfigure_surface(&mut self, width: u32, height: u32) -> Result<(), RendererError> {
+        if let Some(error) = self.take_gpu_error() {
+            return Err(error);
+        }
         log::info!(
             "reconfigure_surface: {}x{} at {:?}",
             width,
@@ -831,7 +853,7 @@ impl WgpuWindowRenderer {
         );
         if width == 0 || height == 0 || (width == self.config.width && height == self.config.height)
         {
-            return;
+            return Ok(());
         }
         self.config.width = width;
         self.config.height = height;
@@ -839,5 +861,6 @@ impl WgpuWindowRenderer {
             surface.configure(&self.device, &self.config);
         }
         self.frame.resize();
+        self.take_gpu_error().map_or(Ok(()), Err)
     }
 }

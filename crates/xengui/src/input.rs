@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 use crate::{Cursor, Widget, WidgetPath, WidgetPathSegment};
-use std::future::Future;
+use std::{future::Future, rc::Rc};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 /// Available `KeyState` choices.
@@ -341,7 +341,6 @@ pub enum EventPhase {
     Bubble,
 }
 
-#[derive(Default)]
 /// Data and behavior represented by `EventCtx`.
 pub struct EventCtx {
     redraw_requested: bool,
@@ -356,12 +355,44 @@ pub struct EventCtx {
     phase: Option<EventPhase>,
     event_target: Option<WidgetPath>,
     current_target: Option<WidgetPath>,
+    platform_services: Rc<dyn crate::PlatformServices>,
+}
+
+impl Default for EventCtx {
+    fn default() -> Self {
+        Self {
+            redraw_requested: false,
+            cursor_icon: None,
+            focus_requested: false,
+            focus_released: false,
+            focus_target: None,
+            clear_focus: false,
+            suppress_text_drag: false,
+            phase: None,
+            event_target: None,
+            current_target: None,
+            platform_services: crate::platform_services::default_platform_services(),
+        }
+    }
 }
 
 impl EventCtx {
     /// Creates a value with its default configuration.
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// Creates an event context backed by services from an embedding host.
+    pub fn with_platform_services(services: Rc<dyn crate::PlatformServices>) -> Self {
+        Self {
+            platform_services: services,
+            ..Self::default()
+        }
+    }
+
+    /// Returns the services supplied by the embedding host.
+    pub fn platform_services(&self) -> &dyn crate::PlatformServices {
+        self.platform_services.as_ref()
     }
 
     /// Spawns a future on the framework's GUI-thread executor - shorthand
@@ -494,51 +525,7 @@ pub fn find_widget_mut<'a>(
 
 /// Returns or updates the `hit_test_path` value.
 pub fn hit_test_path(tree: &[Box<dyn Widget>], point: (f32, f32)) -> Option<WidgetPath> {
-    hit_test_children(tree, point, 0, &WidgetPath::new())
-}
-
-// Tests widgets in the same stacking order FrameRenderer paints them: sorted
-// by z_index (inherited from `parent_z` when unset), highest first - so a
-// widget with a higher z_index (e.g. a sticky header) can intercept a hit
-// even when it's earlier in the sibling list than overlapping content.
-fn hit_test_children(
-    widgets: &[Box<dyn Widget>],
-    point: (f32, f32),
-    parent_z: i32,
-    parent_path: &WidgetPath,
-) -> Option<WidgetPath> {
-    let mut order: Vec<usize> = (0..widgets.len()).collect();
-    order.sort_by_key(|&i| widgets[i].computed_style().z_index.unwrap_or(parent_z));
-
-    for &i in order.iter().rev() {
-        let widget = &widgets[i];
-        let mut path = parent_path.clone();
-        path.push(widget.as_ref(), i);
-        let z = widget.computed_style().z_index.unwrap_or(parent_z);
-        if let Some(hit) = hit_test_recursive(widget.as_ref(), &path, point, z) {
-            return Some(hit);
-        }
-    }
-    None
-}
-
-fn hit_test_recursive(
-    widget: &dyn Widget,
-    path: &WidgetPath,
-    point: (f32, f32),
-    z: i32,
-) -> Option<WidgetPath> {
-    if !widget.hit_test(point) {
-        return None;
-    }
-
-    if !widget.blocks_children_hit_test(point)
-        && let Some(hit) = hit_test_children(widget.children(), point, z, path)
-    {
-        return Some(hit);
-    }
-
-    Some(path.clone())
+    crate::SceneOrder::build(tree, 1.0).hit_test(tree, point)
 }
 
 /// Collects the paths of every active, focusable widget in the tree in

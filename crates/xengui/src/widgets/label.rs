@@ -358,18 +358,17 @@ impl Widget for Label {
                 position,
             } = event
         {
-            let padding_left = self
-                .base
-                .computed_style
-                .padding
-                .unwrap_or_default()
-                .left
-                .to_physical(self.scale_factor.get());
-            let local_x = position.0 - self.layout_box.x - padding_left;
-            let idx = self.index_for_offset(local_x);
-
             match state {
-                ElementState::Pressed => {
+                ElementState::Pressed if self.selectable_text_hit_test(*position) => {
+                    let padding_left = self
+                        .base
+                        .computed_style
+                        .padding
+                        .unwrap_or_default()
+                        .left
+                        .to_physical(self.scale_factor.get());
+                    let local_x = position.0 - self.layout_box.x - padding_left;
+                    let idx = self.index_for_offset(local_x);
                     let now = Instant::now();
                     let (last_x, last_y) = self.last_click_pos.get();
                     let click_distance = MULTI_CLICK_DISTANCE_DP * self.scale_factor.get();
@@ -411,6 +410,7 @@ impl Widget for Label {
                         }
                     }
                 }
+                ElementState::Pressed => self.dragging.set(false),
                 ElementState::Released => {
                     self.dragging.set(false);
                 }
@@ -441,6 +441,22 @@ impl Widget for Label {
 
     fn selectable_text(&self) -> Option<&str> {
         self.selectable.then_some(self.content.as_str())
+    }
+
+    fn selectable_text_hit_test(&self, point: (f32, f32)) -> bool {
+        if !self.selectable || self.content.is_empty() {
+            return false;
+        }
+        let padding = self.base.computed_style.padding.unwrap_or_default();
+        let scale_factor = self.scale_factor.get();
+        let (width, height) = self.content_size.get();
+        LayoutBox {
+            x: self.layout_box.x + padding.left.to_physical(scale_factor),
+            y: self.layout_box.y + padding.top.to_physical(scale_factor),
+            width,
+            height,
+        }
+        .contains_rounded(point, 0.0)
     }
 
     fn text_selection(&self) -> Option<(usize, usize)> {
@@ -548,5 +564,21 @@ mod tests {
 
         assert!(label.base.interaction.on_click.is_some());
         assert_eq!(label.base.interaction.ripple_overrides.enabled, Some(false));
+    }
+
+    #[test]
+    fn selectable_label_rejects_unused_layout_space() {
+        let mut label = Label::new().label("abc").selectable(true);
+        label.content_size.set((30.0, 20.0));
+        label.layout(LayoutBox {
+            x: 10.0,
+            y: 20.0,
+            width: 100.0,
+            height: 50.0,
+        });
+
+        assert!(label.selectable_text_hit_test((25.0, 30.0)));
+        assert!(!label.selectable_text_hit_test((50.0, 30.0)));
+        assert!(!label.selectable_text_hit_test((25.0, 45.0)));
     }
 }

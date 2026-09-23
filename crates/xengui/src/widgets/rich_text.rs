@@ -686,12 +686,15 @@ impl Widget for RichText {
                 let end = selection_end.min(line.end_char);
                 let start_x = Self::line_x_at(line, start);
                 let end_x = Self::line_x_at(line, end);
+                if end_x <= start_x {
+                    continue;
+                }
                 ctx.draw_rect(RectCommand {
                     position: (
                         origin_x + start_x,
                         origin_y + line_index as f32 * line_height,
                     ),
-                    size: ((end_x - start_x).max(2.0 * sf), line_height.max(1.0)),
+                    size: (end_x - start_x, line_height.max(1.0)),
                     background: Some(Background::Color(
                         style
                             .selection_background
@@ -785,9 +788,9 @@ impl Widget for RichText {
                 position,
             } = event
         {
-            let idx = self.index_for_point(*position);
             match state {
-                ElementState::Pressed => {
+                ElementState::Pressed if self.selectable_text_hit_test(*position) => {
+                    let idx = self.index_for_point(*position);
                     let now = Instant::now();
                     let (last_x, last_y) = self.last_click_pos.get();
                     let click_distance = MULTI_CLICK_DISTANCE_DP * self.scale_factor.get();
@@ -827,6 +830,7 @@ impl Widget for RichText {
                         }
                     }
                 }
+                ElementState::Pressed => self.dragging.set(false),
                 ElementState::Released => self.dragging.set(false),
             }
             self.base.dirty = true;
@@ -851,6 +855,25 @@ impl Widget for RichText {
 
     fn selectable_text(&self) -> Option<&str> {
         self.selectable.then_some(self.plain_text.as_str())
+    }
+
+    fn selectable_text_hit_test(&self, point: (f32, f32)) -> bool {
+        if !self.selectable || self.plain_text.is_empty() {
+            return false;
+        }
+        let padding = self.base.computed_style.padding.unwrap_or_default();
+        let scale_factor = self.scale_factor.get();
+        let local_x = point.0 - self.layout_box.x - padding.left.to_physical(scale_factor);
+        let local_y = point.1 - self.layout_box.y - padding.top.to_physical(scale_factor);
+        let line_height = self.line_height.get();
+        if local_x < 0.0 || local_y < 0.0 || line_height <= 0.0 {
+            return false;
+        }
+        let line_index = (local_y / line_height).floor() as usize;
+        self.lines
+            .borrow()
+            .get(line_index)
+            .is_some_and(|line| line.width > 0.0 && local_x <= line.width)
     }
 
     fn text_selection(&self) -> Option<(usize, usize)> {
@@ -1042,6 +1065,10 @@ mod tests {
         assert_eq!(result.height, 40.0);
         assert_eq!(result.width, 40.0);
         assert_eq!(rich_text.text_index_at((21.0, 25.0)), 5);
+        assert!(rich_text.selectable_text_hit_test((10.0, 5.0)));
+        assert!(!rich_text.selectable_text_hit_test((30.0, 5.0)));
+        assert!(rich_text.selectable_text_hit_test((30.0, 25.0)));
+        assert!(!rich_text.selectable_text_hit_test((10.0, 45.0)));
         rich_text.set_text_selection(Some((1, 6)));
         assert_eq!(rich_text.text_selection(), Some((1, 6)));
         assert_eq!(rich_text.selectable_text(), Some("ab\n  cd"));

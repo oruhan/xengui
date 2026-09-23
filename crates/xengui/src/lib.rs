@@ -37,6 +37,7 @@ pub mod devtools;
 pub mod dispatcher;
 /// Programmatic actions targeting widgets by identifier.
 pub mod dom;
+mod errors;
 /// Runtime-owned keyboard focus state and transitions.
 pub mod focus;
 /// Component state, effects, and asynchronous resource hooks.
@@ -53,12 +54,16 @@ pub mod macros;
 pub mod paint;
 /// Target capability detection.
 pub mod platform;
+/// Host-provided clipboard, URI, text-input, asset, accessibility, and redraw services.
+pub mod platform_services;
 /// Keyed widget-tree reconciliation.
 pub mod reconciler;
 /// Redraw scheduling abstraction.
 pub mod redraw;
 /// Material pressed-state ripple feedback and platform policy.
 pub mod ripple;
+/// Immutable paint ordering and hit-test geometry snapshots.
+pub mod scene_order;
 /// Platform-independent accessibility semantics tree.
 pub mod semantics;
 /// Theme, layout, typography, and visual style values.
@@ -101,6 +106,7 @@ pub use widget_base::WidgetBase;
 pub use constants::*;
 pub use context::{ContextGuard, provide_context, use_context, with_context};
 pub use dispatcher::Dispatcher;
+pub use errors::{AssetError, FontError, PlatformError};
 pub use focus::FocusManager;
 pub use input::{
     InputEvent, Key, KeyState, any_wants_animation, dispatch_animation_tick, find_widget_mut,
@@ -109,8 +115,10 @@ pub use platform::{
     SafeAreaInsets, is_touch_platform, safe_area_insets, set_is_touch_platform,
     set_safe_area_insets,
 };
+pub use platform_services::*;
 pub use redraw::RedrawRequester;
 pub use ripple::{RippleConfig, RipplePlatforms, ripple_config, set_ripple_config};
+pub use scene_order::SceneOrder;
 pub use semantics::*;
 pub use style::{
     Border, BoxShadow, BoxSizing, Color, Cursor, Edges, FlexDirection, FlexWrap, FontStyle,
@@ -124,6 +132,3 @@ pub use task::spawn_blocking;
 pub use types::*;
 pub use widgets::*;
 pub use xen_svg::{SvgColor, SvgDocument, SvgElement, Transform2D};
-
-#[cfg(not(target_arch = "wasm32"))]
-pub use widgets::image_source_from_path;

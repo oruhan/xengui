@@ -32,9 +32,27 @@ impl Default for Border {
 }
 
 impl Border {
+    /// No visible border.
+    ///
+    /// Unlike `Option::None`, this is an explicit value and therefore clears
+    /// a border supplied by a lower-priority style when used in a state patch.
+    pub const NONE: Self = Self {
+        top: Length::px(0.0),
+        right: Length::px(0.0),
+        bottom: Length::px(0.0),
+        left: Length::px(0.0),
+        color: Color::TRANSPARENT,
+        radius: None,
+    };
+
     /// Creates a value with its default configuration.
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// Returns an explicit border-free value suitable for style patches.
+    pub const fn none() -> Self {
+        Self::NONE
     }
 
     /// Returns or updates the `all` value.

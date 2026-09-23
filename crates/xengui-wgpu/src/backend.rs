@@ -5,9 +5,10 @@ use crate::pipelines::{
     TrianglePipeline, VariableIconPipeline,
 };
 use xengui::{
-    BoxShadowCommand, Color, CompositedCommand, DrawCommand, FilterChain, ImageCommand,
-    RectCommand, RenderBackend, RippleCommand, StrokeCommand, SystemTheme, TextCommand,
-    TextMeasurer, TriangleCommand, VariableIconCommand,
+    BackendCapabilities, BackendDiagnostic, BackendError, BoxShadowCommand, Color,
+    CompositedCommand, DrawCommand, FilterChain, ImageCommand, RectCommand, RenderBackend,
+    RippleCommand, StrokeCommand, SystemTheme, TextCommand, TextMeasurer, TriangleCommand,
+    UnsupportedFeaturePolicy, VariableIconCommand,
 };
 
 /// Owns the four wgpu render pipelines xengui needs, built once against a
@@ -41,6 +42,7 @@ pub struct WgpuPipelines {
     triangle_msaa_view: Option<wgpu::TextureView>,
     triangle_msaa_width: u32,
     triangle_msaa_height: u32,
+    diagnostics: Vec<BackendDiagnostic>,
 }
 
 impl WgpuPipelines {
@@ -51,7 +53,7 @@ impl WgpuPipelines {
         surface_format: wgpu::TextureFormat,
         user_fonts: Vec<(String, Vec<u8>)>,
         requested_samples: crate::SampleCount,
-    ) -> Result<Self, String> {
+    ) -> Result<Self, BackendError> {
         // Tessellated SVG triangles (icons, checkmarks) have no analytic AA
         // of their own the way the rect/image SDF pipelines do, so the
         // configured MSAA level applies to their dedicated target. Every
@@ -88,7 +90,8 @@ impl WgpuPipelines {
             triangle_offscreen: TrianglePipeline::new(device, surface_format, 1),
             stroke: StrokePipeline::new(device, surface_format, 1),
             image: ImagePipeline::new(device, surface_format, 1),
-            text: TextPipeline::new(device, queue, surface_format, user_fonts, 1)?,
+            text: TextPipeline::new(device, queue, surface_format, user_fonts, 1)
+                .map_err(BackendError::Font)?,
             variable_icon: VariableIconPipeline::new(device, surface_format, 1),
             postprocess: PostProcessEngine::new(device, surface_format),
             surface_format,
@@ -99,6 +102,7 @@ impl WgpuPipelines {
             triangle_msaa_view: None,
             triangle_msaa_width: 0,
             triangle_msaa_height: 0,
+            diagnostics: Vec::new(),
             scene_texture,
             scene_view,
             scene_width: 0,
@@ -203,6 +207,10 @@ impl WgpuPipelines {
         self.sample_count
     }
 
+    pub fn take_diagnostics(&mut self) -> Vec<BackendDiagnostic> {
+        std::mem::take(&mut self.diagnostics)
+    }
+
     #[allow(clippy::too_many_arguments)]
     pub fn begin_frame<'a>(
         &'a mut self,
@@ -214,6 +222,7 @@ impl WgpuPipelines {
         width: u32,
         height: u32,
         scale_factor: f32,
+        unsupported_feature_policy: UnsupportedFeaturePolicy,
     ) -> WgpuFrame<'a> {
         log::trace!("WgpuPipelines::begin_frame size={width}x{height} scale_factor={scale_factor}");
 
@@ -248,6 +257,7 @@ impl WgpuPipelines {
             background: Color::TRANSPARENT,
             scale_factor,
             shape_pass_open: false,
+            unsupported_feature_policy,
         }
     }
 }
@@ -266,6 +276,7 @@ pub struct WgpuFrame<'a> {
     background: Color,
     scale_factor: f32,
     shape_pass_open: bool,
+    unsupported_feature_policy: UnsupportedFeaturePolicy,
 }
 
 struct RenderTarget<'a> {
@@ -282,7 +293,7 @@ impl<'a> WgpuFrame<'a> {
         bounds: (f32, f32, f32, f32),
         clip_rect: Option<(f32, f32, f32, f32)>,
         target: RenderTarget<'_>,
-    ) {
+    ) -> Result<(), BackendError> {
         let (bx, by, bw, bh) = bounds;
         let (pad_left, pad_top, pad_right, pad_bottom) = box_shadow_overflow(cmds, bounds);
         let cap_x = bx - pad_left;
@@ -300,7 +311,7 @@ impl<'a> WgpuFrame<'a> {
             self.pipelines
                 .postprocess
                 .acquire_capture_texture(self.device, width, height);
-        self.paint_subtree_to_offscreen(&translated, &source_view, width, height);
+        self.paint_subtree_to_offscreen(&translated, &source_view, width, height)?;
 
         let filtered = self.pipelines.postprocess.apply(
             self.device,
@@ -321,7 +332,7 @@ impl<'a> WgpuFrame<'a> {
         let Some((destination, source_uv)) =
             clipped_composite_rect(raw_destination, target.width as f32, target.height as f32)
         else {
-            return;
+            return Ok(());
         };
         self.pipelines.postprocess.composite(
             self.device,
@@ -336,6 +347,7 @@ impl<'a> WgpuFrame<'a> {
             source_uv,
             [0.0; 4],
         );
+        Ok(())
     }
 
     fn draw_composited_to_target(
@@ -344,9 +356,9 @@ impl<'a> WgpuFrame<'a> {
         target_view: &wgpu::TextureView,
         target_width: u32,
         target_height: u32,
-    ) {
+    ) -> Result<(), BackendError> {
         if command.commands.is_empty() || command.scale.abs() < f32::EPSILON {
-            return;
+            return Ok(());
         }
 
         // Align the capture to whole texels and keep a transparent texel on
@@ -370,7 +382,7 @@ impl<'a> WgpuFrame<'a> {
             source_width,
             source_height,
         );
-        self.paint_subtree_to_offscreen(&translated, &source_view, source_width, source_height);
+        self.paint_subtree_to_offscreen(&translated, &source_view, source_width, source_height)?;
 
         let scale_rect = |rect: (f32, f32, f32, f32)| {
             let map = |x: f32, y: f32| {
@@ -392,7 +404,7 @@ impl<'a> WgpuFrame<'a> {
         let Some((destination, source_uv)) =
             clipped_composite_rect(destination, target_width as f32, target_height as f32)
         else {
-            return;
+            return Ok(());
         };
 
         self.pipelines.postprocess.composite(
@@ -408,6 +420,7 @@ impl<'a> WgpuFrame<'a> {
             source_uv,
             [0.0; 4],
         );
+        Ok(())
     }
 
     // Every frame always starts from the background color, regardless of
@@ -475,7 +488,7 @@ impl<'a> WgpuFrame<'a> {
         target_view: &wgpu::TextureView,
         target_width: u32,
         target_height: u32,
-    ) {
+    ) -> Result<(), BackendError> {
         #[derive(PartialEq, Clone, Copy)]
         enum RunKind {
             Rect,
@@ -652,14 +665,17 @@ impl<'a> WgpuFrame<'a> {
                     }
                     Some(RunKind::VariableIcon) => {
                         let mut pass = shape_pass!();
-                        self.pipelines.variable_icon.draw_batch(
-                            self.device,
-                            self.queue,
-                            &mut pass,
-                            target_width,
-                            target_height,
-                            &variable_icon_buf,
-                        );
+                        self.pipelines
+                            .variable_icon
+                            .draw_batch(
+                                self.device,
+                                self.queue,
+                                &mut pass,
+                                target_width,
+                                target_height,
+                                &variable_icon_buf,
+                            )
+                            .map_err(BackendError::Font)?;
                     }
                     Some(RunKind::BoxShadow) => {
                         if !cleared {
@@ -679,16 +695,17 @@ impl<'a> WgpuFrame<'a> {
                         if !cleared {
                             let _ = shape_pass!();
                         }
-                        if let Err(err) = self.pipelines.text.flush(
-                            self.device,
-                            self.queue,
-                            self.encoder,
-                            target_view,
-                            target_width,
-                            target_height,
-                        ) {
-                            log::warn!("xengui-wgpu: filtered subtree text flush failed: {err}");
-                        }
+                        self.pipelines
+                            .text
+                            .flush(
+                                self.device,
+                                self.queue,
+                                self.encoder,
+                                target_view,
+                                target_width,
+                                target_height,
+                            )
+                            .map_err(BackendError::Font)?;
                         let decorations = self.pipelines.text.take_decorations();
                         if !decorations.is_empty() {
                             let mut pass = shape_pass!();
@@ -785,7 +802,7 @@ impl<'a> WgpuFrame<'a> {
                         target_view,
                         target_width,
                         target_height,
-                    );
+                    )?;
                 }
                 DrawCommand::Content(nested) => {
                     flush_run!();
@@ -798,7 +815,7 @@ impl<'a> WgpuFrame<'a> {
                         target_view,
                         target_width,
                         target_height,
-                    );
+                    )?;
                 }
                 // paint_subtree_for_filter (xengui core) never records a
                 // nested Filtered command - it inlines every descendant's
@@ -821,12 +838,32 @@ impl<'a> WgpuFrame<'a> {
                             width: target_width,
                             height: target_height,
                         },
-                    );
+                    )?;
                 }
                 // An isolated filtered subtree has no "behind" content of
-                // its own to snapshot, so a nested backdrop-filter inside
-                // it is skipped - its own background/children still paint.
-                DrawCommand::BackdropFilter(_) => {}
+                // its own to snapshot. Apply the negotiated policy instead
+                // of silently dropping the authored effect.
+                DrawCommand::BackdropFilter(_) => match self.unsupported_feature_policy {
+                    UnsupportedFeaturePolicy::Strict => {
+                        return Err(BackendError::UnsupportedFeature {
+                            feature: xengui::BackendFeature::BackdropFilter,
+                        });
+                    }
+                    UnsupportedFeaturePolicy::Fallback => {
+                        self.pipelines
+                            .diagnostics
+                            .push(BackendDiagnostic::FeatureFallback {
+                                feature: xengui::BackendFeature::BackdropFilter,
+                            })
+                    }
+                    UnsupportedFeaturePolicy::Disabled => {
+                        self.pipelines
+                            .diagnostics
+                            .push(BackendDiagnostic::FeatureDisabled {
+                                feature: xengui::BackendFeature::BackdropFilter,
+                            })
+                    }
+                },
             }
         }
         flush_run!();
@@ -836,10 +873,23 @@ impl<'a> WgpuFrame<'a> {
         }
 
         let _ = cleared;
+        Ok(())
     }
 }
 
 impl<'a> RenderBackend for WgpuFrame<'a> {
+    fn capabilities(&self) -> BackendCapabilities {
+        BackendCapabilities::ALL
+    }
+
+    fn unsupported_feature_policy(&self) -> UnsupportedFeaturePolicy {
+        self.unsupported_feature_policy
+    }
+
+    fn report_diagnostic(&mut self, diagnostic: BackendDiagnostic) {
+        self.pipelines.diagnostics.push(diagnostic);
+    }
+
     fn text_measurer(&mut self) -> &mut dyn TextMeasurer {
         &mut self.pipelines.text
     }
@@ -885,9 +935,9 @@ impl<'a> RenderBackend for WgpuFrame<'a> {
         );
     }
 
-    fn draw_ripples(&mut self, cmds: &[RippleCommand]) {
+    fn draw_ripples(&mut self, cmds: &[RippleCommand]) -> Result<(), BackendError> {
         if cmds.is_empty() {
-            return;
+            return Ok(());
         }
         let load = self.shape_pass_load();
         let mut pass = self.encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
@@ -914,6 +964,7 @@ impl<'a> RenderBackend for WgpuFrame<'a> {
             self.height,
             cmds,
         );
+        Ok(())
     }
 
     fn draw_triangles(&mut self, cmds: &[TriangleCommand]) {
@@ -1036,9 +1087,9 @@ impl<'a> RenderBackend for WgpuFrame<'a> {
         );
     }
 
-    fn draw_variable_icons(&mut self, cmds: &[VariableIconCommand]) {
+    fn draw_variable_icons(&mut self, cmds: &[VariableIconCommand]) -> Result<(), BackendError> {
         if cmds.is_empty() {
-            return;
+            return Ok(());
         }
         let load = self.shape_pass_load();
         let mut pass = self.encoder.begin_render_pass(
@@ -1059,14 +1110,17 @@ impl<'a> RenderBackend for WgpuFrame<'a> {
                 multiview_mask: None,
             }),
         );
-        self.pipelines.variable_icon.draw_batch(
-            self.device,
-            self.queue,
-            &mut pass,
-            self.width,
-            self.height,
-            cmds,
-        );
+        self.pipelines
+            .variable_icon
+            .draw_batch(
+                self.device,
+                self.queue,
+                &mut pass,
+                self.width,
+                self.height,
+                cmds,
+            )
+            .map_err(BackendError::Font)
     }
 
     fn draw_images(&mut self, cmds: &[ImageCommand]) {
@@ -1128,9 +1182,9 @@ impl<'a> RenderBackend for WgpuFrame<'a> {
         self.pipelines.text.draw(scale_factor, theme, cmd);
     }
 
-    fn draw_composited(&mut self, cmd: &CompositedCommand) {
+    fn draw_composited(&mut self, cmd: &CompositedCommand) -> Result<(), BackendError> {
         let view = self.view.clone();
-        self.draw_composited_to_target(cmd, &view, self.width, self.height);
+        self.draw_composited_to_target(cmd, &view, self.width, self.height)
     }
 
     fn take_text_decorations(&mut self) -> Vec<RectCommand> {
@@ -1141,7 +1195,7 @@ impl<'a> RenderBackend for WgpuFrame<'a> {
         self.pipelines.text.drain_decorations(out);
     }
 
-    fn flush_text(&mut self) {
+    fn flush_text(&mut self) -> Result<(), BackendError> {
         const MAX_RETRIES: u32 = 3;
         let mut attempts = 0;
         loop {
@@ -1154,15 +1208,14 @@ impl<'a> RenderBackend for WgpuFrame<'a> {
                 self.height,
             ) {
                 Ok(()) => {
-                    break;
+                    return Ok(());
                 }
                 Err(e) if attempts < MAX_RETRIES => {
                     attempts += 1;
                     log::warn!("text cache resize, retrying flush ({attempts}/{MAX_RETRIES}): {e}");
                 }
                 Err(e) => {
-                    log::error!("text drawing failed permanently, skipping frame: {e}");
-                    break;
+                    return Err(BackendError::Font(e));
                 }
             }
         }
@@ -1178,7 +1231,7 @@ impl<'a> RenderBackend for WgpuFrame<'a> {
         chain: &FilterChain,
         bounds: (f32, f32, f32, f32),
         clip_rect: Option<(f32, f32, f32, f32)>,
-    ) {
+    ) -> Result<(), BackendError> {
         let view = self.view.clone();
         self.draw_filtered_to_target(
             cmds,
@@ -1190,7 +1243,7 @@ impl<'a> RenderBackend for WgpuFrame<'a> {
                 width: self.width,
                 height: self.height,
             },
-        );
+        )
     }
 
     fn draw_backdrop_filtered(
@@ -1199,7 +1252,7 @@ impl<'a> RenderBackend for WgpuFrame<'a> {
         bounds: (f32, f32, f32, f32),
         clip_rect: Option<(f32, f32, f32, f32)>,
         radius: [f32; 4],
-    ) {
+    ) -> Result<(), BackendError> {
         let padding_px = padding_for_chain(chain, self.scale_factor);
         let screen_w = self.width as f32;
         let screen_h = self.height as f32;
@@ -1210,7 +1263,7 @@ impl<'a> RenderBackend for WgpuFrame<'a> {
             log::trace!(
                 "draw_backdrop_filtered: empty capture rect, skipping bounds={bounds:?} clip={clip_rect:?}"
             );
-            return;
+            return Ok(());
         };
 
         // The widget's own visible rect, recovered from the capture rect
@@ -1230,7 +1283,7 @@ impl<'a> RenderBackend for WgpuFrame<'a> {
         );
 
         if dst_w <= 0.0 || dst_h <= 0.0 {
-            return;
+            return Ok(());
         }
 
         // Live snapshot of the padded capture area (not just the widget's
@@ -1297,6 +1350,7 @@ impl<'a> RenderBackend for WgpuFrame<'a> {
             source_uv_rect,
             radius,
         );
+        Ok(())
     }
 
     fn resize(&mut self, _width: u32, _height: u32) {}

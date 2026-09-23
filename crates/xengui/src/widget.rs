@@ -4,24 +4,10 @@ use smol_str::SmolStr;
 use crate::{
     AnimationManager, Background, Border, BorderRadius, BoxShadow, BoxShadowCommand, Color,
     Constraints, EventCtx, EventStatus, InputEvent, Interaction, LayoutBox, Length, MeasureContext,
-    MeasureResult, Outline, PaintContext, RectCommand, Style, TransformOrigin, WidgetId,
-    properties::StyleValue,
+    MeasureResult, NativeTextInputSnapshot, Outline, PaintContext, RectCommand, Style,
+    TransformOrigin, WidgetId, properties::StyleValue,
 };
 use std::any::Any;
-
-/// Snapshot of a widget's text-input state, used to mirror it onto a real
-/// DOM `<input>` on web targets so mobile browsers open the keyboard.
-#[derive(Clone, Debug)]
-pub struct NativeTextInputSnapshot {
-    /// The `value` value carried by this type.
-    pub value: String,
-    /// The `placeholder` value carried by this type.
-    pub placeholder: String,
-    /// The `max_length` value carried by this type.
-    pub max_length: Option<usize>,
-    /// The `read_only` value carried by this type.
-    pub read_only: bool,
-}
 
 /// Behavior required from `Widget` implementations.
 pub trait Widget: Any {
@@ -425,7 +411,7 @@ pub trait Widget: Any {
             return false;
         }
 
-        let Some(border) = &self.style().border else {
+        let Some(border) = &self.computed_style().border else {
             return true;
         };
 
@@ -570,6 +556,13 @@ pub trait Widget: Any {
         None
     }
 
+    /// Whether an absolute point is over selectable text rather than merely
+    /// inside the widget's layout box. Text widgets with unused layout space
+    /// should override this with their measured glyph/line geometry.
+    fn selectable_text_hit_test(&self, point: (f32, f32)) -> bool {
+        self.selectable_text().is_some() && self.hit_test(point)
+    }
+
     /// Returns or updates the `text_selection` value.
     fn text_selection(&self) -> Option<(usize, usize)> {
         None
@@ -635,13 +628,6 @@ pub trait Widget: Any {
     /// Applies a value typed into the native DOM `<input>` back onto this
     /// widget's own state.
     fn set_native_text_value(&mut self, _value: &str, _ctx: &mut EventCtx) {}
-
-    /// Syncs this widget's native DOM input (web only). Widgets exposing
-    /// `native_text_input()` should override this to keep the hidden
-    /// `<input>`'s value/placeholder/read-only state in sync, so mobile
-    /// keyboards get correct context.
-    #[cfg(target_arch = "wasm32")]
-    fn sync_native_input(&self, _input: &web_sys::HtmlInputElement) {}
 }
 
 /// Shrinks or grows `rect` around its own center by `scale`, so an

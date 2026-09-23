@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 use xengui::{
-    BorderRadius, Color, Constraints, Edges, Length, MeasureResult, Overflow, Size, Style,
+    Background, Border, BorderRadius, BoxShadow, Color, Constraints, Edges, Filter, FilterChain,
+    Length, MeasureResult, Overflow, Size, Style, StyleBuilder, StylePatch, TextDecoration,
+    properties::StyleValue,
 };
 
 #[test]
@@ -161,4 +163,37 @@ fn style_overlay_patch_overrides_base() {
     };
     let merged = base.overlay(&patch);
     assert_eq!(merged.overflow_x, Some(Overflow::Scroll));
+}
+
+#[test]
+fn style_patch_none_values_clear_visual_decorations() {
+    let base = Style {
+        background: Some(Background::Color(Color::RED_500)),
+        border: Some(Border::all(2.0, Color::RED_500)),
+        outline: StyleValue::Value(xengui::Outline::default()),
+        box_shadow: Some(vec![BoxShadow::new(0.0, 1.0, 2.0, Color::BLACK)]),
+        filter: Some(FilterChain::from(Filter::Brightness(0.5))),
+        backdrop_filter: Some(FilterChain::from(Filter::Blur(Length::px(4.0)))),
+        text_decoration: Some(TextDecoration::UNDERLINE),
+        ..Default::default()
+    };
+    let patch = StylePatch::new()
+        .background_none()
+        .border_none()
+        .outline_none()
+        .box_shadow_none()
+        .filter_none()
+        .backdrop_filter_none()
+        .text_decoration_none()
+        .build();
+
+    let merged = base.overlay(&patch);
+
+    assert_eq!(merged.background, Some(Background::NONE));
+    assert_eq!(merged.border, Some(Border::NONE));
+    assert_eq!(merged.outline, StyleValue::None);
+    assert!(merged.box_shadow.is_some_and(|shadows| shadows.is_empty()));
+    assert!(merged.filter.is_some_and(|chain| chain.is_empty()));
+    assert!(merged.backdrop_filter.is_some_and(|chain| chain.is_empty()));
+    assert_eq!(merged.text_decoration, Some(TextDecoration::NONE));
 }

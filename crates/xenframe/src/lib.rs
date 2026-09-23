@@ -19,6 +19,7 @@ pub mod config;
 pub mod event;
 pub mod executor;
 pub mod redraw;
+mod services;
 
 pub mod window_controls;
 

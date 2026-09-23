@@ -107,6 +107,13 @@ pub trait StyleBuilder: Sized {
         self
     }
 
+    /// Explicitly removes a background supplied by a lower-priority style.
+    fn background_none(mut self) -> Self {
+        self.style_mut().background = Some(Background::NONE);
+        self.mark_dirty();
+        self
+    }
+
     fn font_size<M>(mut self, size: impl IntoThemed<Length, M>) -> Self {
         self.style_mut().font_size = Some(size.resolve_themed());
         self.mark_dirty();
@@ -143,6 +150,13 @@ pub trait StyleBuilder: Sized {
         self
     }
 
+    /// Explicitly removes inherited or lower-priority text decoration.
+    fn text_decoration_none(mut self) -> Self {
+        self.style_mut().text_decoration = Some(TextDecoration::NONE);
+        self.mark_dirty();
+        self
+    }
+
     fn line_height(mut self, height: impl Into<LineHeight>) -> Self {
         self.style_mut().line_height = Some(height.into());
         self.mark_dirty();
@@ -161,8 +175,22 @@ pub trait StyleBuilder: Sized {
         self
     }
 
+    /// Explicitly removes a border supplied by a lower-priority style.
+    fn border_none(mut self) -> Self {
+        self.style_mut().border = Some(Border::NONE);
+        self.mark_dirty();
+        self
+    }
+
     fn outline<M>(mut self, outline: impl IntoThemed<StyleValue<Outline>, M>) -> Self {
         self.style_mut().outline = outline.resolve_themed();
+        self.mark_dirty();
+        self
+    }
+
+    /// Explicitly disables the outline, including the default focus outline.
+    fn outline_none(mut self) -> Self {
+        self.style_mut().outline = StyleValue::None;
         self.mark_dirty();
         self
     }
@@ -174,7 +202,7 @@ pub trait StyleBuilder: Sized {
     }
 
     fn box_shadow_none(mut self) -> Self {
-        self.style_mut().box_shadow = None;
+        self.style_mut().box_shadow = Some(Vec::new());
         self.mark_dirty();
         self
     }
@@ -193,7 +221,7 @@ pub trait StyleBuilder: Sized {
     }
 
     fn filter_none(mut self) -> Self {
-        self.style_mut().filter = None;
+        self.style_mut().filter = Some(crate::FilterChain::NONE);
         self.mark_dirty();
         self
     }
@@ -212,7 +240,7 @@ pub trait StyleBuilder: Sized {
     }
 
     fn backdrop_filter_none(mut self) -> Self {
-        self.style_mut().backdrop_filter = None;
+        self.style_mut().backdrop_filter = Some(crate::FilterChain::NONE);
         self.mark_dirty();
         self
     }

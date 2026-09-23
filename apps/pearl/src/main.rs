@@ -152,9 +152,10 @@ fn build_tracks(scanned: Vec<library::ScannedTrack>) -> Vec<Track> {
             explicit_content: false,
             duration_secs: s.duration_secs,
             art_color: s.art_color,
-            cover: s
-                .cover
-                .map(|(w, h, rgba)| image_source_from_rgba8(rgba, w, h)),
+            cover: s.cover.map(|(w, h, rgba)| {
+                image_source_from_rgba8(rgba, w, h)
+                    .expect("media scanner returned an invalid RGBA cover buffer")
+            }),
             media_kind: s.media_kind,
         })
         .collect()
