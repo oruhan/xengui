@@ -186,6 +186,13 @@ impl Tooltip {
             ),
         }
     }
+
+    fn anchor_box(&self) -> LayoutBox {
+        self.children
+            .first()
+            .map(|child| *child.layout_box())
+            .unwrap_or(self.layout_box)
+    }
 }
 
 impl StyleBuilder for Tooltip {
@@ -291,7 +298,7 @@ impl Widget for Tooltip {
         let theme = crate::current_theme();
         let sf = ctx.scale_factor;
         let size = self.label_size.get();
-        let (x, y) = self.box_position(self.layout_box, size);
+        let (x, y) = self.box_position(self.anchor_box(), size);
         let scale = self.scale_progress.get();
 
         let raw_box = LayoutBox {
@@ -408,7 +415,7 @@ impl Widget for Tooltip {
     }
 
     fn hit_test(&self, point: (f32, f32)) -> bool {
-        if self.layout_box.contains_rounded(point, 0.0) {
+        if self.anchor_box().contains_rounded(point, 0.0) {
             return true;
         }
         // While shown, the floating popup counts as part of this widget too,
@@ -416,7 +423,7 @@ impl Widget for Tooltip {
         // moment the cursor leaves the anchor.
         if self.showing.get() {
             let size = self.label_size.get();
-            let (x, y) = self.box_position(self.layout_box, size);
+            let (x, y) = self.box_position(self.anchor_box(), size);
             return point.0 >= x && point.0 <= x + size.0 && point.1 >= y && point.1 <= y + size.1;
         }
         false
@@ -505,5 +512,34 @@ impl Widget for Tooltip {
 
     fn anim_id(&self) -> WidgetId {
         self.anim_id
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::Kbd;
+
+    #[test]
+    fn popup_is_centered_on_child_instead_of_stretched_wrapper() {
+        let mut tooltip = Tooltip::new("Shortcut").child(Kbd::new().label("Ctrl K"));
+        tooltip.layout(LayoutBox {
+            x: 0.0,
+            y: 0.0,
+            width: 600.0,
+            height: 300.0,
+        });
+        tooltip.children[0].layout(LayoutBox {
+            x: 80.0,
+            y: 120.0,
+            width: 64.0,
+            height: 28.0,
+        });
+
+        let anchor = tooltip.anchor_box();
+        let (x, _) = tooltip.box_position(anchor, (100.0, 24.0));
+
+        assert_eq!(anchor.x, 80.0);
+        assert_eq!(x, 62.0);
     }
 }

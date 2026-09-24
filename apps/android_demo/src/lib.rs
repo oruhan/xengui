@@ -336,7 +336,7 @@ fn effect_motion() -> Transition {
 }
 
 fn page_motion() -> Transition {
-    Transition::new(Duration::from_millis(400)).easing(Easing::cubic_bezier(0.05, 0.7, 0.1, 1.0))
+    Transition::new(Duration::from_millis(300)).easing(Easing::cubic_bezier(0.2, 0.0, 0.0, 1.0))
 }
 
 fn icon(codepoint: char, size: f32, filled: bool) -> VariableIcon {
@@ -366,15 +366,12 @@ fn page_shell(child: impl Widget + 'static) -> Box<dyn Widget> {
         (),
     );
 
-    let (enter_x, enter_y) = if xengui::current_breakpoint() >= Breakpoint::Medium {
-        (0.0, -48.0)
-    } else {
-        match xen_router::navigation_direction() {
-            xen_router::NavigationDirection::Backward => (-48.0, 0.0),
-            xen_router::NavigationDirection::Forward | xen_router::NavigationDirection::Replace => {
-                (48.0, 0.0)
-            }
-        }
+    // Forward/back navigation keeps one horizontal spatial model at every
+    // breakpoint. A route entered by Back comes from the leading side; a
+    // forward route comes from the trailing side.
+    let enter_x = match xen_router::navigation_direction() {
+        xen_router::NavigationDirection::Backward => -32.0,
+        xen_router::NavigationDirection::Forward | xen_router::NavigationDirection::Replace => 32.0,
     };
 
     Box::new(
@@ -385,6 +382,7 @@ fn page_shell(child: impl Widget + 'static) -> Box<dyn Widget> {
             .align_items(Align::Center)
             .width(pct!(100.0))
             .height(pct!(100.0))
+            .overflow(Overflow::Hidden, Overflow::Hidden)
             .background(BACKGROUND)
             .child(
                 View::new()
@@ -395,7 +393,7 @@ fn page_shell(child: impl Widget + 'static) -> Box<dyn Widget> {
                     .height(pct!(100.0))
                     .margin(Edges::only(
                         if entered { 0.0 } else { enter_x },
-                        if entered { 0.0 } else { enter_y },
+                        0.0,
                         0.0,
                         0.0,
                     ))

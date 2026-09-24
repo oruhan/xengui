@@ -81,6 +81,12 @@ pub struct App {
     pub(crate) initial_resize_done: Rc<RefCell<bool>>,
     #[cfg(target_arch = "wasm32")]
     pub(crate) text_agent: Option<crate::text_agent::TextAgent>,
+    // Tracks the state last sent to winit so normal pointer/animation events
+    // do not repeatedly ask Android to show the software keyboard. An
+    // explicit focus request may still force a re-show after the user has
+    // dismissed the keyboard while leaving the TextBox focused.
+    #[cfg(not(target_arch = "wasm32"))]
+    pub(crate) native_ime_allowed: bool,
     // Lets the async executor wake a blocked event loop from any thread
     // (e.g. a background HTTP client's I/O driver); needed on every
     // platform, not just wasm.
@@ -146,6 +152,8 @@ impl App {
             initial_resize_done: Rc::new(RefCell::new(false)),
             #[cfg(target_arch = "wasm32")]
             text_agent: None,
+            #[cfg(not(target_arch = "wasm32"))]
+            native_ime_allowed: false,
             event_proxy: None,
             task_runtime,
             #[cfg(target_arch = "wasm32")]
@@ -434,7 +442,11 @@ impl App {
     }
 
     pub(crate) fn apply_event_ctx(&mut self, mut ctx: EventCtx) {
-        if let Some(new_focus) = ctx.focus_target.take() {
+        let requested_focus = ctx.focus_target.take();
+        #[cfg(not(target_arch = "wasm32"))]
+        let force_native_ime = requested_focus.is_some();
+
+        if let Some(new_focus) = requested_focus {
             if self.input.focus.focused_path() != Some(&new_focus) {
                 let mut sub_ctx = EventCtx::new();
                 self.input
@@ -458,6 +470,9 @@ impl App {
             self.hide_native_input();
         }
 
+        #[cfg(not(target_arch = "wasm32"))]
+        self.sync_native_ime(force_native_ime);
+
         if let Some(icon) = ctx.take_cursor_icon()
             && let Some(window) = &self.window
         {
@@ -478,6 +493,31 @@ impl App {
             if let Some(window) = &self.window {
                 window.request_redraw();
             }
+        }
+    }
+
+    /// Keeps winit's native IME lifecycle aligned with the focused widget.
+    ///
+    /// Winit leaves IME disabled by default. On Android, enabling it is also
+    /// the signal that opens the software keyboard; committed/preedit text is
+    /// then delivered through `WindowEvent::Ime` to the focused TextBox.
+    #[cfg(not(target_arch = "wasm32"))]
+    fn sync_native_ime(&mut self, force_show: bool) {
+        let ime_allowed = self
+            .input
+            .focus
+            .focused_path()
+            .cloned()
+            .and_then(|path| find_widget_mut(&mut self.root, &path))
+            .is_some_and(|widget| widget.native_text_input().is_some());
+
+        if ime_allowed == self.native_ime_allowed && !(force_show && ime_allowed) {
+            return;
+        }
+
+        self.native_ime_allowed = ime_allowed;
+        if let Some(window) = &self.window {
+            window.set_ime_allowed(ime_allowed);
         }
     }
 

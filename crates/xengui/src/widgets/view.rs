@@ -1712,6 +1712,12 @@ impl View {
 
                 if self.scrollbar_drag.get().is_some() {
                     self.scrollbar_drag.set(None);
+                    // Direct thumb motion may happen between style cascades,
+                    // leaving the shared scroll animator at its pre-drag
+                    // value. Seed it from the released position before hover
+                    // styling causes another cascade, otherwise the content
+                    // briefly snaps back and animates to the thumb again.
+                    self.scroll_state_needs_animation_seed.set(true);
                     self.note_scroll_activity();
                     ctx.request_redraw();
                     true
@@ -3563,6 +3569,42 @@ mod tests {
 
         assert_eq!(status, EventStatus::Handled);
         assert!(ctx.take_suppress_text_drag());
+    }
+
+    #[test]
+    fn releasing_thumb_seeds_animator_at_dragged_offset() {
+        let mut view = sized_view(
+            View::new().overflow_y(Overflow::Auto),
+            (100.0, 100.0),
+            (100.0, 400.0),
+        );
+        view.scrollbar_drag.set(Some(ScrollDrag {
+            vertical: true,
+            start_mouse: 0.0,
+            start_offset: 0.0,
+        }));
+        view.scroll_offset.set((0.0, 180.0));
+        view.scroll_target.set((0.0, 180.0));
+        let mut ctx = EventCtx::new();
+
+        assert!(view.handle_scrollbar_mouse(
+            ElementState::Released,
+            MouseButton::Left,
+            (0.0, 0.0),
+            &mut ctx,
+        ));
+
+        let mut animator = AnimationManager::new();
+        let key = AnimKey {
+            widget: view.anim_id,
+            layer: AnimLayer::Root,
+            property: AnimProperty::ScrollOffset,
+        };
+        animator.set_target(key, AnimValue([0.0; 4]), None);
+        view.animate_scroll(&mut animator);
+
+        assert_eq!(view.scroll_offset.get(), (0.0, 180.0));
+        assert!(!view.scroll_state_needs_animation_seed.get());
     }
 
     #[test]

@@ -90,7 +90,11 @@ impl TextAgent {
             self.input
                 .set_max_length(max_length.min(i32::MAX as usize) as i32);
         } else {
-            self.input.set_max_length(-1);
+            // HTMLInputElement::maxLength rejects negative values in browsers
+            // even though `-1` is what the getter reports when the attribute
+            // is absent. Removing the attribute restores the unlimited state
+            // without throwing and aborting the wasm event callback.
+            let _ = self.input.remove_attribute("maxlength");
         }
     }
 
