@@ -197,6 +197,97 @@ impl TextBox {
         self.base.interaction.hover_cursor = self.base.computed_style.cursor.or(Some(Cursor::Text));
     }
 
+    // Refreshes the shaped single-line metrics used by intrinsic sizing,
+    // caret placement, pointer hit-testing, horizontal scrolling, and
+    // vertical centering. This must not live exclusively in measure(): Taffy
+    // legitimately skips leaf measurement when both axes are definite.
+    fn refresh_text_layout(&self, ctx: &mut MeasureContext) -> (MeasureResult, f32) {
+        let scale_factor = ctx.scale_factor;
+        self.scale_factor.set(scale_factor);
+        let style = &self.base.computed_style;
+        let font_size = style.font_size.unwrap_or(DEFAULT_FONT_SIZE).value();
+        let letter_spacing = style
+            .letter_spacing
+            .map(|ls| ls.value().value())
+            .unwrap_or(0.0);
+        let line_height = style
+            .line_height
+            .map(|lh| lh.value().value())
+            .unwrap_or(0.0);
+
+        let editing_text = self.editing_text();
+        let display_text: &str = if editing_text.is_empty() {
+            &self.placeholder
+        } else {
+            &editing_text
+        };
+        let result = ctx.text.measure(
+            display_text,
+            style.font.as_deref(),
+            font_size,
+            style.font_weight.unwrap_or_default(),
+            style.font_style.unwrap_or_default(),
+            letter_spacing,
+            line_height,
+            None,
+            scale_factor,
+        );
+        self.content_size.set((result.width, result.height));
+
+        let placeholder_width = if self.placeholder.is_empty() {
+            0.0
+        } else {
+            ctx.text
+                .measure(
+                    &self.placeholder,
+                    style.font.as_deref(),
+                    font_size,
+                    style.font_weight.unwrap_or_default(),
+                    style.font_style.unwrap_or_default(),
+                    letter_spacing,
+                    line_height,
+                    None,
+                    scale_factor,
+                )
+                .width
+        };
+
+        let raw_offsets = ctx.text.character_offsets(
+            &editing_text,
+            style.font.as_deref(),
+            font_size,
+            style.font_weight.unwrap_or_default(),
+            style.font_style.unwrap_or_default(),
+            letter_spacing,
+            line_height,
+            scale_factor,
+        );
+        let mut offsets: Vec<f32> = editing_text
+            .grapheme_indices(true)
+            .map(|(byte, _)| {
+                let char_index = editing_text[..byte].chars().count();
+                raw_offsets.get(char_index).copied().unwrap_or(0.0)
+            })
+            .collect();
+        offsets.push(raw_offsets.last().copied().unwrap_or(0.0));
+        let grapheme_count = offsets.len().saturating_sub(1);
+        let display_cursor = self.cursor_index
+            + self
+                .ime_preedit
+                .as_deref()
+                .map_or(0, |preedit| preedit.graphemes(true).count());
+        self.cursor_offset.set(
+            *offsets
+                .get(display_cursor.min(grapheme_count))
+                .unwrap_or(&0.0),
+        );
+        *self.char_offsets.borrow_mut() = offsets;
+        self.measured_content.replace(editing_text);
+        self.measured_cursor_index.set(self.cursor_index);
+
+        (result, placeholder_width)
+    }
+
     fn byte_index_for(&self, grapheme_idx: usize) -> usize {
         self.content
             .grapheme_indices(true)
@@ -959,104 +1050,9 @@ impl Widget for TextBox {
 
     fn measure(&self, ctx: &mut MeasureContext, constraints: Constraints) -> MeasureResult {
         let scale_factor = ctx.scale_factor;
-        self.scale_factor.set(scale_factor);
         let style = &self.base.computed_style;
-
-        // Logical metrics; TextMeasurer converts to physical internally.
-        let font_size = style.font_size.unwrap_or(DEFAULT_FONT_SIZE).value();
-        let letter_spacing = style
-            .letter_spacing
-            .map(|ls| ls.value().value())
-            .unwrap_or(0.0);
-        let line_height = style
-            .line_height
-            .map(|lh| lh.value().value())
-            .unwrap_or(0.0);
-
-        let editing_text = self.editing_text();
-        let display_text: &str = if editing_text.is_empty() {
-            &self.placeholder
-        } else {
-            &editing_text
-        };
-
-        let result = ctx.text.measure(
-            display_text,
-            style.font.as_deref(),
-            font_size,
-            style.font_weight.unwrap_or_default(),
-            style.font_style.unwrap_or_default(),
-            letter_spacing,
-            line_height,
-            // TextBox is a single-line editor. Its box is constrained below,
-            // while the text remains intrinsically measured so horizontal
-            // scrolling and the caret use the same full-width coordinate
-            // space. Passing max_width here makes the shaping backend wrap,
-            // leaving scroll_offset unable to follow newly typed characters.
-            None,
-            scale_factor,
-        );
-
-        self.content_size.set((result.width, result.height));
-
-        // Placeholder acts as a width floor even after content is typed, so the
-        // box doesn't shrink below it once the field becomes non-empty.
-        let placeholder_w = if self.placeholder.is_empty() {
-            0.0
-        } else {
-            ctx.text
-                .measure(
-                    &self.placeholder,
-                    style.font.as_deref(),
-                    font_size,
-                    style.font_weight.unwrap_or_default(),
-                    style.font_style.unwrap_or_default(),
-                    letter_spacing,
-                    line_height,
-                    None,
-                    scale_factor,
-                )
-                .width
-        };
-
-        let text_w = result.width.max(placeholder_w);
-
-        // Cumulative pixel offset for every grapheme boundary, reused for
-        // the caret, mouse hit-testing, and selection-highlight geometry.
-        let raw_offsets = ctx.text.character_offsets(
-            &editing_text,
-            style.font.as_deref(),
-            font_size,
-            style.font_weight.unwrap_or_default(),
-            style.font_style.unwrap_or_default(),
-            letter_spacing,
-            line_height,
-            scale_factor,
-        );
-
-        let mut offsets: Vec<f32> = editing_text
-            .grapheme_indices(true)
-            .map(|(byte, _)| {
-                let char_index = editing_text[..byte].chars().count();
-                raw_offsets.get(char_index).copied().unwrap_or(0.0)
-            })
-            .collect();
-        offsets.push(raw_offsets.last().copied().unwrap_or(0.0));
-        let grapheme_count = offsets.len().saturating_sub(1);
-
-        let display_cursor = self.cursor_index
-            + self
-                .ime_preedit
-                .as_deref()
-                .map_or(0, |preedit| preedit.graphemes(true).count());
-        self.cursor_offset.set(
-            *offsets
-                .get(display_cursor.min(grapheme_count))
-                .unwrap_or(&0.0),
-        );
-        *self.char_offsets.borrow_mut() = offsets;
-        self.measured_content.replace(editing_text);
-        self.measured_cursor_index.set(self.cursor_index);
+        let (result, placeholder_width) = self.refresh_text_layout(ctx);
+        let text_w = result.width.max(placeholder_width);
 
         let padding = &style.padding.unwrap_or_default();
         let width = text_w
@@ -1068,6 +1064,13 @@ impl Widget for TextBox {
         let (width, height) = constraints.constrain_size(width, height);
 
         MeasureResult::new(width, height)
+    }
+
+    fn on_layout_pass(&self, ctx: &mut MeasureContext) {
+        // Definite-size text fields never enter Taffy's intrinsic measure
+        // callback. Their paint and input geometry still has to follow the
+        // current value, font, IME preedit, and caret on this very frame.
+        self.refresh_text_layout(ctx);
     }
 
     fn paint(&self, ctx: &mut PaintContext) {
@@ -1727,6 +1730,55 @@ mod tests {
 
         assert_eq!(textbox.cursor_index, 2);
         assert_eq!(textbox.cursor_offset.get(), 20.0);
+    }
+
+    #[test]
+    fn definite_size_layout_refreshes_caret_and_centers_text() {
+        let mut textbox = TextBox::new()
+            .value("a")
+            .width(Length::px(200.0))
+            .height(Length::px(48.0));
+        textbox.layout(LayoutBox {
+            x: 10.0,
+            y: 10.0,
+            width: 200.0,
+            height: 48.0,
+        });
+        textbox.base.interaction.focused = true;
+
+        let mut measurer = FixedTextMeasurer;
+        let mut measure_ctx = MeasureContext::new(&mut measurer, 1.0);
+        textbox.on_layout_pass(&mut measure_ctx);
+        assert_eq!(textbox.content_size.get(), (10.0, 20.0));
+        assert_eq!(textbox.cursor_offset.get(), 10.0);
+
+        textbox.insert_char('b', &mut EventCtx::new());
+        textbox.on_layout_pass(&mut measure_ctx);
+        assert_eq!(textbox.content_size.get(), (20.0, 20.0));
+        assert_eq!(textbox.cursor_offset.get(), 20.0);
+
+        let mut commands = Vec::new();
+        textbox.paint(&mut PaintContext::new(&mut commands, 1.0));
+
+        let text = commands
+            .iter()
+            .find_map(|command| match command {
+                crate::DrawCommand::Text(command) => Some(command.as_ref()),
+                _ => None,
+            })
+            .expect("textbox must paint its text");
+        assert_eq!(text.position.1, 24.0);
+
+        let caret = commands
+            .iter()
+            .filter_map(|command| match command {
+                crate::DrawCommand::Rect(command) if command.size.0 == 2.0 => Some(command),
+                _ => None,
+            })
+            .next()
+            .expect("focused textbox must paint its caret");
+        assert_eq!(caret.position, (38.0, 24.0));
+        assert_eq!(caret.size, (2.0, 20.0));
     }
 
     #[test]

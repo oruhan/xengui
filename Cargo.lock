@@ -4591,6 +4591,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "xengui-benchmark"
+version = "0.1.0"
+dependencies = [
+ "console_error_panic_hook",
+ "console_log",
+ "env_logger",
+ "js-sys",
+ "log",
+ "serde",
+ "serde_json",
+ "smol_str 0.3.6",
+ "wasm-bindgen",
+ "web-sys",
+ "web-time",
+ "winit",
+ "xenframe",
+ "xengui",
+ "xengui-icons",
+]
+
+[[package]]
 name = "xengui-cli"
 version = "0.1.0"
 dependencies = [

@@ -12,6 +12,16 @@ use smol_str::SmolStr;
 use std::rc::Rc;
 use std::time::Duration;
 
+fn state_layer(base: Color, content: Color, opacity: f32) -> Color {
+    let opacity = opacity.clamp(0.0, 1.0);
+    Color::rgba_f32(
+        base.r() * (1.0 - opacity) + content.r() * opacity,
+        base.g() * (1.0 - opacity) + content.g() * opacity,
+        base.b() * (1.0 - opacity) + content.b() * opacity,
+        1.0,
+    )
+}
+
 /// A single destination in a [`NavigationBar`].
 pub struct NavItem {
     /// The `codepoint` value carried by this type.
@@ -96,6 +106,8 @@ impl Render for NavigationBar {
         let theme = crate::current_theme();
 
         let mut row = View::new()
+            .width(pct!(100.0))
+            .min_width(Length::px(0.0))
             .display(Display::Flex)
             .flex_direction(FlexDirection::Row)
             .align_items(Align::Center)
@@ -119,38 +131,57 @@ impl Render for NavigationBar {
 
             let on_select = self.on_select.clone();
 
-            let mut pill = View::new()
+            let pill = View::new()
+                .flex_grow(1.0)
+                .min_width(Length::px(0.0))
+                .height(Length::px(56.0))
                 .display(Display::Flex)
                 .flex_direction(FlexDirection::Row)
                 .align_items(Align::Center)
                 .justify_content(JustifyContent::Center)
                 .gap(6.0, 0.0)
                 .color(fg)
-                .padding(Edges::symmetric(if active { 18.0 } else { 12.0 }, 10.0))
+                .padding(Edges::symmetric(12.0, 10.0))
                 .background(bg)
-                .border(Border::all(0.0, Color::TRANSPARENT).radius(BorderRadius::all(20.0)))
-                .transition_all(Transition::new(Duration::from_millis(200)).easing(Easing::EaseOut))
-                .child(VariableIcon::new(item.codepoint).size(22.0));
-
-            if active {
-                pill = pill.child(
+                .border(Border::none().radius(BorderRadius::all(28.0)))
+                .hover_style(move |style: crate::StylePatch, theme: &crate::Theme| {
+                    style.background(if active {
+                        state_layer(
+                            theme.secondary_container,
+                            theme.on_secondary_container,
+                            0.08,
+                        )
+                    } else {
+                        state_layer(theme.surface_container_high, theme.on_surface, 0.08)
+                    })
+                })
+                .pressed_style(|style: crate::StylePatch, _theme: &crate::Theme| {
+                    style.scale(0.96).content_scale(1.0)
+                })
+                .transition_colors(
+                    Transition::new(Duration::from_millis(150))
+                        .easing(Easing::cubic_bezier(0.31, 0.94, 0.34, 1.0)),
+                )
+                .transition_transform(
+                    Transition::new(Duration::from_millis(350))
+                        .easing(Easing::cubic_bezier(0.42, 1.67, 0.21, 0.90)),
+                )
+                .child(VariableIcon::new(item.codepoint).size(22.0))
+                .child(
                     Label::new()
                         .label(item.label.clone())
-                        .font_size(Length::px(13.0))
+                        .font_size(Length::px(12.0))
                         .font_weight(FontWeight::Medium),
-                );
-            }
-
-            pill = pill.on_click(move |_ctx| {
-                if let Some(f) = &on_select {
-                    f(index);
-                }
-            });
+                )
+                .on_click(move |_ctx| {
+                    if let Some(f) = &on_select {
+                        f(index);
+                    }
+                });
 
             row = row.child(pill);
         }
 
-        let _ = pct!(100.0);
         Box::new(row)
     }
 }

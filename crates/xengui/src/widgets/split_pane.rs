@@ -118,6 +118,7 @@ impl SplitSizedBox {
             }
             self.base.style.size = Some(size);
             self.base.dirty = true;
+            self.base.layout_dirty = true;
         }
     }
 }

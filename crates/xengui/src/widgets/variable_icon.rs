@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 use crate::{
-    AnimationManager, Color, Constraints, EventCtx, EventStatus, InputEvent, Interaction,
-    LayoutBox, MeasureContext, MeasureResult, PaintContext, Style, StyleBuilder,
-    VariableIconCommand, Widget, WidgetBase, WidgetId,
+    AnimKey, AnimLayer, AnimProperty, AnimValue, AnimationManager, Color, Constraints, EventCtx,
+    EventStatus, InputEvent, Interaction, LayoutBox, MeasureContext, MeasureResult, PaintContext,
+    Style, StyleBuilder, Transition, VariableIconCommand, Widget, WidgetBase, WidgetId,
 };
 use xengui_icons::material_symbols::{IconAxes, MaterialSymbolsVariable};
 
@@ -19,6 +19,9 @@ pub struct VariableIcon {
     axes: IconAxes,
     size: f32,
     color: Option<Color>,
+    rotation_degrees: f32,
+    resolved_rotation_degrees: f32,
+    rotation_transition: Option<Transition>,
 }
 
 impl VariableIcon {
@@ -33,6 +36,9 @@ impl VariableIcon {
             axes: IconAxes::default(),
             size: 24.0,
             color: None,
+            rotation_degrees: 0.0,
+            resolved_rotation_degrees: 0.0,
+            rotation_transition: None,
         }
     }
 
@@ -62,6 +68,20 @@ impl VariableIcon {
     /// Returns or updates the `color` value.
     pub fn color(mut self, color: Color) -> Self {
         self.color = Some(color);
+        self.mark_dirty();
+        self
+    }
+
+    /// Rotates the icon clockwise around the center of its layout box.
+    pub fn rotation(mut self, degrees: f32) -> Self {
+        self.rotation_degrees = degrees;
+        self.mark_dirty();
+        self
+    }
+
+    /// Animates subsequent [`Self::rotation`] target changes.
+    pub fn rotation_transition(mut self, transition: Transition) -> Self {
+        self.rotation_transition = Some(transition);
         self.mark_dirty();
         self
     }
@@ -125,6 +145,7 @@ impl Widget for VariableIcon {
             font: self.font,
             axes: self.axes,
             color,
+            rotation_degrees: self.resolved_rotation_degrees,
             clip_rect: None,
         });
     }
@@ -151,6 +172,8 @@ impl Widget for VariableIcon {
             && self.axes == other.axes
             && self.size == other.size
             && self.color == other.color
+            && self.rotation_degrees == other.rotation_degrees
+            && self.rotation_transition == other.rotation_transition
             && self.base.authored_styles_eq(&other.base)
     }
 
@@ -158,6 +181,23 @@ impl Widget for VariableIcon {
         self.base.inherited_style = parent.clone();
         self.recompute_style();
         if crate::animate_computed_style(self.anim_id, &mut self.base.computed_style, anim) {
+            self.base.dirty = true;
+        }
+        let rotation_key = AnimKey {
+            widget: self.anim_id,
+            layer: AnimLayer::Content,
+            property: AnimProperty::Rotation,
+        };
+        anim.set_target(
+            rotation_key,
+            AnimValue([self.rotation_degrees, 0.0, 0.0, 0.0]),
+            self.rotation_transition,
+        );
+        let resolved = anim
+            .value(rotation_key)
+            .map_or(self.rotation_degrees, |value| value.0[0]);
+        if (resolved - self.resolved_rotation_degrees).abs() > f32::EPSILON {
+            self.resolved_rotation_degrees = resolved;
             self.base.dirty = true;
         }
     }
@@ -168,6 +208,7 @@ impl Widget for VariableIcon {
         }
         if let Some(old) = old.as_any().downcast_ref::<VariableIcon>() {
             self.anim_id = old.anim_id;
+            self.resolved_rotation_degrees = old.resolved_rotation_degrees;
         }
     }
 

@@ -129,23 +129,28 @@ pub struct CodeBlockTheme {
 
 impl Default for CodeBlockTheme {
     fn default() -> Self {
+        let theme = crate::current_theme();
         Self {
-            background: Color::NEUTRAL_950,
-            header_background: Color::rgb(15, 15, 16),
-            border: Color::NEUTRAL_800,
-            text: Color::NEUTRAL_100,
-            label: Color::NEUTRAL_300,
-            comment: Color::rgb(127, 132, 142),
-            keyword: Color::rgb(198, 146, 234),
-            string: Color::rgb(152, 195, 121),
-            number: Color::rgb(209, 154, 102),
-            function: Color::rgb(97, 175, 239),
-            type_name: Color::rgb(229, 192, 123),
-            punctuation: Color::rgb(171, 178, 191),
-            selection_text: Color::WHITE,
-            selection_background: Color::rgba(48, 112, 208, 180),
-            copy_text: Color::NEUTRAL_200,
-            copy_background: Color::NEUTRAL_900,
+            background: theme.surface_container_lowest,
+            header_background: theme.surface_container,
+            border: theme.outline_variant,
+            text: theme.on_surface,
+            label: theme.on_surface_variant,
+            // M3 does not define syntax-token roles. Mapping the semantic
+            // token classes onto accessible accent/on-surface roles is a
+            // XenGui design decision, while the role pairings themselves
+            // continue to follow the active theme.
+            comment: theme.on_surface_variant,
+            keyword: theme.primary,
+            string: theme.tertiary,
+            number: theme.error,
+            function: theme.secondary,
+            type_name: theme.tertiary,
+            punctuation: theme.on_surface_variant,
+            selection_text: theme.selection_color,
+            selection_background: theme.selection,
+            copy_text: theme.on_secondary_container,
+            copy_background: theme.secondary_container,
         }
     }
 }
@@ -354,12 +359,12 @@ impl Render for CodeBlock {
                         .height(Length::px(32.0))
                         .padding(Edges::symmetric(12.0, 0.0))
                         .color(if copied {
-                            Color::rgb(187, 247, 208)
+                            crate::current_theme().on_success_container
                         } else {
                             self.theme.copy_text
                         })
                         .background(if copied {
-                            Color::rgb(20, 83, 45)
+                            crate::current_theme().success_container
                         } else {
                             self.theme.copy_background
                         })

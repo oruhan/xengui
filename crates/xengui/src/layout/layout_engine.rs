@@ -15,8 +15,19 @@ impl LayoutEngine {
     /// enough to run every frame so paint-only transitions stay live
     /// even on frames where the box model doesn't need recomputing.
     pub fn cascade(tree: &mut [Box<dyn Widget>], ctx: &mut LayoutContext) {
+        let theme = crate::current_theme();
+        let root_style = Style {
+            color: Some(theme.on_surface),
+            selection_color: Some(theme.selection_color),
+            selection_background: Some(theme.selection),
+            selection_border_width: Some(theme.selection_border_width),
+            selection_border_color: Some(theme.selection_border_color),
+            selection_border_radius: Some(theme.selection_border_radius),
+            caret_color: Some(theme.caret_color),
+            ..Style::default()
+        };
         for widget in tree.iter_mut() {
-            widget.cascade_style(&Style::default(), ctx.anim);
+            widget.cascade_style(&root_style, ctx.anim);
         }
     }
 
@@ -557,7 +568,7 @@ fn sync_scroll_recursive(widget: &mut dyn Widget) {
 mod tests {
     use super::{LayoutEngine, translate_subtree};
     use crate::{
-        AnimationManager, Constraints, FontStyle, FontWeight, LayoutBox, LayoutContext,
+        AnimationManager, Constraints, FontStyle, FontWeight, Label, LayoutBox, LayoutContext,
         MeasureContext, MeasureResult, PaintContext, RenderCache, Style, StyleBuilder,
         TextMeasurer, View, Widget,
     };
@@ -726,6 +737,32 @@ mod tests {
 
         assert_eq!(view.layout_box().x, 11.0);
         assert_eq!(view.layout_box().y, 21.0);
+    }
+
+    #[test]
+    fn root_cascade_inherits_active_theme_text_roles() {
+        let original_theme = crate::current_theme();
+        let theme = crate::Theme::light().on_surface(crate::Color::rgb(12, 34, 56));
+        crate::style::theme::set_current_theme(theme.clone());
+
+        let mut tree: Vec<Box<dyn Widget>> = vec![Box::new(Label::new().label("themed"))];
+        let mut text = NullTextMeasurer { font_generation: 0 };
+        let mut animations = AnimationManager::new();
+        LayoutEngine::cascade(
+            &mut tree,
+            &mut LayoutContext {
+                text: &mut text,
+                anim: &mut animations,
+                scale_factor: 1.0,
+            },
+        );
+
+        assert_eq!(tree[0].computed_style().color, Some(theme.on_surface));
+        assert_eq!(
+            tree[0].computed_style().caret_color,
+            Some(theme.caret_color)
+        );
+        crate::style::theme::set_current_theme(original_theme);
     }
 
     #[test]

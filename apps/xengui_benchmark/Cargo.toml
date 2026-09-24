@@ -1,0 +1,67 @@
+[package]
+name = "xengui-benchmark"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[lib]
+name = "xengui_benchmark"
+crate-type = ["cdylib", "rlib"]
+
+[[bin]]
+name = "xengui-benchmark"
+path = "src/main.rs"
+
+[dependencies]
+xengui.workspace = true
+xengui-icons.workspace = true
+xenframe.workspace = true
+web-time.workspace = true
+serde.workspace = true
+serde_json = "1"
+log.workspace = true
+smol_str.workspace = true
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+env_logger.workspace = true
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+console_error_panic_hook = "0.1.7"
+console_log.workspace = true
+wasm-bindgen.workspace = true
+js-sys = "0.3"
+web-sys = { version = "0.3", features = [
+    "Blob",
+    "BlobPropertyBag",
+    "Document",
+    "HtmlAnchorElement",
+    "Url",
+    "Window",
+] }
+
+[target.'cfg(target_os = "android")'.dependencies]
+winit = { workspace = true, features = ["android-native-activity"] }
+
+[package.metadata.android]
+package = "dev.xengui.benchmark"
+apk_name = "xengui_benchmark"
+build_targets = ["aarch64-linux-android", "x86_64-linux-android"]
+strip = "strip"
+
+[package.metadata.android.sdk]
+min_sdk_version = 23
+target_sdk_version = 34
+
+[package.metadata.android.application]
+label = "XenGui Benchmark"
+theme = "@android:style/Theme.DeviceDefault.NoActionBar"
+
+[package.metadata.android.application.activity]
+exported = true
+orientation = "unspecified"
+resizeable_activity = true
+
+[lints]
+workspace = true

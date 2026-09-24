@@ -93,8 +93,9 @@ pub struct RippleConfig {
     pub platforms: RipplePlatforms,
     /// Multiplier applied to M3's 10% pressed-state opacity.
     pub strength: f32,
-    /// Multiplier for the Android patterned-ripple animation durations.
-    /// Values above `1.0` make the effect calmer and longer.
+    /// Multiplier for the patterned-ripple animation durations.
+    /// The default `0.92` is a subtly faster response; values above `1.0`
+    /// make the effect calmer and longer.
     pub duration_scale: f32,
 }
 
@@ -104,7 +105,7 @@ impl Default for RippleConfig {
             enabled: true,
             platforms: RipplePlatforms::default(),
             strength: 1.0,
-            duration_scale: 1.0,
+            duration_scale: 0.92,
         }
     }
 }
@@ -121,7 +122,7 @@ thread_local! {
             wasm: false,
         },
         strength: 1.0,
-        duration_scale: 1.0,
+        duration_scale: 0.92,
     }) };
 }
 

@@ -310,6 +310,7 @@ impl Widget for Checkbox {
                 font: MaterialSymbolsVariable::FONT,
                 axes,
                 color: icon_color.with_alpha_f32(icon_color.a() * t * dim),
+                rotation_degrees: 0.0,
                 clip_rect: None,
             });
         }

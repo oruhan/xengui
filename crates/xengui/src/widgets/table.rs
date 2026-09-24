@@ -242,12 +242,19 @@ impl Render for Table {
             .unwrap_or_else(|| Edges::symmetric(10.0, 8.0));
 
         let mut root = View::new()
+            .width(Length::pct(100.0))
+            .min_width(Length::px(0.0))
             .display(Display::Flex)
             .flex_direction(FlexDirection::Column)
+            .color(theme.on_surface)
             .border(Border::all(1.0, border_color).radius(theme.radius_sm));
+        let root_style = Widget::style(&root).overlay(&self.base.style);
+        *Widget::style_mut(&mut root) = root_style;
 
         if self.show_header && !self.columns.is_empty() {
             let mut header_row = View::new()
+                .width(Length::pct(100.0))
+                .min_width(Length::px(0.0))
                 .display(Display::Flex)
                 .flex_direction(FlexDirection::Row)
                 .background(
@@ -266,6 +273,7 @@ impl Render for Table {
 
                 let cell = View::new()
                     .width(column.width)
+                    .min_width(Length::px(0.0))
                     .padding(self.header_padding.unwrap_or(cell_padding))
                     .align_items(column.align)
                     .child(label);
@@ -309,6 +317,8 @@ impl Render for Table {
             }
 
             let mut row_view = View::new()
+                .width(Length::pct(100.0))
+                .min_width(Length::px(0.0))
                 .display(Display::Flex)
                 .flex_direction(FlexDirection::Row)
                 .border(row_border);
@@ -338,6 +348,7 @@ impl Render for Table {
                 let cell_widget = cell_build();
                 let cell = View::new()
                     .width(width)
+                    .min_width(Length::px(0.0))
                     .padding(cell_padding)
                     .align_items(align)
                     .children_vec(vec![cell_widget]);
@@ -353,3 +364,23 @@ impl Render for Table {
 }
 
 crate::impl_composite_widget!(Table);
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn rendered_table_fills_parent_and_uses_theme_foreground() {
+        let theme = crate::current_theme();
+        let rendered = Table::new()
+            .column(TableColumn::new("Name", Length::pct(100.0)))
+            .row(TableRow::new().text("TextBox"))
+            .render();
+
+        assert_eq!(
+            rendered.style().size.and_then(|size| size.width),
+            Some(Length::pct(100.0))
+        );
+        assert_eq!(rendered.style().color, Some(theme.on_surface));
+    }
+}

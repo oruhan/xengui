@@ -129,6 +129,16 @@ impl WidgetBase {
     }
 
     fn commit_computed_style(&mut self, computed: Style) {
+        // A cascade can change paint-only inherited values (most notably a
+        // Label's inherited text color after a theme switch) while the
+        // widget's authored content remains identical. Reconciliation is
+        // therefore allowed to transfer its measured state and clear the
+        // dirty flag, but the freshly cascaded style must still invalidate
+        // the old paint commands. Without this, descendants keep drawing
+        // cached colors until an unrelated pointer event marks them dirty.
+        if self.computed_style != computed {
+            self.dirty = true;
+        }
         if self.computed_style.layout_affecting_diff(&computed) {
             self.layout_dirty = true;
         }
@@ -181,5 +191,23 @@ mod tests {
         };
         second.focused_pressed_style = Some(focused_pressed);
         assert!(!first.authored_styles_eq(&second));
+    }
+
+    #[test]
+    fn inherited_paint_change_marks_widget_dirty() {
+        let mut base = WidgetBase::new(Interaction::new());
+        base.inherited_style.color = Some(crate::Color::BLACK);
+        base.recompute_style();
+        base.dirty = false;
+        base.layout_dirty = false;
+
+        base.inherited_style.color = Some(crate::Color::WHITE);
+        base.recompute_style();
+
+        assert!(base.dirty, "inherited color changes must invalidate paint");
+        assert!(
+            !base.layout_dirty,
+            "a color-only theme change must not force layout"
+        );
     }
 }

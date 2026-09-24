@@ -28,6 +28,8 @@ pub enum AnimProperty {
     Scale,
     /// The `ContentScale` variant.
     ContentScale,
+    /// Rotation in degrees for independently animated visual content.
+    Rotation,
     /// The `ShadowColor` variant.
     ShadowColor,
     /// The `BorderWidth` variant.

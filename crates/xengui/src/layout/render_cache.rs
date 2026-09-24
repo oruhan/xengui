@@ -72,6 +72,13 @@ impl RenderCache {
         Self::default()
     }
 
+    /// Drops cached paint commands while preserving intrinsic measurements.
+    /// Theme changes use this because widgets may resolve color roles inside
+    /// `paint()` without otherwise becoming locally dirty.
+    pub(crate) fn clear_paint(&mut self) {
+        self.entries.clear();
+    }
+
     /// Returns or updates the `cached_size` value.
     pub fn cached_size(&self, key: &WidgetPath) -> Option<(f32, f32)> {
         self.entries
@@ -363,5 +370,27 @@ mod tests {
                 .is_none()
         );
         assert!(cache.try_reuse_moved(&text, moved, true).is_none());
+    }
+
+    #[test]
+    fn clearing_paint_keeps_measurements_but_drops_draw_commands() {
+        let mut cache = RenderCache::new();
+        let path = WidgetPath::from_widget(&crate::View::new(), 0);
+        let bounds = LayoutBox {
+            width: 40.0,
+            height: 20.0,
+            ..LayoutBox::default()
+        };
+        let constraints = crate::Constraints::UNBOUNDED.with_max_width(40.0);
+        cache.store(&path, bounds, vec![]);
+        cache.store_measure(&path, constraints, MeasureResult::new(40.0, 20.0));
+
+        cache.clear_paint();
+
+        assert!(cache.try_reuse(&path, bounds, false).is_none());
+        assert_eq!(
+            cache.cached_measure(&path, constraints),
+            Some(MeasureResult::new(40.0, 20.0))
+        );
     }
 }

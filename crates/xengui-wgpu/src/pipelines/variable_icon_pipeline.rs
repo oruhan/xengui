@@ -395,10 +395,17 @@ impl VariableIconPipeline {
             let gy = (cy + glyph.size.1 * 0.5).round();
 
             let tint = cmd.color.to_f32_array();
-            let p0 = ndc(gx, gy - glyph.size.1);
-            let p1 = ndc(gx + glyph.size.0, gy - glyph.size.1);
-            let p2 = ndc(gx, gy);
-            let p3 = ndc(gx + glyph.size.0, gy);
+            let radians = cmd.rotation_degrees.to_radians();
+            let (sin, cos) = radians.sin_cos();
+            let rotate = |x: f32, y: f32| {
+                let dx = x - cx;
+                let dy = y - cy;
+                ndc(cx + dx * cos - dy * sin, cy + dx * sin + dy * cos)
+            };
+            let p0 = rotate(gx, gy - glyph.size.1);
+            let p1 = rotate(gx + glyph.size.0, gy - glyph.size.1);
+            let p2 = rotate(gx, gy);
+            let p3 = rotate(gx + glyph.size.0, gy);
 
             let mk = |screen: [f32; 2], uv: [f32; 2]| Vertex {
                 position: screen,

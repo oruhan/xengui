@@ -62,8 +62,8 @@ pub struct SplitHandle {
     drag_start_mouse: Cell<f32>,
     drag_start_size: Cell<f32>,
     scale_factor: Cell<f32>,
-    idle_color: Color,
-    hover_color: Color,
+    idle_color: Option<Color>,
+    hover_color: Option<Color>,
 }
 
 impl SplitHandle {
@@ -74,9 +74,9 @@ impl SplitHandle {
 
         let mut base = WidgetBase::new(interaction);
         base.style.size = if side.is_horizontal() {
-            Some(Size::new(Length::px(4.0), Length::pct(100.0)))
+            Some(Size::new(Length::px(12.0), Length::pct(100.0)))
         } else {
-            Some(Size::new(Length::pct(100.0), Length::px(4.0)))
+            Some(Size::new(Length::pct(100.0), Length::px(12.0)))
         };
 
         Self {
@@ -90,16 +90,15 @@ impl SplitHandle {
             drag_start_mouse: Cell::new(0.0),
             drag_start_size: Cell::new(0.0),
             scale_factor: Cell::new(1.0),
-            idle_color: Color::TRANSPARENT,
-            hover_color: Color::BLUE_500,
+            idle_color: None,
+            hover_color: None,
         }
     }
 
-    /// Overrides the idle/hover fill color. Idle defaults to transparent,
-    /// so the handle is invisible until hovered or dragged.
+    /// Overrides the theme-derived idle/hover divider colors.
     pub fn colors(mut self, idle: Color, hover: Color) -> Self {
-        self.idle_color = idle;
-        self.hover_color = hover;
+        self.idle_color = Some(idle);
+        self.hover_color = Some(hover);
         self
     }
 
@@ -138,18 +137,36 @@ impl Widget for SplitHandle {
     }
 
     fn paint(&self, ctx: &mut PaintContext) {
-        let color = if self.dragging.get() || self.base.interaction.hovered {
-            self.hover_color
+        let theme = crate::current_theme();
+        let active = self.dragging.get() || self.base.interaction.hovered;
+        let color = if active {
+            self.hover_color.unwrap_or(theme.primary)
         } else {
-            self.idle_color
+            self.idle_color.unwrap_or(theme.outline_variant)
         };
         if color.a() <= 0.0 {
             return;
         }
         let b = self.layout_box;
+        // The 12dp interaction target stays easy to grab while the visual
+        // divider remains a restrained 1dp at rest and 3dp while active.
+        // This hit-target/line split is a XenGui design decision; M3 does not
+        // define a resizable split-pane component.
+        let thickness = if active { 3.0 } else { 1.0 } * ctx.scale_factor;
+        let (position, size) = if self.side.is_horizontal() {
+            (
+                (b.x + (b.width - thickness) * 0.5, b.y),
+                (thickness, b.height),
+            )
+        } else {
+            (
+                (b.x, b.y + (b.height - thickness) * 0.5),
+                (b.width, thickness),
+            )
+        };
         ctx.draw_rect(RectCommand {
-            position: (b.x, b.y),
-            size: (b.width, b.height),
+            position,
+            size,
             background: Some(Background::Color(color)),
             border_radius: None,
             border_width: None,
@@ -224,5 +241,39 @@ impl Widget for SplitHandle {
             self.base.interaction.hovered = old.base.interaction.hovered;
             self.scale_factor.set(old.scale_factor.get());
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn drag_resizes_panel_and_has_a_grabbable_target() {
+        let size = Rc::new(Cell::new(180.0));
+        let mut handle = SplitHandle::new(size.clone(), SplitSide::Left, 100.0, 400.0);
+        assert_eq!(
+            handle.style().size.and_then(|size| size.width),
+            Some(Length::px(12.0))
+        );
+
+        let mut ctx = EventCtx::new();
+        handle.event(
+            &InputEvent::MouseInput {
+                state: ElementState::Pressed,
+                button: MouseButton::Left,
+                position: (50.0, 10.0),
+            },
+            &mut ctx,
+        );
+        handle.event(
+            &InputEvent::MouseMoved {
+                position: (110.0, 10.0),
+            },
+            &mut ctx,
+        );
+
+        assert_eq!(size.get(), 240.0);
+        assert!(handle.is_dirty());
     }
 }

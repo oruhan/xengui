@@ -329,6 +329,7 @@ impl Widget for Switch {
                     font: MaterialSymbolsVariable::FONT,
                     axes: IconAxes::default().fill(1.0).weight(500.0),
                     color: track_on.with_alpha_f32(track_on.a() * mark_alpha * dim),
+                    rotation_degrees: 0.0,
                     clip_rect: None,
                 });
             } else if t < 0.4 {
@@ -340,6 +341,7 @@ impl Widget for Switch {
                     font: MaterialSymbolsVariable::FONT,
                     axes: IconAxes::default().fill(1.0).weight(700.0),
                     color: track_off.with_alpha_f32(track_off.a() * mark_alpha * dim),
+                    rotation_degrees: 0.0,
                     clip_rect: None,
                 });
             }

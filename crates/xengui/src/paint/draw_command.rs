@@ -170,6 +170,8 @@ pub struct VariableIconCommand {
     pub axes: IconAxes,
     /// The `color` value carried by this type.
     pub color: Color,
+    /// Clockwise rotation around the icon box center, in degrees.
+    pub rotation_degrees: f32,
     /// The `clip_rect` value carried by this type.
     pub clip_rect: Option<(f32, f32, f32, f32)>,
 }

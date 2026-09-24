@@ -158,6 +158,7 @@ impl FrameRenderer {
         crate::style::theme::set_system_is_dark(matches!(theme, SystemTheme::Dark));
         let app_background = crate::current_theme().background;
         let theme_generation = crate::style::theme::theme_generation();
+        let theme_changed = self.last_cascade_theme_generation != theme_generation;
 
         if !backend.begin_frame(app_background, width, height) {
             return Ok(());
@@ -207,6 +208,11 @@ impl FrameRenderer {
         }
 
         let scene_order = SceneOrder::build(tree, scale_factor);
+        if theme_changed {
+            // Some widgets resolve color roles directly in paint(), outside
+            // authored Style. Never reuse those commands across themes.
+            self.render_cache.clear_paint();
+        }
         let mut frame_arena = std::mem::take(&mut self.frame_arena);
         frame_arena.reset();
         self.render_cache.begin_frame();
@@ -1191,8 +1197,15 @@ fn paint_ripple_inline(
             &mut paint_ctx,
         );
     }
-    for mut command in paint_scratch.drain(..) {
-        apply_clip(&mut command, clip_rect);
+    let raw_ripple = std::mem::take(paint_scratch);
+    let transform = widget_transform(widget, scale_factor, false);
+    let fallback = (
+        layout_box.x,
+        layout_box.y,
+        layout_box.width,
+        layout_box.height,
+    );
+    for command in composite_commands(raw_ripple, transform, fallback, clip_rect) {
         commands.push((z_index, command));
     }
 }
