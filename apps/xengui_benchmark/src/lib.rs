@@ -1168,7 +1168,7 @@ fn root(store: TraceStore) -> Box<dyn Widget> {
             .child(
                 Label::new()
                     .label(format!(
-                        "{:?} · {}×{}",
+                        "{:?} · {}x{}",
                         breakpoint,
                         viewport_size().0 as u32,
                         viewport_size().1 as u32

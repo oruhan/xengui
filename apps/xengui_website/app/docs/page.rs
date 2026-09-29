@@ -16,13 +16,13 @@ enum DocsSection {
     Api,
 }
 
-const NAV_ITEMS: &[(DocsSection, &str, &str)] = &[
-    (DocsSection::Start, "Başlarken", "Kurulum ve ilk uygulama"),
-    (DocsSection::Concepts, "Temel kavramlar", "Tree, state ve yaşam döngüsü"),
-    (DocsSection::Widgets, "Widget'lar", "Temel bileşen kataloğu"),
-    (DocsSection::Styling, "Stil ve layout", "Tema, flex, grid, responsive"),
-    (DocsSection::Rendering, "Renderer", "wgpu, WebGPU ve hata yönetimi"),
-    (DocsSection::Api, "API referansı", "Rustdoc paketleri"),
+const NAV_ITEMS: &[(DocsSection, &str)] = &[
+    (DocsSection::Start, "Başlarken"),
+    (DocsSection::Concepts, "Temel kavramlar"),
+    (DocsSection::Widgets, "Widget'lar"),
+    (DocsSection::Styling, "Stil ve layout"),
+    (DocsSection::Rendering, "Renderer"),
+    (DocsSection::Api, "API referansı"),
 ];
 
 fn paragraph(text: &str, font_size: f32, line_height: f32) -> RichText {
@@ -159,7 +159,6 @@ fn nav_button(
     active: DocsSection,
     section: DocsSection,
     title: &'static str,
-    subtitle: &'static str,
     set_active: SetState<DocsSection>,
     compact: bool
 ) -> Button {
@@ -520,7 +519,7 @@ fn rendering_page() -> View {
         .child(
             section_title(
                 "Renderer seçenekleri",
-                "Varsayılan politika uyumluluk, vsync ve 4× triangle MSAA seçer."
+                "Varsayılan politika uyumluluk, vsync ve 4x triangle MSAA seçer."
             )
         )
         .child(
@@ -619,9 +618,9 @@ pub fn page(_params: &RouteParams) -> Box<dyn Widget> {
         .gap(if compact { 8.0 } else { 0.0 }, if compact { 0.0 } else { 6.0 })
         .overflow_x(if compact { Overflow::Auto } else { Overflow::Visible });
 
-    for (section, title, subtitle) in NAV_ITEMS {
+    for (section, title) in NAV_ITEMS {
         navigation = navigation.child(
-            nav_button(active, *section, title, subtitle, set_active.clone(), compact)
+            nav_button(active, *section, title, set_active.clone(), compact)
         );
     }
 

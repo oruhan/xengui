@@ -18,7 +18,7 @@ XenGui is a retained-mode GUI toolkit written in Rust. It combines a hooks-based
 
 [![XenGui Showcase application rendered by XenGui](docs/assets/xengui-showcase.png)](apps/showcase)
 
-This is a real 1600×1000 capture of the [`xengui-showcase`](apps/showcase) example running on XenGui's native `wgpu` surface—not a design mockup. The application brings responsive layout, retained rendering, hooks, themed Material controls, text input, focus and accessibility semantics, Material Symbols, and live component state together in one executable.
+This is a real 1600x1000 capture of the [`xengui-showcase`](apps/showcase) example running on XenGui's native `wgpu` surface—not a design mockup. The application brings responsive layout, retained rendering, hooks, themed Material controls, text input, focus and accessibility semantics, Material Symbols, and live component state together in one executable.
 
 ```bash
 cargo run -p xengui-showcase

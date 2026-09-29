@@ -56,7 +56,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 Native targets use `winit` windows. Browser targets attach to the canvas declared by the application's `index.html`; use Trunk to build and serve the application. Mobile-browser IME support uses a hidden HTML input managed by the runtime.
 
-GPU policy is available through `AppConfig::renderer`. Desktop defaults use vsync and 4× MSAA. Android defaults favor the high-performance adapter, one queued frame, and 1× MSAA to reduce mobile bandwidth; applications can override every renderer option. Android activity suspend/resume retains the GPU core and frame cache, reattaches only the native surface, and presents the retained scene before revealing the window.
+GPU policy is available through `AppConfig::renderer`. Desktop defaults use vsync and 4x MSAA. Android defaults favor the high-performance adapter, one queued frame, and 1x MSAA to reduce mobile bandwidth; applications can override every renderer option. Android activity suspend/resume retains the GPU core and frame cache, reattaches only the native surface, and presents the retained scene before revealing the window.
 
 Material ripple feedback defaults to Android only. Linux and the other desktop targets are opt-in, as is WebAssembly. Configure it application-wide through `AppConfig::ripple`:
 
