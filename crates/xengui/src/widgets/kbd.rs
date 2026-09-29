@@ -42,9 +42,7 @@ impl Kbd {
 
         // A keyboard legend is code-like content. The compact padding keeps
         // the keycap proportional to short labels such as "K" and "Esc".
-        // The extra logical pixel on the left compensates for the visible
-        // left bearing of monospace legends, keeping both sides balanced.
-        base.style.padding = Some(Edges::only(3.0, 1.0, 2.0, 1.0));
+        base.style.padding = Some(Edges::symmetric(2.0, 1.0));
         base.style.font = Some(SmolStr::new("monospace"));
         base.style.font_size = Some(Length::px(12.0));
 
@@ -207,9 +205,9 @@ impl Widget for Kbd {
             clip_rect: None,
         });
 
-        let padding = style.padding.unwrap_or_default();
-        let text_x = b.x + padding.left.to_physical(sf);
-        let text_y = b.y + lift + padding.top.to_physical(sf);
+        let (text_width, text_height) = self.content_size.get();
+        let text_x = b.x + (b.width - text_width) * 0.5;
+        let text_y = b.y + lift + (cap_height - text_height) * 0.5;
 
         let mut text_style = style.clone();
         text_style.font_size.get_or_insert(Length::px(12.0));

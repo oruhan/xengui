@@ -38,14 +38,16 @@ pub struct TextPipeline {
     font_system: FontSystem,
     swash_cache: SwashCache,
     atlas: TextAtlas,
+    cache: Cache,
     // One renderer (and therefore one vertex buffer) per text run recorded
-    // in the current frame. Slots are retained at the high-water mark and
-    // reused next frame, allowing all runs to stay in one command submission
-    // without a later prepare() overwriting an earlier run's vertices.
+    // in the current frame. Every renderer owns a matching viewport uniform:
+    // queue writes made for a later offscreen pass must not retroactively
+    // change the resolution used by text already encoded for the window.
+    // Slots are retained at the high-water mark and reused next frame.
     renderers: Vec<TextRenderer>,
+    viewports: Vec<Viewport>,
     renderer_cursor: usize,
     multisample: wgpu::MultisampleState,
-    viewport: Viewport,
     user_font_map: HashMap<String, String>,
     default_family_name: Option<String>,
     pending: Vec<PendingText>,
@@ -127,10 +129,11 @@ impl TextPipeline {
             font_system,
             swash_cache,
             atlas,
+            cache,
             renderers: vec![renderer],
+            viewports: vec![viewport],
             renderer_cursor: 0,
             multisample,
-            viewport,
             user_font_map,
             default_family_name,
             pending: Vec::new(),
@@ -627,7 +630,7 @@ impl TextPipeline {
         }
         // Decorations belong to real draw runs, not this discovery pass.
         self.pending_decorations.clear();
-        self.viewport.update(queue, Resolution { width, height });
+        self.viewports[0].update(queue, Resolution { width, height });
 
         let text_areas: Vec<TextArea> = self
             .pending
@@ -652,7 +655,7 @@ impl TextPipeline {
                 queue,
                 &mut self.font_system,
                 &mut self.atlas,
-                &self.viewport,
+                &self.viewports[0],
                 text_areas,
                 &mut self.swash_cache,
             )
@@ -670,8 +673,6 @@ impl TextPipeline {
         width: u32,
         height: u32,
     ) -> Result<(), FontError> {
-        self.viewport.update(queue, Resolution { width, height });
-
         let text_areas: Vec<TextArea> = self
             .pending
             .iter()
@@ -696,8 +697,12 @@ impl TextPipeline {
                 self.multisample,
                 None,
             ));
+            self.viewports.push(Viewport::new(device, &self.cache));
         }
-        let renderer = &mut self.renderers[self.renderer_cursor];
+        let cursor = self.renderer_cursor;
+        let renderer = &mut self.renderers[cursor];
+        let viewport = &mut self.viewports[cursor];
+        viewport.update(queue, Resolution { width, height });
 
         renderer
             .prepare(
@@ -705,7 +710,7 @@ impl TextPipeline {
                 queue,
                 &mut self.font_system,
                 &mut self.atlas,
-                &self.viewport,
+                viewport,
                 text_areas,
                 &mut self.swash_cache,
             )
@@ -732,7 +737,7 @@ impl TextPipeline {
             );
 
             renderer
-                .render(&self.atlas, &self.viewport, &mut pass)
+                .render(&self.atlas, viewport, &mut pass)
                 .map_err(|e| FontError::Render(e.to_string()))?;
         }
 
