@@ -106,6 +106,17 @@ pub fn animate_computed_style(
         }
     }
 
+    if properties.contains(TransitionProperty::OPACITY) {
+        let transition = overrides.opacity.or(default_transition);
+        let target = style.opacity.unwrap_or(1.0).clamp(0.0, 1.0);
+        let k = key(AnimProperty::Opacity);
+        anim.set_target(k, AnimValue([target, 0.0, 0.0, 0.0]), transition);
+        style.opacity = Some(anim.value(k).map_or(target, |value| {
+            animating = true;
+            value.0[0].clamp(0.0, 1.0)
+        }));
+    }
+
     if properties.contains(TransitionProperty::TRANSFORM) {
         let transition = overrides.transform.or(default_transition);
 
@@ -142,6 +153,43 @@ pub fn animate_computed_style(
 
     if properties.contains(TransitionProperty::BOX) {
         let transition = overrides.box_model.or(default_transition);
+
+        if let Some(top) = style.top {
+            style.top = Some(animate_length(
+                anim,
+                key(AnimProperty::Top),
+                transition,
+                top,
+                &mut animating,
+            ));
+        }
+        if let Some(right) = style.right {
+            style.right = Some(animate_length(
+                anim,
+                key(AnimProperty::Right),
+                transition,
+                right,
+                &mut animating,
+            ));
+        }
+        if let Some(bottom) = style.bottom {
+            style.bottom = Some(animate_length(
+                anim,
+                key(AnimProperty::Bottom),
+                transition,
+                bottom,
+                &mut animating,
+            ));
+        }
+        if let Some(left) = style.left {
+            style.left = Some(animate_length(
+                anim,
+                key(AnimProperty::Left),
+                transition,
+                left,
+                &mut animating,
+            ));
+        }
 
         if let Some(mut size) = style.size {
             if let Some(w) = size.width {
@@ -328,4 +376,64 @@ pub fn animate_computed_style(
     }
 
     animating
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::Easing;
+    use web_time::Duration;
+
+    #[test]
+    fn opacity_uses_its_dedicated_transition_channel() {
+        let id = WidgetId::new_unique();
+        let transition = Transition::new(Duration::from_millis(100)).easing(Easing::Linear);
+        let mut anim = AnimationManager::new();
+        let style = |opacity| Style {
+            opacity: Some(opacity),
+            transition_properties: Some(TransitionProperty::OPACITY),
+            transition_overrides: crate::TransitionOverrides {
+                opacity: Some(transition),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        let mut closed = style(0.0);
+        assert!(!animate_computed_style(id, &mut closed, &mut anim));
+
+        let mut opening = style(1.0);
+        assert!(animate_computed_style(id, &mut opening, &mut anim));
+        assert_eq!(opening.opacity, Some(0.0));
+
+        anim.tick(Duration::from_millis(50));
+        let mut halfway = style(1.0);
+        assert!(animate_computed_style(id, &mut halfway, &mut anim));
+        assert_eq!(halfway.opacity, Some(0.5));
+    }
+
+    #[test]
+    fn positioned_insets_animate_with_box_transitions() {
+        let id = WidgetId::new_unique();
+        let transition = Transition::new(Duration::from_millis(100)).easing(Easing::Linear);
+        let mut anim = AnimationManager::new();
+        let style = |left| Style {
+            left: Some(Length::px(left)),
+            transition: Some(transition),
+            transition_properties: Some(TransitionProperty::BOX),
+            ..Default::default()
+        };
+
+        let mut hidden = style(-100.0);
+        assert!(!animate_computed_style(id, &mut hidden, &mut anim));
+
+        let mut opening = style(0.0);
+        assert!(animate_computed_style(id, &mut opening, &mut anim));
+        assert_eq!(opening.left, Some(Length::px(-100.0)));
+
+        anim.tick(Duration::from_millis(50));
+        let mut halfway = style(0.0);
+        assert!(animate_computed_style(id, &mut halfway, &mut anim));
+        assert_eq!(halfway.left, Some(Length::px(-50.0)));
+    }
 }

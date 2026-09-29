@@ -14,7 +14,9 @@ use windows_sys::Win32::Graphics::Gdi::{
     GetMonitorInfoW, MONITOR_DEFAULTTONEAREST, MONITORINFO, MonitorFromWindow,
 };
 use windows_sys::Win32::UI::Controls::MARGINS;
-use windows_sys::Win32::UI::Shell::{DefSubclassProc, RemoveWindowSubclass, SetWindowSubclass};
+use windows_sys::Win32::UI::Shell::{
+    DefSubclassProc, GetWindowSubclass, RemoveWindowSubclass, SetWindowSubclass,
+};
 use windows_sys::Win32::UI::WindowsAndMessaging::{
     GetWindowRect, HTBOTTOM, HTBOTTOMLEFT, HTBOTTOMRIGHT, HTCLIENT, HTLEFT, HTRIGHT, HTTOP,
     HTTOPLEFT, HTTOPRIGHT, IsZoomed, KillTimer, NCCALCSIZE_PARAMS, SWP_FRAMECHANGED,
@@ -30,7 +32,7 @@ const RESIZE_TIMER_ID: usize = 1;
 // flooding the GPU with more presents than a modal WM_SIZE loop needs.
 const RESIZE_TIMER_INTERVAL_MS: u32 = 8;
 
-thread_local! {
+xengui::runtime_state! {
     static RESIZE_TICK: std::cell::RefCell<Option<Box<dyn FnMut()>>> = const {
         std::cell::RefCell::new(None)
     };
@@ -59,8 +61,19 @@ unsafe extern "system" fn custom_chrome_subclass(
     wparam: WPARAM,
     lparam: LPARAM,
     _uidsubclass: usize,
-    _dwrefdata: usize,
+    dwrefdata: usize,
 ) -> LRESULT {
+    // install_for_window stores a boxed weak context for this HWND. Windows
+    // owns the registration; WM_DESTROY releases it after removing the hook.
+    let runtime = if dwrefdata == 0 {
+        None
+    } else {
+        unsafe { &*(dwrefdata as *const std::rc::Weak<xengui::RuntimeContext>) }.upgrade()
+    };
+    let _guard = runtime
+        .as_ref()
+        .map(|runtime| runtime.enter())
+        .unwrap_or_else(xengui::RuntimeContext::suspend);
     match msg {
         WM_NCCALCSIZE if wparam != 0 => {
             let params = unsafe { &mut *(lparam as *mut NCCALCSIZE_PARAMS) };
@@ -212,6 +225,11 @@ unsafe extern "system" fn custom_chrome_subclass(
             unsafe {
                 KillTimer(hwnd, RESIZE_TIMER_ID);
                 RemoveWindowSubclass(hwnd, Some(custom_chrome_subclass), SUBCLASS_ID);
+                if dwrefdata != 0 {
+                    drop(Box::from_raw(
+                        dwrefdata as *mut std::rc::Weak<xengui::RuntimeContext>,
+                    ));
+                }
             }
         }
         _ => {}
@@ -267,6 +285,24 @@ pub fn install_for_window(window: &Arc<Window>) {
             std::mem::size_of_val(&dark) as u32,
         );
         // Attach subclassing via comctl32 safely
-        SetWindowSubclass(hwnd, Some(custom_chrome_subclass), SUBCLASS_ID, 0);
+        let mut existing = 0;
+        if GetWindowSubclass(
+            hwnd,
+            Some(custom_chrome_subclass),
+            SUBCLASS_ID,
+            &mut existing,
+        ) == 0
+        {
+            let owner = Box::into_raw(Box::new(xengui::RuntimeContext::current()));
+            if SetWindowSubclass(
+                hwnd,
+                Some(custom_chrome_subclass),
+                SUBCLASS_ID,
+                owner as usize,
+            ) == 0
+            {
+                drop(Box::from_raw(owner));
+            }
+        }
     }
 }

@@ -4,12 +4,19 @@
 use crate::{
     Align, Border, BorderRadius, BoxShadow, Color, Display, Easing, Edges, FlexDirection,
     FontWeight, Interaction, JustifyContent, Key, KeyState, Label, LayoutBox, Position, Render,
-    Style, StyleBuilder, Transition, VariableIcon, View, Widget, WidgetBase, WidgetId, pct, px,
+    Style, StyleBuilder, TransformOrigin, Transition, VariableIcon, View, Widget, WidgetBase,
+    WidgetId, pct, px,
 };
 use smol_str::SmolStr;
 use std::rc::Rc;
 use web_time::Duration;
 use xengui_icons::material_symbols::{IconAxes, codepoints};
+
+const POPUP_SCALE_TRANSITION: Transition = Transition::new(Duration::from_millis(350))
+    .easing(Easing::cubic_bezier(0.42, 1.67, 0.21, 0.90));
+const POPUP_OPACITY_TRANSITION: Transition =
+    Transition::new(Duration::from_millis(150)).easing(Easing::cubic_bezier(0.31, 0.94, 0.34, 1.0));
+const POPUP_CLOSED_SCALE: f32 = 0.92;
 
 fn state_layer(base: Color, content: Color, opacity: f32) -> Color {
     let opacity = opacity.clamp(0.0, 1.0);
@@ -157,10 +164,10 @@ impl Render for ComboBox {
                             }
                             _ => None,
                         };
-                        if let Some(next) = next {
-                            if let Some(callback) = &key_callback {
-                                callback(next);
-                            }
+                        if let Some(next) = next
+                            && let Some(callback) = &key_callback
+                        {
+                            callback(next);
                         }
                     })
                     .child(Label::new().label(value).font_size(px!(14.0)))
@@ -181,6 +188,7 @@ impl Render for ComboBox {
             let set_open_from_scrim = set_open.clone();
             root = root.child(
                 View::new()
+                    .key("combo-box-scrim")
                     .position(Position::Fixed)
                     .top(px!(0.0))
                     .right(px!(0.0))
@@ -189,103 +197,123 @@ impl Render for ComboBox {
                     .z_index(1000)
                     .background(Color::TRANSPARENT)
                     .accessible_label("Seçim menüsünü kapat")
+                    // A dismiss layer is not a visible control surface. Its
+                    // full-window bounds must never become a ripple shape.
+                    .ripple(false)
                     .on_click(move |_| set_open_from_scrim.set(false)),
             );
+        }
 
-            let mut menu = View::new()
+        let mut menu = View::new()
+            .key("combo-box-popup")
+            .display(Display::Flex)
+            .flex_direction(FlexDirection::Column)
+            .width(pct!(100.0))
+            .min_width(px!(112.0))
+            .max_width(px!(280.0))
+            .gap(0.0, 8.0)
+            .padding(Edges::all(8.0))
+            .background(theme.surface_container)
+            .border(Border::none().radius(BorderRadius::all(20.0)))
+            .box_shadow(BoxShadow::new(0.0, 8.0, 24.0, theme.shadow.with_alpha(90)))
+            .transform_origin(TransformOrigin::TOP)
+            .scale(if open { 1.0 } else { POPUP_CLOSED_SCALE })
+            .opacity(if open { 1.0 } else { 0.0 })
+            .transition_transform(POPUP_SCALE_TRANSITION)
+            .transition_opacity(POPUP_OPACITY_TRANSITION);
+
+        for (index, option) in self.options.iter().enumerate() {
+            let callback = self.on_change.clone();
+            let set_open_from_item = set_open.clone();
+            let is_selected = index == selected;
+            let leading: Box<dyn Widget> = if is_selected {
+                Box::new(
+                    VariableIcon::new(codepoints::CHECK)
+                        .size(20.0)
+                        .axes(IconAxes::default().weight(500.0).optical_size(20.0)),
+                )
+            } else {
+                Box::new(View::new().size(px!(20.0), px!(20.0)))
+            };
+            menu = menu.child(
+                View::new()
+                    .accessible_label(option.clone())
+                    .focusable(true)
+                    .width(pct!(100.0))
+                    .height(px!(48.0))
+                    .display(Display::Flex)
+                    .flex_direction(FlexDirection::Row)
+                    .justify_content(JustifyContent::Start)
+                    .align_items(Align::Center)
+                    .gap(12.0, 0.0)
+                    .padding(Edges::symmetric(12.0, 0.0))
+                    .background(if is_selected {
+                        theme.secondary_container
+                    } else {
+                        Color::TRANSPARENT
+                    })
+                    .color(if is_selected {
+                        theme.on_secondary_container
+                    } else {
+                        theme.on_surface
+                    })
+                    .border(Border::none().radius(BorderRadius::all(12.0)))
+                    .hover_background(state_layer(
+                        if is_selected {
+                            theme.secondary_container
+                        } else {
+                            theme.surface_container
+                        },
+                        if is_selected {
+                            theme.on_secondary_container
+                        } else {
+                            theme.on_surface
+                        },
+                        0.08,
+                    ))
+                    .pressed_background(state_layer(
+                        if is_selected {
+                            theme.secondary_container
+                        } else {
+                            theme.surface_container
+                        },
+                        if is_selected {
+                            theme.on_secondary_container
+                        } else {
+                            theme.on_surface
+                        },
+                        0.10,
+                    ))
+                    .transition_colors(
+                        Transition::new(Duration::from_millis(150))
+                            .easing(Easing::cubic_bezier(0.31, 0.94, 0.34, 1.0)),
+                    )
+                    .child_boxed(leading)
+                    .child(Label::new().label(option.clone()).font_size(px!(14.0)))
+                    .on_click(move |_| {
+                        set_open_from_item.set(false);
+                        if let Some(callback) = &callback {
+                            callback(index);
+                        }
+                    }),
+            );
+        }
+
+        // The outer scale is an immediate hit-test gate. The inner popup
+        // keeps its own 0.92 -> 1.0 visual scale transition, while a closed
+        // (fully transparent) popup cannot intercept pointer input.
+        root = root.child(
+            View::new()
+                .key("combo-box-popup-gate")
                 .position(Position::Absolute)
                 .top(px!(64.0))
                 .left(px!(0.0))
                 .z_index(1001)
-                .display(Display::Flex)
-                .flex_direction(FlexDirection::Column)
                 .width(pct!(100.0))
-                .min_width(px!(112.0))
-                .max_width(px!(280.0))
-                .gap(0.0, 8.0)
-                .padding(Edges::all(8.0))
-                .background(theme.surface_container)
-                .border(Border::none().radius(BorderRadius::all(20.0)))
-                .box_shadow(BoxShadow::new(0.0, 8.0, 24.0, theme.shadow.with_alpha(90)));
-
-            for (index, option) in self.options.iter().enumerate() {
-                let callback = self.on_change.clone();
-                let set_open_from_item = set_open.clone();
-                let is_selected = index == selected;
-                let leading: Box<dyn Widget> = if is_selected {
-                    Box::new(
-                        VariableIcon::new(codepoints::CHECK)
-                            .size(20.0)
-                            .axes(IconAxes::default().weight(500.0).optical_size(20.0)),
-                    )
-                } else {
-                    Box::new(View::new().size(px!(20.0), px!(20.0)))
-                };
-                menu = menu.child(
-                    View::new()
-                        .accessible_label(option.clone())
-                        .focusable(true)
-                        .width(pct!(100.0))
-                        .height(px!(48.0))
-                        .display(Display::Flex)
-                        .flex_direction(FlexDirection::Row)
-                        .justify_content(JustifyContent::Start)
-                        .align_items(Align::Center)
-                        .gap(12.0, 0.0)
-                        .padding(Edges::symmetric(12.0, 0.0))
-                        .background(if is_selected {
-                            theme.secondary_container
-                        } else {
-                            Color::TRANSPARENT
-                        })
-                        .color(if is_selected {
-                            theme.on_secondary_container
-                        } else {
-                            theme.on_surface
-                        })
-                        .border(Border::none().radius(BorderRadius::all(12.0)))
-                        .hover_background(state_layer(
-                            if is_selected {
-                                theme.secondary_container
-                            } else {
-                                theme.surface_container
-                            },
-                            if is_selected {
-                                theme.on_secondary_container
-                            } else {
-                                theme.on_surface
-                            },
-                            0.08,
-                        ))
-                        .pressed_background(state_layer(
-                            if is_selected {
-                                theme.secondary_container
-                            } else {
-                                theme.surface_container
-                            },
-                            if is_selected {
-                                theme.on_secondary_container
-                            } else {
-                                theme.on_surface
-                            },
-                            0.10,
-                        ))
-                        .transition_colors(
-                            Transition::new(Duration::from_millis(150))
-                                .easing(Easing::cubic_bezier(0.31, 0.94, 0.34, 1.0)),
-                        )
-                        .child_boxed(leading)
-                        .child(Label::new().label(option.clone()).font_size(px!(14.0)))
-                        .on_click(move |_| {
-                            set_open_from_item.set(false);
-                            if let Some(callback) = &callback {
-                                callback(index);
-                            }
-                        }),
-                );
-            }
-            root = root.child(menu);
-        }
+                .scale(if open { 1.0 } else { 0.0 })
+                .transform_origin(TransformOrigin::TOP)
+                .child(menu),
+        );
 
         Box::new(root)
     }
@@ -308,5 +336,34 @@ mod tests {
     fn empty_combo_box_keeps_a_safe_zero_index() {
         let combo = ComboBox::new(Vec::<String>::new()).selected_index(4);
         assert_eq!(combo.selected_index, 0);
+    }
+
+    #[test]
+    fn closed_combo_keeps_popup_content_mounted() {
+        let runtime = crate::RuntimeContext::new();
+        let _guard = runtime.enter();
+        crate::hooks::begin_render();
+        let rendered =
+            crate::hooks::component("combo-test", || ComboBox::new(["one", "two"]).render());
+        crate::hooks::end_render();
+
+        let popup_gate = rendered
+            .children()
+            .iter()
+            .find(|child| {
+                child
+                    .get_key()
+                    .is_some_and(|key| key == "combo-box-popup-gate")
+            })
+            .expect("closed combo should retain its popup gate");
+        let popup = popup_gate
+            .children()
+            .first()
+            .expect("popup gate should retain popup content");
+        assert_eq!(
+            popup.get_key().map(|key| key.as_str()),
+            Some("combo-box-popup")
+        );
+        assert_eq!(popup.children().len(), 2);
     }
 }

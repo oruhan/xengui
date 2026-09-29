@@ -2,7 +2,7 @@
 //! A minimal DOM-like control surface: give any widget an `.id(...)` and
 //! trigger it from anywhere in application code, mirroring HTML's
 //! `id="..."` + JS's `document.getElementById(id).click()`. Actions are
-//! queued by id in a thread-local mailbox; the targeted widget picks them
+//! queued by id in the active runtime mailbox; the targeted widget picks them
 //! up on its next animation tick and interprets them itself (a `Click` on
 //! a `Checkbox` toggles it, on a `TextBox` it focuses it, etc), so there's
 //! no central knowledge of what every widget type does with every action.
@@ -32,7 +32,7 @@ pub enum DomAction {
     Custom(SmolStr),
 }
 
-thread_local! {
+crate::runtime::runtime_state! {
     static MAILBOX: RefCell<HashMap<SmolStr, Vec<DomAction>>> = RefCell::new(HashMap::new());
 }
 

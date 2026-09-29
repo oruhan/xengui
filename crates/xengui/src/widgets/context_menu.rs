@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 use crate::{
     AnimKey, AnimLayer, AnimProperty, AnimValue, AnimationManager, Background, Border,
-    BorderRadius, Color, Constraints, Easing, Edges, ElementState, EventCtx, EventStatus,
+    BorderRadius, Color, Constraints, Cursor, Easing, Edges, ElementState, EventCtx, EventStatus,
     FlexDirection, FontStyle, FontWeight, ITEM_FONT_SIZE, InputEvent, Interaction, IntoThemed, Key,
     KeyState, LayoutBox, Length, MeasureContext, MeasureResult, MouseButton, PaintContext, Point,
     Rect, RectCommand, Style, StyleBuilder, TextCommand, TextMeasurer, Transition, Triangle,
@@ -26,6 +26,7 @@ pub struct ContextMenuItem {
     anim_id: WidgetId,
     hover_scale: Option<f32>,
     hover_progress: Cell<f32>,
+    press_progress: Cell<f32>,
     scale_progress: Cell<f32>,
     // Natural pixel widths measured once per layout pass; used to
     // auto-size the menu and to right-align the shortcut exactly.
@@ -47,6 +48,7 @@ impl ContextMenuItem {
             anim_id: WidgetId::new_unique(),
             hover_scale: None,
             hover_progress: Cell::new(0.0),
+            press_progress: Cell::new(0.0),
             scale_progress: Cell::new(1.0),
             label_width: Cell::new(0.0),
             shortcut_width: Cell::new(0.0),
@@ -147,6 +149,10 @@ impl ContextMenuHandle {
     fn take_request(&self) -> Option<(f32, f32)> {
         self.0.take()
     }
+
+    fn has_request(&self) -> bool {
+        self.0.get().is_some()
+    }
 }
 
 impl Default for ContextMenuHandle {
@@ -155,8 +161,8 @@ impl Default for ContextMenuHandle {
     }
 }
 
-const ITEM_HEIGHT: f32 = 32.0;
-const ITEM_PADDING_X: f32 = 28.0;
+const ITEM_HEIGHT: f32 = 48.0;
+const ITEM_PADDING_X: f32 = 12.0;
 const MENU_PADDING: f32 = 4.0;
 const DEFAULT_MENU_MIN_WIDTH: f32 = 120.0;
 const SUBMENU_ARROW_RESERVED: f32 = 16.0;
@@ -824,6 +830,7 @@ impl ContextMenu {
     fn animate_entries(
         entries: &[ContextMenuEntry],
         hovered: Option<usize>,
+        pressed: Option<usize>,
         transition: Transition,
         anim: &mut AnimationManager,
     ) {
@@ -847,6 +854,24 @@ impl ContextMenu {
             );
             item.hover_progress
                 .set(anim.value(hover_key).map_or(hover_target, |v| v.0[0]));
+
+            let press_key = AnimKey {
+                widget: item.anim_id,
+                layer: AnimLayer::Content,
+                property: AnimProperty::Opacity,
+            };
+            let press_target = if is_target && pressed == Some(i) {
+                1.0
+            } else {
+                0.0
+            };
+            anim.set_target(
+                press_key,
+                AnimValue([press_target, 0.0, 0.0, 0.0]),
+                Some(transition),
+            );
+            item.press_progress
+                .set(anim.value(press_key).map_or(press_target, |v| v.0[0]));
 
             if let Some(hover_scale) = item.hover_scale {
                 let scale_key = AnimKey {
@@ -888,7 +913,7 @@ impl ContextMenu {
         walk(&mut self.entries, path, idx)
     }
 
-    fn close(&self, ctx: &mut EventCtx) {
+    fn close(&mut self, ctx: &mut EventCtx) {
         if self.open.get() {
             self.open.set(false);
             self.hovered_index.set(None);
@@ -901,6 +926,8 @@ impl ContextMenu {
             // though the user closed it through an unrelated path
             // (click outside, Escape, item click).
             self.pending_reopen.set(None);
+            self.base.dirty = true;
+            ctx.set_cursor_icon(Cursor::Default);
             ctx.request_redraw();
         }
     }
@@ -952,8 +979,9 @@ impl ContextMenu {
         self.closing_submenus.borrow_mut().clear();
     }
 
-    fn open_at(&self, position: (f32, f32), ctx: &mut EventCtx) {
+    fn open_at(&mut self, position: (f32, f32), ctx: &mut EventCtx) {
         self.open_at_impl(position);
+        self.base.dirty = true;
         ctx.request_redraw();
     }
 
@@ -1010,7 +1038,7 @@ impl ContextMenu {
         None
     }
 
-    fn update_hover(&self, point: (f32, f32), ctx: &mut EventCtx) {
+    fn update_hover(&mut self, point: (f32, f32), ctx: &mut EventCtx) {
         let depth = self.submenu_stack.borrow().len();
         let padding = self.effective_padding();
         let sf = self.scale_factor.get();
@@ -1030,6 +1058,14 @@ impl ContextMenu {
 
             let entries = self.entries_at(&path);
             let idx = index_at(entries, pos, size, padding, sf, point);
+            let pointer = idx.is_some_and(|index| {
+                matches!(entries.get(index), Some(ContextMenuEntry::Item(item)) if item.enabled)
+            });
+            ctx.set_cursor_icon(if pointer {
+                Cursor::Pointer
+            } else {
+                Cursor::Default
+            });
 
             let current = if level == 0 {
                 self.hovered_index.get()
@@ -1076,6 +1112,7 @@ impl ContextMenu {
                     });
                 }
 
+                self.base.dirty = true;
                 ctx.request_redraw();
             }
             return;
@@ -1120,17 +1157,16 @@ impl ContextMenu {
             .background
             .clone()
             .unwrap_or(Background::Color(theme.surface));
-        let border = self.border.as_ref();
-        let border_color = border.map(|b| b.color).unwrap_or(theme.outline_variant);
+        let default_border = Border::all(1.0, theme.outline_variant).radius(12.0);
+        let border = self.border.as_ref().unwrap_or(&default_border);
+        let border_color = border.color;
 
         ctx.draw_rect(RectCommand {
             position: (mx, my),
             size: (mw, mh),
             background: Some(faded_background(bg, opacity)),
-            border_radius: border
-                .and_then(|b| b.radius)
-                .map(|r| Length::px(r.max_value() * sf).into()),
-            border_width: border.map(|b| Length::px(b.top.to_physical(sf))),
+            border_radius: border.radius.map(|r| Length::px(r.max_value() * sf).into()),
+            border_width: Some(Length::px(border.top.to_physical(sf))),
             border_color: Some(border_color.with_alpha_f32(border_color.a() * opacity)),
             clip_rect: None,
         });
@@ -1184,24 +1220,14 @@ impl ContextMenu {
             let is_hovered = item.enabled && hovered_index == Some(i);
             let is_pressed = is_hovered && pressed_index == Some(i);
 
-            let (target_bg, hover_text_color_opt) = if is_pressed {
-                (
-                    self.item_pressed_background
-                        .clone()
-                        .or_else(|| self.item_hover_background.clone())
-                        .unwrap_or(Background::Color(theme.surface_container_highest)),
-                    self.item_pressed_text_color
-                        .or(self.item_hover_text_color)
-                        .or(self.item_text_color),
-                )
-            } else {
-                (
-                    self.item_hover_background
-                        .clone()
-                        .unwrap_or(Background::Color(theme.surface_container_high)),
-                    self.item_hover_text_color.or(self.item_text_color),
-                )
-            };
+            let hover_bg = self
+                .item_hover_background
+                .clone()
+                .unwrap_or(Background::Color(theme.surface_container_high));
+            let pressed_bg = self
+                .item_pressed_background
+                .clone()
+                .unwrap_or(Background::Color(theme.surface_container_highest));
 
             let border = if is_pressed {
                 self.item_pressed_border
@@ -1213,11 +1239,8 @@ impl ContextMenu {
                 self.item_border
             };
 
-            let t = if is_pressed {
-                1.0
-            } else {
-                item.hover_progress.get()
-            };
+            let hover_t = item.hover_progress.get();
+            let press_t = item.press_progress.get();
 
             let idle_bg_color = self
                 .item_background
@@ -1225,8 +1248,8 @@ impl ContextMenu {
                 .map(Background::representative_color)
                 .unwrap_or(Color::TRANSPARENT);
 
-            let target_bg_color = target_bg.representative_color();
-            let blended_bg = lerp_color(idle_bg_color, target_bg_color, t);
+            let hovered_bg = lerp_color(idle_bg_color, hover_bg.representative_color(), hover_t);
+            let blended_bg = lerp_color(hovered_bg, pressed_bg.representative_color(), press_t);
 
             if blended_bg.a() > 0.0 {
                 ctx.draw_rect(RectCommand {
@@ -1248,12 +1271,10 @@ impl ContextMenu {
             } else {
                 theme.on_surface_variant
             };
-            let target_text_color = if item.enabled {
-                hover_text_color_opt.unwrap_or(theme.on_surface)
-            } else {
-                hover_text_color_opt.unwrap_or(theme.on_surface_variant)
-            };
-            let base_color = lerp_color(idle_text_color, target_text_color, t);
+            let hover_text_color = self.item_hover_text_color.unwrap_or(idle_text_color);
+            let pressed_text_color = self.item_pressed_text_color.unwrap_or(hover_text_color);
+            let hovered_text = lerp_color(idle_text_color, hover_text_color, hover_t);
+            let base_color = lerp_color(hovered_text, pressed_text_color, press_t);
             let alpha_scale = if item.enabled { 1.0 } else { 0.6 };
 
             let mut text_style = self.base.computed_style.clone();
@@ -1358,7 +1379,7 @@ impl Widget for ContextMenu {
     }
 
     fn is_dirty(&self) -> bool {
-        self.base.dirty
+        self.base.dirty || self.external_open.has_request()
     }
 
     fn set_dirty(&mut self, dirty: bool) {
@@ -1498,6 +1519,25 @@ impl Widget for ContextMenu {
         self.open.get()
     }
 
+    fn event_capture(&mut self, event: &InputEvent, ctx: &mut EventCtx) -> EventStatus {
+        if let InputEvent::MouseInput {
+            state: ElementState::Pressed,
+            button: MouseButton::Right,
+            position,
+        } = event
+            && self.layout_box.contains_rounded(*position, 0.0)
+        {
+            if self.open.get() {
+                self.close(ctx);
+                self.pending_reopen.set(Some(*position));
+            } else {
+                self.open_at(*position, ctx);
+            }
+            return EventStatus::Handled;
+        }
+        EventStatus::Ignored
+    }
+
     fn event(&mut self, event: &InputEvent, ctx: &mut EventCtx) -> EventStatus {
         match event {
             InputEvent::MouseInput {
@@ -1537,6 +1577,7 @@ impl Widget for ContextMenu {
                             .pressed_index
                             .set(Some(idx));
                     }
+                    self.base.dirty = true;
                     ctx.request_redraw();
                 }
 
@@ -1593,6 +1634,11 @@ impl Widget for ContextMenu {
                 EventStatus::Handled
             }
 
+            InputEvent::MouseExited if self.open.get() => {
+                ctx.set_cursor_icon(Cursor::Default);
+                EventStatus::Handled
+            }
+
             InputEvent::KeyInput {
                 event: key_event, ..
             } if self.open.get()
@@ -1623,6 +1669,7 @@ impl Widget for ContextMenu {
         // to wrap the trigger widget as its own child.
         if let Some(position) = self.external_open.take_request() {
             self.open_at_impl(position);
+            self.base.dirty = true;
         }
 
         self.animate_opacity(anim);
@@ -1665,19 +1712,24 @@ impl Widget for ContextMenu {
         Self::animate_entries(
             &self.entries,
             self.hovered_index.get(),
+            self.pressed_index.get(),
             item_transition,
             anim,
         );
 
-        let submenu_levels: Vec<(Vec<usize>, Option<usize>)> = self
+        let submenu_levels: Vec<(Vec<usize>, Option<usize>, Option<usize>)> = self
             .submenu_stack
             .borrow()
             .iter()
-            .map(|l| (l.path.clone(), l.hovered_index.get()))
+            .map(|l| (l.path.clone(), l.hovered_index.get(), l.pressed_index.get()))
             .collect();
-        for (path, hovered) in submenu_levels {
+        for (path, hovered, pressed) in submenu_levels {
             let entries = self.entries_at(&path);
-            Self::animate_entries(entries, hovered, item_transition, anim);
+            Self::animate_entries(entries, hovered, pressed, item_transition, anim);
+        }
+
+        if (self.open.get() || self.opacity_anim.get() > 0.001) && anim.is_animating() {
+            self.base.dirty = true;
         }
 
         if !self.open.get()
@@ -1733,8 +1785,27 @@ fn transfer_entry_anim_state(
         {
             new_item.anim_id = old_item.anim_id;
             new_item.hover_progress.set(old_item.hover_progress.get());
+            new_item.press_progress.set(old_item.press_progress.get());
             new_item.scale_progress.set(old_item.scale_progress.get());
             transfer_entry_anim_state(&mut new_item.submenu, &old_item.submenu);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn external_open_request_invalidates_the_cached_menu() {
+        let mut menu = ContextMenu::new();
+        menu.set_dirty(false);
+        let handle = menu.handle();
+        handle.open_at((24.0, 32.0));
+
+        assert!(menu.is_dirty());
+        menu.cascade_style(&Style::default(), &mut AnimationManager::new());
+        assert!(menu.open.get());
+        assert!(menu.base.dirty);
     }
 }

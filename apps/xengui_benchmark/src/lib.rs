@@ -421,27 +421,21 @@ fn controls_lab(store: &TraceStore) -> View {
         let setter = set_radio.clone();
         let event_store = radio_store.clone();
         radios = radios.child(
-            View::new()
-                .display(Display::Flex)
-                .flex_direction(FlexDirection::Row)
-                .align_items(Align::Center)
-                .gap(8.0, 0.0)
-                .child(
-                    RadioButton::new()
-                        .selected(radio == index)
-                        .accessible_label(format!("Seçenek {}", index + 1))
-                        .on_select(move |_| {
-                            setter.set(index);
-                            event_store.event("change", "RadioButton", format!("selected={index}"));
-                            event_store.check(
-                                "behavior.radio",
-                                "controls",
-                                true,
-                                "radio selection callback fired",
-                            );
-                        }),
-                )
-                .child(Label::new().label(format!("R{}", index + 1)).color(muted())),
+            RadioButton::new()
+                .selected(radio == index)
+                .label(format!("R{}", index + 1))
+                .color(muted())
+                .accessible_label(format!("Seçenek {}", index + 1))
+                .on_select(move |_| {
+                    setter.set(index);
+                    event_store.event("change", "RadioButton", format!("selected={index}"));
+                    event_store.check(
+                        "behavior.radio",
+                        "controls",
+                        true,
+                        "radio selection callback fired",
+                    );
+                }),
         );
     }
 
@@ -594,7 +588,7 @@ fn content_lab(store: &TraceStore) -> View {
     let context = ContextMenu::new()
         .child(
             View::new()
-                .height(px!(76.0))
+                .height(px!(120.0))
                 .padding(Edges::all(14.0))
                 .background(surface_high())
                 .border(Border::all(1.0, outline()).radius(12.0))
@@ -809,6 +803,8 @@ fn stress_lab(store: &TraceStore) -> View {
 
     let mut grid = View::new()
         .display(Display::Grid)
+        .width(pct!(100.0))
+        .min_width(px!(0.0))
         .grid_template_columns(vec![
             GridTrack::Fr(1.0),
             GridTrack::Fr(1.0),
@@ -949,6 +945,7 @@ fn trace_lab(
 
 fn root(store: TraceStore) -> Box<dyn Widget> {
     let (section, set_section) = use_state(0usize);
+    let (navigation_open, set_navigation_open) = use_state(false);
     let (export_message, set_export_message) = use_state(String::new());
     let (color_theme, set_color_theme) = use_state(0usize);
     let (dark_mode, set_dark_mode) = use_state(true);
@@ -965,6 +962,7 @@ fn root(store: TraceStore) -> Box<dyn Widget> {
     ];
 
     let compact = breakpoint == Breakpoint::Compact;
+    let uses_modal_navigation = matches!(breakpoint, Breakpoint::Compact | Breakpoint::Medium);
     let sidebar_width = match breakpoint {
         Breakpoint::Compact => 0.0,
         Breakpoint::Medium => 196.0,
@@ -976,27 +974,16 @@ fn root(store: TraceStore) -> Box<dyn Widget> {
         .width(pct!(100.0))
         .min_width(px!(0.0))
         .display(Display::Flex)
-        .flex_direction(if compact {
-            FlexDirection::Row
-        } else {
-            FlexDirection::Column
-        })
-        .gap(
-            if compact { 8.0 } else { 0.0 },
-            if compact { 0.0 } else { 8.0 },
-        )
-        .overflow_x(if compact {
-            Overflow::Auto
-        } else {
-            Overflow::Visible
-        });
+        .flex_direction(FlexDirection::Column)
+        .gap(0.0, 8.0)
+        .overflow_x(Overflow::Visible);
     for (index, (label, codepoint)) in sections.into_iter().enumerate() {
         let setter = set_section.clone();
         let selected = section == index;
         nav = nav.child(
             View::new()
-                .width(if compact { px!(128.0) } else { pct!(100.0) })
-                .min_width(if compact { px!(128.0) } else { px!(0.0) })
+                .width(pct!(100.0))
+                .min_width(px!(0.0))
                 .height(px!(56.0))
                 .display(Display::Flex)
                 .flex_direction(FlexDirection::Row)
@@ -1134,6 +1121,63 @@ fn root(store: TraceStore) -> Box<dyn Widget> {
                 ),
         );
 
+    let mut header_leading = View::new()
+        .display(Display::Flex)
+        .flex_direction(FlexDirection::Row)
+        .align_items(Align::Center)
+        .gap(12.0, 0.0);
+    if uses_modal_navigation {
+        let set_navigation_from_button = set_navigation_open.clone();
+        header_leading = header_leading.child(
+            View::new()
+                .size(px!(48.0), px!(48.0))
+                .display(Display::Flex)
+                .align_items(Align::Center)
+                .justify_content(JustifyContent::Center)
+                .background(current_theme().surface_container)
+                .border(Border::none().radius(24.0))
+                .accessible_label(if navigation_open {
+                    "Gezinmeyi kapat"
+                } else {
+                    "Gezinmeyi aç"
+                })
+                .child(icon(
+                    if navigation_open {
+                        codepoints::MENU_OPEN
+                    } else {
+                        codepoints::MENU
+                    },
+                    24.0,
+                    false,
+                ))
+                .on_click(move |_| set_navigation_from_button.set(!navigation_open)),
+        );
+    }
+    header_leading = header_leading.child(
+        View::new()
+            .display(Display::Flex)
+            .flex_direction(FlexDirection::Column)
+            .min_width(px!(0.0))
+            .child(
+                Label::new()
+                    .label("XenGui Benchmark Lab")
+                    .font_size(px!(24.0))
+                    .font_weight(FontWeight::Bold)
+                    .color(text()),
+            )
+            .child(
+                Label::new()
+                    .label(format!(
+                        "{:?} · {}×{}",
+                        breakpoint,
+                        viewport_size().0 as u32,
+                        viewport_size().1 as u32
+                    ))
+                    .font_size(px!(11.0))
+                    .color(muted()),
+            ),
+    );
+
     let header = View::new()
         .display(Display::Flex)
         .flex_direction(FlexDirection::Row)
@@ -1141,30 +1185,7 @@ fn root(store: TraceStore) -> Box<dyn Widget> {
         .align_items(Align::Center)
         .justify_content(JustifyContent::SpaceBetween)
         .gap(16.0, 12.0)
-        .child(
-            View::new()
-                .display(Display::Flex)
-                .flex_direction(FlexDirection::Column)
-                .min_width(px!(0.0))
-                .child(
-                    Label::new()
-                        .label("XenGui Benchmark Lab")
-                        .font_size(px!(24.0))
-                        .font_weight(FontWeight::Bold)
-                        .color(text()),
-                )
-                .child(
-                    Label::new()
-                        .label(format!(
-                            "{:?} · {}×{}",
-                            breakpoint,
-                            viewport_size().0 as u32,
-                            viewport_size().1 as u32
-                        ))
-                        .font_size(px!(11.0))
-                        .color(muted()),
-                ),
-        )
+        .child(header_leading)
         .child(
             View::new()
                 .display(Display::Flex)
@@ -1182,10 +1203,15 @@ fn root(store: TraceStore) -> Box<dyn Widget> {
         );
 
     let content_pane = View::new()
+        .key(format!("benchmark-content-pane-{section}"))
         .display(Display::Flex)
         .flex_direction(FlexDirection::Column)
         .flex_grow(1.0)
-        .width(px!(0.0))
+        .width(if uses_modal_navigation {
+            pct!(100.0)
+        } else {
+            px!(0.0)
+        })
         .min_width(px!(0.0))
         .height(pct!(100.0))
         .overflow_x(Overflow::Hidden)
@@ -1204,7 +1230,7 @@ fn root(store: TraceStore) -> Box<dyn Widget> {
         .child(header)
         .child_boxed(content);
 
-    let root = if compact {
+    let mut root = if uses_modal_navigation {
         View::new()
             .display(Display::Flex)
             .flex_direction(FlexDirection::Column)
@@ -1212,12 +1238,6 @@ fn root(store: TraceStore) -> Box<dyn Widget> {
             .height(pct!(100.0))
             .min_width(px!(0.0))
             .overflow(Overflow::Hidden, Overflow::Hidden)
-            .child(
-                View::new()
-                    .padding(Edges::only(12.0, 8.0, 12.0, 8.0))
-                    .background(current_theme().surface_container)
-                    .child(nav),
-            )
             .child(content_pane)
     } else {
         View::new()
@@ -1240,6 +1260,22 @@ fn root(store: TraceStore) -> Box<dyn Widget> {
             .child(content_pane)
     };
 
+    if uses_modal_navigation {
+        let mut modal_navigation = ModalNavigationRail::new()
+            .headline("Benchmark")
+            .open(navigation_open)
+            .active_index(section);
+        for (label, codepoint) in sections {
+            modal_navigation = modal_navigation.item(NavItem::new(codepoint, label));
+        }
+        let set_section_from_modal = set_section.clone();
+        let set_navigation_from_modal = set_navigation_open.clone();
+        modal_navigation = modal_navigation
+            .on_select(move |index| set_section_from_modal.set(index))
+            .on_open_change(move |open| set_navigation_from_modal.set(open));
+        root = root.child(modal_navigation);
+    }
+
     Box::new(
         root.font("Inter")
             .font_size(px!(14.0))
@@ -1261,7 +1297,7 @@ fn create_app() -> App {
     let mut app = App::new(AppConfig {
         title: "XenGui Benchmark Lab".to_string(),
         #[cfg(not(target_arch = "wasm32"))]
-        width: 1280,
+        width: 450,
         #[cfg(not(target_arch = "wasm32"))]
         height: 820,
         #[cfg(not(target_arch = "wasm32"))]

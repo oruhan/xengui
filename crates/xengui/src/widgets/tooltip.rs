@@ -31,7 +31,7 @@ const FADE_TRANSITION: Transition =
 const SCALE_TRANSITION: Transition =
     Transition::new(Duration::from_millis(140)).easing(Easing::EaseOut);
 const TOOLTIP_PADDING_X: f32 = 8.0;
-const TOOLTIP_PADDING_Y: f32 = 5.0;
+const TOOLTIP_PADDING_Y: f32 = 3.0;
 
 /// Wraps exactly one child widget and shows a small floating label near it
 /// once the pointer rests over the child for `delay`. The wrapped child
@@ -307,7 +307,34 @@ impl Widget for Tooltip {
             width: size.0,
             height: size.1,
         };
-        let popup_box = crate::scaled_layout_box(raw_box, scale);
+        // Scale from the edge nearest the anchor, so a top tooltip rises
+        // straight upward instead of appearing to drift out of a corner.
+        let popup_box = match self.placement {
+            TooltipPlacement::Top => LayoutBox {
+                x: raw_box.x + raw_box.width * (1.0 - scale) * 0.5,
+                y: raw_box.y + raw_box.height * (1.0 - scale),
+                width: raw_box.width * scale,
+                height: raw_box.height * scale,
+            },
+            TooltipPlacement::Bottom => LayoutBox {
+                x: raw_box.x + raw_box.width * (1.0 - scale) * 0.5,
+                y: raw_box.y,
+                width: raw_box.width * scale,
+                height: raw_box.height * scale,
+            },
+            TooltipPlacement::Left => LayoutBox {
+                x: raw_box.x + raw_box.width * (1.0 - scale),
+                y: raw_box.y + raw_box.height * (1.0 - scale) * 0.5,
+                width: raw_box.width * scale,
+                height: raw_box.height * scale,
+            },
+            TooltipPlacement::Right => LayoutBox {
+                x: raw_box.x,
+                y: raw_box.y + raw_box.height * (1.0 - scale) * 0.5,
+                width: raw_box.width * scale,
+                height: raw_box.height * scale,
+            },
+        };
 
         let bg = self
             .background

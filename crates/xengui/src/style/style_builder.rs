@@ -755,6 +755,13 @@ pub trait StyleBuilder: Sized {
         self
     }
 
+    /// Applies opacity to this widget's composited subtree.
+    fn opacity(mut self, opacity: f32) -> Self {
+        self.style_mut().opacity = Some(opacity.clamp(0.0, 1.0));
+        self.mark_dirty();
+        self
+    }
+
     fn content_scale(mut self, scale: f32) -> Self {
         self.style_mut().content_scale = Some(scale);
         self.mark_dirty();

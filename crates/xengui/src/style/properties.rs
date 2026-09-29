@@ -190,6 +190,8 @@ pub struct Style {
     /// Uniform visual transform applied by the compositor after the widget
     /// has been rasterized at natural text/vector metrics.
     pub scale: Option<f32>,
+    /// Opacity applied to this widget's composited subtree.
+    pub opacity: Option<f32>,
     /// Overrides `scale` for the content layer only; `None` means the
     /// content follows the same compositor scale as the widget container.
     pub content_scale: Option<f32>,
@@ -309,6 +311,7 @@ impl Style {
 
             transform_origin: patch.transform_origin.or(self.transform_origin),
             scale: patch.scale.or(self.scale),
+            opacity: patch.opacity.or(self.opacity),
             content_scale: patch.content_scale.or(self.content_scale),
             transition: patch.transition.or(self.transition),
             transition_properties: patch.transition_properties.or(self.transition_properties),

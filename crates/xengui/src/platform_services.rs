@@ -230,7 +230,7 @@ impl PlatformServices for HeadlessPlatformServices {
     }
 }
 
-thread_local! {
+crate::runtime::runtime_state! {
     static DEFAULT_PLATFORM_SERVICES: RefCell<Rc<dyn PlatformServices>> =
         RefCell::new(Rc::new(HeadlessPlatformServices::default()));
 }

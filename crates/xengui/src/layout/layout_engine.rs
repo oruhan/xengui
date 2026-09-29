@@ -311,6 +311,24 @@ fn apply_layout(
         let style = widget.computed_style();
         let (top, right, bottom, left) = (style.top, style.right, style.bottom, style.left);
 
+        // Taffy resolves an absolute descendant against its immediate
+        // containing block. `Fixed` coordinates, however, belong to the
+        // viewport. Resolve an auto size stretched by opposing insets here
+        // as well; otherwise a fixed scrim/sheet nested under a zero-sized
+        // portal host receives a zero width or height and never appears.
+        let explicit_width = style.size.and_then(|size| size.width).is_some();
+        let explicit_height = style.size.and_then(|size| size.height).is_some();
+        if !explicit_width && let (Some(left), Some(right)) = (left, right) {
+            width = (vw - left.to_physical(scale_factor) - right.to_physical(scale_factor))
+                .max(0.0)
+                .round();
+        }
+        if !explicit_height && let (Some(top), Some(bottom)) = (top, bottom) {
+            height = (vh - top.to_physical(scale_factor) - bottom.to_physical(scale_factor))
+                .max(0.0)
+                .round();
+        }
+
         if let Some(top) = top {
             snapped_y = top.to_physical(scale_factor).round();
         } else if let Some(bottom) = bottom {
@@ -569,8 +587,8 @@ mod tests {
     use super::{LayoutEngine, translate_subtree};
     use crate::{
         AnimationManager, Constraints, FontStyle, FontWeight, Label, LayoutBox, LayoutContext,
-        MeasureContext, MeasureResult, PaintContext, RenderCache, Style, StyleBuilder,
-        TextMeasurer, View, Widget,
+        MeasureContext, MeasureResult, ModalNavigationRail, PaintContext, Position, RenderCache,
+        Style, StyleBuilder, TextMeasurer, View, Widget, px,
     };
     use std::{any::Any, cell::Cell, rc::Rc};
 
@@ -740,7 +758,76 @@ mod tests {
     }
 
     #[test]
+    fn nested_fixed_opposing_insets_fill_the_viewport() {
+        let fixed = View::new()
+            .position(Position::Fixed)
+            .top(px!(10.0))
+            .right(px!(20.0))
+            .bottom(px!(30.0))
+            .left(px!(40.0));
+        let host = View::new().size(px!(0.0), px!(0.0)).child(fixed);
+        let mut tree: Vec<Box<dyn Widget>> = vec![Box::new(host)];
+        let mut text = NullTextMeasurer { font_generation: 0 };
+        let mut animations = AnimationManager::new();
+        let mut cache = RenderCache::new();
+
+        LayoutEngine::layout(
+            &mut tree,
+            &mut LayoutContext {
+                text: &mut text,
+                anim: &mut animations,
+                scale_factor: 1.0,
+            },
+            &mut cache,
+            400.0,
+            300.0,
+        );
+
+        let fixed = tree[0].children()[0].layout_box();
+        assert_eq!(
+            *fixed,
+            LayoutBox {
+                x: 40.0,
+                y: 10.0,
+                width: 340.0,
+                height: 260.0,
+            }
+        );
+    }
+
+    #[test]
+    fn open_modal_navigation_sheet_has_visible_viewport_geometry() {
+        let runtime = crate::RuntimeContext::new();
+        let _guard = runtime.enter();
+        let mut tree: Vec<Box<dyn Widget>> = vec![Box::new(ModalNavigationRail::new().open(true))];
+        let mut text = NullTextMeasurer { font_generation: 0 };
+        let mut animations = AnimationManager::new();
+        let mut cache = RenderCache::new();
+
+        LayoutEngine::layout(
+            &mut tree,
+            &mut LayoutContext {
+                text: &mut text,
+                anim: &mut animations,
+                scale_factor: 1.0,
+            },
+            &mut cache,
+            400.0,
+            300.0,
+        );
+
+        let host = &tree[0].children()[0];
+        let scrim = host.children()[0].layout_box();
+        let sheet = host.children()[1].layout_box();
+        assert_eq!((scrim.width, scrim.height), (400.0, 300.0));
+        assert_eq!((sheet.x, sheet.y), (0.0, 0.0));
+        assert_eq!((sheet.width, sheet.height), (360.0, 300.0));
+    }
+
+    #[test]
     fn root_cascade_inherits_active_theme_text_roles() {
+        let runtime = crate::RuntimeContext::new();
+        let _guard = runtime.enter();
         let original_theme = crate::current_theme();
         let theme = crate::Theme::light().on_surface(crate::Color::rgb(12, 34, 56));
         crate::style::theme::set_current_theme(theme.clone());
@@ -886,6 +973,8 @@ mod tests {
 
     #[test]
     fn theme_generation_change_invalidates_cached_measurement() {
+        let runtime = crate::RuntimeContext::new();
+        let _guard = runtime.enter();
         let original_theme = crate::current_theme();
         crate::style::theme::set_current_theme(crate::Theme::light());
 

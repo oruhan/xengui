@@ -303,7 +303,10 @@ impl Render for CodeBlock {
 
         let mut root = Column::new()
             .width(pct!(100.0))
-            .background(self.theme.background)
+            // The header owns the outer top corners. Keeping the root on the
+            // same color prevents the clipped header radius from exposing the
+            // code body's dark fill as triangular corner gaps.
+            .background(self.theme.header_background)
             .border(Border::all(BORDER_WIDTH, self.theme.border).radius(CONTAINER_RADIUS))
             .overflow(Overflow::Hidden, Overflow::Hidden);
 
@@ -349,6 +352,9 @@ impl Render for CodeBlock {
                 let set_copied = set_copied.clone();
                 header = header.child(
                     Button::new()
+                        .material_icon(xengui_icons::codepoints::CONTENT_COPY)
+                        .icon_size(16.0, 16.0)
+                        .icon_gap(6.0)
                         .label(if copied {
                             self.copied_label.clone()
                         } else {
@@ -371,7 +377,22 @@ impl Render for CodeBlock {
                         .border(Border::all(1.0, self.theme.border).radius(Length::px(999.0)))
                         .on_click(move |ctx| {
                             match ctx.platform_services().clipboard().write_text(code.clone()) {
-                                Ok(()) => set_copied.set(true),
+                                Ok(()) => {
+                                    set_copied.set(true);
+                                    let reset = set_copied.clone();
+                                    ctx.spawn(async move {
+                                        #[cfg(not(target_arch = "wasm32"))]
+                                        crate::task::spawn_blocking(|| {
+                                            std::thread::sleep(std::time::Duration::from_millis(
+                                                1800,
+                                            ));
+                                        })
+                                        .await;
+                                        #[cfg(target_arch = "wasm32")]
+                                        crate::task::yield_now().await;
+                                        reset.set(false);
+                                    });
+                                }
                                 Err(error) => log::error!("CodeBlock copy failed: {error}"),
                             }
                         }),
@@ -385,6 +406,8 @@ impl Render for CodeBlock {
             View::new()
                 .width(pct!(100.0))
                 .padding(Edges::all(20.0))
+                .background(self.theme.background)
+                .border(Border::none().radius(BorderRadius::bottom(INNER_RADIUS)))
                 .overflow_x(Overflow::Auto)
                 .child(
                     RichText::new()
@@ -665,6 +688,8 @@ mod tests {
 
     #[test]
     fn authored_border_overrides_the_visible_composite_root() {
+        let runtime = crate::RuntimeContext::new();
+        let _guard = runtime.enter();
         let block = CodeBlock::new("let answer = 42;").border(Border::none());
         let rendered = crate::component("code-block-border-override", || block.render());
 

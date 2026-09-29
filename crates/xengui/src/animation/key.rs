@@ -66,6 +66,14 @@ pub enum AnimProperty {
     GapX,
     /// The `GapY` variant.
     GapY,
+    /// Positioned inset from the top edge.
+    Top,
+    /// Positioned inset from the right edge.
+    Right,
+    /// Positioned inset from the bottom edge.
+    Bottom,
+    /// Positioned inset from the left edge.
+    Left,
     /// Numeric variable-font weight.
     FontWeight,
     /// The `ScrollOffset` variant.
@@ -105,6 +113,10 @@ impl AnimProperty {
                 | Self::MarginBottom
                 | Self::GapX
                 | Self::GapY
+                | Self::Top
+                | Self::Right
+                | Self::Bottom
+                | Self::Left
                 | Self::FontWeight
         )
     }

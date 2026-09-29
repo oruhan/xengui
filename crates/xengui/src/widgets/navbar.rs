@@ -4,9 +4,9 @@
 //! and dispatches selection - positioning (fixed, bottom, centered) is
 //! left to the caller so it composes with any layout.
 use crate::{
-    Align, Border, BorderRadius, BoxShadow, Color, Display, Easing, Edges, Filter, FlexDirection,
-    FontWeight, Interaction, JustifyContent, Label, LayoutBox, Length, Render, Style, StyleBuilder,
-    Transition, VariableIcon, View, Widget, WidgetBase, WidgetId, pct,
+    Align, Border, BorderRadius, Color, Display, Easing, Edges, Filter, FlexDirection, FontWeight,
+    Interaction, JustifyContent, Label, LayoutBox, Length, Render, Style, StyleBuilder, Transition,
+    VariableIcon, View, Widget, WidgetBase, WidgetId, pct,
 };
 use smol_str::SmolStr;
 use std::rc::Rc;
@@ -118,8 +118,7 @@ impl Render for NavigationBar {
             .border(
                 Border::all(1.0, theme.outline_variant.with_alpha_f32(0.4))
                     .radius(BorderRadius::all(28.0)),
-            )
-            .box_shadow(BoxShadow::new(0.0, 6.0, 20.0, Color::BLACK.with_alpha(70)));
+            );
 
         for (index, item) in self.items.iter().enumerate() {
             let active = index == self.active_index;

@@ -247,7 +247,7 @@ impl Render for Table {
             .display(Display::Flex)
             .flex_direction(FlexDirection::Column)
             .color(theme.on_surface)
-            .border(Border::all(1.0, border_color).radius(theme.radius_sm));
+            .border(Border::all(1.0, border_color).radius(theme.radius_lg));
         let root_style = Widget::style(&root).overlay(&self.base.style);
         *Widget::style_mut(&mut root) = root_style;
 
@@ -264,7 +264,7 @@ impl Render for Table {
                 )
                 // Rounds the header's top corners to match the table's own
                 // outer radius instead of squaring it off.
-                .border(Border::bottom(1.0, border_color).radius(theme.radius_sm));
+                .border(Border::bottom(1.0, border_color).radius(theme.radius_lg));
 
             for column in &self.columns {
                 let label = Label::new()
@@ -313,7 +313,7 @@ impl Render for Table {
             let is_first_visible = i == 0 && !has_header;
             let is_last = i + 1 == row_count;
             if is_first_visible || is_last {
-                row_border = row_border.radius(theme.radius_sm);
+                row_border = row_border.radius(theme.radius_lg);
             }
 
             let mut row_view = View::new()

@@ -86,6 +86,14 @@ impl<'a> PaintContext<'a> {
             ))));
     }
 
+    /// Draws a variable-font icon on the independently-scalable content layer.
+    pub fn draw_content_variable_icon(&mut self, command: VariableIconCommand) {
+        self.commands
+            .push(DrawCommand::Content(Box::new(DrawCommand::VariableIcon(
+                Box::new(command),
+            ))));
+    }
+
     /// Appends a pre-recorded compositor layer.
     pub fn draw_composited(&mut self, command: CompositedCommand) {
         self.commands

@@ -58,7 +58,7 @@ impl Breakpoint {
     }
 }
 
-thread_local! {
+crate::runtime::runtime_state! {
     static CURRENT_BREAKPOINT: Cell<Breakpoint> = const { Cell::new(Breakpoint::Compact) };
 }
 
@@ -223,6 +223,8 @@ mod tests {
 
     #[test]
     fn responsive_values_fall_back_to_the_nearest_lower_override() {
+        let runtime = crate::RuntimeContext::new();
+        let _guard = runtime.enter();
         let value = Responsive::new(0)
             .medium(1)
             .expanded(2)

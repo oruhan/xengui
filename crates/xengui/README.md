@@ -61,3 +61,31 @@ The minimum supported Rust version is 1.92. The core crate supports native and `
 ## License
 
 Licensed under the [Apache License 2.0](LICENSE).
+
+### Runtime ownership
+
+Each `xenframe::App` owns a `RuntimeContext` and enters it for rendering and
+platform events. Custom hosts should keep one context per application/window
+tree and enter it while building, reconciling, laying out, painting, or dispatching
+input:
+
+```rust
+let runtime = xengui::RuntimeContext::new();
+let _guard = runtime.enter();
+xengui::style::theme::set_current_theme(xengui::Theme::dark());
+xengui::task::spawn(async { /* application work */ });
+runtime.tasks().poll();
+```
+
+Use `app.runtime().enter()` for service configuration outside App callbacks.
+`RuntimeContext::bind` captures a weak owner for callbacks invoked by external
+systems. Hook setters and `EventCtx::spawn` retain their original runtime identity;
+calling them while another runtime is active does not redirect their work.
+Standalone widget construction without an entered context uses transient defaults;
+service writes in that mode are not inherited by a future App.
+
+Resource reload, invalidation and component unmount cancel the previous task and
+drop its future without waiting for another wakeup. Dropping the context drops
+pending tasks/effects and runs mounted effect cleanups. Already-running
+`spawn_blocking` closures cannot be forcibly interrupted; their abandoned results
+are not applied to disposed hook state.

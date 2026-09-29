@@ -1,14 +1,17 @@
 // SPDX-License-Identifier: Apache-2.0
 use crate::{
-    Align, AnimationManager, Color, Constraints, EventCtx, EventStatus, InputEvent, Interaction,
-    JustifyContent, LayoutBox, Length, MeasureContext, MeasureResult, PaintContext, RectCommand,
-    Style, StyleBuilder, TextCommand, TriangleCommand, Widget, WidgetBase, WidgetContent, WidgetId,
+    Align, AnimationManager, Color, Constraints, Easing, EventCtx, EventStatus, InputEvent,
+    Interaction, JustifyContent, LayoutBox, Length, MeasureContext, MeasureResult, PaintContext,
+    RectCommand, Style, StyleBuilder, TextCommand, Transition, TriangleCommand,
+    VariableIconCommand, Widget, WidgetBase, WidgetContent, WidgetId,
     constants::{DEFAULT_CURSOR_ICON, DEFAULT_FONT_SIZE, DEFAULT_POINTER_CURSOR_ICON},
 };
 use smol_str::SmolStr;
 use std::cell::Cell;
 use std::sync::Arc;
+use web_time::Duration;
 use xen_svg::{SvgDocument, SvgTriangle, parse_svg, tessellate_document};
+use xengui_icons::{IconAxes, MaterialSymbolsVariable};
 
 /// Where the icon sits relative to the label along the content's main axis.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
@@ -51,6 +54,8 @@ pub struct Button {
     icon_gap: f32,
     icon_position: IconPosition,
     icon_tint: Option<Color>,
+    material_icon: Option<char>,
+    material_icon_axes: IconAxes,
 }
 
 impl Button {
@@ -79,6 +84,8 @@ impl Button {
             icon_gap: 8.0,
             icon_position: IconPosition::Start,
             icon_tint: None,
+            material_icon: None,
+            material_icon_axes: IconAxes::default(),
         }
     }
 
@@ -99,6 +106,15 @@ impl Button {
         self.icon_document = Some(Arc::new(document));
         self.mark_dirty();
         Ok(self)
+    }
+
+    /// Uses an icon from the project's Material Symbols font.
+    pub fn material_icon(mut self, codepoint: char) -> Self {
+        self.material_icon = Some(codepoint);
+        self.icon_document = None;
+        self.icon_triangles = Arc::new(Vec::new());
+        self.mark_dirty();
+        self
     }
 
     /// Overrides the icon's rendered size; otherwise the SVG's own viewBox size is used.
@@ -133,6 +149,9 @@ impl Button {
         if let Some(size) = self.icon_size {
             return size;
         }
+        if self.material_icon.is_some() {
+            return self.icon_size.unwrap_or((18.0, 18.0));
+        }
         match &self.icon_document {
             Some(doc) => {
                 let (_, _, w, h) = doc.view_box;
@@ -146,6 +165,53 @@ impl Button {
     // style-overlay logic lives in WidgetBase::recompute_style.
     fn recompute_style(&mut self) {
         self.base.recompute_style();
+
+        // M3 state layers are part of the component default, so a button
+        // still communicates hover/press when the caller only supplies its
+        // resting container color. Explicit state styles continue to win.
+        let theme = crate::current_theme();
+        let pressed_has_background = self
+            .base
+            .pressed_style
+            .as_ref()
+            .is_some_and(|style| style.background.is_some());
+        let hover_has_background = self
+            .base
+            .hover_style
+            .as_ref()
+            .is_some_and(|style| style.background.is_some());
+        let state_amount = if self.base.interaction.pressed && !pressed_has_background {
+            Some(0.10)
+        } else if self.base.interaction.hovered && !hover_has_background {
+            Some(0.08)
+        } else {
+            None
+        };
+        if let Some(amount) = state_amount
+            && let Some(background) = self.base.computed_style.background.as_ref()
+        {
+            let base = background.representative_color();
+            let layer = theme.on_surface;
+            self.base.computed_style.background = Some(crate::Background::Color(Color::rgba_f32(
+                base.r() * (1.0 - amount) + layer.r() * amount,
+                base.g() * (1.0 - amount) + layer.g() * amount,
+                base.b() * (1.0 - amount) + layer.b() * amount,
+                base.a(),
+            )));
+        }
+        let pressed_has_scale = self
+            .base
+            .pressed_style
+            .as_ref()
+            .is_some_and(|style| style.scale.is_some());
+        if self.base.interaction.pressed && !pressed_has_scale {
+            self.base.computed_style.scale = Some(0.97);
+            self.base
+                .computed_style
+                .transition_overrides
+                .transform
+                .get_or_insert(Transition::new(Duration::from_millis(100)).easing(Easing::EaseOut));
+        }
         self.base.interaction.hover_cursor =
             self.base
                 .computed_style
@@ -432,6 +498,21 @@ impl Widget for Button {
             }
         }
 
+        if has_icon && let Some(codepoint) = self.material_icon {
+            ctx.draw_content_variable_icon(VariableIconCommand {
+                position: (icon_x, icon_y),
+                size: (icon_w, icon_h),
+                codepoint,
+                font: MaterialSymbolsVariable::FONT,
+                axes: self.material_icon_axes,
+                color: self
+                    .icon_tint
+                    .unwrap_or(style.color.unwrap_or(Color::BLACK)),
+                rotation_degrees: 0.0,
+                clip_rect: None,
+            });
+        }
+
         let content_box = LayoutBox {
             x: text_x,
             y: text_y,
@@ -506,6 +587,8 @@ impl Widget for Button {
             && self.icon_gap == other.icon_gap
             && self.icon_size == other.icon_size
             && self.icon_tint == other.icon_tint
+            && self.material_icon == other.material_icon
+            && self.material_icon_axes == other.material_icon_axes
     }
 
     fn cascade_style(&mut self, parent: &Style, anim: &mut AnimationManager) {
@@ -564,5 +647,29 @@ fn align_offset(align: Align, available: f32, content: f32) -> f32 {
         Align::Start => 0.0,
         Align::End => (available - content).max(0.0),
         _ => (available - content).max(0.0) * 0.5,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn default_pressed_state_supplies_color_and_scale_feedback() {
+        let resting = Color::rgba(80, 40, 120, 255);
+        let mut button = Button::new().background(resting);
+        button.base.interaction.pressed = true;
+        button.recompute_style();
+
+        assert_eq!(button.base.computed_style.scale, Some(0.97));
+        assert_ne!(
+            button
+                .base
+                .computed_style
+                .background
+                .as_ref()
+                .map(crate::Background::representative_color),
+            Some(resting)
+        );
     }
 }

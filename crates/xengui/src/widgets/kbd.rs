@@ -35,7 +35,7 @@ impl Kbd {
 
         let mut base = WidgetBase::new(interaction);
 
-        base.style.padding = Some(Edges::symmetric(6.0, 2.0));
+        base.style.padding = Some(Edges::symmetric(4.0, 2.0));
         base.style.font_size = Some(Length::px(13.0));
 
         let mut kbd = Self {

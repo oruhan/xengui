@@ -2853,6 +2853,55 @@ impl Widget for View {
         self.paint_auto_scroll_indicator(ctx);
     }
 
+    fn event_capture(&mut self, event: &InputEvent, ctx: &mut EventCtx) -> EventStatus {
+        match event {
+            InputEvent::MouseInput {
+                state: ElementState::Pressed,
+                button: MouseButton::Left,
+                position,
+            } if self.point_in_scrollbar(*position) => {
+                if self.handle_scrollbar_mouse(
+                    ElementState::Pressed,
+                    MouseButton::Left,
+                    *position,
+                    ctx,
+                ) {
+                    ctx.suppress_text_drag();
+                    EventStatus::Handled
+                } else {
+                    EventStatus::Ignored
+                }
+            }
+            InputEvent::MouseMoved { position } if self.scrollbar_drag.get().is_some() => {
+                if self.handle_scrollbar_drag(*position, ctx) {
+                    EventStatus::Handled
+                } else {
+                    EventStatus::Ignored
+                }
+            }
+            InputEvent::MouseInput {
+                state: ElementState::Released,
+                button: MouseButton::Left,
+                position,
+            } if self.scrollbar_drag.get().is_some()
+                || self.pending_track_drag.get().is_some()
+                || self.pressed_arrow.get().is_some() =>
+            {
+                if self.handle_scrollbar_mouse(
+                    ElementState::Released,
+                    MouseButton::Left,
+                    *position,
+                    ctx,
+                ) {
+                    EventStatus::Handled
+                } else {
+                    EventStatus::Ignored
+                }
+            }
+            _ => EventStatus::Ignored,
+        }
+    }
+
     fn event(&mut self, event: &InputEvent, ctx: &mut EventCtx) -> EventStatus {
         if let Some(status) = self.handle_auto_scroll(event, ctx) {
             return status;
@@ -3569,6 +3618,42 @@ mod tests {
 
         assert_eq!(status, EventStatus::Handled);
         assert!(ctx.take_suppress_text_drag());
+    }
+
+    #[test]
+    fn scrollbar_capture_owns_thumb_drag_before_descendants() {
+        let mut view = sized_view(
+            View::new().overflow_y(Overflow::Auto),
+            (100.0, 100.0),
+            (100.0, 400.0),
+        );
+        let thumb = view.vertical_thumb_hit_rect().expect("vertical thumb");
+        let start = (thumb.0 + thumb.2 * 0.5, thumb.1 + thumb.3 * 0.5);
+        let mut ctx = EventCtx::new();
+
+        assert_eq!(
+            view.event_capture(
+                &InputEvent::MouseInput {
+                    state: ElementState::Pressed,
+                    button: MouseButton::Left,
+                    position: start,
+                },
+                &mut ctx,
+            ),
+            EventStatus::Handled
+        );
+        assert!(view.scrollbar_drag.get().is_some());
+
+        assert_eq!(
+            view.event_capture(
+                &InputEvent::MouseMoved {
+                    position: (start.0, start.1 + 20.0),
+                },
+                &mut ctx,
+            ),
+            EventStatus::Handled
+        );
+        assert!(view.scroll_offset.get().1 > 0.0);
     }
 
     #[test]

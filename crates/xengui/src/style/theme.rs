@@ -1274,7 +1274,7 @@ pub enum ThemeSwitch {
     Name(String),
 }
 
-thread_local! {
+crate::runtime::runtime_state! {
     static CURRENT_THEME: RefCell<Theme> = RefCell::new(Theme::default());
     static THEME_GENERATION: Cell<u64> = const { Cell::new(0) };
     static THEME_SWITCH: RefCell<Option<ThemeSwitch>> = const { RefCell::new(None) };
@@ -1477,6 +1477,8 @@ mod generation_tests {
 
     #[test]
     fn generation_advances_only_when_the_resolved_theme_can_change() {
+        let runtime = crate::RuntimeContext::new();
+        let _guard = runtime.enter();
         let original_theme = CURRENT_THEME.with(|cell| cell.borrow().clone());
         let original_system_is_dark = SYSTEM_IS_DARK.with(Cell::get);
 

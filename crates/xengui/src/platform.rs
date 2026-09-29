@@ -6,7 +6,7 @@
 //! layer (see `xenframe::web::detect_touch_platform`).
 use std::cell::Cell;
 
-thread_local! {
+crate::runtime::runtime_state! {
     static IS_TOUCH: Cell<bool> = const { Cell::new(false) };
     static SAFE_AREA_INSETS: Cell<SafeAreaInsets> = const { Cell::new(SafeAreaInsets::ZERO) };
 }

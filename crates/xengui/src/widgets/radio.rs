@@ -3,9 +3,13 @@ use crate::{
     AnimKey, AnimLayer, AnimProperty, AnimValue, AnimationManager, Background, BorderRadius, Color,
     Constraints, Easing, ElementState, EventCtx, EventStatus, InputEvent, Interaction, Key,
     KeyState, LayoutBox, Length, MeasureContext, MeasureResult, MouseButton, PaintContext,
-    RectCommand, Style, StyleBuilder, Transition, Widget, WidgetBase, WidgetId,
-    constants::{DEFAULT_CURSOR_ICON, DEFAULT_POINTER_CURSOR_ICON, DISABLED_WIDGET_OPACITY},
+    RectCommand, Style, StyleBuilder, TextCommand, Transition, Widget, WidgetBase, WidgetId,
+    constants::{
+        DEFAULT_CURSOR_ICON, DEFAULT_FONT_SIZE, DEFAULT_POINTER_CURSOR_ICON,
+        DISABLED_WIDGET_OPACITY,
+    },
 };
+use smol_str::SmolStr;
 use std::cell::Cell;
 use web_time::Duration;
 
@@ -29,6 +33,8 @@ pub struct RadioButton {
     layout_box: LayoutBox,
     selected: bool,
     size: f32,
+    label: SmolStr,
+    label_size: Cell<(f32, f32)>,
     dot_color: Option<Color>,
     on_select: Option<SelectCallback>,
     select_progress: Cell<f32>,
@@ -46,7 +52,9 @@ impl RadioButton {
             anim_id: WidgetId::new_unique(),
             layout_box: LayoutBox::default(),
             selected: false,
-            size: 18.0,
+            size: 20.0,
+            label: SmolStr::new(""),
+            label_size: Cell::new((0.0, 0.0)),
             dot_color: None,
             on_select: None,
             select_progress: Cell::new(0.0),
@@ -67,6 +75,13 @@ impl RadioButton {
     /// Returns or updates the `size` value.
     pub fn size(mut self, size: f32) -> Self {
         self.size = size;
+        self.mark_dirty();
+        self
+    }
+
+    /// Adds a clickable text label to the radio's full interaction target.
+    pub fn label(mut self, label: impl Into<SmolStr>) -> Self {
+        self.label = label.into();
         self.mark_dirty();
         self
     }
@@ -135,7 +150,12 @@ impl Widget for RadioButton {
     fn semantics(&self) -> Option<crate::Semantics> {
         let mut semantics =
             crate::Semantics::new(crate::SemanticRole::Radio).action(crate::SemanticAction::Focus);
-        semantics.label = self.base.accessible_label.as_ref().map(ToString::to_string);
+        semantics.label = self
+            .base
+            .accessible_label
+            .as_ref()
+            .map(ToString::to_string)
+            .or_else(|| (!self.label.is_empty()).then(|| self.label.to_string()));
         semantics.selected = Some(self.selected);
         semantics.disabled = !self.base.interaction.enabled;
         if !semantics.disabled {
@@ -155,8 +175,28 @@ impl Widget for RadioButton {
     }
 
     fn measure(&self, ctx: &mut MeasureContext, constraints: Constraints) -> MeasureResult {
-        let px = self.size * ctx.scale_factor;
-        let (w, h) = constraints.constrain_size(px, px);
+        let sf = ctx.scale_factor;
+        let target = 48.0 * sf;
+        let label = if self.label.is_empty() {
+            MeasureResult::new(0.0, 0.0)
+        } else {
+            let style = &self.base.computed_style;
+            ctx.text.measure(
+                &self.label,
+                style.font.as_deref(),
+                style.font_size.unwrap_or(DEFAULT_FONT_SIZE).value(),
+                style.font_weight.unwrap_or_default(),
+                style.font_style.unwrap_or_default(),
+                0.0,
+                0.0,
+                None,
+                sf,
+            )
+        };
+        self.label_size.set((label.width, label.height));
+        let gap = if self.label.is_empty() { 0.0 } else { 8.0 * sf };
+        let (w, h) =
+            constraints.constrain_size(target + gap + label.width, target.max(label.height));
         MeasureResult::new(w, h)
     }
 
@@ -164,6 +204,14 @@ impl Widget for RadioButton {
         let style = &self.base.computed_style;
         let sf = ctx.scale_factor;
         let b = self.layout_box;
+        let target = 48.0 * sf;
+        let radio_size = self.size * sf;
+        let radio_box = LayoutBox {
+            x: b.x + (target - radio_size) * 0.5,
+            y: b.y + (b.height - radio_size) * 0.5,
+            width: radio_size,
+            height: radio_size,
+        };
         let theme = crate::current_theme();
 
         let t = self.select_progress.get();
@@ -189,10 +237,10 @@ impl Widget for RadioButton {
         let fill = fill_base.with_alpha_f32(fill_base.a() * dim);
 
         ctx.draw_rect(RectCommand {
-            position: (b.x, b.y),
-            size: (b.width, b.height),
+            position: (radio_box.x, radio_box.y),
+            size: (radio_box.width, radio_box.height),
             background: Some(Background::Color(fill)),
-            border_radius: Some(BorderRadius::all(Length::px(b.width * 0.5))),
+            border_radius: Some(BorderRadius::all(Length::px(radio_box.width * 0.5))),
             border_color: Some(ring_color),
             border_width: Some(
                 border
@@ -204,9 +252,9 @@ impl Widget for RadioButton {
 
         if t > 0.001 {
             let dot_color_base = self.dot_color.unwrap_or(selected_border);
-            let dot_d = b.width * 0.5 * t;
-            let cx = b.x + b.width * 0.5;
-            let cy = b.y + b.height * 0.5;
+            let dot_d = radio_box.width * 0.5 * t;
+            let cx = radio_box.x + radio_box.width * 0.5;
+            let cy = radio_box.y + radio_box.height * 0.5;
 
             ctx.draw_rect(RectCommand {
                 position: (cx - dot_d * 0.5, cy - dot_d * 0.5),
@@ -221,12 +269,25 @@ impl Widget for RadioButton {
             });
         }
 
+        if !self.label.is_empty() {
+            let (label_w, label_h) = self.label_size.get();
+            let mut label_style = style.clone();
+            label_style.color.get_or_insert(theme.on_surface);
+            label_style.font_size.get_or_insert(DEFAULT_FONT_SIZE);
+            ctx.draw_text(TextCommand {
+                text: self.label.clone(),
+                position: (b.x + target + 8.0 * sf, b.y + (b.height - label_h) * 0.5),
+                style: label_style,
+                max_width: Some(label_w),
+                clip_rect: None,
+            });
+        }
+
         self.paint_focus(ctx);
     }
 
     fn hit_test(&self, point: (f32, f32)) -> bool {
-        self.layout_box
-            .contains_rounded(point, self.layout_box.width * 0.5)
+        self.layout_box.contains_rounded(point, 0.0)
     }
 
     fn event(&mut self, event: &InputEvent, ctx: &mut EventCtx) -> EventStatus {
@@ -300,6 +361,7 @@ impl Widget for RadioButton {
 
         self.selected == other.selected
             && self.size == other.size
+            && self.label == other.label
             && self.dot_color == other.dot_color
             && self.base.authored_styles_eq(&other.base)
     }
@@ -338,6 +400,7 @@ impl Widget for RadioButton {
     fn transfer_measured_state(&mut self, old: &dyn Widget) {
         if let Some(old) = old.as_any().downcast_ref::<RadioButton>() {
             self.select_progress.set(old.select_progress.get());
+            self.label_size.set(old.label_size.get());
         }
     }
 
@@ -357,5 +420,27 @@ impl Widget for RadioButton {
 
     fn anim_id(&self) -> WidgetId {
         self.anim_id
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn label_is_part_of_the_radio_hit_target_and_semantics() {
+        let mut radio = RadioButton::new().label("Option A");
+        radio.layout(LayoutBox {
+            x: 10.0,
+            y: 20.0,
+            width: 140.0,
+            height: 48.0,
+        });
+
+        assert!(radio.hit_test((130.0, 44.0)));
+        assert_eq!(
+            radio.semantics().and_then(|s| s.label),
+            Some("Option A".into())
+        );
     }
 }

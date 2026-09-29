@@ -5,7 +5,7 @@ use std::any::Any;
 use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet};
 use std::marker::PhantomData;
-use std::rc::Rc;
+use std::rc::{Rc, Weak};
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 /// Data and behavior represented by `ComponentId`.
@@ -58,7 +58,13 @@ macro_rules! impl_component_key_from_int {
 }
 impl_component_key_from_int!(u8, u16, u32, u64, usize, i8, i16, i32, i64, isize);
 
+struct ComponentScope {
+    alive: Cell<bool>,
+    tasks: RefCell<Vec<crate::task::TaskHandle>>,
+}
+
 struct ComponentState {
+    scope: Rc<ComponentScope>,
     slots: Vec<Rc<RefCell<Box<dyn Any>>>>,
     cursor: usize,
 }
@@ -66,13 +72,17 @@ struct ComponentState {
 impl ComponentState {
     fn new() -> Self {
         Self {
+            scope: Rc::new(ComponentScope {
+                alive: Cell::new(true),
+                tasks: RefCell::new(Vec::new()),
+            }),
             slots: Vec::new(),
             cursor: 0,
         }
     }
 }
 
-thread_local! {
+crate::runtime::runtime_state! {
     static HOOK_STORE: RefCell<HashMap<ComponentId, ComponentState>> = RefCell::new(HashMap::new());
 
     static COMPONENT_STACK: RefCell<Vec<ComponentId>> = const { RefCell::new(Vec::new()) };
@@ -86,6 +96,15 @@ thread_local! {
     static RENDER_GENERATION: Cell<u64> = const { Cell::new(0) };
 
     static PENDING_EFFECTS: RefCell<Vec<PendingEffect>> = const { RefCell::new(Vec::new()) };
+}
+
+impl Drop for RuntimeState {
+    fn drop(&mut self) {
+        self.PENDING_EFFECTS.get_mut().clear();
+        for state in self.HOOK_STORE.get_mut().values() {
+            run_unmount_cleanups(state);
+        }
+    }
 }
 
 /// Returns or updates the `begin_render` value.
@@ -112,14 +131,18 @@ pub fn begin_render() {
 
 /// Returns or updates the `end_render` value.
 pub fn end_render() {
-    // Pruning now happens at the start of the next begin_render, once the
-    // previous cycle's LIVE set (which composite widgets only finish
-    // populating well after this point) is complete.
+    // Pruning happens at the committed run_pending_effects boundary, once
+    // reconciliation has populated the live set for composite widgets too.
 }
 
 // Runs (and clears) every effect cleanup left behind by a component that
 // didn't appear in this render pass, since it will never build again.
 fn run_unmount_cleanups(state: &ComponentState) {
+    state.scope.alive.set(false);
+    let tasks = std::mem::take(&mut *state.scope.tasks.borrow_mut());
+    for task in tasks {
+        task.cancel();
+    }
     for slot in &state.slots {
         let cleanup = slot
             .borrow_mut()
@@ -219,9 +242,14 @@ fn pop_component() {
 /// ```
 pub fn component<R>(key: impl Into<ComponentKey>, render: impl FnOnce() -> R) -> R {
     push_component(key.into());
-    let result = render();
-    pop_component();
-    result
+    struct Pop;
+    impl Drop for Pop {
+        fn drop(&mut self) {
+            pop_component();
+        }
+    }
+    let _pop = Pop;
+    render()
 }
 
 /// Creates a state value that persists across component rebuilds.
@@ -287,7 +315,9 @@ pub fn use_state<T: Clone + 'static>(initial: T) -> (T, SetState<T>) {
     (
         value,
         SetState {
-            slot,
+            slot: Rc::downgrade(&slot),
+            runtime: crate::RuntimeContext::current(),
+            scope: HOOK_STORE.with(|store| Rc::downgrade(&store.borrow()[&id].scope)),
             _marker: PhantomData,
         },
     )
@@ -295,7 +325,9 @@ pub fn use_state<T: Clone + 'static>(initial: T) -> (T, SetState<T>) {
 
 /// Data and behavior represented by `SetState`.
 pub struct SetState<T> {
-    slot: Rc<RefCell<Box<dyn Any>>>,
+    slot: Weak<RefCell<Box<dyn Any>>>,
+    runtime: Weak<crate::RuntimeContext>,
+    scope: Weak<ComponentScope>,
     _marker: PhantomData<T>,
 }
 
@@ -303,6 +335,8 @@ impl<T> Clone for SetState<T> {
     fn clone(&self) -> Self {
         Self {
             slot: self.slot.clone(),
+            runtime: self.runtime.clone(),
+            scope: self.scope.clone(),
             _marker: PhantomData,
         }
     }
@@ -311,7 +345,18 @@ impl<T> Clone for SetState<T> {
 impl<T: 'static> SetState<T> {
     /// Returns or updates the `set` value.
     pub fn set(&self, value: T) {
-        *self.slot.borrow_mut() = Box::new(value);
+        let Some(runtime) = self.runtime.upgrade() else {
+            return;
+        };
+        let Some(scope) = self.scope.upgrade().filter(|scope| scope.alive.get()) else {
+            return;
+        };
+        let Some(slot) = self.slot.upgrade() else {
+            return;
+        };
+        let _guard = runtime.enter();
+        let _scope = scope;
+        *slot.borrow_mut() = Box::new(value);
         DIRTY.with(|d| d.set(true));
         if crate::devtools::is_enabled() {
             crate::devtools::log_rerender("?", "SetState", "state set");
@@ -321,8 +366,18 @@ impl<T: 'static> SetState<T> {
 
     /// Returns or updates the `update` value.
     pub fn update(&self, f: impl FnOnce(&mut T)) {
+        let Some(runtime) = self.runtime.upgrade() else {
+            return;
+        };
+        let Some(_scope) = self.scope.upgrade().filter(|scope| scope.alive.get()) else {
+            return;
+        };
+        let Some(slot) = self.slot.upgrade() else {
+            return;
+        };
+        let _guard = runtime.enter();
         {
-            let mut borrowed = self.slot.borrow_mut();
+            let mut borrowed = slot.borrow_mut();
             let current = borrowed
                 .downcast_mut::<T>()
                 .expect("use_state: SetState<T> used with the wrong type");
@@ -438,6 +493,7 @@ struct EffectRecord {
 type BoxedEffectFn = Box<dyn FnOnce() -> Option<Box<dyn FnOnce()>>>;
 
 struct PendingEffect {
+    scope: Weak<ComponentScope>,
     slot: Rc<RefCell<Box<dyn Any>>>,
     new_deps: DepsSnapshot,
     run: BoxedEffectFn,
@@ -518,6 +574,7 @@ where
 
     PENDING_EFFECTS.with(|q| {
         q.borrow_mut().push(PendingEffect {
+            scope: HOOK_STORE.with(|store| Rc::downgrade(&store.borrow()[&id].scope)),
             slot,
             new_deps,
             run,
@@ -539,24 +596,30 @@ pub fn run_pending_effects() {
     // Removing hook state here makes unmount cleanup happen in the same
     // commit that removed the component, without pruning composites before
     // reconciliation has had a chance to render them.
-    LIVE_COMPONENTS.with(|live| {
-        let live = live.borrow();
+    let removed = LIVE_COMPONENTS.with(|live| {
         HOOK_STORE.with(|store| {
-            store.borrow_mut().retain(|id, state| {
-                let keep = live.contains(id);
-                if !keep {
-                    run_unmount_cleanups(state);
-                }
-                keep
-            });
-        });
+            let mut store = store.borrow_mut();
+            let ids: Vec<_> = store
+                .keys()
+                .filter(|id| !live.borrow().contains(*id))
+                .cloned()
+                .collect();
+            ids.into_iter()
+                .filter_map(|id| store.remove(&id))
+                .collect::<Vec<_>>()
+        })
     });
+    for state in removed {
+        run_unmount_cleanups(&state);
+    }
 
     for entry in pending {
         // An effect queued by a render that got superseded before its
         // reconciliation finished was never actually committed, so it
         // must not run.
-        if entry.generation != generation {
+        if entry.generation != generation
+            || !entry.scope.upgrade().is_some_and(|scope| scope.alive.get())
+        {
             continue;
         }
 
@@ -708,6 +771,7 @@ impl<T: Clone, E: Clone> Clone for Resource<T, E> {
 // can't clobber fresher data.
 fn spawn_resource_load<D, T, E, LF, Fut>(
     gen_cell: Rc<Cell<u64>>,
+    active_task: Rc<RefCell<Option<crate::task::TaskHandle>>>,
     loader: LF,
     deps: D,
     set_state: SetState<ResourceState<T, E>>,
@@ -718,11 +782,21 @@ fn spawn_resource_load<D, T, E, LF, Fut>(
     LF: Fn(D) -> Fut + 'static,
     Fut: Future<Output = Result<T, E>> + 'static,
 {
+    let Some(runtime) = set_state.runtime.upgrade() else {
+        return;
+    };
+    let Some(scope) = set_state.scope.upgrade().filter(|scope| scope.alive.get()) else {
+        return;
+    };
+    let _guard = runtime.enter();
+    if let Some(task) = active_task.borrow_mut().take() {
+        task.cancel();
+    }
     let my_generation = gen_cell.get() + 1;
     gen_cell.set(my_generation);
     set_state.set(ResourceState::Loading);
 
-    crate::task::spawn(async move {
+    let task = runtime.tasks().spawn(async move {
         let result = loader(deps).await;
         if gen_cell.get() != my_generation {
             return;
@@ -732,6 +806,9 @@ fn spawn_resource_load<D, T, E, LF, Fut>(
             Err(err) => ResourceState::Error(err),
         });
     });
+    scope.tasks.borrow_mut().retain(|task| !task.is_finished());
+    scope.tasks.borrow_mut().push(task.clone());
+    *active_task.borrow_mut() = Some(task);
 }
 
 /// Loads async data with automatic loading/error tracking, reloading
@@ -766,17 +843,24 @@ where
     // identity survives rebuilds since the setter is never called, so
     // mutating their contents in place doesn't itself trigger a rebuild.
     let (gen_cell, _) = use_state(Rc::new(Cell::new(0u64)));
+    let (active_task, _) = use_state(Rc::new(RefCell::new(None::<crate::task::TaskHandle>)));
     let (deps_cell, _) = use_state(Rc::new(RefCell::new(deps.clone())));
     *deps_cell.borrow_mut() = deps.clone();
 
     use_effect(
         {
             let gen_cell = gen_cell.clone();
+            let active_task = active_task.clone();
             let loader = loader.clone();
             let set_state = set_state.clone();
             let deps = deps.clone();
             move || {
-                spawn_resource_load(gen_cell, loader, deps, set_state);
+                spawn_resource_load(gen_cell, active_task.clone(), loader, deps, set_state);
+                move || {
+                    if let Some(task) = active_task.borrow_mut().take() {
+                        task.cancel();
+                    }
+                }
             }
         },
         [deps],
@@ -784,19 +868,30 @@ where
 
     let do_refresh: Rc<dyn Fn()> = {
         let gen_cell = gen_cell.clone();
+        let active_task = active_task.clone();
         let loader = loader.clone();
         let set_state = set_state.clone();
         let deps_cell = deps_cell.clone();
         Rc::new(move || {
             let deps = deps_cell.borrow().clone();
-            spawn_resource_load(gen_cell.clone(), loader.clone(), deps, set_state.clone());
+            spawn_resource_load(
+                gen_cell.clone(),
+                active_task.clone(),
+                loader.clone(),
+                deps,
+                set_state.clone(),
+            );
         })
     };
 
     let do_invalidate: Rc<dyn Fn()> = {
         let gen_cell = gen_cell.clone();
+        let active_task = active_task.clone();
         let set_state = set_state.clone();
         Rc::new(move || {
+            if let Some(task) = active_task.borrow_mut().take() {
+                task.cancel();
+            }
             gen_cell.set(gen_cell.get() + 1);
             set_state.set(ResourceState::Idle);
         })
@@ -827,6 +922,8 @@ mod effect_tests {
 
     #[test]
     fn runs_once_on_mount_and_skips_unchanged_deps() {
+        let runtime = crate::RuntimeContext::new();
+        let _guard = runtime.enter();
         let log = Rc::new(RefCell::new(Vec::<String>::new()));
 
         let build = || {
@@ -856,6 +953,8 @@ mod effect_tests {
 
     #[test]
     fn reruns_when_deps_change() {
+        let runtime = crate::RuntimeContext::new();
+        let _guard = runtime.enter();
         let log = Rc::new(RefCell::new(Vec::<String>::new()));
 
         let build = |value: i32| {
@@ -893,6 +992,8 @@ mod effect_tests {
 
     #[test]
     fn cleanup_runs_before_rerun_and_on_unmount() {
+        let runtime = crate::RuntimeContext::new();
+        let _guard = runtime.enter();
         let log = Rc::new(RefCell::new(Vec::<String>::new()));
 
         let build_child = |value: i32| {
@@ -949,6 +1050,8 @@ mod effect_tests {
 
     #[test]
     fn effect_from_a_superseded_render_never_runs() {
+        let runtime = crate::RuntimeContext::new();
+        let _guard = runtime.enter();
         let log = Rc::new(RefCell::new(Vec::<String>::new()));
 
         begin_render();

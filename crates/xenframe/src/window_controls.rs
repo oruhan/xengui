@@ -3,7 +3,7 @@ use std::cell::{Cell, RefCell};
 use std::sync::Arc;
 use winit::window::Window;
 
-thread_local! {
+xengui::runtime_state! {
     static ACTIVE_WINDOW: RefCell<Option<Arc<Window>>> = const { RefCell::new(None) };
     static CLOSE_REQUESTED: Cell<bool> = const { Cell::new(false) };
 }

@@ -48,7 +48,7 @@ pub struct RenderLogEntry {
 const CAPACITY: usize = 2048;
 const NOTIFY_THROTTLE_MS: u64 = 300;
 
-thread_local! {
+crate::runtime::runtime_state! {
     static LOG: RefCell<VecDeque<RenderLogEntry>> = RefCell::new(VecDeque::with_capacity(CAPACITY));
     static ENABLED: Cell<bool> = const { Cell::new(false) };
     static LAST_NOTIFY: Cell<Option<Instant>> = const { Cell::new(None) };

@@ -159,7 +159,7 @@ impl App {
         let diagnostics_sink = self.config.diagnostics_sink.clone();
         self.renderer = None;
         log::warn!("recovering renderer after: {error}");
-        wasm_bindgen_futures::spawn_local(async move {
+        self.runtime.tasks().spawn(async move {
             match xengui_wgpu::WgpuWindowRenderer::new_with_options(
                 window,
                 size.width,
@@ -208,6 +208,7 @@ fn sync_canvas_position(window: &Arc<Window>) {
 
 impl winit::application::ApplicationHandler<XenEvent> for App {
     fn suspended(&mut self, _event_loop: &ActiveEventLoop) {
+        let _runtime_guard = self.runtime.enter();
         #[cfg(target_os = "android")]
         {
             // Android destroys the native SurfaceView while an app is in the
@@ -224,6 +225,7 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
     }
 
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
+        let _runtime_guard = self.runtime.enter();
         // State Loss Prevention: Avoid recreation if the window already exists
         if self.window.is_some() {
             return;
@@ -418,7 +420,12 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
                 let target_handle = anim_target;
                 let last_tick = Rc::new(RefCell::new(web_time::Instant::now()));
 
+                let callback_runtime = xengui::RuntimeContext::current();
                 *tick_handle.borrow_mut() = Some(wasm_bindgen::closure::Closure::new(move || {
+                    let Some(runtime) = callback_runtime.upgrade() else {
+                        return;
+                    };
+                    let _guard = runtime.enter();
                     let now = web_time::Instant::now();
                     let dt = now.duration_since(*last_tick.borrow());
                     *last_tick.borrow_mut() = now;
@@ -525,7 +532,13 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
                     let anim_running_clone = anim_running.clone();
                     let anim_target_clone = anim_target.clone();
 
+                    let callback_runtime = xengui::RuntimeContext::current();
+
                     let closure = wasm_bindgen::closure::Closure::<dyn FnMut()>::new(move || {
+                        let Some(runtime) = callback_runtime.upgrade() else {
+                            return;
+                        };
+                        let _guard = runtime.enter();
                         sync_canvas_to_viewport(
                             &window_for_closure,
                             initial_resize_done_clone.clone(),
@@ -548,8 +561,14 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
                         let anim_running_clone = anim_running.clone();
                         let anim_target_clone = anim_target.clone();
 
+                        let callback_runtime = xengui::RuntimeContext::current();
+
                         let vv_closure =
                             wasm_bindgen::closure::Closure::<dyn FnMut()>::new(move || {
+                                let Some(runtime) = callback_runtime.upgrade() else {
+                                    return;
+                                };
+                                let _guard = runtime.enter();
                                 log::info!("visual viewport resize");
                                 sync_canvas_to_viewport(
                                     &window_for_vv,
@@ -567,8 +586,14 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
 
                         let window_for_vv_scroll = window.clone();
 
+                        let callback_runtime = xengui::RuntimeContext::current();
+
                         let vv_scroll_closure =
                             wasm_bindgen::closure::Closure::<dyn FnMut()>::new(move || {
+                                let Some(runtime) = callback_runtime.upgrade() else {
+                                    return;
+                                };
+                                let _guard = runtime.enter();
                                 // Visual viewport "scroll" fires continuously while
                                 // the page pans under the toolbar during a touch
                                 // drag; only the canvas's on-screen position needs
@@ -619,7 +644,7 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
         set_redraw_handle(std::rc::Rc::new(crate::redraw::WinitRedraw(window.clone())));
 
         if let Some(proxy) = &self.event_proxy {
-            self.task_runtime.set_executor_waker(std::sync::Arc::new(
+            self.runtime.tasks().set_executor_waker(std::sync::Arc::new(
                 crate::executor::WinitExecutorWaker(proxy.clone()),
             ));
         }
@@ -710,7 +735,7 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
                 let diagnostics_sink = self.config.diagnostics_sink.clone();
                 let size = window_clone.inner_size();
 
-                wasm_bindgen_futures::spawn_local(async move {
+                self.runtime.tasks().spawn(async move {
                     log::info!("renderer init: adapter/device request starting");
                     let t0 = web_time::Instant::now();
                     match xengui_wgpu::WgpuWindowRenderer::new_with_options(
@@ -743,8 +768,13 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
                     // Escape's keydown never reaches the page while the browser
                     // is exiting fullscreen or pointer lock (spec-mandated, not
                     // overridable) - fullscreenchange is the only signal we get.
+                    let callback_runtime = xengui::RuntimeContext::current();
                     let fs_closure =
                         wasm_bindgen::closure::Closure::<dyn FnMut()>::new(move || {
+                            let Some(runtime) = callback_runtime.upgrade() else {
+                                return;
+                            };
+                            let _guard = runtime.enter();
                             let _ = proxy_clone.send_event(XenEvent::CancelSelection);
                         });
                     let _ = document.add_event_listener_with_callback_and_bool(
@@ -760,9 +790,14 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
                     // listener doesn't reliably surface Escape, so it's
                     // also caught here independently of winit's pipeline.
                     let proxy_clone2 = proxy.clone();
+                    let callback_runtime = xengui::RuntimeContext::current();
                     let key_closure =
                         wasm_bindgen::closure::Closure::<dyn FnMut(web_sys::KeyboardEvent)>::new(
                             move |event: web_sys::KeyboardEvent| {
+                                let Some(runtime) = callback_runtime.upgrade() else {
+                                    return;
+                                };
+                                let _guard = runtime.enter();
                                 if event.key() == "Escape" {
                                     event.prevent_default();
                                     let _ = proxy_clone2.send_event(XenEvent::CancelSelection);
@@ -806,10 +841,15 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
                     && let Ok(Some(mql)) = web_window.match_media("(prefers-color-scheme: dark)")
                 {
                     let proxy_clone = proxy.clone();
+                    let callback_runtime = xengui::RuntimeContext::current();
                     let theme_closure: wasm_bindgen::closure::Closure<
                         dyn FnMut(web_sys::MediaQueryListEvent),
                     > = wasm_bindgen::closure::Closure::new(
                         move |event: web_sys::MediaQueryListEvent| {
+                            let Some(runtime) = callback_runtime.upgrade() else {
+                                return;
+                            };
+                            let _guard = runtime.enter();
                             let theme = if event.matches() {
                                 winit::window::Theme::Dark
                             } else {
@@ -835,6 +875,7 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
     }
 
     fn user_event(&mut self, _event_loop: &ActiveEventLoop, event: XenEvent) {
+        let _runtime_guard = self.runtime.enter();
         match event {
             XenEvent::RendererReady(renderer) => {
                 self.renderer = Some(*renderer);
@@ -915,9 +956,10 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
     }
 
     fn window_event(&mut self, _event_loop: &ActiveEventLoop, _id: WindowId, event: WindowEvent) {
+        let _runtime_guard = self.runtime.enter();
         match event {
             WindowEvent::CloseRequested => {
-                self.task_runtime.cancel_all();
+                self.runtime.tasks().cancel_all();
                 _event_loop.exit();
             }
             WindowEvent::RedrawRequested => {
@@ -1492,7 +1534,8 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
     }
 
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
-        self.task_runtime.poll();
+        let _runtime_guard = self.runtime.enter();
+        self.runtime.tasks().poll();
 
         if crate::window_controls::take_close_requested() {
             log::trace!("event_loop.exit() called here");

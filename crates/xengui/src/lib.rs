@@ -132,3 +132,7 @@ pub use task::spawn_blocking;
 pub use types::*;
 pub use widgets::*;
 pub use xen_svg::{SvgColor, SvgDocument, SvgElement, Transform2D};
+
+/// Per-application runtime ownership and scoped activation.
+pub mod runtime;
+pub use runtime::RuntimeContext;

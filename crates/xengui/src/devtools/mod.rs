@@ -20,7 +20,7 @@ struct Event {
 
 const CAPACITY: usize = 16384;
 
-thread_local! {
+crate::runtime::runtime_state! {
     static EVENTS: RefCell<VecDeque<Event>> = RefCell::new(VecDeque::with_capacity(CAPACITY));
     static START: Instant = Instant::now();
 }

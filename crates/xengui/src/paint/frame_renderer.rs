@@ -260,6 +260,21 @@ impl FrameRenderer {
         // same z-index; only different values get reordered.
         sort_by_z_if_needed(commands);
 
+        // Glyphon's atlas can grow when a popup introduces a glyph which was
+        // not used by the underlying page. Growing it after earlier text
+        // passes have already been encoded makes those passes sample the new
+        // atlas with stale normalized UVs for one frame. Discover all text up
+        // front so atlas growth happens before the first text render pass.
+        let mut text_prewarm = Vec::new();
+        for (_, command) in commands.iter() {
+            collect_text_commands(command, &mut text_prewarm);
+        }
+        for command in top_commands.iter() {
+            collect_text_commands(command, &mut text_prewarm);
+        }
+        backend.prewarm_text(theme, scale_factor, &text_prewarm)?;
+        drop(text_prewarm);
+
         #[derive(PartialEq, Clone, Copy)]
         enum RunKind {
             Rect,
@@ -580,6 +595,24 @@ impl FrameRenderer {
     }
 }
 
+fn collect_text_commands<'a>(command: &'a DrawCommand, out: &mut Vec<&'a crate::TextCommand>) {
+    match command {
+        DrawCommand::Text(text) => out.push(text.as_ref()),
+        DrawCommand::Filtered(filtered) => {
+            for command in &filtered.commands {
+                collect_text_commands(command, out);
+            }
+        }
+        DrawCommand::Composited(composited) => {
+            for command in &composited.commands {
+                collect_text_commands(command, out);
+            }
+        }
+        DrawCommand::Content(content) => collect_text_commands(content, out),
+        _ => {}
+    }
+}
+
 fn prepare_feature(
     backend: &mut dyn RenderBackend,
     feature: BackendFeature,
@@ -896,7 +929,11 @@ fn paint_recursive_in_scene(
             && layout_box.x + layout_box.width > cx
             && layout_box.y < cy + ch
             && layout_box.y + layout_box.height > cy;
-        if !visible {
+        // An offscreen or zero-sized host can still own visible descendants
+        // when it does not clip them (portals, popups, fixed overlays, etc.).
+        // Only prune the whole subtree when children are actually bounded by
+        // this widget, or when there are no children left to inspect.
+        if !visible && (widget.clip_children().is_some() || widget.children().is_empty()) {
             return;
         }
     }
@@ -914,7 +951,24 @@ fn paint_recursive_in_scene(
     // content it belongs to) is recorded in isolation and wrapped in a
     // single `DrawCommand::Filtered`, instead of being interleaved into
     // the normal z-sorted command stream.
-    if let Some(chain) = widget.filter().filter(|c| !c.is_empty()) {
+    let opacity = widget
+        .computed_style()
+        .opacity
+        .unwrap_or(1.0)
+        .clamp(0.0, 1.0);
+    let effective_filter = if opacity < 1.0 - f32::EPSILON {
+        Some(
+            widget
+                .filter()
+                .cloned()
+                .unwrap_or_default()
+                .push(crate::Filter::Opacity(opacity)),
+        )
+    } else {
+        widget.filter().cloned()
+    };
+
+    if let Some(chain) = effective_filter.as_ref().filter(|c| !c.is_empty()) {
         let mut subtree: Vec<(i32, DrawCommand)> = Vec::new();
         paint_subtree_for_filter(
             widget,
@@ -934,7 +988,12 @@ fn paint_recursive_in_scene(
         let mut shadow_layer: Vec<(i32, DrawCommand)> = Vec::new();
         let mut filtered_commands = Vec::with_capacity(subtree.len());
         for (z, command) in subtree {
-            if matches!(&command, DrawCommand::BoxShadow(shadow) if !shadow.inset) {
+            // A style opacity is a group opacity, so shadows must fade with
+            // the rest of the subtree. Ordinary visual filters retain the
+            // existing behavior of leaving outset shadows crisp.
+            if opacity >= 1.0 - f32::EPSILON
+                && matches!(&command, DrawCommand::BoxShadow(shadow) if !shadow.inset)
+            {
                 shadow_layer.push((z, command));
             } else {
                 filtered_commands.push(command);
@@ -1719,6 +1778,45 @@ mod tests {
         };
         assert_eq!(command.position, (20.0, 20.0));
         assert_eq!(command.size, (20.0, 20.0));
+    }
+
+    #[test]
+    fn zero_sized_visible_overflow_host_does_not_cull_fixed_overlay_child() {
+        let child = View::new().background(Color::WHITE);
+        let mut root = View::new().child(child);
+        root.layout(LayoutBox {
+            x: 0.0,
+            y: 100.0,
+            width: 0.0,
+            height: 0.0,
+        });
+        root.children_mut().unwrap()[0].layout(LayoutBox {
+            x: 0.0,
+            y: 0.0,
+            width: 50.0,
+            height: 50.0,
+        });
+        root.cascade_style(&Style::default(), &mut AnimationManager::new());
+
+        let mut cache = RenderCache::new();
+        cache.begin_frame();
+        let mut commands = Vec::new();
+        paint_recursive(
+            &root,
+            &mut WidgetPath::default(),
+            &mut cache,
+            &mut commands,
+            &mut Vec::new(),
+            &mut Vec::new(),
+            &mut Vec::new(),
+            Some((0.0, 0.0, 100.0, 100.0)),
+            1.0,
+            0,
+        );
+
+        assert!(commands.iter().any(|(_, command)| {
+            matches!(command, DrawCommand::Rect(rect) if rect.position == (0.0, 0.0) && rect.size == (50.0, 50.0))
+        }));
     }
 
     #[test]

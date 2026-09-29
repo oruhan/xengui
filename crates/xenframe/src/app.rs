@@ -22,7 +22,7 @@ use crate::config::AppConfig;
 use crate::cursor::to_winit_cursor;
 use crate::event::XenEvent;
 
-thread_local! {
+xengui::runtime_state! {
     static RELOAD_REQUESTED: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
 }
 
@@ -91,7 +91,7 @@ pub struct App {
     // (e.g. a background HTTP client's I/O driver); needed on every
     // platform, not just wasm.
     pub(crate) event_proxy: Option<winit::event_loop::EventLoopProxy<XenEvent>>,
-    pub(crate) task_runtime: xengui::task::Runtime,
+    pub(crate) runtime: Rc<xengui::RuntimeContext>,
     // Set right before focusing the hidden native <input>; the resulting
     // canvas blur is reported by winit as WindowEvent::Focused(false),
     // which must not be treated like a real window focus loss.
@@ -101,6 +101,7 @@ pub struct App {
 
 impl App {
     pub(crate) fn hit_test_at(&self, point: (f32, f32)) -> Option<WidgetPath> {
+        let _runtime_guard = self.runtime.enter();
         self.renderer
             .as_ref()
             .map(|renderer| renderer.scene_order())
@@ -111,12 +112,18 @@ impl App {
             )
     }
 
+    /// Services and task executor owned by this application. Enter this context
+    /// when configuring services outside a render or event callback.
+    pub fn runtime(&self) -> &Rc<xengui::RuntimeContext> {
+        &self.runtime
+    }
+
     pub fn new(config: AppConfig) -> Self {
+        let runtime = xengui::RuntimeContext::new();
+        let _guard = runtime.enter();
         log::info!(target: "xengui", "app initialized");
         xengui::set_platform_services(Rc::new(crate::services::HostPlatformServices::new()));
         xengui::set_ripple_config(config.ripple);
-        let task_runtime = xengui::task::Runtime::new();
-        task_runtime.activate();
         Self {
             renderer: None,
             window: None,
@@ -155,7 +162,7 @@ impl App {
             #[cfg(not(target_arch = "wasm32"))]
             native_ime_allowed: false,
             event_proxy: None,
-            task_runtime,
+            runtime,
             #[cfg(target_arch = "wasm32")]
             suppress_next_focus_loss: false,
         }
@@ -166,16 +173,19 @@ impl App {
     /// Native adapters can translate this snapshot into their operating
     /// system's accessibility protocol without inspecting concrete widgets.
     pub fn semantics_tree(&self) -> Vec<xengui::SemanticsNode> {
+        let _runtime_guard = self.runtime.enter();
         xengui::build_semantics_tree(&self.root)
     }
 
     #[cfg(not(target_arch = "wasm32"))]
     pub fn with_title(&mut self, title: &str) -> &mut Self {
+        let _runtime_guard = self.runtime.enter();
         self.config.title = title.to_string();
         self
     }
 
     pub fn with_font(&mut self, name: &str, font_data: Vec<u8>) -> &mut Self {
+        let _runtime_guard = self.runtime.enter();
         self.config.fonts.push((name.to_string(), font_data));
         self
     }
@@ -183,15 +193,18 @@ impl App {
     /// Registers the application-level action for Android/system back
     /// navigation. The handler runs once on the non-repeating key press.
     pub fn on_system_back(&mut self, handler: impl FnMut() -> bool + 'static) -> &mut Self {
+        let _runtime_guard = self.runtime.enter();
         self.system_back_handler = Some(Box::new(handler));
         self
     }
 
     pub fn add_node(&mut self, node: Box<dyn Widget>) {
+        let _runtime_guard = self.runtime.enter();
         self.root.push(node);
     }
 
     pub fn render(&mut self, builder: impl (Fn() -> Box<dyn Widget>) + 'static) {
+        let _runtime_guard = self.runtime.enter();
         self.component = Some(std::rc::Rc::new(builder));
         self.schedule_render();
         // No event loop is running yet at this point, so drive the first
@@ -205,6 +218,7 @@ impl App {
     // still-on-screen tree. Does not touch `self.root` directly - that
     // only happens once `pump_reconciliation` reports completion.
     pub(crate) fn schedule_render(&mut self) {
+        let _runtime_guard = self.runtime.enter();
         let Some(builder) = self.component.clone() else {
             return;
         };
@@ -275,6 +289,7 @@ impl App {
     /// at the exact same moment, so the window can never be shown by the
     /// OS before it has real content.
     pub(crate) fn reveal_window(&mut self) {
+        let _runtime_guard = self.runtime.enter();
         if self.is_visible {
             return;
         }
@@ -291,6 +306,7 @@ impl App {
     // Advances any in-progress reconciliation by one time slice. Returns
     // true if there is still more work left to do.
     pub(crate) fn pump_reconciliation(&mut self) -> bool {
+        let _runtime_guard = self.runtime.enter();
         let Some(work) = self.reconcile_work.as_mut() else {
             return false;
         };
@@ -325,6 +341,7 @@ impl App {
     // render_frame), otherwise hit-testing would still see last frame's
     // pre-scroll layout boxes.
     pub(crate) fn recalc_hover_at_cursor(&mut self) {
+        let _runtime_guard = self.runtime.enter();
         let Some(point) = self.input.cursor_pos else {
             return;
         };
@@ -358,6 +375,7 @@ impl App {
     // re-resolve against it, so any breakpoint transition must force a
     // real rebuild through the normal dirty/redraw cycle.
     pub(crate) fn recheck_breakpoint(&mut self) {
+        let _runtime_guard = self.runtime.enter();
         let current = xengui::current_breakpoint();
         if current != self.last_breakpoint {
             self.last_breakpoint = current;
@@ -378,7 +396,7 @@ impl App {
 impl App {
     #[cfg(not(target_os = "android"))]
     pub fn run(&mut self) -> Result<(), xengui::PlatformError> {
-        self.task_runtime.activate();
+        let _runtime_guard = self.runtime.enter();
         let event_loop: EventLoop<XenEvent> = EventLoop::<XenEvent>::with_user_event()
             .build()
             .map_err(|error| xengui::PlatformError::Initialization(error.to_string()))?;
@@ -401,9 +419,10 @@ impl App {
         &mut self,
         android_app: winit::platform::android::activity::AndroidApp,
     ) -> Result<(), xengui::PlatformError> {
+        let _runtime_guard = self.runtime.enter();
         use winit::platform::android::EventLoopBuilderExtAndroid;
 
-        self.task_runtime.activate();
+        let _guard = self.runtime.enter();
         let mut builder = EventLoop::<XenEvent>::with_user_event();
         builder.with_android_app(android_app);
         let event_loop = builder
@@ -429,6 +448,7 @@ impl App {
     /// Rebuilds the widget tree from scratch and forces a full layout and
     /// repaint, instead of relying on incremental reconciliation.
     pub fn reload(&mut self) {
+        let _runtime_guard = self.runtime.enter();
         self.schedule_render();
         while self.pump_reconciliation() {}
         if let Some(window) = &self.window {
@@ -438,10 +458,12 @@ impl App {
 
     #[cfg(target_arch = "wasm32")]
     pub fn set_renderer(&mut self, renderer: WgpuWindowRenderer) {
+        let _runtime_guard = self.runtime.enter();
         self.renderer = Some(renderer);
     }
 
     pub(crate) fn apply_event_ctx(&mut self, mut ctx: EventCtx) {
+        let _runtime_guard = self.runtime.enter();
         let requested_focus = ctx.focus_target.take();
         #[cfg(not(target_arch = "wasm32"))]
         let force_native_ime = requested_focus.is_some();
@@ -503,6 +525,7 @@ impl App {
     /// then delivered through `WindowEvent::Ime` to the focused TextBox.
     #[cfg(not(target_arch = "wasm32"))]
     fn sync_native_ime(&mut self, force_show: bool) {
+        let _runtime_guard = self.runtime.enter();
         let ime_allowed = self
             .input
             .focus
@@ -524,6 +547,7 @@ impl App {
     // Tab / Shift+Tab moves to the next (or previous, if backward=true) focusable
     // widget, wrapping to the beginning/end at the boundaries.
     pub(crate) fn advance_focus(&mut self, backward: bool) {
+        let _runtime_guard = self.runtime.enter();
         let mut ctx = EventCtx::new();
         self.input.focus.advance(&mut self.root, backward, &mut ctx);
         self.next_blink = None;
@@ -531,6 +555,7 @@ impl App {
     }
 
     pub(crate) fn copy_selected_text(&self) {
+        let _runtime_guard = self.runtime.enter();
         let mut text = String::new();
         collect_selected_text_recursive(&self.root, &mut text);
         if !text.is_empty() {
@@ -539,6 +564,7 @@ impl App {
     }
 
     pub(crate) fn cancel_text_selection(&mut self) {
+        let _runtime_guard = self.runtime.enter();
         clear_text_selection_recursive(&mut self.root);
         self.input.text_drag_anchor = None;
         if let Some(window) = &self.window {
@@ -549,6 +575,7 @@ impl App {
     // Simulates a same-spot double tap so the target widget's own
     // multi-click word-selection logic (already used for mouse) takes over.
     pub(crate) fn trigger_long_press_select(&mut self, path: &WidgetPath, point: (f32, f32)) {
+        let _runtime_guard = self.runtime.enter();
         for state in [ElementState::Pressed, ElementState::Released] {
             let mut ctx = EventCtx::new();
             dispatch_positional(
@@ -577,6 +604,7 @@ impl App {
     // press, Moved updates position, Ended acts like release + hover-out,
     // Cancelled just clears state without firing a click.
     pub(crate) fn handle_touch(&mut self, touch: winit::event::Touch) {
+        let _runtime_guard = self.runtime.enter();
         use winit::event::TouchPhase;
 
         let point = (touch.location.x as f32, touch.location.y as f32);
@@ -838,6 +866,7 @@ impl App {
     // Applies a theme switch requested via `set_active_theme`/
     // `set_active_theme_by_name` since the last render pass.
     fn apply_pending_theme_switch(&mut self) {
+        let _runtime_guard = self.runtime.enter();
         let Some(switch) = style::theme::take_theme_switch() else {
             return;
         };
@@ -858,6 +887,7 @@ impl App {
     // Keeps `active_theme` synced with the OS appearance while `theme_mode`
     // is `System`; returns whether the index actually changed.
     pub(crate) fn sync_active_theme_with_system(&mut self) -> bool {
+        let _runtime_guard = self.runtime.enter();
         if self.config.theme_mode != AppThemeMode::System {
             return false;
         }
@@ -888,6 +918,7 @@ impl App {
     #[cfg(target_os = "windows")]
     #[cfg(target_os = "windows")]
     pub(crate) fn resize_synced(&mut self, width: u32, height: u32) {
+        let _runtime_guard = self.runtime.enter();
         xengui::devtools::record_size("resize_synced:enter", width, height);
 
         if self.last_rendered_size == Some((width, height)) {
@@ -920,5 +951,39 @@ impl App {
         if !self.is_visible {
             self.reveal_window();
         }
+    }
+}
+
+#[cfg(test)]
+mod runtime_tests {
+    use super::*;
+
+    #[test]
+    fn apps_own_independent_render_hooks_and_host_mailboxes() {
+        let mut first = App::new(AppConfig::default());
+        let mut second = App::new(AppConfig::default());
+        first.render(|| {
+            let (value, _) = hooks::use_state(11);
+            assert_eq!(value, 11);
+            Box::new(xengui::View::new())
+        });
+        second.render(|| {
+            let (value, _) = hooks::use_state(22);
+            assert_eq!(value, 22);
+            Box::new(xengui::View::new())
+        });
+        {
+            let _guard = first.runtime.enter();
+            request_reload();
+            crate::window_controls::close_window();
+        }
+        {
+            let _guard = second.runtime.enter();
+            assert!(!take_reload_requested());
+            assert!(!crate::window_controls::take_close_requested());
+        }
+        let _guard = first.runtime.enter();
+        assert!(take_reload_requested());
+        assert!(crate::window_controls::take_close_requested());
     }
 }

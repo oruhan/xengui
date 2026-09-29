@@ -604,6 +604,63 @@ impl TextPipeline {
         self.renderer_cursor = 0;
     }
 
+    /// Populates (and, if necessary, grows) the shared atlas before the first
+    /// text render pass of a frame is encoded. This keeps every renderer in
+    /// the frame on one atlas generation.
+    pub fn prewarm(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        width: u32,
+        height: u32,
+        scale_factor: f32,
+        theme: SystemTheme,
+        commands: &[&TextCommand],
+    ) -> Result<(), FontError> {
+        if commands.is_empty() {
+            return Ok(());
+        }
+
+        debug_assert!(self.pending.is_empty());
+        for command in commands {
+            self.draw(scale_factor, theme, command);
+        }
+        // Decorations belong to real draw runs, not this discovery pass.
+        self.pending_decorations.clear();
+        self.viewport.update(queue, Resolution { width, height });
+
+        let text_areas: Vec<TextArea> = self
+            .pending
+            .iter()
+            .map(|pending| {
+                let (left, top) = raster_origin(pending.position, pending.buffer.hinting());
+                TextArea {
+                    buffer: pending.buffer.as_ref(),
+                    left,
+                    top,
+                    scale: 1.0,
+                    bounds: pending.bounds,
+                    default_color: pending.color,
+                    custom_glyphs: &[],
+                }
+            })
+            .collect();
+
+        self.renderers[0]
+            .prepare(
+                device,
+                queue,
+                &mut self.font_system,
+                &mut self.atlas,
+                &self.viewport,
+                text_areas,
+                &mut self.swash_cache,
+            )
+            .map_err(|error| FontError::Atlas(error.to_string()))?;
+        self.pending.clear();
+        Ok(())
+    }
+
     pub fn flush(
         &mut self,
         device: &wgpu::Device,

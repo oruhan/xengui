@@ -1195,6 +1195,26 @@ impl<'a> RenderBackend for WgpuFrame<'a> {
         self.pipelines.text.drain_decorations(out);
     }
 
+    fn prewarm_text(
+        &mut self,
+        theme: SystemTheme,
+        scale_factor: f32,
+        commands: &[&TextCommand],
+    ) -> Result<(), BackendError> {
+        self.pipelines
+            .text
+            .prewarm(
+                self.device,
+                self.queue,
+                self.width,
+                self.height,
+                scale_factor,
+                theme,
+                commands,
+            )
+            .map_err(BackendError::Font)
+    }
+
     fn flush_text(&mut self) -> Result<(), BackendError> {
         const MAX_RETRIES: u32 = 3;
         let mut attempts = 0;

@@ -343,6 +343,7 @@ pub enum EventPhase {
 
 /// Data and behavior represented by `EventCtx`.
 pub struct EventCtx {
+    runtime: std::rc::Weak<crate::RuntimeContext>,
     redraw_requested: bool,
     cursor_icon: Option<crate::Cursor>,
     focus_requested: bool,
@@ -361,6 +362,7 @@ pub struct EventCtx {
 impl Default for EventCtx {
     fn default() -> Self {
         Self {
+            runtime: crate::RuntimeContext::current(),
             redraw_requested: false,
             cursor_icon: None,
             focus_requested: false,
@@ -395,13 +397,15 @@ impl EventCtx {
         self.platform_services.as_ref()
     }
 
-    /// Spawns a future on the framework's GUI-thread executor - shorthand
-    /// for `xengui::spawn` usable directly from an event callback.
+    /// Spawns a future on the runtime that created this event context.
+    /// Does nothing after that runtime has been disposed.
     pub fn spawn<F>(&self, future: F)
     where
         F: Future + 'static,
     {
-        crate::task::spawn(future);
+        if let Some(runtime) = self.runtime.upgrade() {
+            runtime.tasks().spawn(future);
+        }
     }
 
     /// Returns or updates the `request_redraw` value.

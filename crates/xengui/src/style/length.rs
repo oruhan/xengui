@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 use std::cell::Cell;
 
-thread_local! {
+crate::runtime::runtime_state! {
     static VIEWPORT_SIZE: Cell<(f32, f32)> = const { Cell::new((0.0, 0.0)) };
 }
 

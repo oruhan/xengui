@@ -165,6 +165,18 @@ pub trait RenderBackend {
         out.extend(self.take_text_decorations());
     }
 
+    /// Ensures every glyph needed by this frame is resident before any text
+    /// render pass is recorded. Backends without a shared glyph atlas may
+    /// leave this as a no-op.
+    fn prewarm_text(
+        &mut self,
+        _theme: crate::SystemTheme,
+        _scale_factor: f32,
+        _commands: &[&crate::TextCommand],
+    ) -> Result<(), BackendError> {
+        Ok(())
+    }
+
     /// Flushes queued text to the GPU. Must be called after every
     /// `draw_text` and before anything meant to render above text
     /// (e.g. a focus ring).

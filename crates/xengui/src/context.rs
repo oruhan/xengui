@@ -4,7 +4,7 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 
-thread_local! {
+crate::runtime::runtime_state! {
     static CONTEXT_STACK: RefCell<HashMap<TypeId, Vec<Rc<dyn Any>>>> = RefCell::new(HashMap::new());
 }
 
@@ -13,10 +13,15 @@ thread_local! {
 /// Data and behavior represented by `ContextGuard`.
 pub struct ContextGuard {
     type_id: TypeId,
+    runtime: std::rc::Weak<crate::RuntimeContext>,
 }
 
 impl Drop for ContextGuard {
     fn drop(&mut self) {
+        let Some(runtime) = self.runtime.upgrade() else {
+            return;
+        };
+        let _guard = runtime.enter();
         CONTEXT_STACK.with(|stack| {
             if let Some(values) = stack.borrow_mut().get_mut(&self.type_id) {
                 values.pop();
@@ -35,7 +40,10 @@ pub fn provide_context<T: 'static>(value: T) -> ContextGuard {
             .or_default()
             .push(Rc::new(value));
     });
-    ContextGuard { type_id }
+    ContextGuard {
+        type_id,
+        runtime: crate::RuntimeContext::current(),
+    }
 }
 
 /// Returns or updates the `use_context` value.

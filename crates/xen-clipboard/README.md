@@ -12,7 +12,7 @@
 | --- | --- |
 | Windows | Read, write, and content checks are implemented. |
 | WebAssembly | Implemented through the browser Clipboard API. |
-| Linux | Compiles with an explicit unsupported backend; text operations currently return `ClipboardError::Unsupported`. |
+| Linux | Implemented for X11 and Wayland (using the data-control protocol where available). |
 | macOS, Android, iOS | Not implemented. |
 
 Browser clipboard access requires a secure context and may require a user gesture or permission, depending on browser policy.

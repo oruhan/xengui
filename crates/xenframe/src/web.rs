@@ -57,7 +57,7 @@ pub fn detect_touch_platform() -> bool {
     has_touch_points && coarse_pointer
 }
 
-thread_local! {
+xengui::runtime_state! {
     static TOUCH_ACTIVE: Cell<bool> = const { Cell::new(false) };
 }
 

@@ -20,6 +20,8 @@ pub mod label;
 pub mod layout_sugar;
 /// Types and operations for `link`.
 pub mod link;
+/// Modal expanded navigation rail for compact and medium windows.
+pub mod modal_navigation_rail;
 pub mod navbar;
 /// Types and operations for `portal`.
 pub mod portal;
@@ -64,6 +66,7 @@ pub use kbd::Kbd;
 pub use label::Label;
 pub use layout_sugar::{Column, Row};
 pub use link::Link;
+pub use modal_navigation_rail::ModalNavigationRail;
 pub use navbar::{NavItem, NavigationBar};
 pub use portal::Portal;
 pub use progress_bar::ProgressBar;

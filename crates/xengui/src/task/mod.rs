@@ -87,7 +87,11 @@ impl Scheduler {
 
         #[cfg(target_arch = "wasm32")]
         WASM_HOST_WAKERS.with(|wakers| {
-            let host_waker = wakers.borrow().get(&self.runtime_id).cloned();
+            let owner = wakers
+                .borrow()
+                .get(&self.runtime_id)
+                .and_then(Weak::upgrade);
+            let host_waker = owner.and_then(|owner| owner.host_waker.borrow().clone());
             if let Some(waker) = host_waker {
                 waker.wake();
             }
@@ -102,30 +106,83 @@ impl Scheduler {
 
 struct TaskWaker {
     id: TaskId,
-    scheduler: Arc<Scheduler>,
+    scheduler: std::sync::Weak<Scheduler>,
 }
 
 impl Wake for TaskWaker {
     fn wake(self: Arc<Self>) {
-        self.scheduler.enqueue(self.id);
+        if let Some(scheduler) = self.scheduler.upgrade() {
+            scheduler.enqueue(self.id);
+        }
     }
 
     fn wake_by_ref(self: &Arc<Self>) {
-        self.scheduler.enqueue(self.id);
+        if let Some(scheduler) = self.scheduler.upgrade() {
+            scheduler.enqueue(self.id);
+        }
+    }
+}
+
+struct Task {
+    future: BoxedTask,
+    cancelled: Rc<Cell<bool>>,
+}
+
+/// A weak cancellation handle. Dropping it leaves the task running.
+#[derive(Clone)]
+pub struct TaskHandle {
+    id: TaskId,
+    runtime: Weak<RuntimeInner>,
+    cancelled: Rc<Cell<bool>>,
+}
+impl Drop for Task {
+    fn drop(&mut self) {
+        self.cancelled.set(true);
+    }
+}
+
+impl TaskHandle {
+    /// Whether the future completed, was cancelled, or its runtime was dropped.
+    pub fn is_finished(&self) -> bool {
+        self.cancelled.get() || self.runtime.upgrade().is_none()
+    }
+    /// Cancels and drops the future, even if it will never wake again.
+    pub fn cancel(&self) {
+        self.cancelled.set(true);
+        if let Some(runtime) = self.runtime.upgrade() {
+            let task = runtime.tasks.borrow_mut().remove(&self.id);
+            drop(task);
+        }
+    }
+}
+
+/// Restores the previous standalone task runtime when dropped.
+#[must_use = "keep the guard alive while using module-level task helpers"]
+pub struct TaskGuard(Weak<RuntimeInner>);
+impl Drop for TaskGuard {
+    fn drop(&mut self) {
+        CURRENT_RUNTIME.with(|current| {
+            current.replace(self.0.clone());
+        });
     }
 }
 
 struct RuntimeInner {
     owner: std::thread::ThreadId,
     next_id: Cell<u64>,
-    tasks: RefCell<HashMap<TaskId, BoxedTask>>,
+    cancellation_epoch: Cell<u64>,
+    closed: Cell<bool>,
+    tasks: RefCell<HashMap<TaskId, Task>>,
+    context: Weak<crate::RuntimeContext>,
+    #[cfg(target_arch = "wasm32")]
+    host_waker: RefCell<Option<Arc<dyn ExecutorWaker>>>,
     scheduler: Arc<Scheduler>,
 }
 
 thread_local! {
     static CURRENT_RUNTIME: RefCell<Weak<RuntimeInner>> = const { RefCell::new(Weak::new()) };
     #[cfg(target_arch = "wasm32")]
-    static WASM_HOST_WAKERS: RefCell<HashMap<u64, Arc<dyn ExecutorWaker>>> = RefCell::new(HashMap::new());
+    static WASM_HOST_WAKERS: RefCell<HashMap<u64, Weak<RuntimeInner>>> = RefCell::new(HashMap::new());
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -150,10 +207,19 @@ pub struct Runtime {
 impl Runtime {
     /// Creates an empty runtime owned by the current thread.
     pub fn new() -> Self {
+        Self::with_context(Weak::new())
+    }
+
+    pub(crate) fn with_context(context: Weak<crate::RuntimeContext>) -> Self {
         Self {
             inner: Rc::new(RuntimeInner {
                 owner: std::thread::current().id(),
+                context,
+                #[cfg(target_arch = "wasm32")]
+                host_waker: RefCell::new(None),
                 next_id: Cell::new(0),
+                cancellation_epoch: Cell::new(0),
+                closed: Cell::new(false),
                 tasks: RefCell::new(HashMap::new()),
                 scheduler: Arc::new(Scheduler::new()),
             }),
@@ -170,11 +236,14 @@ impl Runtime {
 
     /// Makes this runtime the target of the module-level [`spawn`] helpers on
     /// its owner thread.
-    pub fn activate(&self) {
+    pub fn activate(&self) -> TaskGuard {
         self.assert_owner();
-        CURRENT_RUNTIME.with(|current| {
-            *current.borrow_mut() = Rc::downgrade(&self.inner);
-        });
+        self.enter()
+    }
+
+    fn enter(&self) -> TaskGuard {
+        let previous = CURRENT_RUNTIME.with(|current| current.replace(Rc::downgrade(&self.inner)));
+        TaskGuard(previous)
     }
 
     /// Installs the callback used to wake this runtime's host event loop.
@@ -186,20 +255,28 @@ impl Runtime {
         }
         #[cfg(target_arch = "wasm32")]
         {
+            *self.inner.host_waker.borrow_mut() = Some(waker);
             WASM_HOST_WAKERS.with(|wakers| {
                 wakers
                     .borrow_mut()
-                    .insert(self.inner.scheduler.runtime_id, waker);
+                    .insert(self.inner.scheduler.runtime_id, Rc::downgrade(&self.inner));
             });
         }
     }
 
     /// Spawns a future on this runtime.
-    pub fn spawn<F>(&self, future: F)
+    pub fn spawn<F>(&self, future: F) -> TaskHandle
     where
         F: Future + 'static,
     {
-        self.activate();
+        self.assert_owner();
+        if self.inner.closed.get() {
+            return TaskHandle {
+                id: TaskId(0),
+                runtime: Weak::new(),
+                cancelled: Rc::new(Cell::new(true)),
+            };
+        }
         let next = self.inner.next_id.get();
         self.inner
             .next_id
@@ -208,37 +285,73 @@ impl Runtime {
         let boxed: BoxedTask = Box::pin(async move {
             future.await;
         });
-        self.inner.tasks.borrow_mut().insert(id, boxed);
+        let cancelled = Rc::new(Cell::new(false));
+        self.inner.tasks.borrow_mut().insert(
+            id,
+            Task {
+                future: boxed,
+                cancelled: cancelled.clone(),
+            },
+        );
         self.inner.scheduler.enqueue(id);
+        TaskHandle {
+            id,
+            runtime: Rc::downgrade(&self.inner),
+            cancelled,
+        }
     }
 
     /// Polls every task currently ready for this runtime.
     pub fn poll(&self) {
-        self.activate();
+        let _context = self
+            .inner
+            .context
+            .upgrade()
+            .map(|owner| owner.enter())
+            .unwrap_or_else(crate::RuntimeContext::suspend);
+        let _guard = self.enter();
+        let epoch = self.inner.cancellation_epoch.get();
         let ready = self.inner.scheduler.take_ready();
         if ready.is_empty() {
             return;
         }
 
         for id in ready {
-            let Some(mut future) = self.inner.tasks.borrow_mut().remove(&id) else {
+            let Some(mut task) = self.inner.tasks.borrow_mut().remove(&id) else {
                 continue;
             };
             let waker = Waker::from(Arc::new(TaskWaker {
                 id,
-                scheduler: self.inner.scheduler.clone(),
+                scheduler: Arc::downgrade(&self.inner.scheduler),
             }));
             let mut cx = Context::from_waker(&waker);
-            if future.as_mut().poll(&mut cx).is_pending() {
-                self.inner.tasks.borrow_mut().insert(id, future);
+            if task.future.as_mut().poll(&mut cx).is_pending()
+                && !task.cancelled.get()
+                && epoch == self.inner.cancellation_epoch.get()
+            {
+                self.inner.tasks.borrow_mut().insert(id, task);
+            } else {
+                task.cancelled.set(true);
             }
         }
+    }
+
+    pub(crate) fn close(&self) {
+        self.inner.closed.set(true);
+        self.cancel_all();
     }
 
     /// Drops every task still pending in this runtime.
     pub fn cancel_all(&self) {
         self.assert_owner();
-        self.inner.tasks.borrow_mut().clear();
+        self.inner
+            .cancellation_epoch
+            .set(self.inner.cancellation_epoch.get().wrapping_add(1));
+        let tasks = std::mem::take(&mut *self.inner.tasks.borrow_mut());
+        for task in tasks.values() {
+            task.cancelled.set(true);
+        }
+        drop(tasks);
         let _ = self.inner.scheduler.take_ready();
     }
 }
@@ -250,6 +363,9 @@ impl Default for Runtime {
 }
 
 fn current_runtime() -> Runtime {
+    if let Some(context) = crate::RuntimeContext::current().upgrade() {
+        return context.tasks().clone();
+    }
     CURRENT_RUNTIME.with(|current| Runtime {
         inner: current
             .borrow()
@@ -409,6 +525,7 @@ mod tests {
     struct TestGuard {
         _lock: std::sync::MutexGuard<'static, ()>,
         _runtime: Runtime,
+        _activation: TaskGuard,
     }
 
     // The lock keeps timing-sensitive spawn_blocking tests deterministic;
@@ -417,10 +534,11 @@ mod tests {
         static LOCK: Mutex<()> = Mutex::new(());
         let lock = LOCK.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
         let runtime = Runtime::new();
-        runtime.activate();
+        let _guard = runtime.activate();
         TestGuard {
             _lock: lock,
             _runtime: runtime,
+            _activation: _guard,
         }
     }
 
@@ -567,7 +685,7 @@ mod tests {
 
         let owner = std::thread::spawn(move || {
             let runtime = Runtime::new();
-            runtime.activate();
+            let _guard = runtime.activate();
 
             struct ExternalWake {
                 waker_tx: Option<mpsc::SyncSender<Waker>>,

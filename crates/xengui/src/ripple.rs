@@ -74,11 +74,11 @@ impl RipplePlatforms {
 
 impl Default for RipplePlatforms {
     fn default() -> Self {
-        // XenGui initially opts in only where the native implementation is
-        // shipped and tested. Web stays opt-in as requested.
+        // Patterned touch feedback is a mobile-Android default. Pointer-first
+        // desktop targets and every other platform stay opt-in; individual
+        // widgets can still override this policy with `.ripple(true)`.
         Self {
             android: true,
-            linux: true,
             ..Self::NONE
         }
     }
@@ -110,12 +110,12 @@ impl Default for RippleConfig {
     }
 }
 
-thread_local! {
+crate::runtime::runtime_state! {
     static CONFIG: Cell<RippleConfig> = const { Cell::new(RippleConfig {
         enabled: true,
         platforms: RipplePlatforms {
             android: true,
-            linux: true,
+            linux: false,
             windows: false,
             macos: false,
             ios: false,
@@ -373,10 +373,13 @@ mod tests {
     use crate::{Checkbox, RadioButton, Switch, Widget};
 
     #[test]
-    fn wasm_is_opt_in_and_linux_android_are_defaults() {
+    fn only_android_is_enabled_by_default() {
         let defaults = RipplePlatforms::default();
         assert!(defaults.android);
-        assert!(defaults.linux);
+        assert!(!defaults.linux);
+        assert!(!defaults.windows);
+        assert!(!defaults.macos);
+        assert!(!defaults.ios);
         assert!(!defaults.wasm);
     }
 

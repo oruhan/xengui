@@ -226,6 +226,10 @@ impl Widget for SplitHandle {
                 self.size_handle.set(new_size);
                 ctx.set_cursor_icon(self.side.cursor());
                 self.base.dirty = true;
+                // The shared size cell is consumed by SplitSizedBox during
+                // cascade. Mark layout dirty so a redraw cannot take the
+                // paint-only fast path and skip that synchronization.
+                self.base.layout_dirty = true;
                 ctx.request_redraw();
                 EventStatus::Handled
             }
@@ -275,5 +279,6 @@ mod tests {
 
         assert_eq!(size.get(), 240.0);
         assert!(handle.is_dirty());
+        assert!(handle.is_layout_dirty());
     }
 }

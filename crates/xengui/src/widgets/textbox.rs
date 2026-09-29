@@ -194,6 +194,19 @@ impl TextBox {
 
     fn recompute_style(&mut self) {
         self.base.recompute_style();
+        if let Some(mut border) = self.base.computed_style.border {
+            let theme = crate::current_theme();
+            if self.base.interaction.focused && self.base.focus_style.is_none() {
+                border.color = theme.primary;
+                border.top = Length::px(2.0);
+                border.right = Length::px(2.0);
+                border.bottom = Length::px(2.0);
+                border.left = Length::px(2.0);
+            } else if self.base.interaction.hovered && self.base.hover_style.is_none() {
+                border.color = theme.outline;
+            }
+            self.base.computed_style.border = Some(border);
+        }
         self.base.interaction.hover_cursor = self.base.computed_style.cursor.or(Some(Cursor::Text));
     }
 
