@@ -3,20 +3,27 @@
 
 use crate::{
     Align, Border, BorderRadius, BoxShadow, Color, Display, Easing, Edges, FlexDirection,
-    FontWeight, Interaction, JustifyContent, Key, KeyState, Label, LayoutBox, Position, Render,
-    Style, StyleBuilder, TransformOrigin, Transition, VariableIcon, View, Widget, WidgetBase,
-    WidgetId, pct, px,
+    FontWeight, Interaction, JustifyContent, Key, KeyState, Label, LayoutBox, Portal, Position,
+    Render, Style, StyleBuilder, TransformOrigin, TransformOriginAxis, Transition, VariableIcon,
+    View, Widget, WidgetBase, WidgetId, pct, px,
 };
 use smol_str::SmolStr;
 use std::rc::Rc;
 use web_time::Duration;
 use xengui_icons::material_symbols::{IconAxes, codepoints};
 
-const POPUP_SCALE_TRANSITION: Transition = Transition::new(Duration::from_millis(350))
-    .easing(Easing::cubic_bezier(0.42, 1.67, 0.21, 0.90));
 const POPUP_OPACITY_TRANSITION: Transition =
     Transition::new(Duration::from_millis(150)).easing(Easing::cubic_bezier(0.31, 0.94, 0.34, 1.0));
-const POPUP_CLOSED_SCALE: f32 = 0.92;
+const POPUP_SCALE_TRANSITION: Transition = Transition::new(Duration::from_millis(350))
+    .easing(Easing::cubic_bezier(0.42, 1.67, 0.21, 0.90));
+const POPUP_CLOSED_SCALE: f32 = 0.96;
+const POPUP_GAP: f32 = 8.0;
+const POPUP_TRANSFORM_ORIGIN: TransformOrigin = TransformOrigin {
+    x: TransformOriginAxis::Percent(50.0),
+    // The popup begins below the gap, but its motion originates at the
+    // trigger's bottom edge rather than at the popup surface itself.
+    y: TransformOriginAxis::Px(-POPUP_GAP),
+};
 
 fn state_layer(base: Color, content: Color, opacity: f32) -> Color {
     let opacity = opacity.clamp(0.0, 1.0);
@@ -134,8 +141,15 @@ impl Render for ComboBox {
                     .color(theme.on_surface)
                     .font_weight(FontWeight::Medium)
                     .border(
-                        Border::all(1.0, if open { theme.primary } else { theme.outline })
-                            .radius(BorderRadius::all(16.0)),
+                        Border::all(
+                            1.0,
+                            if open {
+                                theme.primary
+                            } else {
+                                theme.outline.with_alpha(180)
+                            },
+                        )
+                        .radius(BorderRadius::all(16.0)),
                     )
                     .hover_background(state_layer(
                         theme.surface_container_highest,
@@ -216,7 +230,7 @@ impl Render for ComboBox {
             .background(theme.surface_container)
             .border(Border::none().radius(BorderRadius::all(20.0)))
             .box_shadow(BoxShadow::new(0.0, 8.0, 24.0, theme.shadow.with_alpha(90)))
-            .transform_origin(TransformOrigin::TOP)
+            .transform_origin(POPUP_TRANSFORM_ORIGIN)
             .scale(if open { 1.0 } else { POPUP_CLOSED_SCALE })
             .opacity(if open { 1.0 } else { 0.0 })
             .transition_transform(POPUP_SCALE_TRANSITION)
@@ -299,20 +313,25 @@ impl Render for ComboBox {
             );
         }
 
-        // The outer scale is an immediate hit-test gate. The inner popup
-        // keeps its own 0.92 -> 1.0 visual scale transition, while a closed
-        // (fully transparent) popup cannot intercept pointer input.
+        // The outer scale is only an immediate hit-test gate. The inner
+        // popup owns the visible scale + opacity motion.
         root = root.child(
-            View::new()
-                .key("combo-box-popup-gate")
+            Portal::new()
                 .position(Position::Absolute)
-                .top(px!(64.0))
+                .top(px!(0.0))
                 .left(px!(0.0))
-                .z_index(1001)
                 .width(pct!(100.0))
-                .scale(if open { 1.0 } else { 0.0 })
-                .transform_origin(TransformOrigin::TOP)
-                .child(menu),
+                .child(
+                    View::new()
+                        .key("combo-box-popup-gate")
+                        .position(Position::Absolute)
+                        .top(px!(56.0 + POPUP_GAP))
+                        .left(px!(0.0))
+                        .z_index(1001)
+                        .width(pct!(100.0))
+                        .scale(if open { 1.0 } else { 0.0 })
+                        .child(menu),
+                ),
         );
 
         Box::new(root)
@@ -347,15 +366,19 @@ mod tests {
             crate::hooks::component("combo-test", || ComboBox::new(["one", "two"]).render());
         crate::hooks::end_render();
 
-        let popup_gate = rendered
+        let popup_portal = rendered
             .children()
             .iter()
-            .find(|child| {
-                child
-                    .get_key()
-                    .is_some_and(|key| key == "combo-box-popup-gate")
-            })
+            .find(|child| child.is_portal())
+            .expect("combo popup should be isolated in the top layer");
+        let popup_gate = popup_portal
+            .children()
+            .first()
             .expect("closed combo should retain its popup gate");
+        assert_eq!(
+            popup_gate.get_key().map(|key| key.as_str()),
+            Some("combo-box-popup-gate")
+        );
         let popup = popup_gate
             .children()
             .first()
@@ -365,5 +388,13 @@ mod tests {
             Some("combo-box-popup")
         );
         assert_eq!(popup.children().len(), 2);
+        assert_eq!(popup.style().scale, Some(POPUP_CLOSED_SCALE));
+        assert_eq!(popup.style().opacity, Some(0.0));
+        let transitions = popup
+            .style()
+            .transition_properties
+            .expect("popup should animate scale and opacity");
+        assert!(transitions.contains(crate::TransitionProperty::TRANSFORM));
+        assert!(transitions.contains(crate::TransitionProperty::OPACITY));
     }
 }

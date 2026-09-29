@@ -25,11 +25,12 @@ pub enum TooltipPlacement {
 }
 
 const DEFAULT_DELAY: Duration = Duration::from_millis(400);
-const DEFAULT_GAP: f32 = 6.0;
+const DEFAULT_GAP: f32 = 4.0;
 const FADE_TRANSITION: Transition =
-    Transition::new(Duration::from_millis(120)).easing(Easing::EaseOut);
-const SCALE_TRANSITION: Transition =
-    Transition::new(Duration::from_millis(140)).easing(Easing::EaseOut);
+    Transition::new(Duration::from_millis(150)).easing(Easing::cubic_bezier(0.31, 0.94, 0.34, 1.0));
+const SCALE_TRANSITION: Transition = Transition::new(Duration::from_millis(350))
+    .easing(Easing::cubic_bezier(0.42, 1.67, 0.21, 0.90));
+const CLOSED_SCALE: f32 = 0.92;
 const TOOLTIP_PADDING_X: f32 = 8.0;
 const TOOLTIP_PADDING_Y: f32 = 3.0;
 
@@ -59,20 +60,21 @@ pub struct Tooltip {
     hover_start: Cell<Option<Instant>>,
     showing: Cell<bool>,
     opacity_anim: Cell<f32>,
-    scale_progress: Cell<f32>,
+    scale_anim: Cell<f32>,
     label_size: Cell<(f32, f32)>,
 }
 
 impl Tooltip {
     /// Creates a value with its default configuration.
     pub fn new(text: impl Into<SmolStr>) -> Self {
+        let text = text.into();
         Self {
             base: WidgetBase::new(crate::Interaction::new()),
             anim_id: WidgetId::new_unique(),
             children: Vec::new(),
             layout_box: LayoutBox::default(),
 
-            text: text.into(),
+            text: SmolStr::new(text.trim()),
             placement: TooltipPlacement::default(),
             delay: DEFAULT_DELAY,
             gap: DEFAULT_GAP,
@@ -87,7 +89,7 @@ impl Tooltip {
             hover_start: Cell::new(None),
             showing: Cell::new(false),
             opacity_anim: Cell::new(0.0),
-            scale_progress: Cell::new(1.0),
+            scale_anim: Cell::new(CLOSED_SCALE),
             label_size: Cell::new((0.0, 0.0)),
         }
     }
@@ -299,40 +301,32 @@ impl Widget for Tooltip {
         let sf = ctx.scale_factor;
         let size = self.label_size.get();
         let (x, y) = self.box_position(self.anchor_box(), size);
-        let scale = self.scale_progress.get();
-
-        let raw_box = LayoutBox {
-            x,
-            y,
-            width: size.0,
-            height: size.1,
-        };
-        // Scale from the edge nearest the anchor, so a top tooltip rises
-        // straight upward instead of appearing to drift out of a corner.
+        let scale = self.scale_anim.get().clamp(CLOSED_SCALE, 1.0);
         let popup_box = match self.placement {
+            // Each placement grows from the edge facing the anchor.
             TooltipPlacement::Top => LayoutBox {
-                x: raw_box.x + raw_box.width * (1.0 - scale) * 0.5,
-                y: raw_box.y + raw_box.height * (1.0 - scale),
-                width: raw_box.width * scale,
-                height: raw_box.height * scale,
+                x: x + size.0 * (1.0 - scale) * 0.5,
+                y: y + size.1 * (1.0 - scale),
+                width: size.0 * scale,
+                height: size.1 * scale,
             },
             TooltipPlacement::Bottom => LayoutBox {
-                x: raw_box.x + raw_box.width * (1.0 - scale) * 0.5,
-                y: raw_box.y,
-                width: raw_box.width * scale,
-                height: raw_box.height * scale,
+                x: x + size.0 * (1.0 - scale) * 0.5,
+                y,
+                width: size.0 * scale,
+                height: size.1 * scale,
             },
             TooltipPlacement::Left => LayoutBox {
-                x: raw_box.x + raw_box.width * (1.0 - scale),
-                y: raw_box.y + raw_box.height * (1.0 - scale) * 0.5,
-                width: raw_box.width * scale,
-                height: raw_box.height * scale,
+                x: x + size.0 * (1.0 - scale),
+                y: y + size.1 * (1.0 - scale) * 0.5,
+                width: size.0 * scale,
+                height: size.1 * scale,
             },
             TooltipPlacement::Right => LayoutBox {
-                x: raw_box.x,
-                y: raw_box.y + raw_box.height * (1.0 - scale) * 0.5,
-                width: raw_box.width * scale,
-                height: raw_box.height * scale,
+                x,
+                y: y + size.1 * (1.0 - scale) * 0.5,
+                width: size.0 * scale,
+                height: size.1 * scale,
             },
         };
 
@@ -377,9 +371,8 @@ impl Widget for Tooltip {
             .with_alpha_f32(opacity);
 
         let mut text_style = self.base.computed_style.clone();
-        text_style
-            .font_size
-            .get_or_insert(self.font_size.unwrap_or(DEFAULT_FONT_SIZE));
+        let font_size = self.font_size.unwrap_or(DEFAULT_FONT_SIZE).value() * scale;
+        text_style.font_size = Some(Length::px(font_size));
         text_style.color = Some(text_color);
 
         ctx.draw_text(TextCommand {
@@ -495,18 +488,29 @@ impl Widget for Tooltip {
         self.opacity_anim
             .set(anim.value(key).map_or(target, |v| v.0[0]));
 
-        let scale_target = if self.showing.get() { 1.0 } else { 0.92 };
+        let scale_target = if self.showing.get() {
+            1.0
+        } else {
+            CLOSED_SCALE
+        };
         let scale_key = AnimKey {
             widget: self.anim_id,
             layer: AnimLayer::Root,
             property: AnimProperty::Scale,
         };
+        let scale_transition = self
+            .base
+            .computed_style
+            .transition_overrides
+            .transform
+            .or(self.base.computed_style.transition)
+            .unwrap_or(SCALE_TRANSITION);
         anim.set_target(
             scale_key,
             AnimValue([scale_target, 0.0, 0.0, 0.0]),
-            Some(SCALE_TRANSITION),
+            Some(scale_transition),
         );
-        self.scale_progress
+        self.scale_anim
             .set(anim.value(scale_key).map_or(scale_target, |v| v.0[0]));
 
         for child in self.children.iter_mut() {
@@ -532,7 +536,7 @@ impl Widget for Tooltip {
             self.hover_start.set(old.hover_start.get());
             self.showing.set(old.showing.get());
             self.opacity_anim.set(old.opacity_anim.get());
-            self.scale_progress.set(old.scale_progress.get());
+            self.scale_anim.set(old.scale_anim.get());
             self.label_size.set(old.label_size.get());
         }
     }
@@ -568,5 +572,11 @@ mod tests {
 
         assert_eq!(anchor.x, 80.0);
         assert_eq!(x, 62.0);
+    }
+
+    #[test]
+    fn trims_accidental_tooltip_whitespace() {
+        let tooltip = Tooltip::new("Test 123  ");
+        assert_eq!(tooltip.text, "Test 123");
     }
 }

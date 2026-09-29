@@ -48,6 +48,7 @@ fn violet_theme(dark: bool) -> Theme {
             .tertiary_container(Color::rgb(99, 59, 72))
             .on_tertiary_container(Color::rgb(255, 216, 228))
             .selection(Color::rgb(208, 188, 255).with_alpha(80))
+            .selection_color(Color::rgb(250, 247, 252))
             .caret_color(Color::rgb(208, 188, 255))
     } else {
         Theme::light()
@@ -74,6 +75,7 @@ fn violet_theme(dark: bool) -> Theme {
             .tertiary_container(Color::rgb(255, 216, 228))
             .on_tertiary_container(Color::rgb(49, 17, 29))
             .selection(Color::rgb(103, 80, 164).with_alpha(72))
+            .selection_color(Color::rgb(31, 25, 34))
             .caret_color(Color::rgb(103, 80, 164))
     }
 }
@@ -104,6 +106,7 @@ fn blue_theme(dark: bool) -> Theme {
             .tertiary_container(Color::rgb(86, 62, 88))
             .on_tertiary_container(Color::rgb(250, 216, 252))
             .selection(Color::rgb(173, 198, 255).with_alpha(80))
+            .selection_color(Color::rgb(246, 249, 255))
             .caret_color(Color::rgb(173, 198, 255))
     } else {
         Theme::light()
@@ -130,6 +133,7 @@ fn blue_theme(dark: bool) -> Theme {
             .tertiary_container(Color::rgb(250, 216, 252))
             .on_tertiary_container(Color::rgb(40, 19, 45))
             .selection(Color::rgb(0, 90, 193).with_alpha(72))
+            .selection_color(Color::rgb(18, 27, 40))
             .caret_color(Color::rgb(0, 90, 193))
     }
 }
@@ -160,6 +164,7 @@ fn green_theme(dark: bool) -> Theme {
             .tertiary_container(Color::rgb(31, 78, 80))
             .on_tertiary_container(Color::rgb(188, 235, 237))
             .selection(Color::rgb(156, 214, 125).with_alpha(80))
+            .selection_color(Color::rgb(246, 255, 241))
             .caret_color(Color::rgb(156, 214, 125))
     } else {
         Theme::light()
@@ -186,6 +191,7 @@ fn green_theme(dark: bool) -> Theme {
             .tertiary_container(Color::rgb(188, 235, 237))
             .on_tertiary_container(Color::rgb(0, 31, 32))
             .selection(Color::rgb(56, 106, 32).with_alpha(72))
+            .selection_color(Color::rgb(21, 31, 17))
             .caret_color(Color::rgb(56, 106, 32))
     }
 }
@@ -457,7 +463,7 @@ fn controls_lab(store: &TraceStore) -> View {
                     click_store.check("behavior.button", "controls", true, "button callback fired");
                 }))
                 .child(Badge::new().label(format!("{clicks} tıklama")))
-                .child(Tooltip::new("Klavye ipucu ortalanmalı").child(Kbd::new().label("Ctrl K")))
+                .child(Tooltip::new("Klavye ipucu ortalanmalı").child(Kbd::new().label("Ctrl+Alt+Shift")))
                 .child(
                     Link::new()
                         .label("xengui.dev")

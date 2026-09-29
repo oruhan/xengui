@@ -463,14 +463,9 @@ impl View {
             ],
             pin_scroll_bottom: false,
         };
-        view = view
-            .selection_background(|theme: &crate::Theme| theme.selection)
-            .selection_color(|theme: &crate::Theme| theme.selection_color)
-            .caret_color(|theme: &crate::Theme| theme.caret_color)
-            .selection_border_color(|theme: &crate::Theme| theme.selection_border_color)
-            .selection_border_width(|theme: &crate::Theme| theme.selection_border_width)
-            .selection_border_radius(|theme: &crate::Theme| theme.selection_border_radius);
-
+        // Selection and caret roles are inherited from LayoutEngine's root
+        // style. Do not snapshot the active theme into every View here: doing
+        // so prevents descendants from following a later theme switch.
         view.recompute_style();
         view
     }

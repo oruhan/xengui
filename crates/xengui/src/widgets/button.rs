@@ -2,7 +2,7 @@
 use crate::{
     Align, AnimationManager, Color, Constraints, Easing, EventCtx, EventStatus, InputEvent,
     Interaction, JustifyContent, LayoutBox, Length, MeasureContext, MeasureResult, PaintContext,
-    RectCommand, Style, StyleBuilder, TextCommand, Transition, TriangleCommand,
+    RectCommand, Style, StyleBuilder, TextCommand, Transition, TransitionProperty, TriangleCommand,
     VariableIconCommand, Widget, WidgetBase, WidgetContent, WidgetId,
     constants::{DEFAULT_CURSOR_ICON, DEFAULT_FONT_SIZE, DEFAULT_POINTER_CURSOR_ICON},
 };
@@ -204,13 +204,32 @@ impl Button {
             .pressed_style
             .as_ref()
             .is_some_and(|style| style.scale.is_some());
-        if self.base.interaction.pressed && !pressed_has_scale {
-            self.base.computed_style.scale = Some(0.97);
+        if !pressed_has_scale {
+            let resting_scale = self.base.computed_style.scale.unwrap_or(1.0);
+            self.base.computed_style.scale = Some(if self.base.interaction.pressed {
+                resting_scale * 0.97
+            } else {
+                resting_scale
+            });
+            // Keep the label/icon at its natural size while the container
+            // supplies the pressed geometry feedback. This also prevents a
+            // transient glyph-atlas layer from disappearing during rebuilds.
+            self.base.computed_style.content_scale = Some(1.0);
             self.base
                 .computed_style
                 .transition_overrides
                 .transform
-                .get_or_insert(Transition::new(Duration::from_millis(100)).easing(Easing::EaseOut));
+                .get_or_insert(
+                    Transition::new(Duration::from_millis(350))
+                        .easing(Easing::cubic_bezier(0.42, 1.67, 0.21, 0.90)),
+                );
+            let properties = self
+                .base
+                .computed_style
+                .transition_properties
+                .unwrap_or(TransitionProperty::NONE);
+            self.base.computed_style.transition_properties =
+                Some(properties.union(TransitionProperty::TRANSFORM));
         }
         self.base.interaction.hover_cursor =
             self.base
@@ -662,6 +681,14 @@ mod tests {
         button.recompute_style();
 
         assert_eq!(button.base.computed_style.scale, Some(0.97));
+        assert_eq!(button.base.computed_style.content_scale, Some(1.0));
+        assert!(
+            button
+                .base
+                .computed_style
+                .transition_properties
+                .is_some_and(|properties| properties.contains(TransitionProperty::TRANSFORM))
+        );
         assert_ne!(
             button
                 .base
@@ -670,6 +697,23 @@ mod tests {
                 .as_ref()
                 .map(crate::Background::representative_color),
             Some(resting)
+        );
+    }
+
+    #[test]
+    fn default_scale_transition_remains_enabled_after_release() {
+        let mut button = Button::new().background(Color::WHITE);
+        button.base.interaction.pressed = false;
+        button.recompute_style();
+
+        assert_eq!(button.base.computed_style.scale, Some(1.0));
+        assert_eq!(button.base.computed_style.content_scale, Some(1.0));
+        assert!(
+            button
+                .base
+                .computed_style
+                .transition_properties
+                .is_some_and(|properties| properties.contains(TransitionProperty::TRANSFORM))
         );
     }
 }

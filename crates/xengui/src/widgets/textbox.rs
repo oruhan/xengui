@@ -4,14 +4,20 @@ use crate::{
     EventStatus, ImeEvent, InputEvent, Interaction, Key, KeyState, KeyboardEvent, LayoutBox,
     Length, MULTI_CLICK_DISTANCE_DP, MULTI_CLICK_INTERVAL, MeasureContext, MeasureResult,
     ModifiersState, MouseButton, NativeTextInputSnapshot, PaintContext, RectCommand, Size, Style,
-    StyleBuilder, TextCommand, Widget, WidgetBase, WidgetContent, WidgetId,
+    StyleBuilder, TextCommand, Transition, TransitionProperty, Widget, WidgetBase, WidgetContent,
+    WidgetId,
     constants::{DEFAULT_FONT_SIZE, DEFAULT_LINE_HEIGHT_RATIO},
 };
 use smol_str::SmolStr;
 use std::cell::{Cell, RefCell};
 use std::sync::{Arc, Mutex};
 use unicode_segmentation::UnicodeSegmentation;
-use web_time::Instant;
+use web_time::{Duration, Instant};
+
+const TEXTBOX_COLOR_TRANSITION: Transition = Transition::new(Duration::from_millis(150))
+    .easing(crate::Easing::cubic_bezier(0.31, 0.94, 0.34, 1.0));
+const TEXTBOX_BORDER_TRANSITION: Transition = Transition::new(Duration::from_millis(350))
+    .easing(crate::Easing::cubic_bezier(0.42, 1.67, 0.21, 0.90));
 
 type TextCallback = Box<dyn FnMut(&str, &mut EventCtx)>;
 
@@ -206,6 +212,25 @@ impl TextBox {
                 border.color = theme.outline;
             }
             self.base.computed_style.border = Some(border);
+
+            let properties = self
+                .base
+                .computed_style
+                .transition_properties
+                .unwrap_or(TransitionProperty::NONE)
+                .union(TransitionProperty::COLORS)
+                .union(TransitionProperty::BOX);
+            self.base.computed_style.transition_properties = Some(properties);
+            self.base
+                .computed_style
+                .transition_overrides
+                .colors
+                .get_or_insert(TEXTBOX_COLOR_TRANSITION);
+            self.base
+                .computed_style
+                .transition_overrides
+                .box_model
+                .get_or_insert(TEXTBOX_BORDER_TRANSITION);
         }
         self.base.interaction.hover_cursor = self.base.computed_style.cursor.or(Some(Cursor::Text));
     }
@@ -1593,6 +1618,27 @@ impl Widget for TextBox {
 mod tests {
     use super::*;
     use crate::TextMeasurer;
+
+    #[test]
+    fn outlined_textbox_enables_color_and_width_transitions() {
+        let textbox = TextBox::new().border(crate::Border::all(1.0, Color::BLACK));
+        let properties = textbox
+            .base
+            .computed_style
+            .transition_properties
+            .expect("outlined textbox should configure transitions");
+
+        assert!(properties.contains(TransitionProperty::COLORS));
+        assert!(properties.contains(TransitionProperty::BOX));
+        assert_eq!(
+            textbox.base.computed_style.transition_overrides.colors,
+            Some(TEXTBOX_COLOR_TRANSITION)
+        );
+        assert_eq!(
+            textbox.base.computed_style.transition_overrides.box_model,
+            Some(TEXTBOX_BORDER_TRANSITION)
+        );
+    }
 
     struct FixedTextMeasurer;
 

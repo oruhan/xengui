@@ -14,17 +14,22 @@ use web_time::Duration;
 const KBD_DEPTH: f32 = 3.0;
 const KBD_PRESS_TRANSITION: Transition =
     Transition::new(Duration::from_millis(90)).easing(Easing::EaseOut);
+const KBD_HOVER_TRANSITION: Transition =
+    Transition::new(Duration::from_millis(150)).easing(Easing::cubic_bezier(0.31, 0.94, 0.34, 1.0));
+const KBD_HOVER_STRENGTH: f32 = 0.35;
 
 /// Displays a single keyboard key or shortcut (e.g. "Ctrl", "⌘K"), styled
 /// like a physical keycap that presses flush into its own base on click.
 pub struct Kbd {
     base: WidgetBase,
     anim_id: WidgetId,
+    hover_anim_id: WidgetId,
     content: SmolStr,
     layout_box: LayoutBox,
     content_size: Cell<(f32, f32)>,
     pressed: Cell<bool>,
     press_progress: Cell<f32>,
+    hover_progress: Cell<f32>,
 }
 
 impl Kbd {
@@ -35,17 +40,24 @@ impl Kbd {
 
         let mut base = WidgetBase::new(interaction);
 
-        base.style.padding = Some(Edges::symmetric(4.0, 2.0));
-        base.style.font_size = Some(Length::px(13.0));
+        // A keyboard legend is code-like content. The compact padding keeps
+        // the keycap proportional to short labels such as "K" and "Esc".
+        // The extra logical pixel on the left compensates for the visible
+        // left bearing of monospace legends, keeping both sides balanced.
+        base.style.padding = Some(Edges::only(3.0, 1.0, 2.0, 1.0));
+        base.style.font = Some(SmolStr::new("monospace"));
+        base.style.font_size = Some(Length::px(12.0));
 
         let mut kbd = Self {
             base,
             anim_id: WidgetId::new_unique(),
+            hover_anim_id: WidgetId::new_unique(),
             content: SmolStr::new(""),
             layout_box: LayoutBox::default(),
             content_size: Cell::new((0.0, 0.0)),
             pressed: Cell::new(false),
             press_progress: Cell::new(0.0),
+            hover_progress: Cell::new(0.0),
         };
         kbd.recompute_style();
         kbd
@@ -135,7 +147,7 @@ impl Widget for Kbd {
         let t = self.press_progress.get();
         let theme = crate::current_theme();
 
-        let hovered = self.base.interaction.hovered;
+        let hover = self.hover_progress.get().clamp(0.0, 1.0) * KBD_HOVER_STRENGTH;
 
         let depth = KBD_DEPTH * sf;
         // t=0 (idle) keeps the cap raised at the top; t=1 (pressed) sinks
@@ -145,11 +157,7 @@ impl Widget for Kbd {
         let (border_color, border_width) = match style.border.as_ref() {
             Some(bo) => (bo.color, bo.top.to_physical(sf)),
             None => (
-                if hovered {
-                    theme.outline
-                } else {
-                    theme.outline_variant
-                },
+                mix_color(theme.outline_variant, theme.outline, hover),
                 1.0 * sf,
             ),
         };
@@ -183,11 +191,11 @@ impl Widget for Kbd {
         let cap_background = style
             .background
             .clone()
-            .unwrap_or(Background::Color(if hovered {
-                theme.surface_container_high
-            } else {
-                theme.surface_container
-            }));
+            .unwrap_or(Background::Color(mix_color(
+                theme.surface_container,
+                theme.surface_container_high,
+                hover,
+            )));
 
         ctx.draw_rect(RectCommand {
             position: (b.x, b.y + lift),
@@ -204,12 +212,12 @@ impl Widget for Kbd {
         let text_y = b.y + lift + padding.top.to_physical(sf);
 
         let mut text_style = style.clone();
-        text_style.font_size.get_or_insert(Length::px(13.0));
-        text_style.color.get_or_insert(if hovered {
-            theme.on_surface
-        } else {
-            theme.on_surface_variant
-        });
+        text_style.font_size.get_or_insert(Length::px(12.0));
+        text_style.color.get_or_insert(mix_color(
+            theme.on_surface_variant,
+            theme.on_surface,
+            hover,
+        ));
 
         ctx.draw_text(TextCommand {
             text: self.content.clone(),
@@ -304,6 +312,29 @@ impl Widget for Kbd {
             }
             None => self.press_progress.set(target),
         }
+
+        let hover_target = if self.base.interaction.hovered {
+            1.0
+        } else {
+            0.0
+        };
+        let hover_key = AnimKey {
+            widget: self.hover_anim_id,
+            layer: AnimLayer::Root,
+            property: AnimProperty::Opacity,
+        };
+        anim.set_target(
+            hover_key,
+            AnimValue([hover_target, 0.0, 0.0, 0.0]),
+            Some(KBD_HOVER_TRANSITION),
+        );
+        match anim.value(hover_key) {
+            Some(value) => {
+                self.hover_progress.set(value.0[0]);
+                self.base.dirty = true;
+            }
+            None => self.hover_progress.set(hover_target),
+        }
     }
 
     fn transfer_measured_state(&mut self, old: &dyn Widget) {
@@ -311,6 +342,7 @@ impl Widget for Kbd {
             self.content_size.set(old.content_size.get());
             self.pressed.set(old.pressed.get());
             self.press_progress.set(old.press_progress.get());
+            self.hover_progress.set(old.hover_progress.get());
         }
     }
 
@@ -320,10 +352,21 @@ impl Widget for Kbd {
         }
         if let Some(old) = old.as_any().downcast_ref::<Kbd>() {
             self.anim_id = old.anim_id;
+            self.hover_anim_id = old.hover_anim_id;
         }
     }
 
     fn anim_id(&self) -> WidgetId {
         self.anim_id
     }
+}
+
+fn mix_color(from: Color, to: Color, amount: f32) -> Color {
+    let amount = amount.clamp(0.0, 1.0);
+    Color::rgba_f32(
+        from.r() + (to.r() - from.r()) * amount,
+        from.g() + (to.g() - from.g()) * amount,
+        from.b() + (to.b() - from.b()) * amount,
+        from.a() + (to.a() - from.a()) * amount,
+    )
 }
