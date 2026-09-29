@@ -16,6 +16,9 @@ const POPUP_OPACITY_TRANSITION: Transition =
     Transition::new(Duration::from_millis(150)).easing(Easing::cubic_bezier(0.31, 0.94, 0.34, 1.0));
 const POPUP_SCALE_TRANSITION: Transition = Transition::new(Duration::from_millis(350))
     .easing(Easing::cubic_bezier(0.42, 1.67, 0.21, 0.90));
+const POPUP_GATE_OPEN_TRANSITION: Transition = Transition::new(Duration::ZERO);
+const POPUP_GATE_CLOSE_TRANSITION: Transition =
+    Transition::new(Duration::ZERO).delay(Duration::from_millis(350));
 const POPUP_CLOSED_SCALE: f32 = 0.96;
 const POPUP_GAP: f32 = 8.0;
 const POPUP_TRANSFORM_ORIGIN: TransformOrigin = TransformOrigin {
@@ -223,10 +226,11 @@ impl Render for ComboBox {
             .display(Display::Flex)
             .flex_direction(FlexDirection::Column)
             .width(pct!(100.0))
-            .min_width(px!(112.0))
+            .min_width(px!(0.0))
             .max_width(px!(280.0))
             .gap(0.0, 8.0)
             .padding(Edges::all(8.0))
+            .overflow(crate::Overflow::Hidden, crate::Overflow::Hidden)
             .background(theme.surface_container)
             .border(Border::none().radius(BorderRadius::all(20.0)))
             .box_shadow(BoxShadow::new(0.0, 8.0, 24.0, theme.shadow.with_alpha(90)))
@@ -330,6 +334,14 @@ impl Render for ComboBox {
                         .z_index(1001)
                         .width(pct!(100.0))
                         .scale(if open { 1.0 } else { 0.0 })
+                        // Keep the gate alive while the popup animates back
+                        // to its closed scale/opacity. Opening is immediate;
+                        // closing snaps the hit-test gate only after motion.
+                        .transition_transform(if open {
+                            POPUP_GATE_OPEN_TRANSITION
+                        } else {
+                            POPUP_GATE_CLOSE_TRANSITION
+                        })
                         .child(menu),
                 ),
         );
