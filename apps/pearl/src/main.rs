@@ -1813,11 +1813,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     xen_router::push(path);
                 });
 
-            // Mini player sits directly above the pill nav, sharing one
+            // Mini player sits directly above the flexible navigation bar, sharing one
             // fixed bottom-anchored stack so they always move together.
             let mut floating_stack = Column::new()
                 .position(Position::Fixed)
-                .bottom(px!(16.0))
+                .bottom(px!(0.0))
                 .left(px!(0.0))
                 .width(pct!(100.0))
                 .align_items(Align::Center)

@@ -18,10 +18,12 @@ impl Anim {
     // Current interpolated value given elapsed time, transition delay,
     // duration, and easing curve.
     fn value_at(&self) -> AnimValue {
-        let past_delay = self.elapsed.saturating_sub(self.transition.delay);
-        let t = if self.transition.duration.is_zero() {
+        let t = if self.elapsed < self.transition.delay {
+            0.0
+        } else if self.transition.duration.is_zero() {
             1.0
         } else {
+            let past_delay = self.elapsed - self.transition.delay;
             past_delay.as_secs_f32() / self.transition.duration.as_secs_f32()
         };
         let eased = self.transition.easing.apply(t);

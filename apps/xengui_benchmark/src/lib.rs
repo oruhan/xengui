@@ -244,16 +244,6 @@ fn cyan() -> Color {
     current_theme().tertiary
 }
 
-fn state_layer(base: Color, content: Color, opacity: f32) -> Color {
-    let opacity = opacity.clamp(0.0, 1.0);
-    Color::rgba_f32(
-        base.r() * (1.0 - opacity) + content.r() * opacity,
-        base.g() * (1.0 - opacity) + content.g() * opacity,
-        base.b() * (1.0 - opacity) + content.b() * opacity,
-        1.0,
-    )
-}
-
 fn card() -> View {
     View::new()
         .display(Display::Flex)
@@ -297,6 +287,11 @@ fn action_button(label: &'static str, on_click: impl FnMut(&mut EventCtx) + 'sta
         .border(Border::none().radius(22.0))
         .font_weight(FontWeight::SemiBold)
         .on_click(on_click)
+}
+
+fn media_time(seconds: f32) -> String {
+    let total = seconds.max(0.0).floor() as u32;
+    format!("{}:{:02}", total / 60, total % 60)
 }
 
 fn issue_button(store: TraceStore, area: &'static str) -> Button {
@@ -404,12 +399,16 @@ fn overview(store: &TraceStore) -> View {
 }
 
 fn controls_lab(store: &TraceStore) -> View {
+    const TRACK_DURATION_SECONDS: f32 = 214.0;
+
     let (checked, set_checked) = use_state(true);
     let (switched, set_switched) = use_state(false);
     let (radio, set_radio) = use_state(0usize);
     let (slider, set_slider) = use_state(0.42_f32);
     let (text, set_text) = use_state(String::new());
     let (clicks, set_clicks) = use_state(0usize);
+    let (player_playing, set_player_playing) = use_state(false);
+    let (player_elapsed, set_player_elapsed) = use_state(68.0_f32);
 
     let click_store = store.clone();
     let checkbox_store = store.clone();
@@ -417,6 +416,15 @@ fn controls_lab(store: &TraceStore) -> View {
     let radio_store = store.clone();
     let slider_store = store.clone();
     let text_store = store.clone();
+    let flat_slider_setter = set_slider.clone();
+    let wavy_slider_setter = set_slider.clone();
+    let player_seek_setter = set_player_elapsed.clone();
+    let player_end_setter = set_player_playing.clone();
+    let player_commit_setter = set_player_elapsed.clone();
+    let player_commit_end_setter = set_player_playing.clone();
+    let play_setter = set_player_playing.clone();
+    let rewind_setter = set_player_elapsed.clone();
+    let forward_setter = set_player_elapsed.clone();
 
     let mut radios = View::new()
         .display(Display::Flex)
@@ -463,7 +471,10 @@ fn controls_lab(store: &TraceStore) -> View {
                     click_store.check("behavior.button", "controls", true, "button callback fired");
                 }))
                 .child(Badge::new().label(format!("{clicks} tıklama")))
-                .child(Tooltip::new("Klavye ipucu ortalanmalı").child(Kbd::new().label("Ctrl+Alt+Shift")))
+                .child(
+                    Tooltip::new("Klavye ipucu ortalanmalı")
+                        .child(Kbd::new().label("Ctrl+Alt+Shift")),
+                )
                 .child(
                     Link::new()
                         .label("xengui.dev")
@@ -557,6 +568,254 @@ fn controls_lab(store: &TraceStore) -> View {
                         }),
                 )
                 .child(ProgressBar::new().value(slider).bar_height(px!(6.0))),
+        )
+        .child(
+            View::new()
+                .display(Display::Flex)
+                .flex_direction(FlexDirection::Column)
+                .gap(0.0, 14.0)
+                .padding(Edges::all(18.0))
+                .background(surface_high())
+                .border(Border::all(1.0, outline()).radius(20.0))
+                .child(heading(
+                    "M3 progress indicator varyasyonları",
+                    "Linear/circular · flat/wavy · 4dp/8dp",
+                ))
+                .child(
+                    Label::new()
+                        .label("Linear · flat 4dp / flat 8dp / wavy 4dp / wavy 8dp")
+                        .font_size(px!(12.0))
+                        .color(muted()),
+                )
+                .child(
+                    View::new()
+                        .display(Display::Flex)
+                        .flex_direction(FlexDirection::Column)
+                        .gap(0.0, 16.0)
+                        .child(LinearProgressIndicator::new().value(slider).thickness(4.0))
+                        .child(LinearProgressIndicator::new().value(slider).thickness(8.0))
+                        .child(
+                            LinearProgressIndicator::new()
+                                .value(slider)
+                                .thickness(4.0)
+                                .indicator_shape(ProgressIndicatorShape::Wavy),
+                        )
+                        .child(
+                            LinearProgressIndicator::new()
+                                .value(slider)
+                                .thickness(8.0)
+                                .indicator_shape(ProgressIndicatorShape::Wavy),
+                        ),
+                )
+                .child(
+                    Label::new()
+                        .label("Circular · flat 4dp / flat 8dp / wavy 4dp / wavy 8dp")
+                        .font_size(px!(12.0))
+                        .color(muted()),
+                )
+                .child(
+                    View::new()
+                        .display(Display::Flex)
+                        .flex_direction(FlexDirection::Row)
+                        .align_items(Align::Center)
+                        .gap(20.0, 0.0)
+                        .flex_wrap(FlexWrap::Wrap)
+                        .child(
+                            CircularProgressIndicator::new()
+                                .value(slider)
+                                .thickness(4.0)
+                                .indicator_size(40.0),
+                        )
+                        .child(
+                            CircularProgressIndicator::new()
+                                .value(slider)
+                                .thickness(8.0)
+                                .indicator_size(44.0),
+                        )
+                        .child(
+                            CircularProgressIndicator::new()
+                                .value(slider)
+                                .thickness(4.0)
+                                .indicator_size(48.0)
+                                .indicator_shape(ProgressIndicatorShape::Wavy),
+                        )
+                        .child(
+                            CircularProgressIndicator::new()
+                                .value(slider)
+                                .thickness(8.0)
+                                .indicator_size(52.0)
+                                .indicator_shape(ProgressIndicatorShape::Wavy),
+                        ),
+                )
+                .child(
+                    Label::new()
+                        .label("Progress slider · flat / wavy (basılıyken flat)")
+                        .font_size(px!(12.0))
+                        .color(muted()),
+                )
+                .child(
+                    Slider::new()
+                        .value(slider)
+                        .accessible_label("Flat progress slider")
+                        .track_shape(SliderTrackShape::Flat)
+                        .on_change(move |value, _| flat_slider_setter.set(value)),
+                )
+                .child(
+                    Slider::new()
+                        .value(slider)
+                        .accessible_label("Wavy progress slider")
+                        .track_shape(SliderTrackShape::Wavy)
+                        .on_change(move |value, _| wavy_slider_setter.set(value)),
+                ),
+        )
+        .child(
+            View::new()
+                .display(Display::Flex)
+                .flex_direction(FlexDirection::Column)
+                .gap(0.0, 16.0)
+                .padding(Edges::all(20.0))
+                .background(surface_high())
+                .border(Border::all(1.0, outline()).radius(28.0))
+                .child(heading(
+                    "Mini music player",
+                    "Wavy progress indicator + slideable seek control",
+                ))
+                .child(
+                    View::new()
+                        .display(Display::Flex)
+                        .flex_direction(FlexDirection::Row)
+                        .align_items(Align::Center)
+                        .gap(16.0, 0.0)
+                        .child(
+                            View::new()
+                                .size(px!(64.0), px!(64.0))
+                                .display(Display::Flex)
+                                .align_items(Align::Center)
+                                .justify_content(JustifyContent::Center)
+                                .background(primary_container())
+                                .border(Border::none().radius(20.0))
+                                .child(
+                                    VariableIcon::new(codepoints::MUSIC_NOTE)
+                                        .size(30.0)
+                                        .color(on_primary_container()),
+                                ),
+                        )
+                        .child(
+                            View::new()
+                                .display(Display::Flex)
+                                .flex_direction(FlexDirection::Column)
+                                .min_width(px!(0.0))
+                                .flex_grow(1.0)
+                                .gap(0.0, 4.0)
+                                .child(
+                                    Label::new()
+                                        .label("Expressive Frequency")
+                                        .font_weight(FontWeight::Bold)
+                                        .color(current_theme().on_surface),
+                                )
+                                .child(
+                                    Label::new()
+                                        .label("XenGui Sessions")
+                                        .font_size(px!(13.0))
+                                        .color(muted()),
+                                ),
+                        ),
+                )
+                .child(
+                    Slider::new()
+                        .value(player_elapsed / TRACK_DURATION_SECONDS)
+                        .track_shape(SliderTrackShape::Wavy)
+                        .playback(player_playing, TRACK_DURATION_SECONDS)
+                        .accessible_label("Expressive Frequency playback position")
+                        .on_playback(move |value, _| {
+                            player_seek_setter.set(value * TRACK_DURATION_SECONDS);
+                            if value >= 1.0 {
+                                player_end_setter.set(false);
+                            }
+                        })
+                        .on_commit(move |value, _| {
+                            player_commit_setter.set(value * TRACK_DURATION_SECONDS);
+                            if value >= 1.0 {
+                                player_commit_end_setter.set(false);
+                            }
+                        }),
+                )
+                .child(
+                    View::new()
+                        .display(Display::Flex)
+                        .flex_direction(FlexDirection::Row)
+                        .justify_content(JustifyContent::SpaceBetween)
+                        .child(
+                            Label::new()
+                                .label(media_time(player_elapsed))
+                                .font_size(px!(12.0))
+                                .color(muted()),
+                        )
+                        .child(
+                            Label::new()
+                                .label(media_time(TRACK_DURATION_SECONDS))
+                                .font_size(px!(12.0))
+                                .color(muted()),
+                        ),
+                )
+                .child(
+                    View::new()
+                        .display(Display::Flex)
+                        .flex_direction(FlexDirection::Row)
+                        .align_items(Align::Center)
+                        .justify_content(JustifyContent::Center)
+                        .gap(12.0, 0.0)
+                        .child(
+                            Button::new()
+                                .material_icon(codepoints::REPLAY_10)
+                                .icon_size(22.0, 22.0)
+                                .accessible_label("10 seconds back")
+                                .size(px!(44.0), px!(44.0))
+                                .padding(Edges::all(10.0))
+                                .background(current_theme().secondary_container)
+                                .color(current_theme().on_secondary_container)
+                                .border(Border::none().radius(22.0))
+                                .on_click(move |_| {
+                                    rewind_setter.set((player_elapsed - 10.0).max(0.0));
+                                }),
+                        )
+                        .child(
+                            Button::new()
+                                .material_icon(if player_playing {
+                                    codepoints::PAUSE
+                                } else {
+                                    codepoints::PLAY_ARROW
+                                })
+                                .icon_size(28.0, 28.0)
+                                .accessible_label(if player_playing { "Pause" } else { "Play" })
+                                .size(px!(56.0), px!(56.0))
+                                .padding(Edges::all(14.0))
+                                .background(primary())
+                                .color(current_theme().on_primary)
+                                .border(Border::none().radius(28.0))
+                                .on_click(move |_| {
+                                    if player_elapsed >= TRACK_DURATION_SECONDS {
+                                        set_player_elapsed.set(0.0);
+                                    }
+                                    play_setter.set(!player_playing);
+                                }),
+                        )
+                        .child(
+                            Button::new()
+                                .material_icon(codepoints::FORWARD_10)
+                                .icon_size(22.0, 22.0)
+                                .accessible_label("10 seconds forward")
+                                .size(px!(44.0), px!(44.0))
+                                .padding(Edges::all(10.0))
+                                .background(current_theme().secondary_container)
+                                .color(current_theme().on_secondary_container)
+                                .border(Border::none().radius(22.0))
+                                .on_click(move |_| {
+                                    forward_setter
+                                        .set((player_elapsed + 10.0).min(TRACK_DURATION_SECONDS));
+                                }),
+                        ),
+                ),
         )
         .child(issue_button(store.clone(), "controls"))
 }
@@ -712,22 +971,35 @@ fn content_lab(store: &TraceStore) -> View {
 
 fn navigation_lab(store: &TraceStore) -> View {
     let (active, set_active) = use_state(0usize);
-    let nav_store = store.clone();
-    let nav = NavigationBar::new()
-        .item(NavItem::new(codepoints::HOME, "Home"))
-        .item(NavItem::new(codepoints::WIDGETS, "Widgets"))
-        .item(NavItem::new(codepoints::SPEED, "Perf"))
-        .active_index(active)
-        .on_select(move |index| {
-            set_active.set(index);
-            nav_store.event("navigate", "NavigationBar", format!("active={index}"));
-            nav_store.check(
-                "behavior.navigation",
-                "navigation",
-                true,
-                "destination changed",
-            );
-        });
+    let make_nav = |layout, setter: SetState<usize>, nav_store: TraceStore| {
+        NavigationBar::new()
+            .item(NavItem::new(codepoints::HOME, "Home"))
+            .item(NavItem::new(codepoints::WIDGETS, "Widgets"))
+            .item(NavItem::new(codepoints::SPEED, "Perf"))
+            .active_index(active)
+            .item_layout(layout)
+            .on_select(move |index| {
+                setter.set(index);
+                nav_store.event("navigate", "NavigationBar", format!("active={index}"));
+                nav_store.check(
+                    "behavior.navigation",
+                    "navigation",
+                    true,
+                    "destination changed",
+                );
+            })
+    };
+    let vertical_nav = make_nav(
+        NavigationBarLayout::Vertical,
+        set_active.clone(),
+        store.clone(),
+    );
+    let horizontal_nav = make_nav(
+        NavigationBarLayout::Horizontal,
+        set_active.clone(),
+        store.clone(),
+    );
+    let adaptive_nav = make_nav(NavigationBarLayout::Adaptive, set_active, store.clone());
 
     let compact = current_breakpoint() == Breakpoint::Compact;
     let panel_size = if compact { 76.0 } else { 190.0 };
@@ -772,8 +1044,16 @@ fn navigation_lab(store: &TraceStore) -> View {
         .gap(0.0, 16.0)
         .child(
             card()
-                .child(heading("NavigationBar", "Seçim, blur ve adaptif genişlik"))
-                .child(nav),
+                .child(heading(
+                    "Flexible NavigationBar",
+                    "M3 Expressive · enabled / hovered / focused / pressed",
+                ))
+                .child(Label::new().label("Vertical · compact · 80dp"))
+                .child(vertical_nav)
+                .child(Label::new().label("Horizontal · medium · 64dp"))
+                .child(horizontal_nav)
+                .child(Label::new().label("Adaptive · breakpoint-controlled"))
+                .child(adaptive_nav),
         )
         .child(
             card()
@@ -956,6 +1236,7 @@ fn root(store: TraceStore) -> Box<dyn Widget> {
     let (color_theme, set_color_theme) = use_state(0usize);
     let (dark_mode, set_dark_mode) = use_state(true);
     let breakpoint = current_breakpoint();
+    let safe_area = safe_area_insets();
     store.environment(viewport_size(), format!("{breakpoint:?}"));
 
     let sections = [
@@ -976,70 +1257,14 @@ fn root(store: TraceStore) -> Box<dyn Widget> {
         Breakpoint::Large => 264.0,
         Breakpoint::ExtraLarge => 288.0,
     };
-    let mut nav = View::new()
-        .width(pct!(100.0))
-        .min_width(px!(0.0))
-        .display(Display::Flex)
-        .flex_direction(FlexDirection::Column)
-        .gap(0.0, 8.0)
-        .overflow_x(Overflow::Visible);
-    for (index, (label, codepoint)) in sections.into_iter().enumerate() {
-        let setter = set_section.clone();
-        let selected = section == index;
-        nav = nav.child(
-            View::new()
-                .width(pct!(100.0))
-                .min_width(px!(0.0))
-                .height(px!(56.0))
-                .display(Display::Flex)
-                .flex_direction(FlexDirection::Row)
-                .align_items(Align::Center)
-                .gap(10.0, 0.0)
-                .padding(Edges::symmetric(16.0, 0.0))
-                .background(if selected {
-                    current_theme().secondary_container
-                } else {
-                    Color::TRANSPARENT
-                })
-                .color(if selected {
-                    current_theme().on_secondary_container
-                } else {
-                    muted()
-                })
-                .border(Border::none().radius(28.0))
-                .hover_style(move |style: StylePatch, theme: &Theme| {
-                    style.background(if selected {
-                        state_layer(
-                            theme.secondary_container,
-                            theme.on_secondary_container,
-                            0.08,
-                        )
-                    } else {
-                        state_layer(theme.surface_container, theme.on_surface, 0.08)
-                    })
-                })
-                .pressed_style(|style: StylePatch, _theme: &Theme| {
-                    style.scale(0.96).content_scale(1.0)
-                })
-                .transition_colors(
-                    Transition::new(std::time::Duration::from_millis(150))
-                        .easing(Easing::cubic_bezier(0.31, 0.94, 0.34, 1.0)),
-                )
-                .transition_transform(
-                    Transition::new(std::time::Duration::from_millis(350))
-                        .easing(Easing::cubic_bezier(0.42, 1.67, 0.21, 0.90)),
-                )
-                .accessible_label(label)
-                .on_click(move |_| setter.set(index))
-                .child(icon(codepoint, 20.0, selected))
-                .child(
-                    Label::new()
-                        .label(label)
-                        .font_size(px!(14.0))
-                        .font_weight(FontWeight::Medium),
-                ),
-        );
+    let mut navigation_rail = NavigationRail::new()
+        .rail_width(sidebar_width)
+        .active_index(section);
+    for (label, codepoint) in sections {
+        navigation_rail = navigation_rail.item(NavItem::new(codepoint, label));
     }
+    let set_section_from_rail = set_section.clone();
+    navigation_rail = navigation_rail.on_select(move |index| set_section_from_rail.set(index));
 
     let content: Box<dyn Widget> = match section {
         1 => {
@@ -1253,16 +1478,7 @@ fn root(store: TraceStore) -> Box<dyn Widget> {
             .height(pct!(100.0))
             .min_width(px!(0.0))
             .overflow(Overflow::Hidden, Overflow::Hidden)
-            .child(
-                View::new()
-                    .width(px!(sidebar_width))
-                    .min_width(px!(sidebar_width))
-                    .height(pct!(100.0))
-                    .padding(Edges::all(16.0))
-                    .background(current_theme().surface_container)
-                    .border(Border::right(1.0, outline()))
-                    .child(nav),
-            )
+            .child(navigation_rail)
             .child(content_pane)
     };
 
@@ -1288,6 +1504,15 @@ fn root(store: TraceStore) -> Box<dyn Widget> {
             .color(text())
             .width(pct!(100.0))
             .height(pct!(100.0))
+            // Android's NativeActivity surface extends behind the system
+            // bars. Keep every benchmark page, including modal navigation,
+            // inside the host-provided safe area.
+            .padding(Edges::only(
+                safe_area.left,
+                safe_area.top,
+                safe_area.right,
+                safe_area.bottom,
+            ))
             .background(bg()),
     )
 }
@@ -1303,9 +1528,9 @@ fn create_app() -> App {
     let mut app = App::new(AppConfig {
         title: "XenGui Benchmark Lab".to_string(),
         #[cfg(not(target_arch = "wasm32"))]
-        width: 450,
+        width: 1200,
         #[cfg(not(target_arch = "wasm32"))]
-        height: 820,
+        height: 800,
         #[cfg(not(target_arch = "wasm32"))]
         position: WindowPosition::Center,
         themes: themes(),

@@ -17,7 +17,8 @@ pub const WIDGET_INVENTORY: &[&str] = &[
     "Link",
     "NavigationBar",
     "Portal",
-    "ProgressBar",
+    "LinearProgressIndicator",
+    "CircularProgressIndicator",
     "RadioButton",
     "RichText",
     "Row/Column",
@@ -132,7 +133,7 @@ impl TraceStore {
         self.check(
             "inventory.complete",
             "coverage",
-            WIDGET_INVENTORY.len() == 26,
+            WIDGET_INVENTORY.len() == 27,
             format!(
                 "{} public widget families registered",
                 WIDGET_INVENTORY.len()
@@ -351,7 +352,7 @@ mod tests {
         assert_eq!(value["schema"], "xengui.ai-trace/v1");
         assert_eq!(value["environment"]["viewport_px"][0], 1280.0);
         assert_eq!(value["events"][0]["target"], "Button");
-        assert_eq!(value["widget_inventory"].as_array().map(Vec::len), Some(26));
+        assert_eq!(value["widget_inventory"].as_array().map(Vec::len), Some(27));
     }
 
     #[test]

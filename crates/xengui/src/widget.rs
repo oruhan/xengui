@@ -476,6 +476,12 @@ pub trait Widget: Any {
             .unwrap_or([0.0; 4])
     }
 
+    /// Returns the physical bounds used by this widget's bounded state-layer
+    /// ripple. The interaction target can be larger than this visual layer.
+    fn ripple_bounds(&self, _scale_factor: f32, layout: LayoutBox) -> LayoutBox {
+        layout
+    }
+
     /// Returns or updates the `transfer_interaction_state` value.
     fn transfer_interaction_state(&mut self, old: &dyn Widget) {
         if let (Some(new), Some(old)) = (self.interaction_mut(), old.interaction()) {

@@ -13,19 +13,22 @@ use xengui_icons::{IconAxes, MaterialSymbolsVariable, codepoints};
 
 type ChangeCallback = Box<dyn FnMut(bool, &mut EventCtx)>;
 
-const TRACK_WIDTH: f32 = 54.0;
+const TRACK_WIDTH: f32 = 52.0;
 const TRACK_HEIGHT: f32 = 32.0;
 
-const THUMB: f32 = 23.0;
-const THUMB_PRESSED: f32 = 27.0;
-
-const TRACK_PADDING: f32 = 5.0;
+const THUMB_OFF: f32 = 16.0;
+const THUMB_ON: f32 = 24.0;
+const THUMB_PRESSED: f32 = 28.0;
+const THUMB_CENTER_INSET: f32 = 16.0;
+const STATE_LAYER_SIZE: f32 = 40.0;
 
 const TOGGLE_TRANSITION: Transition =
     Transition::new(Duration::from_millis(180)).easing(Easing::EaseOut);
 
 const THUMB_SIZE_TRANSITION: Transition =
     Transition::new(Duration::from_millis(120)).easing(Easing::EaseOut);
+
+const INTERACTION_TARGET_SIZE: f32 = 48.0;
 
 fn lerp_color(a: Color, b: Color, t: f32) -> Color {
     let blended = AnimValue(a.to_f32_array()).lerp_premultiplied(AnimValue(b.to_f32_array()), t);
@@ -52,6 +55,7 @@ pub struct Switch {
     border_color: Option<Color>,
     progress: Cell<f32>,
     thumb_size: Cell<f32>,
+    scale_factor: Cell<f32>,
     on_change: Option<ChangeCallback>,
     icon_on_codepoint: char,
     icon_off_codepoint: char,
@@ -77,7 +81,8 @@ impl Switch {
             thumb_off_color: None,
             border_color: None,
             progress: Cell::new(0.0),
-            thumb_size: Cell::new(THUMB),
+            thumb_size: Cell::new(THUMB_ON),
+            scale_factor: Cell::new(1.0),
             on_change: None,
             icon_on_codepoint: codepoints::CHECK,
             icon_off_codepoint: codepoints::MINUS,
@@ -188,6 +193,41 @@ impl Switch {
         }
         ctx.request_redraw();
     }
+
+    fn track_bounds(&self, layout: LayoutBox, scale_factor: f32) -> LayoutBox {
+        let visual_width = (TRACK_WIDTH * self.size * scale_factor).min(layout.width);
+        let visual_height = (TRACK_HEIGHT * self.size * scale_factor).min(layout.height);
+        LayoutBox {
+            x: layout.x + (layout.width - visual_width) * 0.5,
+            y: layout.y + (layout.height - visual_height) * 0.5,
+            width: visual_width,
+            height: visual_height,
+        }
+    }
+
+    fn thumb_center(&self, track: LayoutBox, scale_factor: f32) -> (f32, f32) {
+        let inset = (THUMB_CENTER_INSET * self.size * scale_factor).min(track.width * 0.5);
+        (
+            lerp(
+                track.x + inset,
+                track.x + track.width - inset,
+                self.progress.get(),
+            ),
+            track.y + track.height * 0.5,
+        )
+    }
+
+    fn target_thumb_size(&self) -> f32 {
+        if self.base.interaction.pressed {
+            return THUMB_PRESSED;
+        }
+        let off_size = if self.icons_enabled {
+            THUMB_ON
+        } else {
+            THUMB_OFF
+        };
+        lerp(off_size, THUMB_ON, self.progress.get())
+    }
 }
 
 impl Default for Switch {
@@ -235,19 +275,36 @@ impl Widget for Switch {
     }
 
     fn ripple_radius(&self, _scale_factor: f32, layout: LayoutBox) -> [f32; 4] {
-        [layout.height * 0.5; 4]
+        [layout.width.min(layout.height) * 0.5; 4]
+    }
+
+    fn ripple_bounds(&self, scale_factor: f32, layout: LayoutBox) -> LayoutBox {
+        let track = self.track_bounds(layout, scale_factor);
+        let (cx, cy) = self.thumb_center(track, scale_factor);
+        let state_layer = STATE_LAYER_SIZE * self.size * scale_factor;
+        LayoutBox {
+            x: cx - state_layer * 0.5,
+            y: cy - state_layer * 0.5,
+            width: state_layer,
+            height: state_layer,
+        }
     }
 
     fn measure(&self, ctx: &mut MeasureContext, constraints: Constraints) -> MeasureResult {
-        let w = TRACK_WIDTH * self.size * ctx.scale_factor;
-        let h = TRACK_HEIGHT * self.size * ctx.scale_factor;
+        let target_overhang = INTERACTION_TARGET_SIZE * 0.5 - THUMB_CENTER_INSET;
+        let w = (TRACK_WIDTH + target_overhang * 2.0) * self.size * ctx.scale_factor;
+        let h = (TRACK_HEIGHT * self.size).max(INTERACTION_TARGET_SIZE) * ctx.scale_factor;
         let (w, h) = constraints.constrain_size(w, h);
         MeasureResult::new(w, h)
     }
 
+    fn on_layout_pass(&self, ctx: &mut MeasureContext) {
+        self.scale_factor.set(ctx.scale_factor);
+    }
+
     fn paint(&self, ctx: &mut PaintContext) {
         let sf = ctx.scale_factor * self.size;
-        let b = self.layout_box;
+        let b = self.track_bounds(self.layout_box, ctx.scale_factor);
         let theme = crate::current_theme();
 
         let t = self.progress.get();
@@ -284,16 +341,7 @@ impl Widget for Switch {
         // Animated thumb diameter, driven from cascade_style instead of
         // snapping instantly between idle/pressed sizes.
         let thumb_d = self.thumb_size.get() * sf;
-        let base_thumb_d = THUMB * sf;
-        let pad = TRACK_PADDING * sf;
-
-        // Keep the thumb's travel independent from its animated size.
-        // This prevents the ON/OFF states from appearing to have different
-        // thumb sizes or travel distances.
-        let min_cx = b.x + pad + base_thumb_d * 0.5;
-        let max_cx = b.x + b.width - pad - base_thumb_d * 0.5;
-        let cx = lerp(min_cx, max_cx, t);
-        let cy = b.y + b.height * 0.5;
+        let (cx, cy) = self.thumb_center(b, ctx.scale_factor);
 
         // Position snapped to the pixel grid so the circular SDF's
         // antialiasing band doesn't straddle a texel asymmetrically at
@@ -351,8 +399,13 @@ impl Widget for Switch {
     }
 
     fn hit_test(&self, point: (f32, f32)) -> bool {
-        self.layout_box
-            .contains_rounded(point, self.layout_box.height * 0.5)
+        let scale_factor = self.scale_factor.get();
+        let track = self.track_bounds(self.layout_box, scale_factor);
+        let (cx, cy) = self.thumb_center(track, scale_factor);
+        let radius = INTERACTION_TARGET_SIZE * self.size * scale_factor * 0.5;
+        let dx = point.0 - cx;
+        let dy = point.1 - cy;
+        dx * dx + dy * dy <= radius * radius
     }
 
     fn event(&mut self, event: &InputEvent, ctx: &mut EventCtx) -> EventStatus {
@@ -461,11 +514,7 @@ impl Widget for Switch {
             None => self.progress.set(target),
         }
 
-        // Thumb size target depends on both checked progress and pressed
-        // state, so "pressed while off" and "pressed while on" grow to
-        // different sizes instead of sharing one fixed pressed diameter.
-        let pressed = self.base.interaction.pressed;
-        let thumb_target = if pressed { THUMB_PRESSED } else { THUMB };
+        let thumb_target = self.target_thumb_size();
 
         let thumb_key = AnimKey {
             widget: self.anim_id,
@@ -513,5 +562,45 @@ impl Widget for Switch {
 
     fn anim_id(&self) -> WidgetId {
         self.anim_id
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn interaction_target_is_a_48dp_circle_centered_on_the_handle() {
+        let mut off = Switch::new();
+        off.layout(LayoutBox {
+            x: 0.0,
+            y: 0.0,
+            width: 68.0,
+            height: 48.0,
+        });
+        assert!(off.hit_test((24.0, 24.0)));
+        assert!(!off.hit_test((67.0, 24.0)));
+
+        let mut on = Switch::new().checked(true);
+        on.layout(LayoutBox {
+            x: 0.0,
+            y: 0.0,
+            width: 68.0,
+            height: 48.0,
+        });
+        assert!(on.hit_test((67.0, 24.0)));
+        assert!(!on.hit_test((0.0, 24.0)));
+    }
+
+    #[test]
+    fn m3_handle_sizes_follow_icon_selection_and_pressed_states() {
+        let without_icon = Switch::new().icons_enabled(false);
+        assert_eq!(without_icon.target_thumb_size(), THUMB_OFF);
+
+        let mut with_icon = Switch::new();
+        assert_eq!(with_icon.target_thumb_size(), THUMB_ON);
+
+        with_icon.base.interaction.pressed = true;
+        assert_eq!(with_icon.target_thumb_size(), THUMB_PRESSED);
     }
 }

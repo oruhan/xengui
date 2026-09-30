@@ -118,6 +118,8 @@ fn open_native_uri(uri: &str) -> Result<(), PlatformError> {
     ))]
     let result = std::process::Command::new("xdg-open").arg(uri).spawn();
     #[cfg(any(target_os = "android", target_os = "ios"))]
+    let _ = uri;
+    #[cfg(any(target_os = "android", target_os = "ios"))]
     let result: Result<std::process::Child, std::io::Error> = Err(std::io::Error::new(
         std::io::ErrorKind::Unsupported,
         "URI opening requires the mobile host adapter",

@@ -2,7 +2,7 @@
 //! Material-style single-selection combo box.
 
 use crate::{
-    Align, Border, BorderRadius, BoxShadow, Color, Display, Easing, Edges, FlexDirection,
+    Align, Border, BorderRadius, BoxShadow, Color, Cursor, Display, Easing, Edges, FlexDirection,
     FontWeight, Interaction, JustifyContent, Key, KeyState, Label, LayoutBox, Portal, Position,
     Render, Style, StyleBuilder, TransformOrigin, TransformOriginAxis, Transition, VariableIcon,
     View, Widget, WidgetBase, WidgetId, pct, px,
@@ -13,7 +13,7 @@ use web_time::Duration;
 use xengui_icons::material_symbols::{IconAxes, codepoints};
 
 const POPUP_OPACITY_TRANSITION: Transition =
-    Transition::new(Duration::from_millis(150)).easing(Easing::cubic_bezier(0.31, 0.94, 0.34, 1.0));
+    Transition::new(Duration::from_millis(350)).easing(Easing::cubic_bezier(0.31, 0.94, 0.34, 1.0));
 const POPUP_SCALE_TRANSITION: Transition = Transition::new(Duration::from_millis(350))
     .easing(Easing::cubic_bezier(0.42, 1.67, 0.21, 0.90));
 const POPUP_GATE_OPEN_TRANSITION: Transition = Transition::new(Duration::ZERO);
@@ -201,26 +201,6 @@ impl Render for ComboBox {
                     .on_click(move |_| set_open_from_click.set(!open)),
             );
 
-        if open {
-            let set_open_from_scrim = set_open.clone();
-            root = root.child(
-                View::new()
-                    .key("combo-box-scrim")
-                    .position(Position::Fixed)
-                    .top(px!(0.0))
-                    .right(px!(0.0))
-                    .bottom(px!(0.0))
-                    .left(px!(0.0))
-                    .z_index(1000)
-                    .background(Color::TRANSPARENT)
-                    .accessible_label("Seçim menüsünü kapat")
-                    // A dismiss layer is not a visible control surface. Its
-                    // full-window bounds must never become a ripple shape.
-                    .ripple(false)
-                    .on_click(move |_| set_open_from_scrim.set(false)),
-            );
-        }
-
         let mut menu = View::new()
             .key("combo-box-popup")
             .display(Display::Flex)
@@ -233,12 +213,7 @@ impl Render for ComboBox {
             .overflow(crate::Overflow::Hidden, crate::Overflow::Hidden)
             .background(theme.surface_container)
             .border(Border::none().radius(BorderRadius::all(20.0)))
-            .box_shadow(BoxShadow::new(0.0, 8.0, 24.0, theme.shadow.with_alpha(90)))
-            .transform_origin(POPUP_TRANSFORM_ORIGIN)
-            .scale(if open { 1.0 } else { POPUP_CLOSED_SCALE })
-            .opacity(if open { 1.0 } else { 0.0 })
-            .transition_transform(POPUP_SCALE_TRANSITION)
-            .transition_opacity(POPUP_OPACITY_TRANSITION);
+            .box_shadow(BoxShadow::new(0.0, 8.0, 24.0, theme.shadow.with_alpha(90)));
 
         for (index, option) in self.options.iter().enumerate() {
             let callback = self.on_change.clone();
@@ -317,8 +292,9 @@ impl Render for ComboBox {
             );
         }
 
-        // The outer scale is only an immediate hit-test gate. The inner
-        // popup owns the visible scale + opacity motion.
+        // Keep the whole popup in one motion layer. Scaling the painted menu
+        // itself splits its surface and descendants into separate compositor
+        // layers; a paintless wrapper transforms them as one subtree.
         root = root.child(
             Portal::new()
                 .position(Position::Absolute)
@@ -334,17 +310,49 @@ impl Render for ComboBox {
                         .z_index(1001)
                         .width(pct!(100.0))
                         .scale(if open { 1.0 } else { 0.0 })
-                        // Keep the gate alive while the popup animates back
-                        // to its closed scale/opacity. Opening is immediate;
-                        // closing snaps the hit-test gate only after motion.
                         .transition_transform(if open {
                             POPUP_GATE_OPEN_TRANSITION
                         } else {
                             POPUP_GATE_CLOSE_TRANSITION
                         })
-                        .child(menu),
+                        .child(
+                            View::new()
+                                .key("combo-box-popup-motion")
+                                .width(pct!(100.0))
+                                .min_width(px!(0.0))
+                                .transform_origin(POPUP_TRANSFORM_ORIGIN)
+                                .scale(if open { 1.0 } else { POPUP_CLOSED_SCALE })
+                                .opacity(if open { 1.0 } else { 0.0 })
+                                .transition_transform(POPUP_SCALE_TRANSITION)
+                                .transition_opacity(POPUP_OPACITY_TRANSITION)
+                                .child(menu),
+                        ),
                 ),
         );
+
+        // Append the conditional scrim after the always-mounted Portal so
+        // opening the menu never changes the Portal's sibling index. The
+        // explicit z-index still keeps the popup above this dismiss layer.
+        if open {
+            let set_open_from_scrim = set_open.clone();
+            root = root.child(
+                View::new()
+                    .key("combo-box-scrim")
+                    .position(Position::Fixed)
+                    .top(px!(0.0))
+                    .right(px!(0.0))
+                    .bottom(px!(0.0))
+                    .left(px!(0.0))
+                    .z_index(1000)
+                    .background(Color::TRANSPARENT)
+                    .accessible_label("Seçim menüsünü kapat")
+                    // A dismiss layer is not a visible control surface. Its
+                    // full-window bounds must never become a ripple shape.
+                    .ripple(false)
+                    .on_click(move |_| set_open_from_scrim.set(false))
+                    .cursor(Cursor::Default),
+            );
+        }
 
         Box::new(root)
     }
@@ -382,7 +390,7 @@ mod tests {
             .children()
             .iter()
             .find(|child| child.is_portal())
-            .expect("combo popup should be isolated in the top layer");
+            .expect("combo popup should escape ancestor clipping");
         let popup_gate = popup_portal
             .children()
             .first()
@@ -391,18 +399,22 @@ mod tests {
             popup_gate.get_key().map(|key| key.as_str()),
             Some("combo-box-popup-gate")
         );
-        let popup = popup_gate
+        let popup_motion = popup_gate
             .children()
             .first()
-            .expect("popup gate should retain popup content");
+            .expect("popup gate should retain its motion layer");
+        let popup = popup_motion
+            .children()
+            .first()
+            .expect("popup motion layer should retain popup content");
         assert_eq!(
             popup.get_key().map(|key| key.as_str()),
             Some("combo-box-popup")
         );
         assert_eq!(popup.children().len(), 2);
-        assert_eq!(popup.style().scale, Some(POPUP_CLOSED_SCALE));
-        assert_eq!(popup.style().opacity, Some(0.0));
-        let transitions = popup
+        assert_eq!(popup_motion.style().scale, Some(POPUP_CLOSED_SCALE));
+        assert_eq!(popup_motion.style().opacity, Some(0.0));
+        let transitions = popup_motion
             .style()
             .transition_properties
             .expect("popup should animate scale and opacity");

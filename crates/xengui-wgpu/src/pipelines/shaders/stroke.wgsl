@@ -35,7 +35,9 @@ fn sd_capsule(p: vec2<f32>, half_length: f32, radius: f32) -> f32 {
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let d = sd_capsule(in.local_pos, in.half_length, in.half_thickness);
-    let aa = max(fwidth(d) * 0.5, 0.0001);
+    // A full derivative-wide transition keeps thin, diagonal and tightly
+    // curved strokes smooth at 1x scale instead of exposing their pixels.
+    let aa = max(fwidth(d), 0.0001);
     let alpha = 1.0 - smoothstep(-aa, aa, d);
     if alpha <= 0.0 {
         discard;

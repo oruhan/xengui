@@ -1569,7 +1569,13 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
             if let Some(window) = &self.window {
                 window.request_redraw();
             }
-            event_loop.set_control_flow(ControlFlow::Wait);
+            event_loop.set_control_flow(if cfg!(target_os = "android") {
+                // Keep Android's presentation queue supplied continuously;
+                // the swapchain's vsync/mailbox mode provides frame pacing.
+                ControlFlow::Poll
+            } else {
+                ControlFlow::Wait
+            });
             return;
         }
 
@@ -1579,7 +1585,11 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
             if let Some(window) = &self.window {
                 window.request_redraw();
             }
-            event_loop.set_control_flow(ControlFlow::Wait);
+            event_loop.set_control_flow(if cfg!(target_os = "android") {
+                ControlFlow::Poll
+            } else {
+                ControlFlow::Wait
+            });
             return;
         }
         self.next_animation = None;

@@ -313,13 +313,35 @@ impl RichText {
             })
     }
 
-    fn selection_radius(radius: crate::Length, fragment: usize, count: usize) -> BorderRadius {
-        match (fragment, count) {
-            (_, 1) => BorderRadius::all(radius),
-            (0, _) => BorderRadius::top(radius),
-            (index, total) if index + 1 == total => BorderRadius::bottom(radius),
-            _ => BorderRadius::default(),
-        }
+    fn selection_radius(
+        radius: crate::Length,
+        current: (f32, f32),
+        previous: Option<(f32, f32)>,
+        next: Option<(f32, f32)>,
+    ) -> BorderRadius {
+        const EDGE_EPSILON: f32 = 0.5;
+        let differs = |a: f32, b: f32| (a - b).abs() > EDGE_EPSILON;
+        let top_left = if previous.is_none_or(|previous| differs(current.0, previous.0)) {
+            radius
+        } else {
+            Default::default()
+        };
+        let top_right = if previous.is_none_or(|previous| differs(current.1, previous.1)) {
+            radius
+        } else {
+            Default::default()
+        };
+        let bottom_right = if next.is_none_or(|next| differs(current.1, next.1)) {
+            radius
+        } else {
+            Default::default()
+        };
+        let bottom_left = if next.is_none_or(|next| differs(current.0, next.0)) {
+            radius
+        } else {
+            Default::default()
+        };
+        BorderRadius::only(top_left, top_right, bottom_right, bottom_left)
     }
 
     fn index_for_point(&self, point: (f32, f32)) -> usize {
@@ -672,20 +694,22 @@ impl Widget for RichText {
         let selection = self.selectable.then(|| self.text_selection()).flatten();
         if let Some((selection_start, selection_end)) = selection {
             let lines = self.lines.borrow();
-            let selected_lines: Vec<usize> = lines
+            let selected_lines: Vec<(usize, f32, f32)> = lines
                 .iter()
                 .enumerate()
                 .filter_map(|(index, line)| {
-                    (selection_start.max(line.start_char) < selection_end.min(line.end_char))
-                        .then_some(index)
+                    let start = selection_start.max(line.start_char);
+                    let end = selection_end.min(line.end_char);
+                    (start < end).then(|| {
+                        (
+                            index,
+                            Self::line_x_at(line, start),
+                            Self::line_x_at(line, end),
+                        )
+                    })
                 })
                 .collect();
-            for (fragment, &line_index) in selected_lines.iter().enumerate() {
-                let line = &lines[line_index];
-                let start = selection_start.max(line.start_char);
-                let end = selection_end.min(line.end_char);
-                let start_x = Self::line_x_at(line, start);
-                let end_x = Self::line_x_at(line, end);
+            for (fragment, &(line_index, start_x, end_x)) in selected_lines.iter().enumerate() {
                 if end_x <= start_x {
                     continue;
                 }
@@ -701,7 +725,17 @@ impl Widget for RichText {
                             .unwrap_or(Color::rgba(90, 140, 230, 100)),
                     )),
                     border_radius: style.selection_border_radius.map(|radius| {
-                        Self::selection_radius(radius, fragment, selected_lines.len())
+                        Self::selection_radius(
+                            radius,
+                            (start_x, end_x),
+                            fragment.checked_sub(1).map(|index| {
+                                let (_, start, end) = selected_lines[index];
+                                (start, end)
+                            }),
+                            selected_lines
+                                .get(fragment + 1)
+                                .map(|&(_, start, end)| (start, end)),
+                        )
                     }),
                     border_width: style.selection_border_width,
                     border_color: style.selection_border_color,
@@ -870,10 +904,11 @@ impl Widget for RichText {
             return false;
         }
         let line_index = (local_y / line_height).floor() as usize;
-        self.lines
-            .borrow()
-            .get(line_index)
-            .is_some_and(|line| line.width > 0.0 && local_x <= line.width)
+        let content_width = (self.layout_box.width
+            - padding.left.to_physical(scale_factor)
+            - padding.right.to_physical(scale_factor))
+        .max(0.0);
+        self.lines.borrow().get(line_index).is_some() && local_x <= content_width
     }
 
     fn text_selection(&self) -> Option<(usize, usize)> {
@@ -1066,7 +1101,7 @@ mod tests {
         assert_eq!(result.width, 40.0);
         assert_eq!(rich_text.text_index_at((21.0, 25.0)), 5);
         assert!(rich_text.selectable_text_hit_test((10.0, 5.0)));
-        assert!(!rich_text.selectable_text_hit_test((30.0, 5.0)));
+        assert!(rich_text.selectable_text_hit_test((30.0, 5.0)));
         assert!(rich_text.selectable_text_hit_test((30.0, 25.0)));
         assert!(!rich_text.selectable_text_hit_test((10.0, 45.0)));
         rich_text.set_text_selection(Some((1, 6)));
@@ -1126,22 +1161,22 @@ mod tests {
     }
 
     #[test]
-    fn multiline_selection_rounds_only_the_outer_corners() {
+    fn multiline_selection_rounds_exposed_outer_and_join_corners() {
         let radius = crate::Length::px(4.0);
         assert_eq!(
-            RichText::selection_radius(radius, 0, 2),
-            BorderRadius::top(radius)
+            RichText::selection_radius(radius, (8.0, 40.0), None, Some((0.0, 60.0))),
+            BorderRadius::all(radius)
         );
         assert_eq!(
-            RichText::selection_radius(radius, 1, 2),
-            BorderRadius::bottom(radius)
+            RichText::selection_radius(radius, (0.0, 60.0), Some((8.0, 40.0)), None),
+            BorderRadius::all(radius)
         );
         assert_eq!(
-            RichText::selection_radius(radius, 1, 3),
+            RichText::selection_radius(radius, (0.0, 60.0), Some((0.0, 60.0)), Some((0.0, 60.0))),
             BorderRadius::default()
         );
         assert_eq!(
-            RichText::selection_radius(radius, 0, 1),
+            RichText::selection_radius(radius, (0.0, 60.0), None, None),
             BorderRadius::all(radius)
         );
     }

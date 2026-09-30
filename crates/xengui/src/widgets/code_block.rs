@@ -133,7 +133,9 @@ impl Default for CodeBlockTheme {
         Self {
             background: theme.surface_container_lowest,
             header_background: theme.surface_container,
-            border: theme.outline_variant,
+            // Code blocks are not specified by M3. A full outline role gives
+            // this project-specific component a reliably visible boundary.
+            border: theme.outline,
             text: theme.on_surface,
             label: theme.on_surface_variant,
             // M3 does not define syntax-token roles. Mapping the semantic
@@ -415,6 +417,7 @@ impl Render for CodeBlock {
                         .selectable(true)
                         .preserve_whitespace(true)
                         .wrap(false)
+                        .min_width(pct!(100.0))
                         .font(self.font.clone())
                         .font_size(self.font_size)
                         .line_height(self.line_height)
@@ -694,5 +697,21 @@ mod tests {
         let rendered = crate::component("code-block-border-override", || block.render());
 
         assert_eq!(rendered.style().border, Some(Border::NONE));
+    }
+
+    #[test]
+    fn default_code_block_has_a_visible_outer_border() {
+        let runtime = crate::RuntimeContext::new();
+        let _guard = runtime.enter();
+        let block = CodeBlock::new("let answer = 42;");
+        let rendered = crate::component("code-block-default-border", || block.render());
+        let border = rendered
+            .style()
+            .border
+            .as_ref()
+            .expect("code block should expose its outer border");
+
+        assert_eq!(border.top, Length::px(1.0));
+        assert_eq!(border.color, CodeBlockTheme::default().border);
     }
 }

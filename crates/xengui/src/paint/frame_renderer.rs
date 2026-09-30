@@ -1242,7 +1242,8 @@ fn paint_ripple_inline(
     else {
         return;
     };
-    let radius = widget.ripple_radius(scale_factor, layout_box);
+    let ripple_bounds = widget.ripple_bounds(scale_factor, layout_box);
+    let radius = widget.ripple_radius(scale_factor, ripple_bounds);
 
     paint_scratch.clear();
     {
@@ -1251,7 +1252,7 @@ fn paint_ripple_inline(
             &interaction.ripple,
             interaction.ripple_overrides,
             widget.computed_style(),
-            layout_box,
+            ripple_bounds,
             radius,
             &mut paint_ctx,
         );
@@ -1536,6 +1537,63 @@ fn apply_clip(command: &mut DrawCommand, clip_rect: Option<(f32, f32, f32, f32)>
     *target = Some(clip_intersect(*target, ancestor_clip));
 }
 
+fn apply_command_opacity(command: &mut DrawCommand, opacity: f32) {
+    let fade = |color: &mut crate::Color| {
+        *color = color.with_alpha_f32(color.a() * opacity);
+    };
+    let fade_background = |background: &mut crate::Background| match background {
+        crate::Background::Color(color) => fade(color),
+        crate::Background::LinearGradient(gradient) => {
+            for stop in &mut gradient.stops {
+                fade(&mut stop.color);
+            }
+        }
+        crate::Background::RadialGradient(gradient) => {
+            for stop in &mut gradient.stops {
+                fade(&mut stop.color);
+            }
+        }
+    };
+
+    match command {
+        DrawCommand::Rect(command) => {
+            if let Some(background) = command.background.as_mut() {
+                fade_background(background);
+            }
+            if let Some(color) = command.border_color.as_mut() {
+                fade(color);
+            }
+        }
+        DrawCommand::Ripple(command) => command.opacity *= opacity,
+        DrawCommand::Triangle(command) => fade(&mut command.color),
+        DrawCommand::Text(command) => {
+            if let Some(color) = command.style.color.as_mut() {
+                fade(color);
+            }
+        }
+        DrawCommand::Image(command) => {
+            if let Some(color) = command.tint.as_mut() {
+                fade(color);
+            }
+        }
+        DrawCommand::BoxShadow(command) => fade(&mut command.color),
+        DrawCommand::Stroke(command) => fade(&mut command.color),
+        DrawCommand::Filtered(command) => {
+            command.chain = command.chain.clone().push(crate::Filter::Opacity(opacity));
+        }
+        DrawCommand::BackdropFilter(command) => {
+            command.chain = command.chain.clone().push(crate::Filter::Opacity(opacity));
+        }
+        DrawCommand::VariableIcon(command) => fade(&mut command.color),
+        DrawCommand::Composited(command) => {
+            for nested in &mut command.commands {
+                apply_command_opacity(nested, opacity);
+            }
+        }
+        DrawCommand::Content(command) => apply_command_opacity(command, opacity),
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 fn paint_portal_subtree(
     widget: &dyn Widget,
@@ -1548,6 +1606,84 @@ fn paint_portal_subtree(
 ) {
     let layout_box = *widget.layout_box();
     cache.mark_live(path);
+
+    // Portal content escapes ancestor clipping, but it must still honor
+    // group opacity/filter semantics. Recording the complete subtree into
+    // one filtered command also keeps a popup surface and its descendants
+    // in the same motion layer at compact breakpoints.
+    let opacity = widget
+        .computed_style()
+        .opacity
+        .unwrap_or(1.0)
+        .clamp(0.0, 1.0);
+    let authored_filter = widget.filter().cloned().filter(|chain| !chain.is_empty());
+
+    // Opacity-only portal animation stays in the portal's normal coordinate
+    // space. Sending it through a filtered offscreen surface makes the first
+    // compact-layout frame use provisional capture bounds, producing the
+    // one-frame horizontal squeeze seen in dropdowns.
+    if opacity < 1.0 - f32::EPSILON && authored_filter.is_none() {
+        let mut subtree = Vec::new();
+        paint_subtree_for_filter(
+            widget,
+            path,
+            cache,
+            &mut subtree,
+            paint_scratch,
+            scale_factor,
+            0,
+        );
+        sort_by_z_if_needed(&mut subtree);
+        for (_, mut command) in subtree {
+            apply_command_opacity(&mut command, opacity);
+            top_commands.push(command);
+        }
+        return;
+    }
+
+    let effective_filter = if opacity < 1.0 - f32::EPSILON {
+        Some(
+            authored_filter
+                .unwrap_or_default()
+                .push(crate::Filter::Opacity(opacity)),
+        )
+    } else {
+        authored_filter
+    };
+
+    if let Some(chain) = effective_filter.as_ref().filter(|chain| !chain.is_empty()) {
+        let mut subtree = Vec::new();
+        paint_subtree_for_filter(
+            widget,
+            path,
+            cache,
+            &mut subtree,
+            paint_scratch,
+            scale_factor,
+            0,
+        );
+        sort_by_z_if_needed(&mut subtree);
+        let commands = subtree
+            .into_iter()
+            .map(|(_, command)| command)
+            .collect::<Vec<_>>();
+        let bounds = commands_bounds(
+            &commands,
+            (
+                layout_box.x,
+                layout_box.y,
+                layout_box.width,
+                layout_box.height,
+            ),
+        );
+        top_commands.push(DrawCommand::Filtered(Box::new(FilteredCommand {
+            commands,
+            chain: chain.clone(),
+            bounds,
+            clip_rect: None,
+        })));
+        return;
+    }
 
     paint_scratch.clear();
     if !reuse_cached_paint(cache, path, layout_box, widget.is_dirty(), paint_scratch) {

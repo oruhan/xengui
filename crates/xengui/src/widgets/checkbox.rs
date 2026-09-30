@@ -16,6 +16,9 @@ type ChangeCallback = Box<dyn FnMut(bool, &mut EventCtx)>;
 const CHECK_TRANSITION: Transition =
     Transition::new(Duration::from_millis(180)).easing(Easing::EaseOut);
 
+const INTERACTION_TARGET_SIZE: f32 = 48.0;
+const STATE_LAYER_SIZE: f32 = 40.0;
+
 fn lerp_color(a: Color, b: Color, t: f32) -> Color {
     let blended = AnimValue(a.to_f32_array()).lerp_premultiplied(AnimValue(b.to_f32_array()), t);
     Color::rgba_f32(blended.0[0], blended.0[1], blended.0[2], blended.0[3])
@@ -214,25 +217,43 @@ impl Widget for Checkbox {
         "Widget#Checkbox"
     }
 
-    fn ripple_radius(&self, scale_factor: f32, layout: LayoutBox) -> [f32; 4] {
-        self.base
-            .computed_style
-            .border
-            .as_ref()
-            .and_then(|border| border.radius)
-            .map(|radius| radius.to_physical_array(scale_factor, layout.width, layout.height))
-            .unwrap_or([4.0 * scale_factor; 4])
+    fn ripple_radius(&self, _scale_factor: f32, layout: LayoutBox) -> [f32; 4] {
+        [layout.width.min(layout.height) * 0.5; 4]
+    }
+
+    fn ripple_bounds(&self, scale_factor: f32, layout: LayoutBox) -> LayoutBox {
+        let state_layer = (STATE_LAYER_SIZE * scale_factor)
+            .min(layout.width)
+            .min(layout.height);
+        LayoutBox {
+            x: layout.x + (layout.width - state_layer) * 0.5,
+            y: layout.y + (layout.height - state_layer) * 0.5,
+            width: state_layer,
+            height: state_layer,
+        }
     }
 
     fn measure(&self, ctx: &mut MeasureContext, constraints: Constraints) -> MeasureResult {
-        let px = self.size * ctx.scale_factor;
+        let px = self.size.max(INTERACTION_TARGET_SIZE) * ctx.scale_factor;
         let (w, h) = constraints.constrain_size(px, px);
         MeasureResult::new(w, h)
     }
+
+    fn hit_test(&self, point: (f32, f32)) -> bool {
+        self.layout_box.contains_rounded(point, 0.0)
+    }
+
     fn paint(&self, ctx: &mut PaintContext) {
         let style = &self.base.computed_style;
         let sf = ctx.scale_factor;
-        let b = self.layout_box;
+        let target = self.layout_box;
+        let visual_size = (self.size * sf).min(target.width).min(target.height);
+        let b = LayoutBox {
+            x: target.x + (target.width - visual_size) * 0.5,
+            y: target.y + (target.height - visual_size) * 0.5,
+            width: visual_size,
+            height: visual_size,
+        };
         let theme = crate::current_theme();
 
         let t = self.check_progress.get();
@@ -247,7 +268,7 @@ impl Widget for Checkbox {
             .as_ref()
             .and_then(|bo| bo.radius)
             .map(|r| Length::px(r.max_value()).to_physical(sf))
-            .unwrap_or(4.0 * sf);
+            .unwrap_or(2.0 * sf);
 
         let border = style.border.as_ref();
 

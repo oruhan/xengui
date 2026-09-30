@@ -23,6 +23,8 @@ pub mod link;
 /// Modal expanded navigation rail for compact and medium windows.
 pub mod modal_navigation_rail;
 pub mod navbar;
+/// Persistent expanded navigation rail for medium and larger windows.
+pub mod navigation_rail;
 /// Types and operations for `portal`.
 pub mod portal;
 pub mod progress_bar;
@@ -67,13 +69,16 @@ pub use label::Label;
 pub use layout_sugar::{Column, Row};
 pub use link::Link;
 pub use modal_navigation_rail::ModalNavigationRail;
-pub use navbar::{NavItem, NavigationBar};
+pub use navbar::{NavItem, NavigationBar, NavigationBarLayout};
+pub use navigation_rail::NavigationRail;
 pub use portal::Portal;
-pub use progress_bar::ProgressBar;
+pub use progress_bar::{
+    CircularProgressIndicator, LinearProgressIndicator, ProgressBar, ProgressIndicatorShape,
+};
 pub use radio::RadioButton;
 pub use rich_text::{RichText, TextSpan};
 pub use separator::{Separator, SeparatorOrientation};
-pub use slider::Slider;
+pub use slider::{Slider, SliderTrackShape};
 pub use svg::{
     Svg, SvgCircleBuilder, SvgGroupBuilder, SvgLineBuilder, SvgPathBuilder, SvgRectBuilder,
 };

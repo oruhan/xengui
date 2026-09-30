@@ -493,32 +493,47 @@ mod tests {
     }
 
     #[test]
-    fn custom_controls_expose_their_painted_shape_to_ripple_clipping() {
+    fn selection_controls_use_m3_state_layer_bounds_for_ripples() {
         let checkbox_bounds = LayoutBox {
-            width: 18.0,
-            height: 18.0,
+            width: 48.0,
+            height: 48.0,
             ..LayoutBox::default()
         };
-        assert_eq!(
-            Checkbox::new().ripple_radius(1.0, checkbox_bounds),
-            [4.0; 4]
-        );
+        let checkbox = Checkbox::new();
+        let checkbox_state_layer = checkbox.ripple_bounds(1.0, checkbox_bounds);
+        assert_eq!(checkbox_state_layer.width, 40.0);
+        assert_eq!(checkbox_state_layer.height, 40.0);
+        assert_eq!(checkbox.ripple_radius(1.0, checkbox_state_layer), [20.0; 4]);
 
         let switch_bounds = LayoutBox {
-            width: 52.0,
-            height: 32.0,
+            width: 68.0,
+            height: 48.0,
             ..LayoutBox::default()
         };
-        assert_eq!(Switch::new().ripple_radius(1.0, switch_bounds), [16.0; 4]);
+        let off_switch = Switch::new();
+        let off_state_layer = off_switch.ripple_bounds(1.0, switch_bounds);
+        let on_state_layer = Switch::new()
+            .checked(true)
+            .ripple_bounds(1.0, switch_bounds);
+        assert_eq!(
+            (off_state_layer.width, off_state_layer.height),
+            (40.0, 40.0)
+        );
+        assert_eq!(off_state_layer.x, 4.0);
+        assert_eq!(on_state_layer.x, 24.0);
+        assert_eq!(off_switch.ripple_radius(1.0, off_state_layer), [20.0; 4]);
 
         let radio_bounds = LayoutBox {
-            width: 20.0,
-            height: 20.0,
+            width: 48.0,
+            height: 48.0,
             ..LayoutBox::default()
         };
+        let radio = RadioButton::new();
+        let radio_state_layer = radio.ripple_bounds(1.0, radio_bounds);
         assert_eq!(
-            RadioButton::new().ripple_radius(1.0, radio_bounds),
-            [10.0; 4]
+            (radio_state_layer.width, radio_state_layer.height),
+            (40.0, 40.0)
         );
+        assert_eq!(radio.ripple_radius(1.0, radio_state_layer), [20.0; 4]);
     }
 }

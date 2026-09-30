@@ -143,7 +143,14 @@ impl Default for RendererOptions {
             } else {
                 wgpu::PowerPreference::None
             },
-            present_mode: PresentModePreference::Vsync,
+            // Mailbox keeps Android's producer queue fed at the display's
+            // native cadence when available; FIFO remains the tear-free
+            // fallback on devices that expose only the mandatory mode.
+            present_mode: if cfg!(target_os = "android") {
+                PresentModePreference::LowLatency
+            } else {
+                PresentModePreference::Vsync
+            },
             // Mobile GPUs pay heavily for 4x MSAA bandwidth. The renderer's
             // analytic geometry remains anti-aliased at X1; apps can still
             // explicitly request X4 for content that benefits from it.
@@ -152,7 +159,10 @@ impl Default for RendererOptions {
             } else {
                 SampleCount::X4
             },
-            desired_maximum_frame_latency: if cfg!(target_os = "android") { 1 } else { 2 },
+            // A single-buffer Android queue serializes CPU and GPU work and
+            // easily misses an 11.1 ms (90 Hz) deadline. Two frames retain
+            // low latency while allowing both processors to overlap.
+            desired_maximum_frame_latency: 2,
             unsupported_feature_policy: UnsupportedFeaturePolicy::Strict,
         }
     }

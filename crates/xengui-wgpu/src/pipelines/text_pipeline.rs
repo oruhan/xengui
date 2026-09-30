@@ -15,6 +15,9 @@ use xengui::{
 
 const METRICS_HINTING_MAX_FONT_SIZE_PX: f32 = 24.0;
 
+#[cfg(target_os = "android")]
+const ANDROID_MONOSPACE_FONT: &[u8] = include_bytes!("../../fonts/NotoSansMono-VariableFont.ttf");
+
 #[derive(Clone, PartialEq, Eq, Hash)]
 struct ShapeKey {
     text: smol_str::SmolStr,
@@ -71,6 +74,18 @@ impl TextPipeline {
         }
 
         let mut font_system = FontSystem::new();
+
+        // Android installations are not required to expose a font matching
+        // fontdb's generic monospace family. Bundle one so `font("monospace")`
+        // never silently falls back to the platform sans-serif face.
+        #[cfg(target_os = "android")]
+        {
+            font_system
+                .db_mut()
+                .load_font_data(ANDROID_MONOSPACE_FONT.to_vec());
+            font_system.db_mut().set_monospace_family("Noto Sans Mono");
+        }
+
         let mut user_font_map: HashMap<String, String> = HashMap::new();
 
         for (name, data) in &user_fonts {
@@ -610,6 +625,7 @@ impl TextPipeline {
     /// Populates (and, if necessary, grows) the shared atlas before the first
     /// text render pass of a frame is encoded. This keeps every renderer in
     /// the frame on one atlas generation.
+    #[allow(clippy::too_many_arguments)]
     pub fn prewarm(
         &mut self,
         device: &wgpu::Device,

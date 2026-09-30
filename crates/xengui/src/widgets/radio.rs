@@ -17,6 +17,8 @@ type SelectCallback = Box<dyn FnMut(&mut EventCtx)>;
 
 const SELECT_TRANSITION: Transition =
     Transition::new(Duration::from_millis(180)).easing(Easing::EaseOut);
+const INTERACTION_TARGET_SIZE: f32 = 48.0;
+const STATE_LAYER_SIZE: f32 = 40.0;
 
 fn lerp_color(a: Color, b: Color, t: f32) -> Color {
     let blended = AnimValue(a.to_f32_array()).lerp_premultiplied(AnimValue(b.to_f32_array()), t);
@@ -174,9 +176,21 @@ impl Widget for RadioButton {
         [layout.width.min(layout.height) * 0.5; 4]
     }
 
+    fn ripple_bounds(&self, scale_factor: f32, layout: LayoutBox) -> LayoutBox {
+        let state_layer = (STATE_LAYER_SIZE * scale_factor)
+            .min(layout.width)
+            .min(layout.height);
+        LayoutBox {
+            x: layout.x + (layout.width - state_layer) * 0.5,
+            y: layout.y + (layout.height - state_layer) * 0.5,
+            width: state_layer,
+            height: state_layer,
+        }
+    }
+
     fn measure(&self, ctx: &mut MeasureContext, constraints: Constraints) -> MeasureResult {
         let sf = ctx.scale_factor;
-        let target = 48.0 * sf;
+        let target = INTERACTION_TARGET_SIZE * sf;
         let label = if self.label.is_empty() {
             MeasureResult::new(0.0, 0.0)
         } else {
@@ -204,7 +218,7 @@ impl Widget for RadioButton {
         let style = &self.base.computed_style;
         let sf = ctx.scale_factor;
         let b = self.layout_box;
-        let target = 48.0 * sf;
+        let target = INTERACTION_TARGET_SIZE * sf;
         let radio_size = self.size * sf;
         let radio_box = LayoutBox {
             x: b.x + (target - radio_size) * 0.5,

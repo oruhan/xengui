@@ -18,8 +18,12 @@ const MAX_WIDTH: f32 = 360.0;
 const EDGE_GESTURE_WIDTH: f32 = 24.0;
 const DRAG_THRESHOLD: f32 = 0.5;
 
-const SPATIAL_TRANSITION: Transition =
+const ITEM_SPATIAL_TRANSITION: Transition =
     Transition::new(Duration::from_millis(500)).easing(Easing::cubic_bezier(0.38, 1.21, 0.22, 1.0));
+// The sheet must stop at the viewport edge. The emphasized-decelerate curve
+// keeps an expressive entrance without producing values above the target.
+const SHEET_TRANSITION: Transition =
+    Transition::new(Duration::from_millis(500)).easing(Easing::cubic_bezier(0.05, 0.7, 0.1, 1.0));
 const EFFECTS_TRANSITION: Transition =
     Transition::new(Duration::from_millis(200)).easing(Easing::cubic_bezier(0.34, 0.80, 0.34, 1.0));
 
@@ -279,7 +283,8 @@ impl Render for ModalNavigationRail {
                 if let Some(callback) = &close_from_scrim {
                     callback(false);
                 }
-            });
+            })
+            .cursor(Cursor::Default);
 
         let mut destinations = View::new()
             .display(Display::Flex)
@@ -325,7 +330,7 @@ impl Render for ModalNavigationRail {
                     })
                     .pressed_style(|style: StylePatch, _| style.scale(0.96).content_scale(1.0))
                     .transition_colors(EFFECTS_TRANSITION)
-                    .transition_transform(SPATIAL_TRANSITION)
+                    .transition_transform(ITEM_SPATIAL_TRANSITION)
                     .accessible_label(item_label)
                     .on_click(move |_| {
                         if let Some(callback) = &on_select {
@@ -403,7 +408,7 @@ impl Render for ModalNavigationRail {
             )
             .child(destinations);
         if !dragging {
-            rail = rail.transition_all(SPATIAL_TRANSITION);
+            rail = rail.transition_all(SHEET_TRANSITION);
         }
 
         let handle_left = (target * self.width - EDGE_GESTURE_WIDTH).max(0.0);
@@ -449,5 +454,13 @@ mod tests {
             ModalNavigationRail::new().rail_width(500.0).width,
             MAX_WIDTH
         );
+    }
+
+    #[test]
+    fn sheet_transition_never_overshoots_its_target() {
+        for step in 0..=1_000 {
+            let progress = SHEET_TRANSITION.easing.apply(step as f32 / 1_000.0);
+            assert!((0.0..=1.0).contains(&progress), "progress={progress}");
+        }
     }
 }
