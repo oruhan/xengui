@@ -4,6 +4,10 @@
 
 mod components;
 use components::{AlbumArt, IconButton};
+#[cfg(not(target_arch = "wasm32"))]
+mod library;
+#[cfg(target_arch = "wasm32")]
+#[path = "library_wasm.rs"]
 mod library;
 
 use web_time::Duration;
@@ -12,12 +16,77 @@ use xenframe::{App, AppConfig};
 #[cfg(not(target_arch = "wasm32"))]
 use xenframe::WindowPosition;
 
-use xen_audio::{AudioBackend, RodioBackend};
+use xen_audio::AudioBackend;
+#[cfg(not(target_arch = "wasm32"))]
+use xen_audio::RodioBackend;
 use xengui::{properties::StyleValue, *};
 use xengui_icons::{IconAxes, codepoints};
 
-use std::cell::{Cell, RefCell};
+#[cfg(not(target_arch = "wasm32"))]
+use std::cell::Cell;
+use std::cell::RefCell;
 use std::rc::Rc;
+
+#[cfg(not(target_arch = "wasm32"))]
+type PearlAudioBackend = RodioBackend;
+
+// Browser playback is not wired up yet. Keeping a no-op backend here lets the
+// web UI share the player widgets without pulling the native-only rodio backend
+// into wasm builds.
+#[cfg(target_arch = "wasm32")]
+#[derive(Default)]
+struct PearlAudioBackend {
+    volume: f32,
+}
+
+#[cfg(target_arch = "wasm32")]
+impl AudioBackend for PearlAudioBackend {
+    fn load_from_path(&mut self, _path: &std::path::Path) -> Result<(), xen_audio::AudioError> {
+        Ok(())
+    }
+
+    fn load_from_bytes(&mut self, _bytes: Vec<u8>) -> Result<(), xen_audio::AudioError> {
+        Ok(())
+    }
+
+    fn play(&mut self) {}
+    fn pause(&mut self) {}
+    fn stop(&mut self) {}
+
+    fn seek(&mut self, _position: Duration) -> Result<(), xen_audio::AudioError> {
+        Ok(())
+    }
+
+    fn set_volume(&mut self, volume: f32) {
+        self.volume = volume;
+    }
+
+    fn volume(&self) -> f32 {
+        self.volume
+    }
+
+    fn position(&self) -> Duration {
+        Duration::ZERO
+    }
+
+    fn duration(&self) -> Option<Duration> {
+        None
+    }
+
+    fn state(&self) -> xen_audio::PlaybackState {
+        xen_audio::PlaybackState::Idle
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn create_audio_backend() -> PearlAudioBackend {
+    RodioBackend::new().expect("no audio output device")
+}
+
+#[cfg(target_arch = "wasm32")]
+fn create_audio_backend() -> PearlAudioBackend {
+    PearlAudioBackend::default()
+}
 
 // ---------------------------------------------------------------------
 // Sample data
@@ -141,6 +210,7 @@ fn empty_state(theme: &Theme, codepoint: char, title: &str, subtitle: &str) -> V
         )
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 fn build_tracks(scanned: Vec<library::ScannedTrack>) -> Vec<Track> {
     scanned
         .into_iter()
@@ -164,6 +234,7 @@ fn build_tracks(scanned: Vec<library::ScannedTrack>) -> Vec<Track> {
 // Awaits each debounced rescan the background file watcher produces and
 // feeds the fresh track list back into the UI, looping for as long as the
 // watcher thread stays alive.
+#[cfg(not(target_arch = "wasm32"))]
 fn poll_library_watcher(
     mut rx: std::sync::mpsc::Receiver<Vec<library::ScannedTrack>>,
     set_tracks: SetState<Vec<Track>>,
@@ -220,6 +291,7 @@ fn play_pause_button(
         .on_click(on_click)
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 fn window_control_button(
     codepoint: char,
     color: Color,
@@ -240,6 +312,7 @@ fn window_control_button(
         .on_click(on_click)
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 fn window_close_button(color: Color) -> View {
     View::new()
         .width(px!(44.0))
@@ -1115,7 +1188,7 @@ fn build_player_bar(
     shuffle_on: bool,
     repeat_on: bool,
     show_side_panels: bool,
-    backend: Rc<RefCell<RodioBackend>>,
+    backend: Rc<RefCell<PearlAudioBackend>>,
     set_current_track: SetState<usize>,
     set_is_playing: SetState<bool>,
     set_progress: SetState<f32>,
@@ -1374,7 +1447,7 @@ fn build_mini_player(
     track: &Track,
     is_playing: bool,
     progress: f32,
-    backend: Rc<RefCell<RodioBackend>>,
+    backend: Rc<RefCell<PearlAudioBackend>>,
     toggle_play: impl Fn(&mut EventCtx) + 'static,
 ) -> View {
     let seek = Slider::new()
@@ -1500,22 +1573,30 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let (progress, set_progress) = use_state::<f32>(0.0);
         let (volume, set_volume) = use_state(0.7f32);
         let (is_muted, set_is_muted) = use_state(false);
-        let (config_loaded, set_config_loaded) = use_state(false);
+        let (config_loaded, set_config_loaded) = use_state(cfg!(target_arch = "wasm32"));
         let (shuffle_on, set_shuffle_on) = use_state(false);
         let (repeat_on, set_repeat_on) = use_state(false);
         let (playlists, set_playlists) = use_state(sample_playlists());
         let (next_playlist_id, set_next_playlist_id) = use_state(4u32);
 
         let (tracks, set_tracks) = use_state(Vec::<Track>::new());
-        let (library_loaded, set_library_loaded) = use_state(false);
+        let (library_loaded, set_library_loaded) = use_state(cfg!(target_arch = "wasm32"));
 
-        let (backend, _) = use_state(Rc::new(RefCell::new(
-            RodioBackend::new().expect("no audio output device"),
-        )));
+        #[cfg(target_arch = "wasm32")]
+        let _ = (
+            &config_loaded,
+            &set_config_loaded,
+            &set_tracks,
+            &set_library_loaded,
+        );
+
+        let (backend, _) = use_state(Rc::new(RefCell::new(create_audio_backend())));
 
         let current_path = xen_router::current_path();
 
+        #[cfg(not(target_arch = "wasm32"))]
         let dep_key = [current_track as u64, is_playing as u64, tracks.len() as u64];
+        #[cfg(not(target_arch = "wasm32"))]
         use_effect(
             {
                 let tracks = tracks.clone();
@@ -1535,6 +1616,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             dep_key,
         );
 
+        #[cfg(not(target_arch = "wasm32"))]
         use_effect(
             {
                 let set_tracks = set_tracks.clone();
@@ -1578,6 +1660,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             (),
         );
 
+        #[cfg(not(target_arch = "wasm32"))]
         use_effect(
             {
                 let set_current_track = set_current_track.clone();
@@ -1591,6 +1674,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             [tracks.len(), current_track],
         );
 
+        #[cfg(not(target_arch = "wasm32"))]
         use_effect(
             {
                 let backend = backend.clone();
@@ -1676,6 +1760,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             [volume.to_bits(), is_muted as u32],
         );
 
+        #[cfg(not(target_arch = "wasm32"))]
         use_effect(
             move || {
                 if !config_loaded {
