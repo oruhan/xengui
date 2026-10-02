@@ -1,3 +1,5 @@
+use crate::runtime::{DirtyCause, InputEffect, RendererEffect, RendererFailure, WindowMetrics};
+use crate::winit_adapter::{RuntimeWindowEvent, WinitAdapter};
 use crate::{
     App,
     event::XenEvent,
@@ -79,10 +81,22 @@ use xengui::{
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::JsCast;
 
+fn renderer_failure(error: &xengui_wgpu::RendererError) -> RendererFailure {
+    match error {
+        xengui_wgpu::RendererError::DeviceLost(_) => RendererFailure::DeviceLost,
+        xengui_wgpu::RendererError::Internal(_) => RendererFailure::Internal,
+        xengui_wgpu::RendererError::SurfaceCreation(_)
+        | xengui_wgpu::RendererError::SurfaceUnsupported(_) => RendererFailure::Surface,
+        xengui_wgpu::RendererError::OutOfMemory(_) => RendererFailure::OutOfMemory,
+        _ => RendererFailure::Other,
+    }
+}
+
+#[cfg(test)]
 fn renderer_error_requires_rebuild(error: &xengui_wgpu::RendererError) -> bool {
     matches!(
-        error,
-        xengui_wgpu::RendererError::DeviceLost(_) | xengui_wgpu::RendererError::Internal(_)
+        renderer_failure(error),
+        RendererFailure::DeviceLost | RendererFailure::Internal
     )
 }
 
@@ -109,7 +123,10 @@ impl App {
     #[cfg(not(target_arch = "wasm32"))]
     pub(crate) fn recover_renderer(&mut self, error: xengui_wgpu::RendererError) {
         self.report_renderer_diagnostic(&error);
-        if !renderer_error_requires_rebuild(&error) {
+        self.scheduler.mark_dirty(DirtyCause::RendererRecovery);
+        if self.renderer_supervisor.failed(renderer_failure(&error))
+            != RendererEffect::RebuildDevice
+        {
             log::error!("unrecoverable renderer error: {error}");
             return;
         }
@@ -130,10 +147,12 @@ impl App {
         ) {
             Ok(renderer) => {
                 self.renderer = Some(renderer);
+                self.renderer_supervisor.recovery_finished(true);
                 window.request_redraw();
                 log::info!("renderer recovery succeeded");
             }
             Err(recovery_error) => {
+                self.renderer_supervisor.recovery_finished(false);
                 self.report_renderer_diagnostic(&recovery_error);
                 log::error!("renderer recovery failed: {recovery_error}");
             }
@@ -145,7 +164,10 @@ impl App {
         use crate::overlay::show_fatal_overlay;
 
         self.report_renderer_diagnostic(&error);
-        if !renderer_error_requires_rebuild(&error) {
+        self.scheduler.mark_dirty(DirtyCause::RendererRecovery);
+        if self.renderer_supervisor.failed(renderer_failure(&error))
+            != RendererEffect::RebuildDevice
+        {
             log::error!("unrecoverable renderer error: {error}");
             return;
         }
@@ -209,6 +231,8 @@ fn sync_canvas_position(window: &Arc<Window>) {
 impl winit::application::ApplicationHandler<XenEvent> for App {
     fn suspended(&mut self, _event_loop: &ActiveEventLoop) {
         let _runtime_guard = self.runtime.enter();
+        self.window_runtime.suspend();
+        self.renderer_supervisor.suspend_surface();
         #[cfg(target_os = "android")]
         {
             // Android destroys the native SurfaceView while an app is in the
@@ -218,7 +242,7 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
                 renderer.suspend_surface();
             }
             self.window = None;
-            self.is_visible = false;
+            self.window_runtime.is_visible = false;
             crate::window_controls::clear_active_window();
             hooks::clear_redraw_handle();
         }
@@ -226,10 +250,19 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
 
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         let _runtime_guard = self.runtime.enter();
-        // State Loss Prevention: Avoid recreation if the window already exists
-        if self.window.is_some() {
+        // State Loss Prevention: Avoid recreation if the window already exists,
+        // while still completing the pure lifecycle transition.
+        if let Some(window) = &self.window {
+            let size = window.inner_size();
+            self.window_runtime.resumed(WindowMetrics::new(
+                size.width,
+                size.height,
+                window.scale_factor(),
+            ));
+            self.renderer_supervisor.surface_resumed();
             return;
         }
+        self.window_runtime.resume_requested();
 
         // Parse custom fullscreen configurations into winit primitives
         let winit_fullscreen = self.config.fullscreen.as_ref().map(|f| match f {
@@ -270,10 +303,16 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
                 .create_window(attributes)
                 .expect("Critical Error: Could not create window context."),
         );
+        let initial_size = window.inner_size();
+        self.window_runtime.resumed(WindowMetrics::new(
+            initial_size.width,
+            initial_size.height,
+            window.scale_factor(),
+        ));
 
         #[cfg(not(target_arch = "wasm32"))]
         {
-            self.pending_maximize = self.config.start_maximized;
+            self.window_runtime.pending_maximize = self.config.start_maximized;
         }
 
         crate::window_controls::set_active_window(window.clone());
@@ -622,9 +661,9 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
             .to_logical::<f32>(window.scale_factor())
             .width;
         xengui::set_current_breakpoint_from_width(initial_logical_width);
-        let breakpoint_changed = xengui::current_breakpoint() != self.last_breakpoint;
+        let breakpoint_changed = xengui::current_breakpoint() != self.app_runtime.last_breakpoint;
         if breakpoint_changed {
-            self.last_breakpoint = xengui::current_breakpoint();
+            self.app_runtime.last_breakpoint = xengui::current_breakpoint();
         }
 
         // Applies dark_theme/light_theme selection now that the real OS
@@ -686,6 +725,7 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
 
             match renderer_ready {
                 Ok(()) => {
+                    self.renderer_supervisor.surface_resumed();
                     log::info!("application resumed, gpu context ready");
 
                     // Android may composite a newly-created native surface as
@@ -879,6 +919,7 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
         match event {
             XenEvent::RendererReady(renderer) => {
                 self.renderer = Some(*renderer);
+                self.renderer_supervisor.recovery_finished(true);
                 log::info!("web gpu context successfully attached to event loop");
                 if let Some(window) = self.window.clone() {
                     let size = window.inner_size();
@@ -957,12 +998,30 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
 
     fn window_event(&mut self, _event_loop: &ActiveEventLoop, _id: WindowId, event: WindowEvent) {
         let _runtime_guard = self.runtime.enter();
+        match WinitAdapter::normalize(&event) {
+            Some(RuntimeWindowEvent::Resized(metrics)) => {
+                self.window_runtime.resize(metrics.width, metrics.height);
+                self.scheduler.mark_dirty(DirtyCause::Resize);
+            }
+            Some(RuntimeWindowEvent::ScaleFactorChanged(scale_factor)) => {
+                self.window_runtime.scale_factor_changed(scale_factor);
+                self.scheduler.mark_dirty(DirtyCause::ScaleFactor);
+            }
+            Some(RuntimeWindowEvent::FocusChanged(true)) => {
+                self.input_router.focus_changed(true);
+            }
+            Some(RuntimeWindowEvent::Ime(transition)) => {
+                self.text_input.transition(transition);
+            }
+            Some(RuntimeWindowEvent::FocusChanged(false)) | None => {}
+        }
         match event {
             WindowEvent::CloseRequested => {
                 self.runtime.tasks().cancel_all();
                 _event_loop.exit();
             }
             WindowEvent::RedrawRequested => {
+                self.scheduler.take_dirty_causes();
                 if hooks::take_dirty() {
                     if crate::app::take_reload_requested() {
                         self.reload();
@@ -977,17 +1036,18 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
                 // ControlFlow::Poll in about_to_wait - keeps motion paced to
                 // whatever the display actually presents.
                 if any_wants_animation(&self.root) {
+                    self.scheduler.mark_dirty(DirtyCause::Animation);
                     let now = Instant::now();
                     let dt = now
-                        .duration_since(self.next_animation.unwrap_or(now))
+                        .duration_since(self.scheduler.next_animation.unwrap_or(now))
                         .as_secs_f32()
                         .min(0.05);
                     let mut anim_ctx = EventCtx::new();
                     dispatch_animation_tick(&mut self.root, dt, &mut anim_ctx);
                     self.apply_event_ctx(anim_ctx);
-                    self.next_animation = Some(now);
+                    self.scheduler.next_animation = Some(now);
                 } else {
-                    self.next_animation = None;
+                    self.scheduler.next_animation = None;
                 }
 
                 if self.renderer.is_some() {
@@ -1010,7 +1070,7 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
                     self.recalc_hover_at_cursor();
                     self.recheck_breakpoint();
 
-                    if !self.is_visible {
+                    if !self.window_runtime.is_visible {
                         self.reveal_window();
                     }
 
@@ -1075,7 +1135,7 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
                         self.recalc_hover_at_cursor();
                         self.recheck_breakpoint();
 
-                        if !self.is_visible {
+                        if !self.window_runtime.is_visible {
                             self.reveal_window();
                         }
                     }
@@ -1119,6 +1179,7 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
                 }
             }
             WindowEvent::ThemeChanged(new_theme) => {
+                self.scheduler.mark_dirty(DirtyCause::Theme);
                 self.config.theme = Some(new_theme);
                 log::info!("theme changed: {:?}", new_theme);
 
@@ -1369,6 +1430,7 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
                     }
                     _ => {}
                 }
+                self.input_router.modifiers = self.input.modifiers;
 
                 // Toggles the built-in render/repaint inspector, handled
                 // globally like Tab just below - not routed through
@@ -1476,6 +1538,7 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
                     alt: mods.alt_key(),
                     super_key: mods.super_key(),
                 };
+                self.input_router.modifiers = self.input.modifiers;
             }
             WindowEvent::Ime(ime_event) => {
                 if let Some(path) = self.input.focus.focused_path().cloned() {
@@ -1489,11 +1552,17 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
                     self.apply_event_ctx(ctx);
                 }
             }
+            WindowEvent::Focused(true) => {}
             WindowEvent::Focused(has_focus) if !has_focus => {
                 #[cfg(target_arch = "wasm32")]
                 if std::mem::take(&mut self.suppress_next_focus_loss) {
                     return;
                 }
+                self.input_router.pointer_captured = self.input.pointer_capture.target().is_some();
+                self.input_router.pointer_hovered = self.input.hovered_path.is_some();
+                let input_effects = self.input_router.focus_changed(false);
+                self.text_input.focus_lost();
+
                 // Held modifier keys never get a matching release event once
                 // this window loses OS focus, so their state must be reset
                 // here or they stay stuck (e.g. ctrl) for future key presses.
@@ -1502,7 +1571,9 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
                 // scrollbar thumb) never delivers a real mouse-up, so synthesize
                 // one to the captured widget before clearing capture - otherwise
                 // it's left thinking the button is still held.
-                if let Some(path) = self.input.pointer_capture.cancel() {
+                if input_effects.contains(&InputEffect::CancelPointerCapture)
+                    && let Some(path) = self.input.pointer_capture.cancel()
+                {
                     let point = self.input.cursor_pos.unwrap_or((0.0, 0.0));
                     let mut ctx = EventCtx::new();
                     dispatch_positional(
@@ -1521,7 +1592,9 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
                 // Losing window focus never delivers a real MouseExited either,
                 // so the hovered widget would otherwise stay stuck in its
                 // hover-styled state until the next CursorMoved.
-                if let Some(path) = self.input.hovered_path.take() {
+                if input_effects.contains(&InputEffect::ClearHover)
+                    && let Some(path) = self.input.hovered_path.take()
+                {
                     let mut ctx = EventCtx::new();
                     dispatch_hover_transition(&mut self.root, Some(&path), None, &mut ctx);
                     self.apply_event_ctx(ctx);
@@ -1543,16 +1616,16 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
             return;
         }
 
-        if let Some((deadline, point, path)) = self.pending_long_press.clone() {
+        if let Some((deadline, point, path)) = self.gestures.pending_long_press.clone() {
             if Instant::now() >= deadline {
-                self.pending_long_press = None;
+                self.gestures.pending_long_press = None;
                 self.trigger_long_press_select(&path, point);
             } else {
                 event_loop.set_control_flow(ControlFlow::Poll);
             }
         }
 
-        if self.reconcile_work.is_some() {
+        if self.app_runtime.reconcile_work.is_some() {
             let still_pending = self.pump_reconciliation();
             if still_pending {
                 event_loop.set_control_flow(ControlFlow::Poll);
@@ -1592,10 +1665,10 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
             });
             return;
         }
-        self.next_animation = None;
+        self.scheduler.next_animation = None;
 
         let Some(focused) = self.input.focus.focused_path().cloned() else {
-            self.next_blink = None;
+            self.scheduler.next_blink = None;
             event_loop.set_control_flow(ControlFlow::Wait);
             return;
         };
@@ -1603,22 +1676,22 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
         let interval = find_widget_mut(&mut self.root, &focused).and_then(|w| w.blink_interval());
 
         let Some(interval) = interval else {
-            self.next_blink = None;
+            self.scheduler.next_blink = None;
             event_loop.set_control_flow(ControlFlow::Wait);
             return;
         };
 
         let now = Instant::now();
-        let deadline = *self.next_blink.get_or_insert(now + interval);
+        let deadline = *self.scheduler.next_blink.get_or_insert(now + interval);
 
         if now >= deadline {
             let mut ctx = EventCtx::new();
             dispatch_to_path(&mut self.root, &focused, &InputEvent::BlinkTick, &mut ctx);
             self.apply_event_ctx(ctx);
-            self.next_blink = Some(now + interval);
+            self.scheduler.next_blink = Some(now + interval);
         }
 
-        event_loop.set_control_flow(ControlFlow::WaitUntil(self.next_blink.unwrap()));
+        event_loop.set_control_flow(ControlFlow::WaitUntil(self.scheduler.next_blink.unwrap()));
     }
 }
 

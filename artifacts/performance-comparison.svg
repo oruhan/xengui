@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="720" height="190" viewBox="0 0 720 190" role="img" aria-labelledby="title desc">
+<title id="title">XenGui frame orchestration benchmark</title>
+<desc id="desc">Median nanoseconds per frame. Lower is better.</desc>
+<rect width="720" height="190" rx="20" fill="#17121f"/>
+<text x="28" y="34" fill="#f2eaff" font-family="system-ui,sans-serif" font-size="17" font-weight="700">Full layout + paint CPU orchestration</text>
+<text x="28" y="58" fill="#cfc2dc" font-family="system-ui,sans-serif" font-size="13">Median ns/frame · lower is better · 3 alternating rounds</text>
+<text x="28" y="99" fill="#f2eaff" font-family="monospace" font-size="13">c252abe100b6</text>
+<rect x="150" y="80" width="480" height="25" rx="12.5" fill="#b8c4ff"/>
+<text x="645" y="98" text-anchor="end" fill="#f2eaff" font-family="system-ui,sans-serif" font-size="13">5462141</text>
+<text x="28" y="146" fill="#f2eaff" font-family="monospace" font-size="13">7ee11efd1f04</text>
+<rect x="150" y="127" width="479" height="25" rx="12.5" fill="#d0bcff"/>
+<text x="645" y="145" text-anchor="end" fill="#f2eaff" font-family="system-ui,sans-serif" font-size="13">5455403</text>
+</svg>

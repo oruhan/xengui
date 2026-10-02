@@ -14,6 +14,7 @@ const WASM_PACKAGES: &[&str] = &[
     "xen-router",
     "xengui_website",
     "xengui-showcase",
+    "xengui-quickstart",
     "settings-app",
 ];
 
@@ -38,6 +39,7 @@ const DESKTOP_PACKAGES: &[&str] = &[
     "pearl",
     "settings-app",
     "xengui-showcase",
+    "xengui-quickstart",
     "xengui_website",
 ];
 

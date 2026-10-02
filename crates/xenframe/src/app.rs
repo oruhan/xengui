@@ -21,6 +21,10 @@ use crate::AppThemeMode;
 use crate::config::AppConfig;
 use crate::cursor::to_winit_cursor;
 use crate::event::XenEvent;
+use crate::runtime::{
+    AppRuntime, DirtyCause, FrameScheduler, GestureArena, InputRouter, RendererSupervisor,
+    TextInputSession, WindowRuntime,
+};
 
 xengui::runtime_state! {
     static RELOAD_REQUESTED: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
@@ -45,18 +49,18 @@ pub struct App {
 
     pub(crate) config: AppConfig,
     pub(crate) root: Vec<Box<dyn Widget>>,
-    pub(crate) is_visible: bool,
     pub(crate) input: InputState,
 
+    pub(crate) app_runtime: AppRuntime,
+    pub(crate) window_runtime: WindowRuntime,
+    pub(crate) input_router: InputRouter,
+    pub(crate) gestures: GestureArena,
+    pub(crate) text_input: TextInputSession,
+    pub(crate) scheduler: FrameScheduler,
+    pub(crate) renderer_supervisor: RendererSupervisor,
+
     pub(crate) component: Option<std::rc::Rc<dyn Fn() -> Box<dyn Widget>>>,
-    pub(crate) next_blink: Option<Instant>,
-    pub(crate) next_animation: Option<Instant>,
-    pub(crate) reconcile_work: Option<reconciler::WorkLoop>,
     pub(crate) clipboard: xen_clipboard::Clipboard,
-    pub(crate) pending_long_press: Option<(Instant, (f32, f32), WidgetPath)>,
-    pub(crate) touch_pan_owner: Option<WidgetPath>,
-    pub(crate) touch_start_point: Option<(f32, f32)>,
-    pub(crate) touch_activation_cancelled: bool,
     pub(crate) system_back_handler: Option<Box<dyn FnMut() -> bool>>,
     pub(crate) last_titlebar_click: Option<(Instant, (f32, f32))>,
     // DevTools: toggled with F12, panel width persists across rebuilds
@@ -69,11 +73,6 @@ pub struct App {
     // Applied together with the window's first set_visible(true) call
     // (see reveal_window), never via WindowAttributes::with_maximized -
     // some platforms show an invisible-but-maximized window anyway.
-    pub(crate) pending_maximize: bool,
-    // Last breakpoint a full tree rebuild resolved Responsive<T> values
-    // against; compared every frame so a resize (layout-only) can still
-    // trigger a rebuild once the active breakpoint actually changes.
-    pub(crate) last_breakpoint: xengui::Breakpoint,
     #[cfg(target_os = "windows")]
     pub(crate) last_rendered_size: Option<(u32, u32)>,
 
@@ -85,8 +84,6 @@ pub struct App {
     // do not repeatedly ask Android to show the software keyboard. An
     // explicit focus request may still force a re-show after the user has
     // dismissed the keyboard while leaving the TextBox focused.
-    #[cfg(not(target_arch = "wasm32"))]
-    pub(crate) native_ime_allowed: bool,
     // Lets the async executor wake a blocked event loop from any thread
     // (e.g. a background HTTP client's I/O driver); needed on every
     // platform, not just wasm.
@@ -130,18 +127,18 @@ impl App {
 
             config,
             root: Vec::new(),
-            is_visible: false,
             input: InputState::default(),
 
+            app_runtime: AppRuntime::default(),
+            window_runtime: WindowRuntime::default(),
+            input_router: InputRouter::default(),
+            gestures: GestureArena::default(),
+            text_input: TextInputSession::default(),
+            scheduler: FrameScheduler::default(),
+            renderer_supervisor: RendererSupervisor::default(),
+
             component: None,
-            next_blink: None,
-            next_animation: None,
-            reconcile_work: None,
             clipboard: xen_clipboard::Clipboard::new(),
-            pending_long_press: None,
-            touch_pan_owner: None,
-            touch_start_point: None,
-            touch_activation_cancelled: false,
             system_back_handler: None,
             last_titlebar_click: None,
 
@@ -149,8 +146,6 @@ impl App {
             devtools_panel_width: Rc::new(Cell::new(420.0)),
             devtools_ever_opened: false,
             devtools_close_requested: Rc::new(Cell::new(false)),
-            pending_maximize: false,
-            last_breakpoint: xengui::Breakpoint::Compact,
 
             #[cfg(target_os = "windows")]
             last_rendered_size: None,
@@ -159,8 +154,6 @@ impl App {
             initial_resize_done: Rc::new(RefCell::new(false)),
             #[cfg(target_arch = "wasm32")]
             text_agent: None,
-            #[cfg(not(target_arch = "wasm32"))]
-            native_ime_allowed: false,
             event_proxy: None,
             runtime,
             #[cfg(target_arch = "wasm32")]
@@ -219,6 +212,7 @@ impl App {
     // only happens once `pump_reconciliation` reports completion.
     pub(crate) fn schedule_render(&mut self) {
         let _runtime_guard = self.runtime.enter();
+        self.scheduler.mark_dirty(DirtyCause::Update);
         let Some(builder) = self.component.clone() else {
             return;
         };
@@ -281,7 +275,7 @@ impl App {
         }
 
         let new_tree = vec![new_root];
-        self.reconcile_work = Some(reconciler::WorkLoop::new(new_tree, &self.root));
+        self.app_runtime.reconcile_work = Some(reconciler::WorkLoop::new(new_tree, &self.root));
     }
 
     /// Reveals the OS window for the first time - only once a real frame
@@ -290,24 +284,24 @@ impl App {
     /// OS before it has real content.
     pub(crate) fn reveal_window(&mut self) {
         let _runtime_guard = self.runtime.enter();
-        if self.is_visible {
+        if self.window_runtime.is_visible {
             return;
         }
         let Some(window) = &self.window else {
             return;
         };
-        if std::mem::take(&mut self.pending_maximize) {
+        if std::mem::take(&mut self.window_runtime.pending_maximize) {
             window.set_maximized(true);
         }
         window.set_visible(true);
-        self.is_visible = true;
+        self.window_runtime.reveal();
     }
 
     // Advances any in-progress reconciliation by one time slice. Returns
     // true if there is still more work left to do.
     pub(crate) fn pump_reconciliation(&mut self) -> bool {
         let _runtime_guard = self.runtime.enter();
-        let Some(work) = self.reconcile_work.as_mut() else {
+        let Some(work) = self.app_runtime.reconcile_work.as_mut() else {
             return false;
         };
 
@@ -320,7 +314,7 @@ impl App {
             reconciler::WorkLoopStatus::Yielded => true,
             reconciler::WorkLoopStatus::Complete(commit) => {
                 self.root = commit.commit(&mut self.root);
-                self.reconcile_work = None;
+                self.app_runtime.reconcile_work = None;
 
                 // Runs effects only now that this tree is the real,
                 // committed one - never while reconciliation was still
@@ -377,8 +371,8 @@ impl App {
     pub(crate) fn recheck_breakpoint(&mut self) {
         let _runtime_guard = self.runtime.enter();
         let current = xengui::current_breakpoint();
-        if current != self.last_breakpoint {
-            self.last_breakpoint = current;
+        if current != self.app_runtime.last_breakpoint {
+            self.app_runtime.last_breakpoint = current;
             // Every call site here already does heavy synchronous work
             // of its own (a full render_frame/resize just ran), so
             // rebuilding immediately keeps Responsive<T> in sync with
@@ -480,7 +474,7 @@ impl App {
 
                 #[cfg(target_arch = "wasm32")]
                 self.sync_native_input(&new_focus, true);
-                self.next_blink = None;
+                self.scheduler.next_blink = None;
             } else {
                 #[cfg(target_arch = "wasm32")]
                 self.sync_native_input(&new_focus, true);
@@ -534,11 +528,10 @@ impl App {
             .and_then(|path| find_widget_mut(&mut self.root, &path))
             .is_some_and(|widget| widget.native_text_input().is_some());
 
-        if ime_allowed == self.native_ime_allowed && !(force_show && ime_allowed) {
+        if !self.text_input.set_allowed(ime_allowed, force_show) {
             return;
         }
 
-        self.native_ime_allowed = ime_allowed;
         if let Some(window) = &self.window {
             window.set_ime_allowed(ime_allowed);
         }
@@ -550,7 +543,7 @@ impl App {
         let _runtime_guard = self.runtime.enter();
         let mut ctx = EventCtx::new();
         self.input.focus.advance(&mut self.root, backward, &mut ctx);
-        self.next_blink = None;
+        self.scheduler.next_blink = None;
         self.apply_event_ctx(ctx);
     }
 
@@ -617,9 +610,9 @@ impl App {
                 clear_text_selection_recursive(&mut self.root);
                 self.input.cursor_pos = Some(point);
                 let path = self.hit_test_at(point);
-                self.touch_pan_owner = None;
-                self.touch_start_point = Some(point);
-                self.touch_activation_cancelled = false;
+                self.gestures.touch_pan_owner = None;
+                self.gestures.touch_start_point = Some(point);
+                self.gestures.touch_activation_cancelled = false;
 
                 if let Some(focused) = self.input.focus.focused_path().cloned() {
                     let stays_focused = path.as_ref().is_some_and(|p| path_is_within(p, &focused));
@@ -684,12 +677,12 @@ impl App {
                     );
                     self.apply_event_ctx(pan_ctx);
                     suppress_drag |= pan_status == EventStatus::Handled;
-                    self.touch_pan_owner = pan_owner;
+                    self.gestures.touch_pan_owner = pan_owner;
                 }
 
                 self.input.text_drag_anchor = if suppress_drag { None } else { Some(point) };
 
-                self.pending_long_press = path.and_then(|path| {
+                self.gestures.pending_long_press = path.and_then(|path| {
                     let selectable = find_widget_mut(&mut self.root, &path)
                         .and_then(|widget| widget.selectable_text())
                         .is_some();
@@ -700,8 +693,8 @@ impl App {
             TouchPhase::Moved => {
                 self.input.cursor_pos = Some(point);
 
-                if !self.touch_activation_cancelled
-                    && let Some(start) = self.touch_start_point
+                if !self.gestures.touch_activation_cancelled
+                    && let Some(start) = self.gestures.touch_start_point
                 {
                     let scale_factor = self
                         .window
@@ -719,8 +712,8 @@ impl App {
                             );
                             self.apply_event_ctx(cancel_ctx);
                         }
-                        self.touch_activation_cancelled = true;
-                        self.pending_long_press = None;
+                        self.gestures.touch_activation_cancelled = true;
+                        self.gestures.pending_long_press = None;
                         self.input.text_drag_anchor = None;
 
                         if let Some(old_hover) = self.input.hovered_path.take() {
@@ -749,7 +742,7 @@ impl App {
 
                 // Goes straight to the widget that claimed the gesture on Start
                 // instead of bubbling from the original leaf again on every frame.
-                if let Some(owner) = self.touch_pan_owner.clone() {
+                if let Some(owner) = self.gestures.touch_pan_owner.clone() {
                     let mut pan_ctx = EventCtx::new();
                     dispatch_to_path(
                         &mut self.root,
@@ -770,14 +763,14 @@ impl App {
                     window.request_redraw();
                 }
 
-                if let Some((_, start_point, _)) = self.pending_long_press {
+                if let Some((_, start_point, _)) = self.gestures.pending_long_press {
                     let scale_factor = self
                         .window
                         .as_ref()
                         .map_or(1.0, |w| w.scale_factor() as f32);
                     let moved = (point.0 - start_point.0).abs() + (point.1 - start_point.1).abs();
                     if moved > TOUCH_LONG_PRESS_MOVE_TOLERANCE_DP * scale_factor {
-                        self.pending_long_press = None;
+                        self.gestures.pending_long_press = None;
                     }
                 }
             }
@@ -801,7 +794,7 @@ impl App {
                     self.apply_event_ctx(ctx);
                 }
 
-                if let Some(owner) = self.touch_pan_owner.take() {
+                if let Some(owner) = self.gestures.touch_pan_owner.take() {
                     let mut pan_ctx = EventCtx::new();
                     dispatch_to_path(
                         &mut self.root,
@@ -824,16 +817,14 @@ impl App {
                 self.input.pointer_capture.release(MouseButton::Left);
                 self.input.cursor_pos = None;
                 self.input.text_drag_anchor = None;
-                self.pending_long_press = None;
-                self.touch_start_point = None;
-                self.touch_activation_cancelled = false;
+                self.gestures.reset();
             }
 
             TouchPhase::Cancelled => {
                 #[cfg(target_arch = "wasm32")]
                 crate::web::set_touch_active(false);
 
-                if let Some(owner) = self.touch_pan_owner.take() {
+                if let Some(owner) = self.gestures.touch_pan_owner.take() {
                     let mut pan_ctx = EventCtx::new();
                     dispatch_to_path(
                         &mut self.root,
@@ -856,9 +847,7 @@ impl App {
                 self.input.pointer_capture.cancel();
                 self.input.cursor_pos = None;
                 self.input.text_drag_anchor = None;
-                self.pending_long_press = None;
-                self.touch_start_point = None;
-                self.touch_activation_cancelled = false;
+                self.gestures.reset();
             }
         }
     }
@@ -948,7 +937,7 @@ impl App {
         self.recheck_breakpoint();
         xengui::devtools::record_size("resize_synced:render_end", width, height);
 
-        if !self.is_visible {
+        if !self.window_runtime.is_visible {
             self.reveal_window();
         }
     }

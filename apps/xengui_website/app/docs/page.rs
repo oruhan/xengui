@@ -1,82 +1,146 @@
-// SPDX-License-Identifier: Apache-2.0
-//! Interactive documentation hub for the XenGui website.
+//! Task-oriented XenGui documentation.
 
-use std::time::Duration;
+use crate::site_tokens::{fast_effect, page_gutter, radius, space, type_scale, ARTICLE_MAX};
 use xen_router::RouteParams;
 use xengui::*;
+use xengui_icons::codepoints;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 enum DocsSection {
     #[default]
     Start,
     Concepts,
-    Widgets,
+    Components,
     Styling,
     Rendering,
     Api,
 }
 
+impl DocsSection {
+    const fn slug(self) -> &'static str {
+        match self {
+            Self::Start => "quick-start",
+            Self::Concepts => "core-concepts",
+            Self::Components => "components",
+            Self::Styling => "styling-layout",
+            Self::Rendering => "rendering",
+            Self::Api => "api-reference",
+        }
+    }
+
+    fn from_hash(hash: &str) -> Self {
+        match hash.trim_start_matches('#') {
+            "core-concepts" | "state" | "keys" => Self::Concepts,
+            "components" | "controls" | "alerts" => Self::Components,
+            "styling-layout" | "theme-roles" | "responsive-layout" => Self::Styling,
+            "rendering" | "renderer-options" => Self::Rendering,
+            "api-reference" | "crates" => Self::Api,
+            _ => Self::Start,
+        }
+    }
+}
+
 const NAV_ITEMS: &[(DocsSection, &str)] = &[
-    (DocsSection::Start, "Başlarken"),
-    (DocsSection::Concepts, "Temel kavramlar"),
-    (DocsSection::Widgets, "Widget'lar"),
-    (DocsSection::Styling, "Stil ve layout"),
-    (DocsSection::Rendering, "Renderer"),
-    (DocsSection::Api, "API referansı"),
+    (DocsSection::Start, "Quick start"),
+    (DocsSection::Concepts, "Core concepts"),
+    (DocsSection::Components, "Components"),
+    (DocsSection::Styling, "Styling and layout"),
+    (DocsSection::Rendering, "Rendering"),
+    (DocsSection::Api, "API reference"),
 ];
 
-fn paragraph(text: &str, font_size: f32, line_height: f32) -> RichText {
+#[cfg(target_arch = "wasm32")]
+fn current_hash() -> String {
+    web_sys::window()
+        .and_then(|window| window.location().hash().ok())
+        .unwrap_or_default()
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn current_hash() -> String {
+    String::new()
+}
+
+fn set_docs_hash(slug: &str) {
+    #[cfg(target_arch = "wasm32")]
+    if let Some(window) = web_sys::window() {
+        let _ = window.location().set_hash(slug);
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    let _ = slug;
+}
+
+fn paragraph(text: &str) -> RichText {
     RichText::new()
         .with_content(text)
         .width(pct!(100.0))
         .min_width(px!(0.0))
         .max_width(px!(760.0))
-        .font_size(font_size)
-        .line_height(px!(line_height))
+        .font_size(type_scale::BODY_LG)
+        .line_height(px!(type_scale::BODY_LG_LINE))
         .color(|theme: &Theme| theme.on_surface_variant)
 }
 
-fn heading(kicker: &str, title: &str, description: &str) -> View {
+fn page_heading(kicker: &str, title: &str, description: &str, section: DocsSection) -> View {
     Column::new()
         .width(pct!(100.0))
         .min_width(px!(0.0))
-        .gap(0.0, 12.0)
+        .gap(0.0, space::MD)
         .child(
             Label::new()
                 .label(kicker.to_uppercase())
-                .font_size(12.0)
-                .font_weight(FontWeight::SemiBold)
-                .letter_spacing(px!(1.2))
-                .color(|theme: &Theme| theme.primary)
+                .font_size(type_scale::LABEL_MD)
+                .font_weight(FontWeight::Bold)
+                .letter_spacing(px!(1.0))
+                .color(|theme: &Theme| theme.primary),
         )
+        .child(anchor_title(section.slug(), title, type_scale::HEADLINE_LG, type_scale::HEADLINE_LG_LINE))
+        .child(paragraph(description))
+}
+
+fn anchor_title(slug: &'static str, title: &str, size: f32, line_height: f32) -> View {
+    Row::new()
+        .id(format!("docs-heading-{slug}"))
+        .width(pct!(100.0))
+        .min_width(px!(0.0))
+        .align_items(Align::Center)
+        .gap(space::SM, 0.0)
         .child(
             RichText::new()
                 .with_content(title)
-                .width(pct!(100.0))
-                .max_width(px!(760.0))
-                .font_size(Responsive::new(px!(28.0)).md(px!(32.0)))
-                .line_height(Responsive::new(px!(36.0)).md(px!(40.0)).resolve())
+                .min_width(px!(0.0))
+                .font_size(size)
+                .line_height(px!(line_height))
                 .font_weight(FontWeight::Medium)
-                .color(|theme: &Theme| theme.on_background)
+                .color(|theme: &Theme| theme.on_surface),
         )
-        .child(paragraph(description, 15.0, 24.0))
+        .child(
+            Button::new()
+                .material_icon(codepoints::LINK)
+                .accessible_label(format!("Link to {title}"))
+                .width(px!(40.0))
+                .height(px!(40.0))
+                .padding(Edges::all(8.0))
+                .background(Color::TRANSPARENT)
+                .color(|theme: &Theme| theme.on_surface_variant)
+                .border(Border::all(0.0, Color::TRANSPARENT).radius(radius::FULL))
+                .hover_style(|style: StylePatch, theme: &Theme| style.background(theme.surface_container_high).color(theme.primary))
+                .focus_style(|style: StylePatch, theme: &Theme| style.border(Border::all(2.0, theme.primary).radius(radius::FULL)))
+                .on_click(move |_| set_docs_hash(slug)),
+        )
 }
 
-fn section_title(title: &str, description: &str) -> View {
+fn section_title(slug: &'static str, title: &str, description: &str) -> View {
     Column::new()
         .width(pct!(100.0))
         .min_width(px!(0.0))
-        .gap(0.0, 6.0)
+        .gap(0.0, space::SM)
+        .child(anchor_title(slug, title, type_scale::TITLE_LG, type_scale::TITLE_LG_LINE))
         .child(
-            RichText::new()
-                .with_content(title)
-                .width(pct!(100.0))
-                .max_width(px!(760.0))
-                .font_size(22.0)
-                .line_height(px!(28.0))
-                .font_weight(FontWeight::Medium)
+            paragraph(description)
+                .font_size(type_scale::BODY_MD)
+                .line_height(px!(type_scale::BODY_MD_LINE)),
         )
-        .child(paragraph(description, 14.0, 22.0))
 }
 
 fn code_block(label: &str, code: &str) -> CodeBlock {
@@ -89,641 +153,266 @@ fn code_block(label: &str, code: &str) -> CodeBlock {
         .label(label)
         .language(language)
         .code_font("XenMono")
-        .copy_label("Kopyala")
-        .copied_label("Kopyalandı")
+        .copy_label("Copy")
+        .copied_label("Copied")
+        .border(|theme: &Theme| Border::all(1.0, theme.outline_variant).radius(radius::LG))
 }
 
-fn note(title: &str, text: &str) -> View {
-    let compact = !responsive_bool(Breakpoint::Medium, true);
-    let icon = || {
-        StyleBuilder::color(
-            VariableIcon::new(xengui_icons::codepoints::INFO).size(20.0),
-            |theme: &Theme| theme.primary
-        )
+#[derive(Clone, Copy)]
+enum AlertKind {
+    Info,
+    Warning,
+    Success,
+    Error,
+}
+
+fn alert(kind: AlertKind, title: &str, text: &str) -> View {
+    let icon_codepoint = match kind {
+        AlertKind::Info => codepoints::INFO,
+        AlertKind::Warning => codepoints::WARNING,
+        AlertKind::Success => codepoints::CHECK_CIRCLE,
+        AlertKind::Error => codepoints::ERROR,
     };
-    let title = || {
-        Label::new()
-            .label(title)
-            .font_weight(FontWeight::SemiBold)
-            .color(|theme: &Theme| theme.on_surface)
+    let fill = move |theme: &Theme| match kind {
+        AlertKind::Info => theme.primary_container.with_alpha(120),
+        AlertKind::Warning => theme.warning_container.with_alpha(150),
+        AlertKind::Success => theme.success_container.with_alpha(140),
+        AlertKind::Error => theme.error_container.with_alpha(140),
+    };
+    let foreground = move |theme: &Theme| match kind {
+        AlertKind::Info => theme.on_primary_container,
+        AlertKind::Warning => theme.on_warning_container,
+        AlertKind::Success => theme.on_success_container,
+        AlertKind::Error => theme.on_error_container,
+    };
+    let accent = move |theme: &Theme| match kind {
+        AlertKind::Info => theme.primary,
+        AlertKind::Warning => theme.warning,
+        AlertKind::Success => theme.success,
+        AlertKind::Error => theme.error,
     };
 
-    let mut note = View::new()
-        // HTML'deki block-level `display:flex; width:auto` gibi mevcut
-        // satırı doldur. Yüzde genişlikli RichText'in intrinsic ölçüme
-        // katılamadığı shrink-to-fit döngüsünü bu sınır kırar.
-        .display(Display::Flex)
-        .flex_direction(if compact { FlexDirection::Column } else { FlexDirection::Row })
+    Row::new()
         .width(pct!(100.0))
         .min_width(px!(0.0))
-        .gap(if compact { 0.0 } else { 12.0 }, if compact { 10.0 } else { 0.0 })
-        .padding(Edges::all(16.0))
-        // Documentation notes are supporting content, not primary actions.
-        // Use a quiet M3 surface role and reserve the brand color for the
-        // small semantic accent instead of flooding the whole container.
-        .background(|theme: &Theme| theme.surface_container_low)
-        .border(|theme: &Theme| Border::all(1.0, theme.outline_variant).radius(16.0));
-
-    if compact {
-        note = note
-            .child(
-                Row::new().align_items(Align::Center).gap(10.0, 0.0).child(icon()).child(title())
-            )
-            .child(paragraph(text, 13.0, 20.0).max_width(px!(660.0)));
-    } else {
-        note = note.child(icon()).child(
+        .align_items(Align::Start)
+        .gap(space::MD, 0.0)
+        .padding(Edges::all(space::LG))
+        .background(fill)
+        .border(move |theme: &Theme| Border::all(1.0, accent(theme).with_alpha(150)).radius(radius::LG))
+        .child(StyleBuilder::color(VariableIcon::new(icon_codepoint).size(22.0), accent))
+        .child(
             Column::new()
-                .flex_grow(1.0)
                 .min_width(px!(0.0))
-                .gap(0.0, 4.0)
-                .child(title())
-                .child(paragraph(text, 13.0, 20.0).max_width(px!(660.0)))
-        );
-    }
-
-    note
+                .gap(0.0, space::XS)
+                .child(Label::new().label(title).font_size(type_scale::TITLE_SM).font_weight(FontWeight::Bold).color(foreground))
+                .child(paragraph(text).font_size(type_scale::BODY_MD).line_height(px!(type_scale::BODY_MD_LINE)).color(foreground)),
+        )
 }
 
 fn feature_card(title: &str, description: &str) -> View {
     Column::new()
         .flex_basis(Responsive::new(pct!(100.0)).md(pct!(48.0)))
-        .gap(0.0, 10.0)
-        .padding(Edges::all(20.0))
+        .gap(0.0, space::SM)
+        .padding(Edges::all(space::LG))
         .background(|theme: &Theme| theme.surface_container_low)
-        .border(|theme: &Theme| Border::all(1.0, theme.outline_variant).radius(22.0))
-        .child(Label::new().label(title).font_size(16.0).font_weight(FontWeight::SemiBold))
-        .child(paragraph(description, 13.0, 20.0).max_width(px!(400.0)))
-}
-
-fn nav_button(
-    active: DocsSection,
-    section: DocsSection,
-    title: &'static str,
-    set_active: SetState<DocsSection>,
-    compact: bool
-) -> Button {
-    let selected = active == section;
-    Button::new()
-        .width(if compact { px!(148.0) } else { pct!(100.0) })
-        .flex_shrink(0.0)
-        .label(title.to_owned())
-        .text_align(TextAlign::Start)
-        .font_size(13.0)
-        .font_weight(if selected { FontWeight::SemiBold } else { FontWeight::Regular })
-        .color(move |theme: &Theme| {
-            if selected { theme.on_surface } else { theme.on_surface_variant }
-        })
-        .background(move |theme: &Theme| {
-            if selected { theme.surface_container_high } else { Color::TRANSPARENT }
-        })
-        .border(Border::all(0.0, Color::TRANSPARENT).radius(16.0))
-        .padding(Edges::symmetric(8.0, if compact { 10.0 } else { 5.0 }))
-        .hover_style(|style, theme| style.background(theme.surface_container_high))
-        .transition_all(Transition::new(Duration::from_millis(140)).easing(Easing::EaseOut))
-        .on_click(move |_ctx| set_active.set(section))
+        .border(|theme: &Theme| Border::all(1.0, theme.outline_variant).radius(radius::LG))
+        .child(Label::new().label(title).font_size(type_scale::TITLE_MD).font_weight(FontWeight::Bold))
+        .child(paragraph(description).font_size(type_scale::BODY_MD).line_height(px!(type_scale::BODY_MD_LINE)).max_width(px!(420.0)))
 }
 
 fn cards(items: &[(&str, &str)]) -> View {
-    let mut grid = View::new().display(Display::Flex).flex_wrap(FlexWrap::Wrap).gap(14.0, 14.0);
+    let mut row = Row::new().flex_wrap(FlexWrap::Wrap).gap(space::MD, space::MD);
     for (title, description) in items {
-        grid = grid.child(feature_card(title, description));
+        row = row.child(feature_card(title, description));
     }
-    grid
-}
-
-fn docs_brand(compact: bool) -> View {
-    Row::new()
-        .width(pct!(100.0))
-        .height(px!(64.0))
-        .align_items(Align::Center)
-        .justify_content(JustifyContent::SpaceBetween)
-        .child(
-            Button::new()
-                .icon(
-                    include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/assets/XenGui_header.svg"))
-                )
-                .expect("embedded XenGui logo must be valid SVG")
-                .icon_size(if compact { 94.0 } else { 104.0 }, 32.0)
-                .width(px!(if compact { 104.0 } else { 114.0 }))
-                .flex_shrink(0.0)
-                .background(Color::TRANSPARENT)
-                .padding(Edges::all(0.0))
-                .on_click(|_ctx| xen_router::push("/"))
-        )
-        .child(
-            Label::new()
-                .label("DOCS")
-                .font_size(11.0)
-                .font_weight(FontWeight::SemiBold)
-                .letter_spacing(px!(1.0))
-                .color(|theme: &Theme| theme.primary)
-        )
+    row
 }
 
 fn start_page() -> View {
     Column::new()
-        .width(pct!(100.0))
-        .min_width(px!(0.0))
-        .gap(0.0, 28.0)
-        .child(
-            heading(
-                "XenGui Docs",
-                "Rust ile ilk arayüzünü oluştur",
-                "Aynı bildirimsel widget ağacını masaüstünde wgpu, tarayıcıda WebGPU/WebGL üzerinde çalıştır."
-            )
-        )
-        .child(
-            note(
-                "Hibrit dokümantasyon",
-                "Bu rehber öğrenme akışını ve çalışan örnekleri açıklar. İmzalar ve public API için rustdoc tek doğruluk kaynağıdır."
-            )
-        )
-        .child(
-            section_title(
-                "1. Bağımlılıkları ekle",
-                "Uygulama kabuğu için xenframe, widget API'si için xengui kullanılır."
-            )
-        )
-        .child(
-            code_block(
-                "Cargo.toml",
-                "[dependencies]\nxengui = \"0.2.8\"\nxenframe = \"0.1.2\"\nxengui-wgpu = \"0.1.2\""
-            )
-        )
-        .child(
-            section_title(
-                "2. İlk pencere",
-                "Render closure her state değişiminde yeni widget ağacını üretir."
-            )
-        )
-        .child(
-            code_block(
-                "src/main.rs",
-                "use xenframe::{App, AppConfig};\nuse xengui::*;\n\nfn main() -> Result<(), Box<dyn std::error::Error>> {\n    let mut app = App::new(AppConfig::default());\n    app.render(|| Box::new(\n        Column::new()\n            .padding(Edges::all(24.0))\n            .gap(0.0, 12.0)\n            .child(Label::new().label(\"Merhaba, XenGui!\"))\n            .child(Button::new().label(\"Devam et\"))\n    ));\n    app.run()?;\n    Ok(())\n}"
-            )
-        )
-        .child(
-            section_title("3. Çalıştır", "Native uygulama Cargo, web uygulaması Trunk ile çalışır.")
-        )
-        .child(
-            code_block(
-                "Terminal",
-                "# Native\ncargo run\n\n# Web\nrustup target add wasm32-unknown-unknown\ntrunk serve --open"
-            )
-        )
+        .gap(0.0, space::XXL)
+        .child(page_heading(
+            "Documentation",
+            "Build your first XenGui application",
+            "Create a small task board that demonstrates layout, state, interaction, styling, and several core widgets without hiding the runtime setup.",
+            DocsSection::Start,
+        ))
+        .child(alert(AlertKind::Info, "Two complementary references", "Use this site for learning paths and runnable examples. Use docs.rs for exact public signatures and crate-level API contracts."))
+        .child(section_title("dependencies", "1. Add dependencies", "The window runtime, widget tree, and wgpu backend are separate crates."))
+        .child(code_block("Cargo.toml", "[dependencies]\nxengui = \"0.2.8\"\nxenframe = \"0.1.2\"\nxengui-wgpu = \"0.1.2\""))
+        .child(section_title("first-window", "2. Create a stateful view", "The render closure produces a new widget tree when state changes; reconciliation preserves stable widget identity."))
+        .child(code_block(
+            "src/main.rs",
+            "use xenframe::{App, AppConfig};\nuse xengui::*;\n\nfn main() -> Result<(), Box<dyn std::error::Error>> {\n    let mut app = App::new(AppConfig {\n        title: \"Focus Board\".into(),\n        width: 760,\n        height: 520,\n        ..Default::default()\n    });\n\n    app.render(|| {\n        let (done, set_done) = use_state(false);\n        Box::new(\n            Column::new()\n                .padding(Edges::all(24.0))\n                .gap(0.0, 16.0)\n                .child(Label::new().label(\"Today\").font_size(28.0))\n                .child(\n                    Row::new()\n                        .align_items(Align::Center)\n                        .gap(12.0, 0.0)\n                        .child(Checkbox::new().checked(done).on_change(\n                            move |value, _| set_done.set(value),\n                        ))\n                        .child(Label::new().label(\"Ship a polished XenGui screen\"))\n                )\n                .child(ProgressBar::new().value(if done { 1.0 } else { 0.5 }))\n        )\n    });\n\n    app.run()?;\n    Ok(())\n}",
+        ))
+        .child(section_title("run", "3. Run it", "Cargo starts the native application; Trunk serves browser applications."))
+        .child(code_block("Terminal", "cargo run\n\n# Browser projects\nrustup target add wasm32-unknown-unknown\ntrunk serve --open"))
+        .child(alert(AlertKind::Warning, "Active development", "Pin XenGui crate versions and review release notes before upgrading production applications prior to 1.0."))
 }
 
 fn concepts_page() -> View {
     Column::new()
-        .gap(0.0, 28.0)
-        .child(
-            heading(
-                "Temel kavramlar",
-                "Basit veri akışı, öngörülebilir render",
-                "State yeni bir ağaç üretir; reconciler kimlikleri eşleştirir; layout ve paint gerekli düğümlerde yenilenir."
-            )
-        )
-        .child(
-            cards(
-                &[
-                    (
-                        "Widget ağacı",
-                        "Her widget ölçüm, layout, paint ve input davranışını aynı Widget sözleşmesiyle sunar.",
-                    ),
-                    (
-                        "Kontrollü state",
-                        "use_state değeri ve setter'ı döndürür; form kontrolleri değişimi callback ile bildirir.",
-                    ),
-                    (
-                        "Reconciliation",
-                        "Key verilen kardeşler taşınsa bile state ve etkileşim kimliklerini korur.",
-                    ),
-                    (
-                        "Efekt yaşam döngüsü",
-                        "Cleanup yeniden çalışmadan önce ve component unmount olduğunda çağrılır.",
-                    ),
-                ]
-            )
-        )
-        .child(section_title("State örneği", "Hook çağrı sırası koşulsuz ve kararlı olmalıdır."))
-        .child(
-            code_block(
-                "Component state",
-                "let (count, set_count) = use_state(0);\n\nButton::new()\n    .label(format!(\"Sayaç: {count}\"))\n    .on_click(move |_ctx| set_count.set(count + 1))"
-            )
-        )
-        .child(
-            section_title(
-                "Kalıcı liste kimliği",
-                "Dinamik listelerde index yerine domain kimliği kullanın."
-            )
-        )
-        .child(
-            code_block(
-                "Keyed list",
-                "for item in items {\n    list = list.child(\n        Row::new()\n            .key(item.id.to_string())\n            .child(Label::new().label(item.title))\n    );\n}"
-            )
-        )
+        .gap(0.0, space::XXL)
+        .child(page_heading("Model", "Core concepts", "XenGui combines a retained widget tree with declarative render functions and explicit state.", DocsSection::Concepts))
+        .child(cards(&[
+            ("Widget tree", "Every widget participates in measurement, layout, paint, semantics, and input through one Widget contract."),
+            ("Controlled state", "use_state returns a value and setter; form controls report changes through callbacks."),
+            ("Reconciliation", "Stable keys preserve state and interaction identity when dynamic lists are reordered."),
+            ("Effects", "Cleanup runs before an effect is repeated and when its component is unmounted."),
+        ]))
+        .child(section_title("state", "State", "Keep hook order unconditional and stable across renders."))
+        .child(code_block("Component state", "let (done, set_done) = use_state(false);\n\nCheckbox::new()\n    .checked(done)\n    .on_change(move |value, _| set_done.set(value))"))
+        .child(section_title("keys", "Stable list keys", "Use domain identifiers instead of list positions for dynamic siblings."))
+        .child(code_block("Keyed list", "for item in items {\n    list = list.child(\n        Row::new()\n            .key(item.id.to_string())\n            .child(Label::new().label(item.title))\n    );\n}"))
 }
 
-fn demo(title: &str, description: &str, child: impl Widget + 'static) -> View {
+fn components_page() -> View {
     Column::new()
-        .flex_basis(Responsive::new(pct!(100.0)).lg(pct!(48.0)))
-        .gap(0.0, 14.0)
-        .padding(Edges::all(18.0))
-        .background(|theme: &Theme| theme.surface)
-        .border(|theme: &Theme| Border::all(1.0, theme.outline_variant).radius(12.0))
-        .child(section_title(title, description))
-        .child(child)
-}
-
-fn widgets_page(
-    enabled: bool,
-    set_enabled: SetState<bool>,
-    checked: bool,
-    set_checked: SetState<bool>,
-    progress: f32,
-    set_progress: SetState<f32>
-) -> View {
-    View::new()
-        .display(Display::Flex)
-        .flex_direction(FlexDirection::Column)
-        .gap(0.0, 28.0)
+        .gap(0.0, space::XXL)
+        .child(page_heading("Widgets", "Components", "Core controls use theme roles and expose hover, focus, pressed, disabled, and controlled-value behavior.", DocsSection::Components))
+        .child(section_title("controls", "Interactive controls", "These are live XenGui widgets, not screenshots."))
         .child(
-            heading(
-                "Widget kataloğu",
-                "Temel yapı taşları",
-                "Tema varsayılanlarıyla çalışan widget'ları builder API'siyle yerel olarak özelleştirebilirsin."
-            )
-        )
-        .child(
-            View::new()
-                .display(Display::Flex)
+            Row::new()
                 .flex_wrap(FlexWrap::Wrap)
-                .gap(14.0, 14.0)
-                .child(
-                    demo(
-                        "Button ve Badge",
-                        "Aksiyon ve kısa durum bilgisi.",
-                        Row::new()
-                            .align_items(Align::Center)
-                            .gap(10.0, 0.0)
-                            .child(Button::new().label("Kaydet"))
-                            .child(Badge::new().label("Yeni"))
-                    )
-                )
-                .child(
-                    demo(
-                        "Switch ve Checkbox",
-                        "Kontrollü boolean girdiler.",
-                        Row::new()
-                            .align_items(Align::Center)
-                            .gap(16.0, 0.0)
-                            .child(
-                                Switch::new()
-                                    .checked(enabled)
-                                    .on_change(move |value, _ctx| {
-                                        set_enabled.set(value);
-                                    })
-                            )
-                            .child(
-                                Checkbox::new()
-                                    .checked(checked)
-                                    .on_change(move |value, _ctx| set_checked.set(value))
-                            )
-                    )
-                )
-                .child(
-                    demo(
-                        "ProgressBar",
-                        "0 ile 1 arasında kontrollü ilerleme.",
-                        Column::new()
-                            .gap(0.0, 10.0)
-                            .child(ProgressBar::new().value(progress))
-                            .child(
-                                Slider::new()
-                                    .value(progress)
-                                    .on_change(move |value, _ctx| set_progress.set(value))
-                            )
-                    )
-                )
-                .child(
-                    demo(
-                        "Separator",
-                        "İçerik gruplarını görsel olarak ayırır.",
-                        Column::new()
-                            .gap(0.0, 10.0)
-                            .child(Label::new().label("Hesap"))
-                            .child(Separator::new())
-                            .child(Label::new().label("Gizlilik"))
-                    )
-                )
-                .child(
-                    demo(
-                        "TextBox",
-                        "Placeholder, seçim, IME ve mobil input köprüsü.",
-                        TextBox::new().placeholder("E-posta adresi")
-                    )
-                )
-                .child(
-                    demo(
-                        "Kbd ve Tooltip",
-                        "Kısayol ve bağlamsal yardım.",
-                        Tooltip::new("Komut paletini aç").child(Kbd::new().label("Ctrl K"))
-                    )
-                )
+                .align_items(Align::Center)
+                .gap(space::LG, space::LG)
+                .child(Button::new().label("Save changes"))
+                .child(Switch::new().checked(true))
+                .child(Checkbox::new().checked(false))
+                .child(TextBox::new().placeholder("Project name"))
+                .child(Badge::new().label("Stable")),
         )
-        .child(
-            note(
-                "Sıradaki input widget'ları",
-                "Select/ComboBox ve çok satırlı TextArea; klavye, IME ve erişilebilirlik sözleşmesi birlikte tamamlandıktan sonra eklenmeli."
-            )
-        )
+        .child(section_title("alerts", "Alerts", "Semantic alerts use consistent icon size, spacing, border, container, and foreground roles."))
+        .child(alert(AlertKind::Info, "Information", "Use for relevant context that does not require immediate action."))
+        .child(alert(AlertKind::Warning, "Warning", "Use for a recoverable condition the reader should review."))
+        .child(alert(AlertKind::Success, "Success", "Use to confirm a completed operation."))
+        .child(alert(AlertKind::Error, "Error", "Use for a failure that blocks the current task."))
 }
 
 fn styling_page() -> View {
     Column::new()
-        .gap(0.0, 28.0)
-        .child(
-            heading(
-                "Stil ve layout",
-                "CSS'e yakın, Rust'a güvenli",
-                "Length, Edges, flex, grid, tema tokenları ve responsive değerler aynı builder zincirinde birleşir."
-            )
-        )
-        .child(section_title("Tema tabanlı stil", "Closure aktif temayı render sırasında çözer."))
-        .child(
-            code_block(
-                "Theme tokens",
-                "View::new()\n    .padding(Edges::all(20.0))\n    .background(|theme: &Theme| theme.surface)\n    .color(|theme: &Theme| theme.on_surface)\n    .border(|theme: &Theme|\n        Border::all(1.0, theme.outline_variant).radius(theme.radius_lg)\n    )"
-            )
-        )
-        .child(
-            section_title(
-                "Responsive değerler",
-                "Mobile-first değer breakpoint geldiğinde değişir."
-            )
-        )
-        .child(
-            code_block(
-                "Responsive layout",
-                "View::new()\n    .padding(Responsive::new(Edges::all(16.0)).md(Edges::all(32.0)))\n    .width(Responsive::new(pct!(100.0)).lg(px!(960.0)))"
-            )
-        )
-        .child(
-            section_title(
-                "Grid",
-                "Taffy tabanlı grid ve flex aynı layout ağacında birlikte kullanılabilir."
-            )
-        )
-        .child(
-            code_block(
-                "Grid layout",
-                "View::new()\n    .display(Display::Grid)\n    .grid_template_columns(vec![GridTrack::Fr(1.0), GridTrack::Fr(1.0)])\n    .gap(16.0, 16.0)"
-            )
-        )
+        .gap(0.0, space::XXL)
+        .child(page_heading("Design system", "Styling and layout", "Theme roles, responsive values, Flexbox, and Grid compose in the same builder chain.", DocsSection::Styling))
+        .child(section_title("theme-roles", "Theme roles", "Pair container roles with their matching on-container foreground roles."))
+        .child(code_block("Theme roles", "View::new()\n    .padding(Edges::all(20.0))\n    .background(|theme: &Theme| theme.surface_container_low)\n    .color(|theme: &Theme| theme.on_surface)\n    .border(|theme: &Theme|\n        Border::all(1.0, theme.outline_variant).radius(16.0)\n    )"))
+        .child(section_title("responsive-layout", "Responsive layout", "Author compact values first, then override them at wider breakpoints."))
+        .child(code_block("Responsive layout", "View::new()\n    .padding(Responsive::new(Edges::all(16.0)).md(Edges::all(32.0)))\n    .width(Responsive::new(pct!(100.0)).lg(px!(960.0)))\n    .display(Display::Grid)\n    .grid_template_columns(vec![GridTrack::Fr(1.0), GridTrack::Fr(1.0)])"))
 }
 
 fn rendering_page() -> View {
     Column::new()
-        .gap(0.0, 28.0)
-        .child(
-            heading(
-                "Renderer",
-                "Native wgpu, tarayıcıda WebGPU/WebGL",
-                "xengui paint komutlarını platformdan bağımsız tutar; xengui-wgpu bunları GPU pipeline'larına dönüştürür."
-            )
-        )
-        .child(
-            cards(
-                &[
-                    (
-                        "Konservatif limitler",
-                        "Native downlevel ve WebGL2 limitleri adapter çözünürlüğüyle birleştirilir.",
-                    ),
-                    (
-                        "Dayanıklı surface",
-                        "Lost ve Outdated yeniden configure edilir; Timeout ve Occluded kontrollü sonuç döndürür.",
-                    ),
-                    (
-                        "Device recovery",
-                        "Recoverable GPU kaybında xenframe fontları koruyarak renderer'ı yeniden kurar.",
-                    ),
-                    (
-                        "Gerçek MSAA",
-                        "SVG üçgenleri adapter desteğine otomatik düşen özel MSAA target kullanır.",
-                    ),
-                ]
-            )
-        )
-        .child(
-            section_title(
-                "Renderer seçenekleri",
-                "Varsayılan politika uyumluluk, vsync ve 4x triangle MSAA seçer."
-            )
-        )
-        .child(
-            code_block(
-                "Renderer configuration",
-                "use xengui_wgpu::{PresentModePreference, RendererOptions, SampleCount};\n\nlet config = AppConfig {\n    renderer: RendererOptions {\n        present_mode: PresentModePreference::Vsync,\n        sample_count: SampleCount::X4,\n        ..Default::default()\n    },\n    ..Default::default()\n};"
-            )
-        )
+        .gap(0.0, space::XXL)
+        .child(page_heading("Pipeline", "Rendering", "xengui produces backend-neutral paint commands; xengui-wgpu turns those commands into GPU work.", DocsSection::Rendering))
+        .child(cards(&[
+            ("Surface recovery", "Lost and outdated surfaces are reconfigured; timeout and occlusion return controlled outcomes."),
+            ("Retained staging", "Frame and pipeline staging buffers retain their high-water capacity for steady-state reuse."),
+            ("Text shaping", "Measurement and drawing share shaped glyph buffers when the text run is unchanged."),
+            ("Browser fallback", "Adapter limits determine whether the browser uses WebGPU or the supported compatibility path."),
+        ]))
+        .child(section_title("renderer-options", "Renderer options", "Choose a presentation policy and sample count explicitly when application requirements differ from defaults."))
+        .child(code_block("Renderer configuration", "use xengui_wgpu::{PresentModePreference, RendererOptions, SampleCount};\n\nlet config = AppConfig {\n    renderer: RendererOptions {\n        present_mode: PresentModePreference::Vsync,\n        sample_count: SampleCount::X4,\n        ..Default::default()\n    },\n    ..Default::default()\n};"))
 }
 
 fn api_card(name: &str, description: &str, href: &str) -> View {
     feature_card(name, description).child(
-        Link::new().label("Rustdoc'u aç →").href(href).target_blank(true).font_size(13.0)
+        Link::new()
+            .label("Open rustdoc →")
+            .href(href)
+            .target_blank(true)
+            .font_size(type_scale::LABEL_LG)
+            .color(|theme: &Theme| theme.primary)
+            .text_decoration(TextDecoration::UNDERLINE)
+            .hover_style(|style: StylePatch, theme: &Theme| style.color(theme.on_surface)),
     )
 }
 
 fn api_page() -> View {
     Column::new()
-        .gap(0.0, 28.0)
+        .gap(0.0, space::XXL)
+        .child(page_heading("Reference", "API reference", "docs.rs is the authoritative source for public types, methods, traits, and error contracts.", DocsSection::Api))
+        .child(section_title("crates", "Crates", "Open the generated API reference for the part of the stack you are using."))
         .child(
-            heading(
-                "API referansı",
-                "İmzalar doğrudan rustdoc'tan",
-                "Paket yayınlandığında docs.rs kaynak koddan rustdoc'u yeniden üretir; website yalnızca öğrenme katmanını taşır."
-            )
-        )
-        .child(
-            note(
-                "Neden hibrit?",
-                "Rustdoc tipler, metotlar ve trait sözleşmeleri için otoritedir. Website öğrenme sırası, mimari açıklama ve canlı örnekler için elle düzenlenir."
-            )
-        )
-        .child(
-            View::new()
-                .display(Display::Flex)
+            Row::new()
                 .flex_wrap(FlexWrap::Wrap)
-                .gap(14.0, 14.0)
-                .child(
-                    api_card(
-                        "xengui",
-                        "Widget, layout, style, input, hook ve paint çekirdeği.",
-                        "https://docs.rs/xengui/latest/xengui/"
-                    )
-                )
-                .child(
-                    api_card(
-                        "xenframe",
-                        "winit yaşam döngüsü ve platform entegrasyonu.",
-                        "https://docs.rs/xenframe/latest/xenframe/"
-                    )
-                )
-                .child(
-                    api_card(
-                        "xengui-wgpu",
-                        "GPU pipeline'ları, seçenekler ve frame sonuçları.",
-                        "https://docs.rs/xengui-wgpu/latest/xengui_wgpu/"
-                    )
-                )
-                .child(
-                    api_card(
-                        "xen-router",
-                        "Dosya tabanlı route ve navigation API'si.",
-                        "https://docs.rs/xen-router/latest/xen_router/"
-                    )
-                )
-                .child(
-                    api_card(
-                        "xen-svg",
-                        "SVG parse, transform ve tessellation API'si.",
-                        "https://docs.rs/xen-svg/latest/xen_svg/"
-                    )
-                )
-                .child(
-                    api_card(
-                        "xen-animation",
-                        "Transition, easing ve zamanlama API'si.",
-                        "https://docs.rs/xen-animation/latest/xen_animation/"
-                    )
-                )
+                .gap(space::MD, space::MD)
+                .child(api_card("xengui", "Widgets, layout, styling, input, hooks, and paint.", "https://docs.rs/xengui/latest/xengui/"))
+                .child(api_card("xenframe", "Window lifecycle and platform integration.", "https://docs.rs/xenframe/latest/xenframe/"))
+                .child(api_card("xengui-wgpu", "The wgpu render backend and renderer options.", "https://docs.rs/xengui-wgpu/latest/xengui_wgpu/"))
+                .child(api_card("xen-router", "Client-side routing and browser history synchronization.", "https://docs.rs/xen-router/latest/xen_router/")),
         )
 }
 
-pub fn page(_params: &RouteParams) -> Box<dyn Widget> {
-    let (active, set_active) = use_state(DocsSection::Start);
-    // Demo hooks remain unconditional so switching documentation tabs never
-    // changes the component's hook order.
-    let (enabled, set_enabled) = use_state(true);
-    let (checked, set_checked) = use_state(false);
-    let (progress, set_progress) = use_state(0.64_f32);
-    let compact = !responsive_bool(Breakpoint::Expanded, true);
+fn nav_button(active: DocsSection, section: DocsSection, title: &'static str, set_active: SetState<DocsSection>, compact: bool) -> Button {
+    let selected = active == section;
+    Button::new()
+        .width(if compact { px!(164.0) } else { pct!(100.0) })
+        .flex_shrink(0.0)
+        .label(title)
+        .text_align(TextAlign::Start)
+        .font_size(type_scale::LABEL_LG)
+        .font_weight(if selected { FontWeight::Bold } else { FontWeight::Medium })
+        .color(move |theme: &Theme| if selected { theme.on_surface } else { theme.on_surface_variant })
+        .background(move |theme: &Theme| if selected { theme.surface_container_high } else { Color::TRANSPARENT })
+        .border(Border::all(0.0, Color::TRANSPARENT).radius(radius::MD))
+        .padding(Edges::symmetric(space::MD, 10.0))
+        .transition_colors(fast_effect())
+        .hover_style(|style: StylePatch, theme: &Theme| style.background(theme.surface_container_high).color(theme.on_surface))
+        .focus_style(|style: StylePatch, theme: &Theme| style.border(Border::all(2.0, theme.primary).radius(radius::MD)))
+        .on_click(move |_| {
+            set_docs_hash(section.slug());
+            set_active.set(section);
+        })
+}
 
+pub fn page(_params: &RouteParams) -> Box<dyn Widget> {
+    let (active, set_active) = use_state(DocsSection::from_hash(&current_hash()));
+    let compact = !responsive_bool(Breakpoint::Expanded, true);
     let mut navigation = View::new()
         .display(Display::Flex)
         .flex_direction(if compact { FlexDirection::Row } else { FlexDirection::Column })
         .width(pct!(100.0))
-        .gap(if compact { 8.0 } else { 0.0 }, if compact { 0.0 } else { 6.0 })
+        .gap(if compact { space::SM } else { 0.0 }, if compact { 0.0 } else { space::XS })
         .overflow_x(if compact { Overflow::Auto } else { Overflow::Visible });
-
     for (section, title) in NAV_ITEMS {
-        navigation = navigation.child(
-            nav_button(active, *section, title, set_active.clone(), compact)
-        );
+        navigation = navigation.child(nav_button(active, *section, title, set_active.clone(), compact));
     }
 
-    let content = (
-        match active {
-            DocsSection::Start => start_page(),
-            DocsSection::Concepts => concepts_page(),
-            DocsSection::Widgets =>
-                widgets_page(enabled, set_enabled, checked, set_checked, progress, set_progress),
-            DocsSection::Styling => styling_page(),
-            DocsSection::Rendering => rendering_page(),
-            DocsSection::Api => api_page(),
-        }
-    ).flex_shrink(0.0);
-
-    if compact {
-        return Box::new(
-            Column::new()
-                .width(pct!(100.0))
-                .height(pct!(100.0))
-                .min_width(px!(0.0))
-                .flex_shrink(0.0)
-                .overflow_x(Overflow::Hidden)
-                .overflow_y(Overflow::Scroll)
-                .scrollbar_gutter(ScrollbarGutter::Stable)
-                .child(
-                    View::new()
-                        .padding(Edges::symmetric(20.0, 0.0))
-                        .background(|theme: &Theme| theme.surface_container_lowest)
-                        .border(|theme: &Theme| Border::bottom(1.0, theme.outline_variant))
-                        .child(docs_brand(true))
-                )
-                .child(View::new().padding(Edges::only(20.0, 14.0, 20.0, 8.0)).child(navigation))
-                .child(
-                    View::new()
-                        .width(pct!(100.0))
-                        .min_width(px!(0.0))
-                        .padding(Edges::only(20.0, 28.0, 20.0, 72.0))
-                        .child(content)
-                )
-        );
-    }
-
-    let sidebar = Column::new()
-        .position(Position::Sticky)
-        .top(0.0)
-        .width(px!(284.0))
-        .height(pct!(100.0))
-        .flex_shrink(0.0)
-        .gap(0.0, 20.0)
-        .padding(Edges::only(24.0, 0.0, 20.0, 24.0))
-        .background(|theme: &Theme| theme.surface_container_lowest)
-        .border(|theme: &Theme| Border::right(1.0, theme.outline_variant))
-        .child(docs_brand(false))
-        .child(
-            Label::new()
-                .label("KILAVUZLAR")
-                .font_size(11.0)
-                .font_weight(FontWeight::SemiBold)
-                .letter_spacing(px!(1.0))
-                .color(|theme: &Theme| theme.on_surface_variant)
-        )
-        .child(navigation)
-        .child(
-            Link::new()
-                .label("GitHub'da görüntüle")
-                .href("https://github.com/randseas/xengui")
-                .target_blank(true)
-                .font_size(13.0)
-                .color(|theme: &Theme| theme.on_surface_variant)
-        );
+    let content = match active {
+        DocsSection::Start => start_page(),
+        DocsSection::Concepts => concepts_page(),
+        DocsSection::Components => components_page(),
+        DocsSection::Styling => styling_page(),
+        DocsSection::Rendering => rendering_page(),
+        DocsSection::Api => api_page(),
+    };
 
     Box::new(
-        Row::new()
-            .width(pct!(100.0))
-            .height(pct!(100.0))
-            .min_width(px!(0.0))
-            .flex_shrink(0.0)
+        View::new()
+            .display(Display::Flex)
+            .flex_direction(if compact { FlexDirection::Column } else { FlexDirection::Row })
             .align_items(Align::Start)
-            .child(sidebar)
+            .width(pct!(100.0))
+            .min_width(px!(0.0))
+            .padding(page_gutter(24.0, 64.0))
+            .gap(Responsive::new(px!(24.0)).md(px!(40.0)), px!(32.0))
             .child(
-                Row::new()
+                Column::new()
+                    .position(if compact { Position::Relative } else { Position::Sticky })
+                    .top(if compact { 0.0 } else { 96.0 })
+                    .width(if compact { pct!(100.0) } else { px!(248.0) })
+                    .flex_shrink(0.0)
+                    .gap(0.0, space::MD)
+                    .child(Label::new().label("DOCUMENTATION").font_size(type_scale::LABEL_SM).font_weight(FontWeight::Bold).letter_spacing(px!(1.0)).color(|theme: &Theme| theme.primary))
+                    .child(navigation),
+            )
+            .child(
+                Column::new()
                     .width(pct!(100.0))
-                    .height(pct!(100.0))
-                    .flex_grow(1.0)
+                    .max_width(px!(ARTICLE_MAX))
                     .min_width(px!(0.0))
                     .align_items(Align::Start)
-                    .justify_content(JustifyContent::Center)
-                    .overflow_y(Overflow::Scroll)
-                    .scrollbar_gutter(ScrollbarGutter::Stable)
-                    .padding(
-                        Responsive::new(Edges::only(40.0, 48.0, 40.0, 88.0)).lg(
-                            Edges::only(64.0, 64.0, 64.0, 112.0)
-                        )
-                    )
-                    .child(
-                        Column::new()
-                            .width(pct!(100.0))
-                            .max_width(px!(920.0))
-                            .min_width(px!(0.0))
-                            .flex_shrink(0.0)
-                            .child(content)
-                    )
-            )
+                    .child(content),
+            ),
     )
 }

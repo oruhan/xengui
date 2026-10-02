@@ -1,4 +1,5 @@
 use xen_router::RouteParams;
+use crate::site_tokens::{radius, type_scale};
 use xengui::*;
 
 fn panel_header(title: &str, meta: &str, dark: bool) -> View {
@@ -14,7 +15,7 @@ fn panel_header(title: &str, meta: &str, dark: bool) -> View {
         .child(
             Label::new()
                 .label(title)
-                .font_size(12.0)
+                .font_size(type_scale::LABEL_MD)
                 .font_weight(FontWeight::SemiBold)
                 .color(if dark {
                     Color::NEUTRAL_200
@@ -25,7 +26,7 @@ fn panel_header(title: &str, meta: &str, dark: bool) -> View {
         .child(
             Label::new()
                 .label(meta)
-                .font_size(10.0)
+                .font_size(type_scale::LABEL_SM)
                 .color(Color::NEUTRAL_500),
         )
 }
@@ -43,28 +44,28 @@ pub fn page(_params: &RouteParams) -> Box<dyn Widget> {
         .child(
             Label::new()
                 .label("PLAYGROUND")
-                .font_size(11.0)
+                .font_size(type_scale::LABEL_SM)
                 .font_weight(FontWeight::SemiBold)
                 .letter_spacing(px!(1.1))
                 .color(|theme: &Theme| theme.primary),
         )
         .child(
             RichText::new()
-                .with_content("Kod ve çıktı, yan yana.")
+                .with_content("Code and output, side by side.")
                 .width(pct!(100.0))
                 .max_width(px!(620.0))
-                .font_size(Responsive::new(px!(36.0)).md(px!(52.0)))
-                .line_height(Responsive::new(px!(41.0)).md(px!(58.0)).resolve())
+                .font_size(Responsive::new(px!(type_scale::DISPLAY_SM)).md(px!(type_scale::DISPLAY_MD)))
+                .line_height(Responsive::new(px!(type_scale::DISPLAY_SM_LINE)).md(px!(type_scale::DISPLAY_MD_LINE)).resolve())
                 .font_weight(FontWeight::SemiBold)
                 .letter_spacing(px!(-1.8))
                 .color(|theme: &Theme| theme.on_background),
         )
         .child(
             RichText::new()
-                .with_content("Builder zincirini değiştirirken bileşenin görünümünü ve davranışını aynı bağlamda değerlendirin.")
+                .with_content("Evaluate a component's appearance and behavior in the same context while editing its builder chain.")
                 .width(pct!(100.0))
-                .font_size(15.0)
-                .line_height(px!(24.0))
+                .font_size(type_scale::BODY_LG)
+                .line_height(px!(type_scale::BODY_LG_LINE))
                 .max_width(px!(620.0))
                 .color(|theme: &Theme| theme.on_surface_variant),
         );
@@ -74,19 +75,19 @@ pub fn page(_params: &RouteParams) -> Box<dyn Widget> {
         .min_width(px!(0.0))
         .min_height(Responsive::new(px!(300.0)).md(px!(420.0)))
         .background(Color::NEUTRAL_950)
-        .border(Border::all(1.0, Color::NEUTRAL_800).radius(14.0))
+        .border(Border::all(1.0, Color::NEUTRAL_800).radius(radius::LG))
         .overflow_x(Overflow::Hidden)
         .child(panel_header("src/components/submit.rs", "RUST", true))
         .child(
             Label::new()
                 .selectable(true)
                 .label(
-                    "Button::new()\n    .label(\"Gönder\")\n    .font_weight(FontWeight::SemiBold)\n    .background(|theme: &Theme| theme.primary)\n    .color(|theme: &Theme| theme.on_primary)\n    .padding(Edges::symmetric(18.0, 11.0))\n    .border(Border::all(0.0, Color::TRANSPARENT)\n        .radius(10.0))\n    .hover_style(|style, theme|\n        style.background(theme.inverse_primary)\n    )\n    .on_click(|_ctx| submit())",
+                    "Button::new()\n    .label(\"Send\")\n    .font_weight(FontWeight::SemiBold)\n    .background(|theme: &Theme| theme.primary)\n    .color(|theme: &Theme| theme.on_primary)\n    .padding(Edges::symmetric(18.0, 11.0))\n    .border(Border::all(0.0, Color::TRANSPARENT)\n        .radius(10.0))\n    .hover_style(|style, theme|\n        style.background(theme.inverse_primary)\n    )\n    .on_click(|_ctx| submit())",
                 )
                 .padding(Responsive::new(Edges::all(18.0)).md(Edges::all(24.0)))
                 .font("XenMono")
-                .font_size(13.0)
-                .line_height(px!(21.0))
+                .font_size(type_scale::BODY_MD)
+                .line_height(px!(type_scale::BODY_MD_LINE))
                 .color(Color::NEUTRAL_200),
         );
 
@@ -95,9 +96,9 @@ pub fn page(_params: &RouteParams) -> Box<dyn Widget> {
         .min_width(px!(0.0))
         .min_height(Responsive::new(px!(300.0)).md(px!(420.0)))
         .background(|theme: &Theme| theme.surface_container_low)
-        .border(|theme: &Theme| Border::all(1.0, theme.outline_variant).radius(14.0))
+        .border(|theme: &Theme| Border::all(1.0, theme.outline_variant).radius(radius::LG))
         .overflow_x(Overflow::Hidden)
-        .child(panel_header("Önizleme", "100%", false))
+        .child(panel_header("Preview", "100%", false))
         .child(
             Column::new()
                 .flex_grow(1.0)
@@ -107,7 +108,7 @@ pub fn page(_params: &RouteParams) -> Box<dyn Widget> {
                 .padding(Edges::all(24.0))
                 .child(
                     Button::new()
-                        .label("Gönder")
+                        .label("Send")
                         .font_weight(FontWeight::SemiBold)
                         .background(|theme: &Theme| theme.primary)
                         .color(|theme: &Theme| theme.on_primary)
@@ -119,8 +120,8 @@ pub fn page(_params: &RouteParams) -> Box<dyn Widget> {
                 )
                 .child(
                     Label::new()
-                        .label("Etkileşimli widget")
-                        .font_size(12.0)
+                        .label("Interactive widget")
+                        .font_size(type_scale::BODY_SM)
                         .color(|theme: &Theme| theme.on_surface_variant),
                 ),
         );

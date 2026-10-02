@@ -7,63 +7,31 @@
 [![Rust 1.92+](https://img.shields.io/badge/rust-1.92%2B-blue.svg)](https://www.rust-lang.org)
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 
-XenGui is a retained-mode GUI toolkit written in Rust. It combines a hooks-based component model, Flexbox and Grid layout through [`taffy`](https://github.com/DioxusLabs/taffy), and GPU rendering through [`wgpu`](https://github.com/gfx-rs/wgpu). The same application code can target desktop and WebAssembly.
+XenGui is a retained-mode GUI toolkit for Rust. It combines a hooks-based component model,
+Flexbox and Grid layout through [`taffy`](https://github.com/DioxusLabs/taffy), and a
+[`wgpu`](https://github.com/gfx-rs/wgpu) render backend. The same widget and state APIs target
+native desktop applications and WebAssembly.
 
-[Live demo](https://xengui.vercel.app) | [Documentation](https://xengui.vercel.app/docs) | [API reference](https://docs.rs/xengui) | [Issue tracker](https://github.com/randseas/xengui/issues)
+[Live showcase](https://xengui.vercel.app/showcase) · [Guides](https://xengui.vercel.app/docs) · [API reference](https://docs.rs/xengui) · [Issues](https://github.com/randseas/xengui/issues)
 
 > [!WARNING]
-> XenGui is under active development. Public APIs may change before 1.0; pin dependency versions and review release notes before upgrading production applications.
+> XenGui is under active development. Public APIs may change before 1.0; pin crate versions and
+> review release notes before upgrading production applications.
 
 ## Showcase
 
-[![XenGui Showcase application rendered by XenGui](docs/assets/xengui-showcase.png)](apps/showcase)
-
-This is a real 1600x1000 capture of the [`xengui-showcase`](apps/showcase) example running on XenGui's native `wgpu` surface—not a design mockup. The application brings responsive layout, retained rendering, hooks, themed Material controls, text input, focus and accessibility semantics, Material Symbols, and live component state together in one executable.
+The [live route](https://xengui.vercel.app/showcase) is interactive and lets you inspect
+navigation, text input, focusable controls, responsive layout, theme roles, and state updates. It
+contains no placeholder performance telemetry. The native reference screen is available in
+[`apps/showcase`](apps/showcase).
 
 ```bash
 cargo run -p xengui-showcase
 ```
 
-## Highlights
-
-- Retained widget tree with `component`, `use_state`, effects, resources, and context.
-- Flexbox, CSS Grid, responsive values, scrolling, and split-pane layouts.
-- Declarative themes and interaction-specific styles, including transitions and filters.
-- Built-in controls for text, forms, images, SVG, navigation, menus, tables, and overlays.
-- Instanced and batched `wgpu` pipelines with reusable frame staging for rectangles, text, images, SVG triangles, filters, and shadows.
-- Native windowing and input through `winit`, plus browser support through WebAssembly.
-- Rendering, runtime, routing, animation, clipboard, audio, SVG, and icons split into focused crates.
-
-## Architecture
-
-| Package | Role |
-| --- | --- |
-| [`xengui`](crates/xengui) | Platform-independent widget tree, hooks, layout, styling, and reconciliation. |
-| [`xenframe`](crates/xenframe) | Window creation, event loop, input, IME, theme, and browser integration. |
-| [`xengui-wgpu`](crates/xengui-wgpu) | GPU render backend and window renderer. |
-| [`xen-router`](crates/xen-router) | Client-side routing with browser History API synchronization. |
-| [`xen-router-build`](crates/xen-router-build) | Build-time generator for file-based routes. |
-| [`xen-animation`](crates/xen-animation) | Framework-independent transitions and easing. |
-| [`xen-clipboard`](crates/xen-clipboard) | Asynchronous text clipboard abstraction. |
-| [`xen-audio`](crates/xen-audio) | Framework-independent local audio playback abstraction. |
-| [`xen-svg`](crates/xen-svg) | SVG parsing and triangle tessellation. |
-| [`xengui-icons`](crates/xengui-icons) | Embedded Material Symbols variable icon font and codepoints. |
-| [`xengui-cli`](crates/xengui-cli) | Workspace development, versioning, Git, diagnostics, and release tooling. |
-
-Runnable applications and focused demonstrations live in [`apps`](apps), including the README's [`xengui-showcase`](apps/showcase) reference application.
-
-The renderer's allocation and upload model is documented in [Rendering performance](docs/rendering-performance.md).
-
-## Requirements
-
-- Rust 1.92 or newer, as declared by the workspace MSRV.
-- A graphics adapter and driver supported by `wgpu`.
-- [Trunk](https://trunk-rs.github.io/trunk/) and the `wasm32-unknown-unknown` Rust target for browser builds.
-- The platform audio development package when building the full workspace; Linux builds of `xen-audio` require ALSA development files discoverable through `pkg-config`.
-
 ## Quick start
 
-Create a binary crate and add the application runtime dependencies:
+Create a binary crate and add the runtime, widget, and renderer crates:
 
 ```toml
 [dependencies]
@@ -72,34 +40,40 @@ xenframe = "0.1.2"
 xengui-wgpu = "0.1.2"
 ```
 
+This small focus board demonstrates layout, state, interaction, styling, text input, a checkbox,
+progress, and a button while remaining easy to run:
+
 ```rust
 use xenframe::{App, AppConfig};
 use xengui::*;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut app = App::new(AppConfig {
-        title: "Counter".into(),
-        width: 640,
-        height: 480,
+        title: "Focus Board".into(),
+        width: 760,
+        height: 520,
         ..Default::default()
     });
 
     app.render(|| {
-        let (count, set_count) = use_state(0_i32);
-
+        let (done, set_done) = use_state(false);
         Box::new(
             Column::new()
-                .width(pct!(100))
-                .height(pct!(100))
-                .align_items(Align::Center)
-                .justify_content(JustifyContent::Center)
-                .gap(0, 12)
-                .child(Label::new().label(format!("Count: {count}")))
+                .padding(Edges::all(24.0))
+                .gap(0.0, 16.0)
+                .child(Label::new().label("Today").font_size(28.0))
                 .child(
-                    Button::new()
-                        .label("Increment")
-                        .on_click(move |_| set_count.update(|value| *value += 1)),
-                ),
+                    Row::new()
+                        .align_items(Align::Center)
+                        .gap(12.0, 0.0)
+                        .child(
+                            Checkbox::new()
+                                .checked(done)
+                                .on_change(move |value, _| set_done.set(value)),
+                        )
+                        .child(Label::new().label("Ship a polished XenGui screen")),
+                )
+                .child(ProgressBar::new().value(if done { 1.0 } else { 0.5 })),
         )
     });
 
@@ -108,25 +82,56 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
-Run the application with `cargo run`.
-
-## Run the workspace
-
-From the repository root:
+Run it with `cargo run`. The repository version is available as:
 
 ```bash
-cargo run -p xengui_website
+cargo run -p xengui-quickstart
 ```
 
-For the visual reference application shown above, run:
+## What XenGui provides
+
+- Retained widget identity with components, hooks, effects, resources, and context.
+- Flexbox, CSS Grid, responsive values, scrolling, and split-pane layouts.
+- Theme roles and interaction styles for hover, focus, pressed, and disabled states.
+- Controls for text, forms, images, SVG, navigation, menus, tables, and overlays.
+- Native windowing and input through `winit`, with a WebAssembly browser target.
+- Focused crates for runtime, rendering, routing, animation, clipboard, audio, SVG, and icons.
+
+The renderer's verified allocation and upload behavior is documented in
+[Rendering performance](docs/rendering-performance.md).
+
+## Performance comparisons
+
+The repository includes a repeatable CPU benchmark for full layout and paint orchestration. The
+comparison script builds two Git revisions in detached worktrees, runs the same release workload,
+reports median nanoseconds per frame, and fails when the configured regression budget is exceeded.
+It does not generate or commit synthetic FPS or frame-time data.
 
 ```bash
-cargo run -p xengui-showcase
+./scripts/compare-performance.sh HEAD^ HEAD 10
 ```
 
-Other useful targets include `settings-app` and `pearl`.
+Results are written to `artifacts/performance-comparison.md`, `.jsonl`, and a measured `.svg`
+chart. The repository includes the [latest measured comparison](artifacts/performance-comparison.md).
+Pull requests run the same comparison in CI and upload the results as an artifact.
 
-For a browser build:
+## Repository map
+
+| Package | Responsibility |
+| --- | --- |
+| [`xengui`](crates/xengui) | Widget tree, hooks, layout, styling, input, and reconciliation. |
+| [`xenframe`](crates/xenframe) | Window lifecycle, event loop, IME, themes, and browser integration. |
+| [`xengui-wgpu`](crates/xengui-wgpu) | `wgpu` renderer and window surface integration. |
+| [`xen-router`](crates/xen-router) | Client-side routing and browser History API synchronization. |
+| [`xengui-icons`](crates/xengui-icons) | Embedded Material Symbols font and codepoints. |
+| [`xengui-cli`](crates/xengui-cli) | Workspace checks, versioning, diagnostics, and release tooling. |
+
+Runnable applications live in [`apps`](apps); task-oriented documentation lives at
+[xengui.vercel.app/docs](https://xengui.vercel.app/docs), while docs.rs remains the API reference.
+
+## Development
+
+Run the website locally:
 
 ```bash
 rustup target add wasm32-unknown-unknown
@@ -135,50 +140,20 @@ cd apps/xengui_website
 trunk serve --open
 ```
 
-Trunk serves a local development build and rebuilds it when source files change.
-
-## Development
-
-Install the workspace CLI once, then use it from anywhere inside this checkout:
+Run all workspace quality gates:
 
 ```bash
-cargo install --path crates/xengui-cli
-xengui --help
-```
-
-`xengui run` starts `xengui_website` by default; pass `--package <NAME>` for another application. The `build`, `check`, and `test` commands wrap their Cargo equivalents for the full workspace. Extra Cargo arguments go after `--`.
-
-Version operations discover every workspace package and keep path-dependency requirements synchronized. Mutating operations are previews unless explicitly confirmed:
-
-```bash
-xengui version show
-xengui version check
-xengui version bump minor          # dry run
-xengui version bump minor --write
-xengui version suggest             # explains the recommendation
-xengui version suggest --apply     # explains, then applies
-xengui commit suggest
-xengui release check
-```
-
-The CLI supersedes the former Python version-bump helper. Setup, platform-specific watch, and source-inventory scripts remain in `scripts/` because they serve separate workflows.
-
-Install `cargo-deny` and the cross-platform targets once, then run every local
-quality gate from the repository root with one command:
-
-```bash
-rustup target add wasm32-unknown-unknown aarch64-linux-android x86_64-linux-android
-cargo install --locked cargo-deny
 cargo xtask quality
 ```
 
-The command checks formatting, Clippy, tests, rustdoc, the explicit WebAssembly,
-Android, and current desktop package groups, and dependency policy. CI runs the
-same command on Linux, Windows, and macOS to complete the native compile matrix.
+Regenerate the native application captures after visual changes:
 
-On Linux, a missing `alsa.pc` error means the distribution's ALSA development package and `pkg-config` must be installed before testing `xen-audio` or `pearl`.
+```bash
+./scripts/capture-readme-assets.sh
+```
 
-Contributions are welcome through [issues](https://github.com/randseas/xengui/issues) and pull requests. For substantial changes, open an issue first so the design can be discussed. Please include tests or a reproducible example for behavioral changes.
+CI runs the same direct-window capture command for relevant UI changes. Pull requests fail when
+committed captures are stale; the main branch refreshes changed captures automatically.
 
 ## License
 

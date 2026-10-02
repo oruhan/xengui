@@ -4,3 +4,4 @@ apps/*/dist/
 examples/playground
 /external
 TODO.md
+/benchmarks/*/target

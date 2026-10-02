@@ -5,6 +5,8 @@
 use xenframe::WindowPosition;
 use xenframe::{App, AppConfig};
 
+mod site_tokens;
+
 include!(concat!(env!("OUT_DIR"), "/xen_router_generated.rs"));
 
 // write debug messages directly into the screen
@@ -21,9 +23,9 @@ fn show_debug_overlay(message: &str) {
     };
     let _ = overlay.set_attribute(
         "style",
-        "position:fixed;inset:0;margin:0;background:rgba(0,0,0,0);color:#ff8080;\
-         font:12px/1.5 monospace;padding:16px;white-space:pre-wrap;\
-         z-index:2147483647;overflow:auto;pointer-events:none;",
+        "position:fixed;inset:0;margin:0;background:#140f16;color:#ffb4ab;\
+         font:14px/1.5 monospace;padding:24px;white-space:pre-wrap;\
+         z-index:2147483647;overflow:auto;pointer-events:auto;",
     );
     overlay.set_text_content(Some(message));
     let _ = body.append_child(&overlay);

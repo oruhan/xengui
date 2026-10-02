@@ -1,4 +1,5 @@
 use std::time::Duration;
+use crate::site_tokens::{type_scale, radius};
 use xen_router::RouteParams;
 use xengui::*;
 
@@ -7,7 +8,7 @@ fn example_card(kind: &str, title: &str, desc: &str, preview: impl Widget + 'sta
         .flex_basis(Responsive::new(pct!(100.0)).md(pct!(48.0)).lg(pct!(31.0)))
         .min_width(px!(0.0))
         .background(|theme: &Theme| theme.surface)
-        .border(|theme: &Theme| Border::all(1.0, theme.outline_variant).radius(14.0))
+        .border(|theme: &Theme| Border::all(1.0, theme.outline_variant).radius(radius::LG))
         .overflow_x(Overflow::Hidden)
         .transition_all(Transition::new(Duration::from_millis(160)).easing(Easing::EaseOut))
         .hover_style(|style: StylePatch, theme: &Theme| {
@@ -31,7 +32,7 @@ fn example_card(kind: &str, title: &str, desc: &str, preview: impl Widget + 'sta
                 .child(
                     Label::new()
                         .label(kind)
-                        .font_size(10.0)
+                        .font_size(type_scale::LABEL_SM)
                         .font_weight(FontWeight::SemiBold)
                         .letter_spacing(px!(1.0))
                         .color(|theme: &Theme| theme.primary),
@@ -40,7 +41,7 @@ fn example_card(kind: &str, title: &str, desc: &str, preview: impl Widget + 'sta
                     Label::new()
                         .label(title)
                         .font_weight(FontWeight::SemiBold)
-                        .font_size(17.0)
+                        .font_size(type_scale::TITLE_MD)
                         .color(|theme: &Theme| theme.on_background),
                 )
                 .child(
@@ -48,8 +49,8 @@ fn example_card(kind: &str, title: &str, desc: &str, preview: impl Widget + 'sta
                         .with_content(desc)
                         .width(pct!(100.0))
                         .max_width(px!(420.0))
-                        .font_size(13.0)
-                        .line_height(px!(20.0))
+                        .font_size(type_scale::BODY_MD)
+                        .line_height(px!(type_scale::BODY_MD_LINE))
                         .color(|theme: &Theme| theme.on_surface_variant),
                 ),
         )
@@ -66,30 +67,30 @@ pub fn page(_params: &RouteParams) -> Box<dyn Widget> {
         )
         .child(
             Label::new()
-                .label("WIDGET GALERİSİ")
-                .font_size(11.0)
+                .label("COMPONENT GALLERY")
+                .font_size(type_scale::LABEL_SM)
                 .font_weight(FontWeight::SemiBold)
                 .letter_spacing(px!(1.1))
                 .color(|theme: &Theme| theme.primary),
         )
         .child(
             RichText::new()
-                .with_content("Temel parçalar, gerçek davranışlarıyla.")
+                .with_content("Core building blocks, with real behavior.")
                 .width(pct!(100.0))
                 .max_width(px!(760.0))
-                .font_size(Responsive::new(px!(36.0)).md(px!(52.0)))
-                .line_height(Responsive::new(px!(41.0)).md(px!(58.0)).resolve())
+                .font_size(Responsive::new(px!(type_scale::DISPLAY_SM)).md(px!(type_scale::DISPLAY_MD)))
+                .line_height(Responsive::new(px!(type_scale::DISPLAY_SM_LINE)).md(px!(type_scale::DISPLAY_MD_LINE)).resolve())
                 .font_weight(FontWeight::SemiBold)
                 .letter_spacing(px!(-1.8))
                 .color(|theme: &Theme| theme.on_background),
         )
         .child(
             RichText::new()
-                .with_content("XenGui widget'larını tema, input ve layout davranışlarıyla birlikte inceleyin. Bunlar statik çizimler değil; aşağıdaki kontroller etkileşimlidir.")
+                .with_content("Inspect XenGui widgets together with their theme, input, and layout behavior. These controls are interactive, not static mockups.")
                 .width(pct!(100.0))
                 .max_width(px!(680.0))
-                .font_size(15.0)
-                .line_height(px!(24.0))
+                .font_size(type_scale::BODY_LG)
+                .line_height(px!(type_scale::BODY_LG_LINE))
                 .color(|theme: &Theme| theme.on_surface_variant),
         );
 
@@ -105,9 +106,9 @@ pub fn page(_params: &RouteParams) -> Box<dyn Widget> {
         .child(example_card(
             "ACTION",
             "Button",
-            "Hover, pressed ve focus durumlarını aynı stil zincirinde yönetin.",
+            "Style hover, pressed, and focus states in one builder chain.",
             Button::new()
-                .label("Değişiklikleri kaydet")
+                .label("Save changes")
                 .background(|theme: &Theme| theme.primary)
                 .color(|theme: &Theme| theme.on_primary)
                 .padding(Edges::symmetric(16.0, 10.0))
@@ -116,54 +117,54 @@ pub fn page(_params: &RouteParams) -> Box<dyn Widget> {
         .child(example_card(
             "BOOLEAN",
             "Switch",
-            "Kontrollü açık/kapalı durumu ve değişim callback'i.",
+            "A controlled on/off value with a change callback.",
             Row::new()
                 .align_items(Align::Center)
                 .gap(12.0, 0.0)
                 .child(Switch::new().checked(true))
-                .child(Label::new().label("Bildirimler").font_size(14.0)),
+                .child(Label::new().label("Notifications").font_size(type_scale::BODY_MD)),
         ))
         .child(example_card(
             "SELECTION",
             "RadioButton",
-            "Tek seçimli gruplar için klavye ve pointer girdisi.",
+            "Keyboard and pointer input for single-choice groups.",
             Row::new()
                 .align_items(Align::Center)
                 .gap(12.0, 0.0)
                 .child(RadioButton::new().selected(true))
-                .child(Label::new().label("Kararlı sürüm").font_size(14.0)),
+                .child(Label::new().label("Stable channel").font_size(type_scale::BODY_MD)),
         ))
         .child(example_card(
             "INPUT",
             "TextBox",
-            "Seçim, placeholder, IME ve submit akışı tek kontrolde.",
+            "Selection, placeholder, IME, and submit behavior in one control.",
             TextBox::new()
-                .placeholder("proje-adi")
+                .placeholder("project-name")
                 .width(Responsive::new(pct!(100.0)).md(px!(220.0))),
         ))
         .child(example_card(
             "FEEDBACK",
             "ProgressBar",
-            "Belirli veya uygulama state'ine bağlı ilerleme göstergesi.",
+            "Determinate progress driven by application state.",
             Column::new()
                 .width(Responsive::new(pct!(100.0)).md(px!(220.0)))
                 .gap(0.0, 10.0)
                 .child(ProgressBar::new().value(0.68))
                 .child(
                     Label::new()
-                        .label("Derleniyor · %68")
-                        .font_size(12.0)
+                        .label("Building · 68%")
+                        .font_size(type_scale::BODY_SM)
                         .color(|theme: &Theme| theme.on_surface_variant),
                 ),
         ))
         .child(example_card(
             "STATUS",
             "Badge + Kbd",
-            "Yoğun arayüzlerde kısa durum ve klavye ipucu.",
+            "Compact status and keyboard hints for dense interfaces.",
             Row::new()
                 .align_items(Align::Center)
                 .gap(12.0, 0.0)
-                .child(Badge::new().label("Kararlı"))
+                .child(Badge::new().label("Stable"))
                 .child(Kbd::new().label("Ctrl K")),
         ));
 

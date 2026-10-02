@@ -497,7 +497,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     )
                     .child(
                         Label::new()
-                            .label("wgpu renderer online")
+                            .label("Rendered by XenGui")
                             .font_size(px!(10.0)),
                     ),
             );
@@ -508,13 +508,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .placeholder("Search components…")
             .accessible_label("Search components")
             .width(px!(250.0))
-            .height(px!(40.0))
-            .padding(Edges::symmetric(15.0, 0.0))
-            .font_size(px!(12.0))
+            .height(px!(56.0))
+            .padding(Edges::symmetric(18.0, 0.0))
+            .font_size(px!(14.0))
             .line_height(px!(20.0))
             .background(SURFACE_LOW)
             .color(TEXT)
-            .border(Border::all(1.0, OUTLINE).radius(20.0))
+            .border(Border::all(1.0, OUTLINE).radius(28.0))
+            .focus_style(|style, _| style.border(Border::all(2.0, PRIMARY).radius(28.0)))
             .on_change(move |value, _| set_query.set(value.to_owned()));
 
         let set_preview = set_preview_count.clone();
@@ -688,92 +689,42 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             ))
             .child(capability_card(
                 "Rendering backend",
-                "wgpu accelerated",
+                "wgpu render backend",
                 codepoints::MEMORY,
                 AMBER,
             ));
-
-        let frame_heights = [
-            31.0, 47.0, 38.0, 56.0, 44.0, 62.0, 53.0, 72.0, 50.0, 67.0, 46.0, 58.0, 76.0,
-            63.0, 70.0, 54.0, 81.0, 66.0, 73.0, 59.0, 78.0, 69.0, 84.0, 74.0,
-        ];
-        let mut bars = View::new()
-            .display(Display::Flex)
-            .flex_direction(FlexDirection::Row)
-            .align_items(Align::End)
-            .gap(5.0, 0.0)
-            .height(px!(98.0));
-        for (index, height) in frame_heights.into_iter().enumerate() {
-            bars = bars.child(
-                View::new()
-                    .flex_grow(1.0)
-                    .height(px!(height))
-                    .background(if index > 20 { CYAN } else { PRIMARY })
-                    .border(Border::all(0.0, Color::TRANSPARENT).radius(4.0)),
-            );
-        }
 
         let renderer_panel = card()
             .flex_grow(1.0)
             .min_width(px!(520.0))
             .padding(Edges::all(19.0))
             .gap(0.0, 17.0)
+            .child(section_title(
+                "Regression-ready performance workflow",
+                "Commit comparisons come from the benchmark script, never placeholder data",
+            ))
             .child(
-                View::new()
-                    .display(Display::Flex)
-                    .flex_direction(FlexDirection::Row)
-                    .align_items(Align::Center)
-                    .justify_content(JustifyContent::SpaceBetween)
-                    .child(section_title(
-                        "Frame pacing preview",
-                        "Illustrative telemetry rendered with ordinary XenGui views",
+                Column::new()
+                    .gap(0.0, 10.0)
+                    .child(pipeline_node(
+                        "Same workload",
+                        "identical release build and iteration count",
+                        codepoints::REPEAT,
+                        PRIMARY,
                     ))
-                    .child(
-                        View::new()
-                            .display(Display::Flex)
-                            .flex_direction(FlexDirection::Row)
-                            .align_items(Align::Center)
-                            .gap(6.0, 0.0)
-                            .padding(Edges::symmetric(10.0, 5.0))
-                            .background(GREEN.with_alpha(24))
-                            .border(Border::all(1.0, GREEN.with_alpha(50)).radius(15.0))
-                            .color(GREEN)
-                            .child(
-                                View::new()
-                                    .width(px!(6.0))
-                                    .height(px!(6.0))
-                                    .background(GREEN)
-                                    .border(Border::all(0.0, Color::TRANSPARENT).radius(3.0)),
-                            )
-                            .child(Label::new().label("LIVE UI").font_size(px!(9.0))),
-                    ),
-            )
-            .child(bars)
-            .child(
-                View::new()
-                    .display(Display::Flex)
-                    .flex_direction(FlexDirection::Row)
-                    .justify_content(JustifyContent::SpaceBetween)
-                    .child(
-                        Label::new()
-                            .label("retained diff")
-                            .font_size(px!(10.0))
-                            .color(MUTED),
-                    )
-                    .child(
-                        Label::new()
-                            .label("layout")
-                            .font_size(px!(10.0))
-                            .color(MUTED),
-                    )
-                    .child(
-                        Label::new()
-                            .label("paint + present")
-                            .font_size(px!(10.0))
-                            .color(MUTED),
-                    ),
-            )
-            .child(ProgressBar::new().value(0.76).bar_height(px!(4.0)));
+                    .child(pipeline_node(
+                        "Comparable output",
+                        "median frame orchestration time per commit",
+                        codepoints::QUERY_STATS,
+                        CYAN,
+                    ))
+                    .child(pipeline_node(
+                        "Regression threshold",
+                        "non-zero exit when the configured budget is exceeded",
+                        codepoints::WARNING,
+                        AMBER,
+                    )),
+            );
 
         let set_gpu = set_gpu_debug.clone();
         let set_layout = set_auto_layout.clone();
@@ -868,14 +819,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     .child(icon(codepoints::CHECK_CIRCLE, 15.0, true))
                     .child(
                         Label::new()
-                            .label("All systems operational")
+                            .label("Interactive XenGui reference screen")
                             .font_size(px!(10.0)),
                     ),
             )
             .child(
                 Label::new()
                     .label(if query_for_button.is_empty() {
-                        "XenGui showcase · native wgpu surface"
+                        "XenGui showcase · current build"
                     } else {
                         "Component search is active"
                     })

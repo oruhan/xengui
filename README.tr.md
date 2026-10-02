@@ -7,53 +7,31 @@
 [![Rust 1.92+](https://img.shields.io/badge/rust-1.92%2B-blue.svg)](https://www.rust-lang.org)
 [![Lisans: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 
-XenGui, Rust ile yazılmış retained-mode bir GUI araç takımıdır. Hook tabanlı bir bileşen modelini, [`taffy`](https://github.com/DioxusLabs/taffy) üzerinden Flexbox ve Grid yerleşimini ve [`wgpu`](https://github.com/gfx-rs/wgpu) üzerinden GPU render desteğini bir araya getirir. Aynı uygulama kodu masaüstünü ve WebAssembly'yi hedefleyebilir.
+XenGui, Rust için retained-mode bir GUI araç takımıdır. Hook tabanlı bir component modelini,
+[`taffy`](https://github.com/DioxusLabs/taffy) üzerinden Flexbox ve Grid layout'u ve
+[`wgpu`](https://github.com/gfx-rs/wgpu) render backend'ini bir araya getirir. Aynı widget ve state
+API'leri native masaüstü uygulamalarını ve WebAssembly'yi hedefler.
 
-[Canlı demo](https://xengui.vercel.app) | [Dokümantasyon](https://xengui.vercel.app/docs) | [API referansı](https://docs.rs/xengui) | [Sorun takipçisi](https://github.com/randseas/xengui/issues)
+[Canlı showcase](https://xengui.vercel.app/showcase) · [Rehberler](https://xengui.vercel.app/docs) · [API referansı](https://docs.rs/xengui) · [Sorunlar](https://github.com/randseas/xengui/issues)
 
 > [!WARNING]
-> XenGui aktif olarak geliştirilmektedir. Public API'ler 1.0 sürümünden önce değişebilir; üretim uygulamalarını yükseltmeden önce bağımlılık sürümlerini sabitleyin ve sürüm notlarını inceleyin.
+> XenGui aktif olarak geliştirilmektedir. Public API'ler 1.0'dan önce değişebilir; crate
+> sürümlerini sabitleyin ve üretim uygulamalarını yükseltmeden önce sürüm notlarını inceleyin.
 
-## Öne çıkanlar
+## Showcase
 
-- `component`, `use_state`, effect, resource ve context destekli retained widget ağacı.
-- Flexbox, CSS Grid, responsive değerler, scrolling ve bölünmüş panel yerleşimleri.
-- Transition ve filter dahil olmak üzere declarative temalar ve etkileşim durumuna özel stiller.
-- Metin, form, görsel, SVG, navigasyon, menü, tablo ve overlay için yerleşik kontroller.
-- Dikdörtgen, metin, görsel, SVG üçgenleri, filter ve shadow işlemleri için yeniden kullanılabilir frame staging destekli instanced ve batched `wgpu` pipeline'ları.
-- `winit` üzerinden native pencere ve input yönetimi; WebAssembly üzerinden tarayıcı desteği.
-- Rendering, runtime, routing, animasyon, clipboard, ses, SVG ve ikon işlevlerini birbirinden ayıran odaklı crate'ler.
+[Canlı rota](https://xengui.vercel.app/showcase) etkileşimlidir; navigasyon, metin girdisi,
+odaklanabilir kontroller, responsive layout, tema rolleri ve state güncellemeleri incelenebilir.
+Placeholder performans telemetrisi içermez. Native referans ekranı
+[`apps/showcase`](apps/showcase) altında bulunur.
 
-## Mimari
-
-| Paket | Görev |
-| --- | --- |
-| [`xengui`](crates/xengui) | Platformdan bağımsız widget ağacı, hook'lar, layout, styling ve reconciliation. |
-| [`xenframe`](crates/xenframe) | Pencere oluşturma, event loop, input, IME, tema ve tarayıcı entegrasyonu. |
-| [`xengui-wgpu`](crates/xengui-wgpu) | GPU render backend'i ve pencere renderer'ı. |
-| [`xen-router`](crates/xen-router) | Tarayıcı History API senkronizasyonuna sahip istemci taraflı routing. |
-| [`xen-router-build`](crates/xen-router-build) | Dosya tabanlı route'lar için build-time generator. |
-| [`xen-animation`](crates/xen-animation) | Framework'ten bağımsız transition ve easing işlevleri. |
-| [`xen-clipboard`](crates/xen-clipboard) | Asenkron metin clipboard soyutlaması. |
-| [`xen-audio`](crates/xen-audio) | Framework'ten bağımsız yerel ses oynatma soyutlaması. |
-| [`xen-svg`](crates/xen-svg) | SVG parsing ve triangle tessellation. |
-| [`xengui-icons`](crates/xengui-icons) | Gömülü Material Symbols variable icon fontu ve codepoint'leri. |
-| [`xengui-cli`](crates/xengui-cli) | Workspace geliştirme, sürümleme, Git, tanılama ve yayın araçları. |
-
-Çalıştırılabilir uygulamalar [`apps`](apps), belirli özelliklere odaklanan örnekler ise [`examples`](examples) dizininde bulunur.
-
-Renderer'ın allocation ve upload modeli [Rendering performance](docs/rendering-performance.md) belgesinde açıklanmıştır.
-
-## Gereksinimler
-
-- Workspace MSRV tanımına uygun olarak Rust 1.92 veya üzeri.
-- `wgpu` tarafından desteklenen bir grafik adaptörü ve sürücü.
-- Tarayıcı build'leri için [Trunk](https://trunk-rs.github.io/trunk/) ve `wasm32-unknown-unknown` Rust target'ı.
-- Workspace'in tamamını derlemek için platformun ses geliştirme paketi; Linux'ta `xen-audio`, `pkg-config` tarafından bulunabilen ALSA geliştirme dosyalarını gerektirir.
+```bash
+cargo run -p xengui-showcase
+```
 
 ## Hızlı başlangıç
 
-Bir binary crate oluşturun ve uygulama runtime bağımlılıklarını ekleyin:
+Bir binary crate oluşturun ve runtime, widget ve renderer crate'lerini ekleyin:
 
 ```toml
 [dependencies]
@@ -62,34 +40,40 @@ xenframe = "0.1.2"
 xengui-wgpu = "0.1.2"
 ```
 
+Bu küçük odak panosu; layout, state, interaction, styling, metin girdisi, checkbox, progress ve
+button kullanımını kolayca çalıştırılabilir bir örnek içinde gösterir:
+
 ```rust
 use xenframe::{App, AppConfig};
 use xengui::*;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut app = App::new(AppConfig {
-        title: "Counter".into(),
-        width: 640,
-        height: 480,
+        title: "Focus Board".into(),
+        width: 760,
+        height: 520,
         ..Default::default()
     });
 
     app.render(|| {
-        let (count, set_count) = use_state(0_i32);
-
+        let (done, set_done) = use_state(false);
         Box::new(
             Column::new()
-                .width(pct!(100))
-                .height(pct!(100))
-                .align_items(Align::Center)
-                .justify_content(JustifyContent::Center)
-                .gap(0, 12)
-                .child(Label::new().label(format!("Count: {count}")))
+                .padding(Edges::all(24.0))
+                .gap(0.0, 16.0)
+                .child(Label::new().label("Today").font_size(28.0))
                 .child(
-                    Button::new()
-                        .label("Increment")
-                        .on_click(move |_| set_count.update(|value| *value += 1)),
-                ),
+                    Row::new()
+                        .align_items(Align::Center)
+                        .gap(12.0, 0.0)
+                        .child(
+                            Checkbox::new()
+                                .checked(done)
+                                .on_change(move |value, _| set_done.set(value)),
+                        )
+                        .child(Label::new().label("Ship a polished XenGui screen")),
+                )
+                .child(ProgressBar::new().value(if done { 1.0 } else { 0.5 })),
         )
     });
 
@@ -98,19 +82,56 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
-Uygulamayı `cargo run` ile çalıştırın.
-
-## Workspace'i çalıştırma
-
-Repository root dizininden:
+`cargo run` ile çalıştırın. Repository sürümü şu komutla kullanılabilir:
 
 ```bash
-cargo run -p xengui_website
+cargo run -p xengui-quickstart
 ```
 
-Diğer kullanışlı hedefler arasında `settings-app` ve `pearl` bulunur.
+## XenGui neler sağlar
 
-Tarayıcı build'i için:
+- Component, hook, effect, resource ve context destekli retained widget kimliği.
+- Flexbox, CSS Grid, responsive değerler, scrolling ve bölünmüş panel layout'ları.
+- Hover, focus, pressed ve disabled durumları için tema rolleri ve interaction stilleri.
+- Metin, form, görsel, SVG, navigasyon, menü, tablo ve overlay kontrolleri.
+- `winit` üzerinden native pencere ve input yönetimi ile WebAssembly tarayıcı hedefi.
+- Runtime, rendering, routing, animasyon, clipboard, ses, SVG ve ikonlar için odaklı crate'ler.
+
+Renderer'ın doğrulanmış allocation ve upload davranışı
+[Rendering performance](docs/rendering-performance.md) belgesinde açıklanır.
+
+## Performans karşılaştırmaları
+
+Repository, tam layout ve paint orchestration için tekrar üretilebilir bir CPU benchmark'ı içerir.
+Karşılaştırma script'i iki Git revision'ını detached worktree'lerde build eder, aynı release iş yükünü
+çalıştırır, frame başına medyan nanosaniyeyi raporlar ve yapılandırılmış regresyon bütçesi aşılırsa
+başarısız olur. Sentetik FPS veya frame-time verisi üretmez ya da commit etmez.
+
+```bash
+./scripts/compare-performance.sh HEAD^ HEAD 10
+```
+
+Sonuçlar `artifacts/performance-comparison.md`, `.jsonl` ve ölçülmüş `.svg` grafik dosyalarına
+yazılır. Repository [en güncel ölçülmüş karşılaştırmayı](artifacts/performance-comparison.md) içerir.
+Pull request'ler aynı karşılaştırmayı CI içinde çalıştırır ve sonuçları artifact olarak yükler.
+
+## Repository haritası
+
+| Paket | Sorumluluk |
+| --- | --- |
+| [`xengui`](crates/xengui) | Widget ağacı, hook'lar, layout, styling, input ve reconciliation. |
+| [`xenframe`](crates/xenframe) | Pencere yaşam döngüsü, event loop, IME, temalar ve tarayıcı entegrasyonu. |
+| [`xengui-wgpu`](crates/xengui-wgpu) | `wgpu` renderer'ı ve pencere surface entegrasyonu. |
+| [`xen-router`](crates/xen-router) | Client-side routing ve tarayıcı History API senkronizasyonu. |
+| [`xengui-icons`](crates/xengui-icons) | Gömülü Material Symbols fontu ve codepoint'leri. |
+| [`xengui-cli`](crates/xengui-cli) | Workspace kontrolleri, sürümleme, tanılama ve yayın araçları. |
+
+Çalıştırılabilir uygulamalar [`apps`](apps) altında yer alır; görev odaklı dokümantasyon
+[xengui.vercel.app/docs](https://xengui.vercel.app/docs) adresindedir, docs.rs ise API referansı olarak kalır.
+
+## Geliştirme
+
+Website'i yerelde çalıştırın:
 
 ```bash
 rustup target add wasm32-unknown-unknown
@@ -119,24 +140,21 @@ cd apps/xengui_website
 trunk serve --open
 ```
 
-Trunk yerel bir development build sunar ve kaynak dosyalar değiştiğinde yeniden build alır.
-
-## Geliştirme
-
-Standart kalite kontrollerini repository root dizininden çalıştırın:
+Tüm workspace kalite kontrollerini çalıştırın:
 
 ```bash
-cargo fmt --all --check
-cargo check --workspace
-cargo test --workspace
-cargo clippy --workspace --all-targets -- -D warnings
+cargo xtask quality
 ```
 
-GPU kullanılabilirliği ve target'a özel bağımlılıklar native veya WebAssembly kontrollerini etkileyebilir. Rendering kodunu değiştirirken hem native bir örneği hem de tarayıcı build'ini test edin.
+Görsel değişikliklerden sonra native uygulama yakalamalarını yeniden üretin:
 
-Linux'ta `alsa.pc` dosyasının bulunamadığını belirten bir hata, `xen-audio` veya `pearl` testlerinden önce dağıtımın ALSA geliştirme paketinin ve `pkg-config` aracının kurulması gerektiği anlamına gelir.
+```bash
+./scripts/capture-readme-assets.sh
+```
 
-Katkılar [issue'lar](https://github.com/randseas/xengui/issues) ve pull request'ler aracılığıyla kabul edilir. Kapsamlı değişikliklerde tasarımın tartışılabilmesi için önce bir issue açın. Davranış değişikliklerine test veya yeniden üretilebilir bir örnek ekleyin.
+CI, ilgili UI değişikliklerinde aynı doğrudan pencere yakalama komutunu çalıştırır. Pull request'ler
+commit edilmiş yakalamalar güncel değilse başarısız olur; main branch değişen yakalamaları otomatik
+olarak yeniler.
 
 ## Lisans
 

@@ -4754,6 +4754,15 @@ name = "xengui-icons"
 version = "0.1.0"
 
 [[package]]
+name = "xengui-quickstart"
+version = "0.1.0"
+dependencies = [
+ "env_logger",
+ "xenframe",
+ "xengui",
+]
+
+[[package]]
 name = "xengui-showcase"
 version = "0.1.0"
 dependencies = [

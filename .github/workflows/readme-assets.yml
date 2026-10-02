@@ -1,0 +1,81 @@
+name: README visual assets
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "apps/showcase/**"
+      - "apps/quickstart/**"
+      - "crates/xengui/**"
+      - "crates/xengui-wgpu/**"
+      - "crates/xenframe/**"
+      - "scripts/capture-readme-assets.sh"
+      - "Cargo.lock"
+  pull_request:
+    branches: [main]
+    paths:
+      - "apps/showcase/**"
+      - "apps/quickstart/**"
+      - "crates/xengui/**"
+      - "crates/xengui-wgpu/**"
+      - "crates/xenframe/**"
+      - "scripts/capture-readme-assets.sh"
+      - "Cargo.lock"
+
+permissions:
+  contents: write
+
+jobs:
+  verify-readme-images:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Install capture dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes imagemagick libwayland-dev libx11-xcb-dev libxkbcommon-dev pkg-config x11-utils xvfb
+      - name: Regenerate README images
+        run: ./scripts/capture-readme-assets.sh
+      - name: Detect generated image changes
+        run: git add --intent-to-add docs/assets/xengui-showcase.png docs/assets/xengui-quickstart.png
+      - name: Verify pull request images match the current build
+        if: github.event_name == 'pull_request'
+        run: git diff --exit-code -- docs/assets/xengui-showcase.png docs/assets/xengui-quickstart.png
+      - name: Commit current main-branch images
+        if: github.event_name == 'push'
+        run: |
+          if git diff --quiet -- docs/assets/xengui-showcase.png docs/assets/xengui-quickstart.png; then
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/assets/xengui-showcase.png docs/assets/xengui-quickstart.png
+          git commit -m "docs: refresh README application screenshots"
+          git push
+      - name: Upload generated images
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: current-readme-images
+          path: docs/assets/*.png
+
+  compare-performance:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Compare base and head frame orchestration
+        run: ./scripts/compare-performance.sh "${{ github.event.pull_request.base.sha }}" "${{ github.event.pull_request.head.sha }}" 10
+      - name: Upload performance comparison
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: performance-comparison
+          path: artifacts/performance-comparison.*

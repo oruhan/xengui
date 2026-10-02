@@ -1,4 +1,5 @@
 use std::time::Duration;
+use crate::site_tokens::{radius, type_scale};
 use xen_router::RouteParams;
 use xengui::*;
 
@@ -15,32 +16,42 @@ struct ChatMessage {
 }
 
 const CONVERSATIONS: &[&str] = &[
-    "XenGui responsive API tasarımı",
-    "wgpu render backend soruları",
-    "Layout motoru hata ayıklama",
-    "Material Design 3 renk paleti",
-    "Animasyon geçiş süreleri",
+    "Responsive layout API",
+    "Renderer architecture",
+    "Layout debugging",
+    "Material color roles",
+    "Interaction motion",
 ];
 
-fn sidebar_conversation(title: &str, collapsed: bool) -> View {
-    let mut item = View::new()
-        .display(Display::Flex)
-        .flex_direction(FlexDirection::Row)
+fn sidebar_conversation(
+    title: &'static str,
+    collapsed: bool,
+    selected: bool,
+    on_click: impl FnMut(&mut EventCtx) + 'static,
+) -> Button {
+    let mut item = Button::new()
+        .label(if collapsed { "•" } else { title })
+        .accessible_label(title)
+        .width(pct!(100.0))
+        .text_align(TextAlign::Start)
         .align_items(Align::Center)
         .padding(Edges::symmetric(12, 10))
+        .background(move |theme: &Theme| {
+            if selected { theme.surface_container_high } else { Color::TRANSPARENT }
+        })
+        .color(|theme: &Theme| theme.on_surface)
         .border(|theme: &Theme| Border::all(1, Color::TRANSPARENT).radius(theme.radius_md))
         .transition_colors(Transition::new(Duration::from_millis(120)).easing(Easing::EaseOut))
-        .hover_style(|ctx: StylePatch, theme: &Theme| ctx.background(theme.surface_container_high));
-
-    if !collapsed {
-        item = item.child(
-            Label::new()
-                .label(title)
-                .font_size(13)
-                .color(|theme: &Theme| theme.on_surface),
-        );
+        .hover_style(|ctx: StylePatch, theme: &Theme| ctx.background(theme.surface_container_high))
+        .focus_style(|ctx: StylePatch, theme: &Theme| {
+            ctx.border(Border::all(2, theme.primary).radius(theme.radius_md))
+        })
+        .on_click(on_click);
+    if collapsed {
+        item = item.font_size(type_scale::TITLE_LG).text_align(TextAlign::Center);
+    } else {
+        item = item.font_size(type_scale::BODY_MD);
     }
-
     item
 }
 
@@ -56,8 +67,8 @@ fn message_bubble(message: &ChatMessage) -> View {
         .child(
             Label::new()
                 .label(message.text.clone())
-                .font_size(14)
-                .line_height(px!(21.0))
+                .font_size(type_scale::BODY_MD)
+                .line_height(px!(type_scale::BODY_MD_LINE))
                 .color(|theme: &Theme| theme.on_surface),
         );
 
@@ -112,6 +123,7 @@ impl Render for ShowcasePage {
         }]);
         let (draft, set_draft) = use_state(String::new());
         let (collapsed, set_collapsed) = use_state(false);
+        let (selected_conversation, set_selected_conversation) = use_state(0usize);
 
         // Small screens default to a collapsed sidebar unless the user
         // explicitly opened it, matching a typical mobile chat layout.
@@ -132,9 +144,21 @@ impl Render for ShowcasePage {
             .overflow_y(Overflow::Auto)
             .flex_grow(1.0);
 
-        for title in CONVERSATIONS {
-            conversation_list =
-                conversation_list.child(sidebar_conversation(title, effective_collapsed));
+        for (index, title) in CONVERSATIONS.iter().enumerate() {
+            let set_selected = set_selected_conversation.clone();
+            let set_messages_for_conversation = set_messages.clone();
+            conversation_list = conversation_list.child(sidebar_conversation(
+                title,
+                effective_collapsed,
+                selected_conversation == index,
+                move |_| {
+                    set_selected.set(index);
+                    set_messages_for_conversation.set(vec![ChatMessage {
+                        role: Role::Assistant,
+                        text: format!("You opened the {title} example."),
+                    }]);
+                },
+            ));
         }
 
         let toggle_icon = if effective_collapsed { ">" } else { "<" };
@@ -165,7 +189,7 @@ impl Render for ShowcasePage {
         } else {
             View::new().padding(Edges::only(12, 0, 12, 8)).child(
                 Button::new()
-                    .label("+ Yeni Sohbet")
+                    .label("+ New conversation")
                     .background(|theme: &Theme| theme.primary)
                     .color(|theme: &Theme| theme.on_primary)
                     .padding(Edges::symmetric(0, 10))
@@ -174,7 +198,7 @@ impl Render for ShowcasePage {
                     .on_click(move |_ctx| {
                         set_messages_new.set(vec![ChatMessage {
                             role: Role::Assistant,
-                            text: "Yeni bir sohbete başladın.".to_string(),
+                            text: "A new local demo conversation is ready.".to_string(),
                         }]);
                     }),
             )
@@ -208,28 +232,28 @@ impl Render for ShowcasePage {
                     .child(
                         Label::new()
                             .label("XenGui Assistant")
-                            .font_size(14.0)
+                            .font_size(type_scale::TITLE_SM)
                             .font_weight(FontWeight::SemiBold),
                     )
                     .child(
                         Label::new()
-                            .label("Canlı uygulama örneği")
-                            .font_size(11.0)
+                            .label("Interactive application example")
+                            .font_size(type_scale::LABEL_SM)
                             .color(|theme: &Theme| theme.on_surface_variant),
                     ),
             )
             .child(
                 Button::new()
-                    .label("Yeni sohbet")
-                    .font_size(12.0)
+                    .label("New conversation")
+                    .font_size(type_scale::LABEL_MD)
                     .background(Color::TRANSPARENT)
                     .color(|theme: &Theme| theme.on_surface)
                     .padding(Edges::symmetric(11.0, 8.0))
-                    .border(|theme: &Theme| Border::all(1.0, theme.outline_variant).radius(8.0))
+                    .border(|theme: &Theme| Border::all(1.0, theme.outline_variant).radius(radius::SM))
                     .on_click(move |_ctx| {
                         set_messages_mobile.set(vec![ChatMessage {
                             role: Role::Assistant,
-                            text: "Yeni bir sohbete başladın.".to_string(),
+                            text: "A new local demo conversation is ready.".to_string(),
                         }]);
                     }),
             );
@@ -272,7 +296,7 @@ impl Render for ShowcasePage {
             });
             next.push(ChatMessage {
                 role: Role::Assistant,
-                text: "api.reply_message".to_string(),
+                text: "This response is generated locally to demonstrate XenGui state updates; no remote service is called.".to_string(),
             });
             set_messages_send.set(next);
             set_draft_send.set(String::new());
@@ -303,11 +327,12 @@ impl Render for ShowcasePage {
             )
             .child(
                 Button::new()
-                    .label(if mobile { "↑" } else { "Gönder" })
+                    .label(if mobile { "↑" } else { "Send" })
                     .background(|theme: &Theme| theme.primary)
                     .color(|theme: &Theme| theme.on_primary)
                     .padding(Edges::symmetric(18, 10))
                     .border(|theme: &Theme| Border::all(1, theme.primary).radius(theme.radius_xl))
+                    .transform_origin(TransformOrigin::CENTER)
                     .transition_all(
                         Transition::new(Duration::from_millis(150)).easing(Easing::EaseInOut),
                     )
