@@ -535,7 +535,7 @@ impl View {
     /// view's content size changes, instead of preserving the previous
     /// scroll position. Used by DevTools' log view so newly appended rows
     /// are always visible without the user scrolling manually.
-    pub(super) fn pin_scroll_to_bottom(mut self, pin: bool) -> Self {
+    pub fn pin_scroll_to_bottom(mut self, pin: bool) -> Self {
         self.pin_scroll_bottom = pin;
         self
     }

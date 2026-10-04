@@ -13,22 +13,205 @@ use web_time::Instant;
 use winit::window::Window;
 
 #[cfg(target_os = "android")]
-fn sync_android_safe_area(window: &Window) -> bool {
+#[derive(Clone, Copy, Debug)]
+struct AndroidPhysicalInsets {
+    top: i32,
+    right: i32,
+    bottom: i32,
+    left: i32,
+}
+
+#[cfg(target_os = "android")]
+#[allow(unsafe_code)]
+fn android_window_insets(event_loop: &ActiveEventLoop) -> Option<AndroidPhysicalInsets> {
+    use jni::{
+        JavaVM, jni_sig, jni_str,
+        objects::{JObject, JValue},
+        refs::Global,
+    };
+    use std::{sync::mpsc, time::Duration};
+    use winit::platform::android::ActiveEventLoopExtAndroid;
+
+    let app = event_loop.android_app().clone();
+    let app_for_main_thread = app.clone();
+    let (sender, receiver) = mpsc::sync_channel(1);
+    app.run_on_java_main_thread(Box::new(move || {
+        let vm = unsafe { JavaVM::from_raw(app_for_main_thread.vm_as_ptr() as _) };
+        let result = vm.attach_current_thread(
+            |env| -> jni::errors::Result<Option<AndroidPhysicalInsets>> {
+                let raw_activity = app_for_main_thread.activity_as_ptr() as jni::sys::jobject;
+                // AndroidApp lends this global reference; JNI must not delete it.
+                let activity = unsafe { env.as_cast_raw::<Global<JObject>>(&raw_activity)? };
+                let window = env
+                    .call_method(
+                        activity,
+                        jni_str!("getWindow"),
+                        jni_sig!("()Landroid/view/Window;"),
+                        &[],
+                    )?
+                    .l()?;
+                let decor_view = env
+                    .call_method(
+                        &window,
+                        jni_str!("getDecorView"),
+                        jni_sig!("()Landroid/view/View;"),
+                        &[],
+                    )?
+                    .l()?;
+                let root_insets = env
+                    .call_method(
+                        &decor_view,
+                        jni_str!("getRootWindowInsets"),
+                        jni_sig!("()Landroid/view/WindowInsets;"),
+                        &[],
+                    )?
+                    .l()?;
+                if root_insets.is_null() {
+                    return Ok(None);
+                }
+
+                let sdk = env
+                    .get_static_field(
+                        jni_str!("android/os/Build$VERSION"),
+                        jni_str!("SDK_INT"),
+                        jni_sig!("I"),
+                    )?
+                    .i()?;
+
+                if sdk >= 30 {
+                    let system_bars = env
+                        .call_static_method(
+                            jni_str!("android/view/WindowInsets$Type"),
+                            jni_str!("systemBars"),
+                            jni_sig!("()I"),
+                            &[],
+                        )?
+                        .i()?;
+                    let display_cutout = env
+                        .call_static_method(
+                            jni_str!("android/view/WindowInsets$Type"),
+                            jni_str!("displayCutout"),
+                            jni_sig!("()I"),
+                            &[],
+                        )?
+                        .i()?;
+                    let insets = env
+                        .call_method(
+                            &root_insets,
+                            jni_str!("getInsets"),
+                            jni_sig!("(I)Landroid/graphics/Insets;"),
+                            &[JValue::Int(system_bars | display_cutout)],
+                        )?
+                        .l()?;
+
+                    return Ok(Some(AndroidPhysicalInsets {
+                        left: env
+                            .get_field(&insets, jni_str!("left"), jni_sig!("I"))?
+                            .i()?,
+                        top: env
+                            .get_field(&insets, jni_str!("top"), jni_sig!("I"))?
+                            .i()?,
+                        right: env
+                            .get_field(&insets, jni_str!("right"), jni_sig!("I"))?
+                            .i()?,
+                        bottom: env
+                            .get_field(&insets, jni_str!("bottom"), jni_sig!("I"))?
+                            .i()?,
+                    }));
+                }
+
+                let legacy_inset = |env: &mut jni::Env<'_>, name| {
+                    env.call_method(&root_insets, name, jni_sig!("()I"), &[])?
+                        .i()
+                };
+                let mut result = AndroidPhysicalInsets {
+                    left: legacy_inset(env, jni_str!("getSystemWindowInsetLeft"))?,
+                    top: legacy_inset(env, jni_str!("getSystemWindowInsetTop"))?,
+                    right: legacy_inset(env, jni_str!("getSystemWindowInsetRight"))?,
+                    bottom: legacy_inset(env, jni_str!("getSystemWindowInsetBottom"))?,
+                };
+
+                // DisplayCutout and its safe insets were added in API 28.
+                if sdk >= 28 {
+                    let cutout = env
+                        .call_method(
+                            &root_insets,
+                            jni_str!("getDisplayCutout"),
+                            jni_sig!("()Landroid/view/DisplayCutout;"),
+                            &[],
+                        )?
+                        .l()?;
+                    if !cutout.is_null() {
+                        let cutout_inset = |env: &mut jni::Env<'_>, name| {
+                            env.call_method(&cutout, name, jni_sig!("()I"), &[])?.i()
+                        };
+                        result.left = result
+                            .left
+                            .max(cutout_inset(env, jni_str!("getSafeInsetLeft"))?);
+                        result.top = result
+                            .top
+                            .max(cutout_inset(env, jni_str!("getSafeInsetTop"))?);
+                        result.right = result
+                            .right
+                            .max(cutout_inset(env, jni_str!("getSafeInsetRight"))?);
+                        result.bottom = result
+                            .bottom
+                            .max(cutout_inset(env, jni_str!("getSafeInsetBottom"))?);
+                    }
+                }
+
+                Ok(Some(result))
+            },
+        );
+        let message = result.map_err(|error| error.to_string());
+        let _ = sender.send(message);
+    }));
+
+    match receiver.recv_timeout(Duration::from_millis(250)) {
+        Ok(Ok(insets)) => insets,
+        Ok(Err(error)) => {
+            log::warn!("failed to query Android WindowInsets: {error}");
+            None
+        }
+        Err(error) => {
+            log::warn!("timed out waiting for Android WindowInsets: {error}");
+            None
+        }
+    }
+}
+
+#[cfg(target_os = "android")]
+fn sync_android_safe_area(event_loop: &ActiveEventLoop, window: &Window) -> bool {
     use winit::platform::android::WindowExtAndroid;
 
-    let rect = window.content_rect();
     let size = window.inner_size();
-    if rect.right <= rect.left || rect.bottom <= rect.top || size.width == 0 || size.height == 0 {
+    if size.width == 0 || size.height == 0 {
         return false;
     }
 
+    let insets = android_window_insets(event_loop).unwrap_or_else(|| {
+        let rect = window.content_rect();
+        AndroidPhysicalInsets {
+            top: rect.top.max(0),
+            right: (size.width as i32 - rect.right).max(0),
+            bottom: (size.height as i32 - rect.bottom).max(0),
+            left: rect.left.max(0),
+        }
+    });
     let scale = window.scale_factor() as f32;
-    xengui::set_safe_area_insets(xengui::SafeAreaInsets {
-        top: rect.top.max(0) as f32 / scale,
-        right: (size.width as i32 - rect.right).max(0) as f32 / scale,
-        bottom: (size.height as i32 - rect.bottom).max(0) as f32 / scale,
-        left: rect.left.max(0) as f32 / scale,
-    })
+    let logical_insets = xengui::SafeAreaInsets {
+        top: insets.top.max(0) as f32 / scale,
+        right: insets.right.max(0) as f32 / scale,
+        bottom: insets.bottom.max(0) as f32 / scale,
+        left: insets.left.max(0) as f32 / scale,
+    };
+    let changed = xengui::set_safe_area_insets(logical_insets);
+    if changed {
+        log::info!(
+            "Android safe area updated: physical={insets:?}, logical={logical_insets:?}, scale={scale}"
+        );
+    }
+    changed
 }
 
 #[cfg(target_os = "android")]
@@ -669,7 +852,7 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
         // Applies dark_theme/light_theme selection now that the real OS
         // appearance is known, before the window is ever shown.
         #[cfg(target_os = "android")]
-        let safe_area_changed = sync_android_safe_area(&window);
+        let safe_area_changed = sync_android_safe_area(event_loop, &window);
         #[cfg(not(target_os = "android"))]
         let safe_area_changed = false;
 
@@ -996,7 +1179,7 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
         }
     }
 
-    fn window_event(&mut self, _event_loop: &ActiveEventLoop, _id: WindowId, event: WindowEvent) {
+    fn window_event(&mut self, event_loop: &ActiveEventLoop, _id: WindowId, event: WindowEvent) {
         let _runtime_guard = self.runtime.enter();
         match WinitAdapter::normalize(&event) {
             Some(RuntimeWindowEvent::Resized(metrics)) => {
@@ -1018,7 +1201,7 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
         match event {
             WindowEvent::CloseRequested => {
                 self.runtime.tasks().cancel_all();
-                _event_loop.exit();
+                event_loop.exit();
             }
             WindowEvent::RedrawRequested => {
                 self.scheduler.take_dirty_causes();
@@ -1106,7 +1289,11 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
                 {
                     #[cfg(target_os = "android")]
                     {
-                        if self.window.as_deref().is_some_and(sync_android_safe_area) {
+                        if self
+                            .window
+                            .as_deref()
+                            .is_some_and(|window| sync_android_safe_area(event_loop, window))
+                        {
                             self.schedule_render();
                             while self.pump_reconciliation() {}
                         }
@@ -1167,7 +1354,11 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
             }
             WindowEvent::ScaleFactorChanged { .. } => {
                 #[cfg(target_os = "android")]
-                if self.window.as_deref().is_some_and(sync_android_safe_area) {
+                if self
+                    .window
+                    .as_deref()
+                    .is_some_and(|window| sync_android_safe_area(event_loop, window))
+                {
                     self.schedule_render();
                     while self.pump_reconciliation() {}
                 }
@@ -1468,7 +1659,7 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
                         .is_some_and(|handler| handler());
                     if !handled {
                         #[cfg(target_os = "android")]
-                        move_android_task_to_back(_event_loop);
+                        move_android_task_to_back(event_loop);
                     }
                     return;
                 }
@@ -1552,7 +1743,20 @@ impl winit::application::ApplicationHandler<XenEvent> for App {
                     self.apply_event_ctx(ctx);
                 }
             }
-            WindowEvent::Focused(true) => {}
+            WindowEvent::Focused(true) => {
+                // Insets can still be unavailable during `resumed` while Android is
+                // attaching the decor view. Focus is the reliable second chance,
+                // and also catches returning from a system UI configuration change.
+                #[cfg(target_os = "android")]
+                if self
+                    .window
+                    .as_deref()
+                    .is_some_and(|window| sync_android_safe_area(event_loop, window))
+                {
+                    self.schedule_render();
+                    while self.pump_reconciliation() {}
+                }
+            }
             WindowEvent::Focused(has_focus) if !has_focus => {
                 #[cfg(target_arch = "wasm32")]
                 if std::mem::take(&mut self.suppress_next_focus_loss) {
